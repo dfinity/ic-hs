@@ -1,52 +1,101 @@
-The IC Ref
-===========
+The IC reference implementation
+===============================
 
-The IC ref is a partial implementation of the public interface of the DFINITY
-Internet Computer, as specified in
-https://docs.dfinity.systems/spec/public/
-with the primary goal of providing a mock environment to test the output of the
-Motoko compiler.
+`ic-ref` is a partial implementation of the public interface of the DFINITY
+Internet Computer, as specified in the [Public Spec].
 
-It currently provides one binary, `ic-ref-run`, that allows you to script the
-execution of a single canister.
+[Public Spec]: https://docs.dfinity.systems/spec/public/
 
-Status
-------
+Goals
+-----
 
-This is neither complete nor authoritative. Since this is primarily meant for
-testing the output of Motoko, code paths not exercised by Motoko may not be
-present; in particular, error handling and input validation is incomplete.
+The goals of the reference implemenation are
 
-Extra features
---------------
+ * It evolves in lock-step with the Public Spec. At least versioned released of
+   the Public Spec come with a complete implemenation of `ic-stub`.
 
-In order to support patterns useful for and used in the Motoko test suite, the
-IC ref has some extra features that are not spec’ed or implemented in the
-official client. These are:
+ * Supplement the prose and pseudo-code in the Public Spec for additional and
+   concrete clarity.
 
- * The ability to create calls from `canister_init`.
+ * Ideally, relevant code pieces of `ic-stub` are as easy to understand as
+   carefully written pseudo-code.
 
- * The ability to create additional canisters, in a way where the creating
-   canisters learns the id of the created canister synchronously, and can send
-   messages to it right away.
+ * Increase weight of and confidence in the Public Spec, by demonstrating
+   implementability.
 
-   The interface for that is
+ * Aid in the development of the Public Spec by uncovering omissions,
+   inconsistencies or unexpected complexity.
 
-      ic.create_canister : (mod_src : i32, mod_size : i32, arg_src : i32, arg_size : i32) -> (idx : i32)
-      ic.created_canister_id_size : (idx : i32) -> (size : i32)
-      ic.created_canister_id_copy : (idx : i32, dst : i32, offset : i32, size : i32) -> ()
+ * Allow testing of external clients (like `dfx`) directly against the
+   reference implementation.
 
-   where the `idx` is only valid within the same function invokation.
+ * Provide a simplified mock environment for testing Canisters (e.g. `motoko`
+   output) that does not require networking.
+
+   In particular, provide `ic-ref-run`, a binary that allows to script the
+   execution of a single canister.
+
+ * Aid in the production implementation of the Internet Computer, by allowing
+   to probe the reference implementation to better understand intended
+   behaviour and by comparing the behaviour of the two.
+
+ * Using `ic-ref` is simple: Completely self-contained, no on-disk state.
+
+ * Performance is good enough to run small examples.
+
+ * The primary focus is describing the happy path execution, and not
+   necessarily the precise error reporting behaviour upon bad usage (e.g. bad
+   canisters, resource exhaustion, module validation).
+
+There are also explicit non-goals to keep in mind:
+
+ * `ic-ref` does not need to support canisters that are large or very
+   long-running.
+
+ * No persitence across runs of `ic-ref`.
+
+ * It is explicitly not desirable to share code between reference and
+   production implementation, to achieve the multi-version cross-checking
+   effect. Not using Rust for `ic-ref` helps with that.
+
+ * No guaranteed protection against bad effects from malicous interactions.
+
+ * No duplication of commonly available functionality. In particular, the
+   assumption is that the production implementation will use a mature Wasm
+   embedder that implements Wasm validation correctly, so `ic-ref` does not
+   itself implement validation.
+
+Furthermore there are some stretch goals that would be nice to have, but not if reqiures
+compromising the main goals.
+
+ * The reference implementation describes _one_ possible execution, but not
+   _all_ possible behaviours of the Public Spec. If this can be changed (e.g.
+   using non-deterministic modeling of computation) without compromising
+   readability and normal execution, then this would be nice.
+
+ * A deep or type-level embedding of the interfaces (HTTP, System) that can be
+   used separately to  generation of production code (“interface stubs”).
+
+ * Debugging/logging/trace features that aid understanding the behaviour and/or
+   help debug canisters.
+
+To achieve these goals, the following design decisions are made:
+
+ * `ic-ref` is implemented in Haskell, to optimize for development speed,
+   type-checking safety, and readablity of carefully selected portions of the
+   code.
+
+ * As far as possible, a module either corresponds closely to the spec, and is
+   written with readability as a high priority, avoiding language features that
+   obscure meaning (e.g. `IC.Ref`, `IC.Canister.Impl`) or it is a plumbing
+   module that handles some technical aspect (e.g. `IC.Wasm.Imports`).
+   This is an ongoing refinement process.
 
 Installation of `ic-ref-run`
 -----------------------------
 
-If you use the top-level `nix-shell`, you should already have `ic-ref-run` in
-your `PATH`.
-
 To install it into your normal environment, run from the top-level repository
 directory.
-
 
     nix-env -i -f . -A ic-ref
 
@@ -56,13 +105,3 @@ Developing on ic-ref
 
 Running `nix-shell` in the `ic-ref/` directory should give you an environment
 that allows you to build the project using `cabal new-build`.
-
-The interpreter is too slow
----------------------------
-
-The obvious performance issue with `winter`, according to profiling, is
-evaluation under lambdas, the cost centres `step_Label7_k`, `step_Label7`,
-`step_Label2` and `step_Framed4` are responsible for most allocation. Switching
-to an interpreter form with a control stack would likely help a lot, but would
-move `winter` away from being a straight-forward port of the Ocaml reference
-interpreter `wasm`.
