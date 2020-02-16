@@ -8,7 +8,7 @@
 {-# LANGUAGE RankNTypes #-}
 
 {-# OPTIONS_GHC -Wmissing-signatures #-}
-module IC.Stub
+module IC.Ref
   ( IC
   , AsyncRequest(..)
   , SyncRequest(..)

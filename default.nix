@@ -13,7 +13,7 @@ let haskellPackages = nixpkgs.haskellPackages.override {
     }; in
 
 rec {
-  inherit (haskellPackages) ic-stub;
+  inherit (haskellPackages) ic-ref;
 
   # populate our nix cache with the right version of cabal2nix that
   # is used by self.callCabal2nix at evalution time
@@ -21,7 +21,7 @@ rec {
 
   all-systems-go = nixpkgs.releaseTools.aggregate {
     name = "all-systems-go";
-    constituents = [ ic-stub ];
+    constituents = [ ic-ref ];
   };
 
   # include shell in default so that the cache has the extra shell packages
@@ -30,7 +30,7 @@ rec {
       nixpkgs.cabal-install
       nixpkgs.ghcid
     ]; in
-    haskellPackages.ic-stub.env.overrideAttrs (old: {
+    haskellPackages.ic-ref.env.overrideAttrs (old: {
       nativeBuildInputs = (old.nativeBuildInputs or []) ++ extra-pkgs ;
     });
 }

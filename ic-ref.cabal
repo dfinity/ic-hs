@@ -1,5 +1,5 @@
 cabal-version:       >=1.10
-name:                ic-stub
+name:                ic-ref
 version:             0.1.0.0
 author:              Joachim Breitner
 maintainer:          mail@joachim-breitner.de
@@ -9,10 +9,10 @@ flag release
   default: False
   description: Release build, warnings are errors
 
-executable ic-stub-run
-  main-is:             ic-stub-run.hs
+executable ic-ref-run
+  main-is:             ic-ref-run.hs
   hs-source-dirs:      src
-  other-modules:       IC.Stub
+  other-modules:       IC.Ref
   other-modules:       IC.Types
   other-modules:       IC.Canister
   other-modules:       IC.Id

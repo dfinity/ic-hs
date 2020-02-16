@@ -7,7 +7,7 @@
 This module provides a way to persist the state of a Winter Wasm instance, and
 to recover it.
 
-It is tailored to the use by ic-stub. For example it assumes that the
+It is tailored to the use by ic-ref. For example it assumes that the
 table of a wasm instance is immutable.
 -}
 module IC.Wasm.Winter.Persist

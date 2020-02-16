@@ -1,13 +1,13 @@
-The IC Stub
+The IC Ref
 ===========
 
-The IC stub is a partial implementation of the public interface of the DFINITY
+The IC ref is a partial implementation of the public interface of the DFINITY
 Internet Computer, as specified in
 https://docs.dfinity.systems/spec/public/
 with the primary goal of providing a mock environment to test the output of the
 Motoko compiler.
 
-It currently provides one binary, `ic-stub-run`, that allows you to script the
+It currently provides one binary, `ic-ref-run`, that allows you to script the
 execution of a single canister.
 
 Status
@@ -21,7 +21,7 @@ Extra features
 --------------
 
 In order to support patterns useful for and used in the Motoko test suite, the
-IC stub has some extra features that are not spec’ed or implemented in the
+IC ref has some extra features that are not spec’ed or implemented in the
 official client. These are:
 
  * The ability to create calls from `canister_init`.
@@ -38,23 +38,23 @@ official client. These are:
 
    where the `idx` is only valid within the same function invokation.
 
-Installation of `ic-stub-run`
+Installation of `ic-ref-run`
 -----------------------------
 
-If you use the top-level `nix-shell`, you should already have `ic-stub-run` in
+If you use the top-level `nix-shell`, you should already have `ic-ref-run` in
 your `PATH`.
 
 To install it into your normal environment, run from the top-level repository
 directory.
 
 
-    nix-env -i -f . -A ic-stub
+    nix-env -i -f . -A ic-ref
 
 
-Developing on ic-stub
+Developing on ic-ref
 ---------------------
 
-Running `nix-shell` in the `ic-stub/` directory should give you an environment
+Running `nix-shell` in the `ic-ref/` directory should give you an environment
 that allows you to build the project using `cabal new-build`.
 
 The interpreter is too slow

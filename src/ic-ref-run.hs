@@ -12,7 +12,7 @@ import Control.Monad.Trans.State
 import Text.Printf
 
 import IC.Types
-import IC.Stub
+import IC.Ref
 import IC.DRun.Parse (Ingress(..), parseFile)
 
 type DRun = StateT IC IO
