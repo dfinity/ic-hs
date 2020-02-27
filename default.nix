@@ -15,13 +15,21 @@ let haskellPackages = nixpkgs.haskellPackages.override {
 rec {
   inherit (haskellPackages) ic-ref;
 
-  # populate our nix cache with the right version of cabal2nix that
-  # is used by self.callCabal2nix at evalution time
-  inherit (nixpkgs) cabal2nix;
+  check-generated = nixpkgs.runCommandNoCC "check-generated" {
+      nativeBuildInputs = [ nixpkgs.diffutils ];
+      expected = import ./nix/generate.nix { pkgs = nixpkgs; };
+      dir = ./nix/generated;
+    } ''
+      diff -r -U 3 $expected $dir
+      touch $out
+    '';
 
   all-systems-go = nixpkgs.releaseTools.aggregate {
     name = "all-systems-go";
-    constituents = [ ic-ref ];
+    constituents = [
+      ic-ref
+      check-generated
+    ];
   };
 
   # include shell in default so that the cache has the extra shell packages
