@@ -18,13 +18,10 @@ module IC.Ref
   , initialIC
   , submitRequest, readRequest
   , runToCompletion
-  , requestId
   )
 where
 
-import qualified Data.ByteString.Lazy.Char8 as BSC
 import qualified Data.Map as M
-import Data.List
 import Data.Maybe
 import Control.Monad.State.Class
 import Data.Sequence (Seq(..))
@@ -94,7 +91,7 @@ data CallContext = CallContext
   deriving Show
 
 data CallOrigin
-  = FromUser AsyncRequest
+  = FromUser RequestID
   | FromCanister CallId Callback
   | FromInit EntityId
   deriving Show
@@ -112,7 +109,7 @@ data Message =
 
 data IC = IC
   { canisters :: CanisterId ↦ Maybe CanState
-  , requests :: AsyncRequest ↦ RequestStatus
+  , requests :: RequestID ↦ (AsyncRequest, RequestStatus)
   , messages :: Seq Message
   , call_contexts :: CallId ↦ CallContext
   }
@@ -120,16 +117,13 @@ data IC = IC
 initialIC :: IC
 initialIC = IC mempty mempty mempty mempty
 
-submitRequest :: ICT m => AsyncRequest -> m ()
-submitRequest r =
-  -- lensify?
-  modify (\ic -> ic { requests = M.insert r Received (requests ic) })
-
-requestId :: AsyncRequest -> Blob
-requestId r = BSC.pack (show r) -- TODO: Implement request hashing
+submitRequest :: ICT m => RequestID -> AsyncRequest -> m ()
+submitRequest rid r = modify $ \ic -> ic
+    { requests = M.insert rid (r, Received) (requests ic)
+    }
 
 findRequest :: RequestID -> IC -> Maybe (AsyncRequest, RequestStatus)
-findRequest rid ic = find (\(r,_s) -> requestId r == rid) (M.toList (requests ic))
+findRequest rid ic = M.lookup rid (requests ic)
 
 readRequest :: ICT m => SyncRequest -> m ReqResponse
 
@@ -151,9 +145,9 @@ readRequest (QueryRequest canister_id user_id method arg) =
             Return (Reply res) -> return $ Completed (CompleteArg res)
             Return (Reject (rc,rm)) -> return $ Rejected (rc, rm)
 
-nextReceived :: ICT m => m (Maybe AsyncRequest)
+nextReceived :: ICT m => m (Maybe (RequestID, AsyncRequest))
 nextReceived = gets $ \ic -> listToMaybe
-  [ r | (r, Received) <- M.toList (requests ic) ]
+  [ (rid,r) | (rid, (r, Received)) <- M.toList (requests ic) ]
 
 nextStarved :: ICT m => m (Maybe CallId)
 nextStarved = gets $ \ic -> listToMaybe
@@ -175,9 +169,9 @@ nextMessage = state $ \ic ->
     Empty -> (Nothing, ic)
     m :<| ms -> (Just m, ic { messages = ms })
 
-setReqStatus :: ICT m => AsyncRequest -> RequestStatus -> m ()
-setReqStatus r s =
-  modify (\ic -> ic { requests = M.insert r s (requests ic) })
+setReqStatus :: ICT m => RequestID -> RequestStatus -> m ()
+setReqStatus rid s =
+  modify (\ic -> ic { requests = M.adjust (\(r,_) -> (r,s)) rid (requests ic) })
 
 createEmptyCanister :: ICT m => CanisterId -> m ()
 createEmptyCanister cid =
@@ -199,27 +193,27 @@ setCanisterState cid wasm_state =
     M.adjust (fmap (\cs -> cs { wasm_state })) cid (canisters ic)
   })
 
-processRequest :: ICT m => AsyncRequest -> m ()
+processRequest :: ICT m => RequestID -> AsyncRequest -> m ()
 
-processRequest r@(CreateRequest _user_id (Just desired)) = do
+processRequest rid (CreateRequest _user_id (Just desired)) = do
+  let res = setReqStatus rid
   exists <- gets (M.member desired . canisters)
   if exists
-  then
-    setReqStatus r $ Rejected (RC_DESTINATION_INVALID, "Desired canister id already exists")
+  then res $ Rejected (RC_DESTINATION_INVALID, "Desired canister id already exists")
   else do
     createEmptyCanister desired
-    setReqStatus r $ Completed $ CompleteCanisterId desired
+    res $ Completed $ CompleteCanisterId desired
 
-processRequest r@(CreateRequest _user_id Nothing) = do
+processRequest rid (CreateRequest _user_id Nothing) = do
   existing_canisters <- gets (M.keys . canisters)
   let new_id = freshId existing_canisters
   createEmptyCanister new_id
-  setReqStatus r $ Completed $ CompleteCanisterId new_id
+  setReqStatus rid $ Completed $ CompleteCanisterId new_id
 
-processRequest r@(InstallRequest canister_id user_id can_mod dat) =
+processRequest rid (InstallRequest canister_id user_id can_mod dat) = do
+  let res = setReqStatus rid
   case parseCanister can_mod of
-    Left err ->
-      setReqStatus r $ Rejected (RC_SYS_FATAL, "Parsing failed: " ++ err)
+    Left err -> res $ Rejected (RC_SYS_FATAL, "Parsing failed: " ++ err)
     Right can_mod -> do
       -- We only need a call context to be able to do inter-canister calls
       -- from init, which is useful for Motoko testing, but not currently
@@ -233,17 +227,16 @@ processRequest r@(InstallRequest canister_id user_id can_mod dat) =
 
       case init_method can_mod canister_id user_id dat of
         Trap msg ->
-          setReqStatus r $ Rejected (RC_CANISTER_ERROR, "Initialization trapped: " ++ msg)
+          res $ Rejected (RC_CANISTER_ERROR, "Initialization trapped: " ++ msg)
         Return (new_calls, wasm_state) -> do
           installCanister canister_id can_mod wasm_state
           mapM_ (newCall ctxt_id) new_calls
-          setReqStatus r $ Completed CompleteUnit
+          res $ Completed CompleteUnit
 
-processRequest r@(UpgradeRequest canister_id user_id new_can_mod dat) = do
-  let res = setReqStatus r
+processRequest rid (UpgradeRequest canister_id user_id new_can_mod dat) = do
+  let res = setReqStatus rid
   case parseCanister new_can_mod of
-    Left err ->
-      setReqStatus r $ Rejected (RC_SYS_FATAL, "Parsing failed: " ++ err)
+    Left err -> res $ Rejected (RC_SYS_FATAL, "Parsing failed: " ++ err)
     Right new_can_mod ->
       gets (M.lookup canister_id . canisters) >>= \case
         Nothing -> res $ Rejected (RC_DESTINATION_INVALID, "canister does not exist: " ++ show canister_id)
@@ -258,10 +251,10 @@ processRequest r@(UpgradeRequest canister_id user_id new_can_mod dat) = do
                   installCanister canister_id new_can_mod new_wasm_state
                   res $ Completed CompleteUnit
 
-processRequest r@(UpdateRequest canister_id _user_id method arg) = do
+processRequest rid (UpdateRequest canister_id _user_id method arg) = do
   ctxt_id <- newCallContext $ CallContext
     { canister = canister_id
-    , origin = FromUser r
+    , origin = FromUser rid
     , responded = Responded False
     , last_trap = Nothing
     }
@@ -269,7 +262,7 @@ processRequest r@(UpdateRequest canister_id _user_id method arg) = do
     { call_context = ctxt_id
     , entry = Public method arg
     }
-  setReqStatus r Processing
+  setReqStatus rid Processing
 
 enqueueMessage :: ICT m => Message -> m ()
 enqueueMessage m = modify $ \ic -> ic { messages = messages ic :|> m }
@@ -300,17 +293,19 @@ rememberTrap :: ICT m => CallId -> String -> m ()
 rememberTrap ctxt_id msg =
   modifyCallContext ctxt_id $ \ctxt -> ctxt { last_trap = Just msg }
 
-callerOfRequest :: AsyncRequest -> EntityId
-callerOfRequest (CreateRequest user_id _) = user_id
-callerOfRequest (InstallRequest _ user_id _ _) = user_id
-callerOfRequest (UpgradeRequest _ user_id _ _) = user_id
-callerOfRequest (UpdateRequest _ user_id _ _) = user_id
+callerOfRequest :: ICT m => RequestID -> m EntityId
+callerOfRequest rid = gets (M.lookup rid . requests) >>= \case
+    Just (CreateRequest user_id _, _) -> return user_id
+    Just (InstallRequest _ user_id _ _, _) -> return user_id
+    Just (UpgradeRequest _ user_id _ _, _) -> return user_id
+    Just (UpdateRequest _ user_id _ _, _) -> return user_id
+    Nothing -> error "callerOfRequest"
 
 callerOfCallID :: ICT m => CallId -> m EntityId
 callerOfCallID ctxt_id = do
   ctxt <- getCallContext ctxt_id
   case origin ctxt of
-    FromUser request -> return $ callerOfRequest request
+    FromUser rid -> callerOfRequest rid
     FromCanister other_ctxt_id _callback -> calleeOfCallID other_ctxt_id
     FromInit entity_id -> return entity_id
 
@@ -370,7 +365,7 @@ processMessage (CallMessage ctxt_id entry) = do
 processMessage (ResponseMessage ctxt_id response) = do
   ctxt <- getCallContext ctxt_id
   case origin ctxt of
-    FromUser request -> setReqStatus request $
+    FromUser rid -> setReqStatus rid $
       case response of
         Reject (rc, msg) -> Rejected (rc, msg)
         Reply blob -> Completed (CompleteArg blob)
@@ -391,7 +386,7 @@ starveCallContext ctxt_id = do
 runToCompletion :: ICT m => m ()
 runToCompletion =
   nextReceived >>= \case
-    Just  r -> processRequest r >> runToCompletion
+    Just (rid,r) -> processRequest rid r >> runToCompletion
     Nothing -> nextMessage >>= \case
       Just m  -> processMessage m >> runToCompletion
       Nothing -> nextStarved >>= \case

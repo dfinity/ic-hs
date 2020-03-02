@@ -22,6 +22,7 @@ dummyUserId = EntityId $ BS.pack [0xCA, 0xFF, 0xEE]
 asyncRequest :: GenR -> Either T.Text AsyncRequest
 asyncRequest = record $ do
     t <- field text "request_type"
+    _ <- optionalField blob "nonce"
     case t of
         "install_code" -> do
             cid <- EntityId <$> field blob "canister_id"
@@ -30,9 +31,15 @@ asyncRequest = record $ do
             mod <- field blob "module"
             arg <- field blob "arg"
             _ <- field percentage "compute_allocation"
-            _ <- field blob "nonce"
             return $ InstallRequest cid sender mod arg
-        _ -> throwError $ "Unknown request type " <> t
+        "call" -> do
+            cid <- EntityId <$> field blob "canister_id"
+            -- FIXME: Sender should not be optional
+            sender <- maybe dummyUserId EntityId <$> optionalField blob "sender"
+            method_name <- field text "method_name"
+            arg <- field blob "arg"
+            return $ UpdateRequest cid sender (T.unpack method_name) arg
+        _ -> throwError $ "Unknown request type \"" <> t <> "\""
 
 -- Parsing requests to /response
 syncRequest :: GenR -> Either T.Text SyncRequest
@@ -42,14 +49,24 @@ syncRequest = record $ do
         "request_status" -> do
             rid <- field blob "request_id"
             return $ StatusRequest rid
-        _ -> throwError $ "Unknown request type " <> t
+        "query" -> do
+            cid <- EntityId <$> field blob "canister_id"
+            -- FIXME: Sender should not be optional
+            sender <- maybe dummyUserId EntityId <$> optionalField blob "sender"
+            method_name <- field text "method_name"
+            arg <- field blob "arg"
+            return $ QueryRequest cid sender (T.unpack method_name) arg
+        _ -> throwError $ "Unknown request type \"" <> t <> "\""
 
 -- Printing responses
 response :: RequestStatus -> GenR
 response = \case
     Unknown -> rec ["status" =: GText "unknown"]
-    Received -> rec ["status" =: GText "received"]
-    Processing -> rec ["status" =: GText "processing"]
+    -- FIXME
+    -- Received -> rec ["status" =: GText "received"]
+    -- Processing -> rec ["status" =: GText "processing"]
+    Received -> rec ["status" =: GText "pending"]
+    Processing -> rec ["status" =: GText "pending"]
     Rejected (c, s) -> rec
         [ "status" =: GText "rejected"
         , "reject_code" =: GNat (fromIntegral (rejectCode c))

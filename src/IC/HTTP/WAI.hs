@@ -15,6 +15,7 @@ import IC.HTTP.GenR
 import IC.HTTP.Status
 import IC.HTTP.CBOR
 import IC.HTTP.Request
+import IC.HTTP.RequestId
 
 startApp :: IO Application
 startApp = do
@@ -31,7 +32,11 @@ handle stateVar req respond =
                     case IC.HTTP.Request.asyncRequest gr of
                         Left err -> invalidRequest err
                         Right ar -> do
-                            runIC $ submitRequest ar
+                            runIC $ do
+                                submitRequest (requestId gr) ar
+                                -- We could do processing separately
+                                -- (e.g. a separte worker threat)
+                                runToCompletion
                             cbor status200 emptyR
             ("POST", ["api","v1","read"]) ->
                 withCBOR $ \gr ->
