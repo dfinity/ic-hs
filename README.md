@@ -151,5 +151,5 @@ As mentioned in the `nix/generate.nix` files, these files are automatically
 generated. See `nix/generate.nix` for the command to update them.
 
 Don't worry if you forget to update the `default.nix` file, the CI job
-`check-generated` checks if these files are in sync and fail with a diff if
+`check-generated` checks if these files are in sync and fails with a diff if
 they aren't.
