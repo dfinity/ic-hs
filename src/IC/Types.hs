@@ -1,10 +1,7 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE DeriveFunctor #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DeriveAnyClass #-}
 module IC.Types where
 
-import IC.Debug.JSON
 import qualified Data.ByteString.Lazy as BS
 import qualified Data.Map as M
 import qualified Data.Text as T
@@ -17,10 +14,7 @@ type (↦) = M.Map
 
 type Blob = BS.ByteString
 newtype EntityId = EntityId { rawEntityId :: Blob }
-    deriving (Show, Eq, Ord, Generic, ToJSON)
-
-instance ToJSONKey EntityId where
-  toJSONKey = contramapToJSONKeyFunction rawEntityId toJSONKey
+    deriving (Show, Eq, Ord)
 
 type CanisterId = EntityId
 type UserId = EntityId
@@ -34,7 +28,7 @@ prettyID :: EntityId -> String
 prettyID = prettyBlob . rawEntityId -- implement the "ic:…" stuff
 
 newtype Responded = Responded Bool
-  deriving (Show, Generic, ToJSON)
+  deriving Show
 
 data RejectCode
     = RC_SYS_FATAL
@@ -42,7 +36,7 @@ data RejectCode
     | RC_DESTINATION_INVALID
     | RC_CANISTER_REJECT
     | RC_CANISTER_ERROR
-  deriving (Show, Generic, ToJSON)
+  deriving Show
 
 rejectCode :: RejectCode -> Int
 rejectCode RC_SYS_FATAL           = 1
@@ -53,7 +47,7 @@ rejectCode RC_CANISTER_ERROR      = 5
 
 
 data Response = Reply Blob | Reject (RejectCode, String)
-  deriving (Show, Generic, ToJSON)
+  deriving Show
 
 -- Abstract canisters
 
@@ -63,13 +57,13 @@ data WasmClosure = WasmClosure
   { closure_idx :: Int32
   , closure_env :: Int32
   }
-  deriving (Show, Generic, ToJSON)
+  deriving Show
 
 data Callback = Callback
   { reply_callback :: WasmClosure
   , reject_callback :: WasmClosure
   }
-  deriving (Show, Generic, ToJSON)
+  deriving Show
 
 data MethodCall = MethodCall
   { call_callee :: CanisterId
@@ -77,7 +71,7 @@ data MethodCall = MethodCall
   , call_arg :: Blob
   , call_callback :: Callback
   }
-  deriving (Show, Generic, ToJSON)
+  deriving Show
 
 type ExistingCanisters = [CanisterId]
 

@@ -1,7 +1,5 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TupleSections #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DeriveAnyClass #-}
 
 {-# OPTIONS_GHC -Wmissing-signatures #-}
 {-|
@@ -9,7 +7,7 @@ An implementation of canisters based on persistence, using "IC.Canister.Imp". It
 -}
 
 module IC.Canister.Persisted
-    ( WasmState
+    ( WasmState(..)
     , initialize
     , initializeUpgrade
     , invoke
@@ -19,15 +17,19 @@ module IC.Canister.Persisted
 import Control.Monad.ST
 import Data.ByteString.Lazy (ByteString)
 
-import IC.Debug.JSON
 import IC.Types
 import IC.Wasm.Winter (Module)
 import IC.Wasm.Winter.Persist
 import qualified IC.Canister.Interface as CI
 import IC.Canister.Imp
 
-data WasmState = WasmState Module CanisterId PInstance ByteString
-  deriving (Show, Generic, ToJSON)
+data WasmState = WasmState
+    { wsModule :: Module
+    , wsCanisterId :: CanisterId
+    , wsInstances :: PInstance
+    , wsStableMem :: ByteString
+    }
+  deriving Show
 
 initialize :: Module -> CanisterId -> EntityId -> Blob -> TrapOr (InitResult, WasmState)
 initialize wasm_mod cid caller dat = runESST $ \esref ->

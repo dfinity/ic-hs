@@ -6,8 +6,6 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DeriveAnyClass #-}
 
 {-# OPTIONS_GHC -Wmissing-signatures #-}
 module IC.Ref
@@ -20,7 +18,12 @@ module IC.Ref
   , initialIC
   , submitRequest, readRequest
   , runToCompletion
+  -- $ Exported merely for introspection
   , CallContext(..)
+  , Message(..)
+  , CanState(..)
+  , CallOrigin(..)
+  , EntryPoint(..)
   )
 where
 
@@ -29,11 +32,9 @@ import Data.Maybe
 import Control.Monad.State.Class
 import Data.Sequence (Seq(..))
 import Data.Foldable (toList)
-import GHC.Generics
 
 -- import Debug.Trace
 
-import IC.Debug.JSON
 import IC.Types
 import IC.Canister
 import IC.Id
@@ -46,7 +47,7 @@ data AsyncRequest
     | InstallRequest CanisterId UserId Blob Blob
     | UpgradeRequest CanisterId UserId Blob Blob
     | UpdateRequest CanisterId UserId MethodName Blob
-  deriving (Eq, Ord, Show, Generic, ToJSON)
+  deriving (Eq, Ord, Show)
 
 data SyncRequest
     = QueryRequest CanisterId UserId MethodName Blob
@@ -58,7 +59,7 @@ data RequestStatus
   | Processing
   | Rejected (RejectCode, String)
   | Completed CompletionValue
-  deriving (Show, Generic, ToJSON)
+  deriving (Show)
 
 type ReqResponse = RequestStatus
 
@@ -67,7 +68,7 @@ data CompletionValue -- we need to be more typed than the public spec here
   = CompleteUnit
   | CompleteCanisterId CanisterId
   | CompleteArg Blob
-  deriving (Show, Generic, ToJSON)
+  deriving (Show)
 
 -- Abstract canisters
 
@@ -77,14 +78,14 @@ data CanState = CanState
   { wasm_state :: WasmState
   , can_mod :: CanisterModule
   }
-  deriving (Show, Generic, ToJSON)
+  deriving (Show)
 
 type ICT m = (MonadState IC m, Logger m)
 
 data EntryPoint
   = Public MethodName Blob
   | Closure Callback Response
-  deriving (Show, Generic, ToJSON)
+  deriving (Show)
 
 type CallId = Int
 
@@ -94,13 +95,13 @@ data CallContext = CallContext
   , responded :: Responded
   , last_trap :: Maybe String
   }
-  deriving (Show, Generic, ToJSON)
+  deriving (Show)
 
 data CallOrigin
   = FromUser RequestID
   | FromCanister CallId Callback
   | FromInit EntityId
-  deriving (Show, Generic, ToJSON)
+  deriving (Show)
 
 data Message =
   CallMessage
@@ -111,7 +112,7 @@ data Message =
     { call_context :: CallId
     , response :: Response
     }
-  deriving (Show, Generic, ToJSON)
+  deriving (Show)
 
 data IC = IC
   { canisters :: CanisterId ↦ Maybe CanState
@@ -119,7 +120,7 @@ data IC = IC
   , messages :: Seq Message
   , call_contexts :: CallId ↦ CallContext
   }
-  deriving (Show, Generic, ToJSON)
+  deriving (Show)
 
 initialIC :: IC
 initialIC = IC mempty mempty mempty mempty

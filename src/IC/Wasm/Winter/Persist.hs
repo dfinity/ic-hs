@@ -3,8 +3,6 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DeriveAnyClass #-}
 {- |
 This module provides a way to persist the state of a Winter Wasm instance, and
 to recover it.
@@ -13,7 +11,9 @@ It is tailored to the use by ic-ref. For example it assumes that the
 table of a wasm instance is immutable.
 -}
 module IC.Wasm.Winter.Persist
-  ( PInstance
+  ( PInstance(..)
+  , PExtern(..)
+  , PModuleInst(..)
   , persistInstance
   , resumeInstance
   , persistMemory
@@ -28,7 +28,6 @@ import qualified Data.IntMap as IM
 import qualified Data.Map.Lazy as M
 import qualified Data.Text.Lazy as T
 import Data.ByteString.Lazy (ByteString)
-import IC.Debug.JSON
 
 import qualified Wasm.Runtime.Global as W
 import qualified Wasm.Runtime.Instance as W
@@ -44,7 +43,7 @@ import IC.Wasm.Winter (Instance)
 -- spots. We don’t worry about that for now and just de-alias on reading, at the
 -- expense of writing the corresponding mutable values more than once.
 newtype PInstance = PInstance (Persisted (Instance ()))
-  deriving (Show, Generic, ToJSON)
+  deriving Show
 
 persistInstance :: Instance s -> ST s PInstance
 persistInstance i = PInstance <$> persist i
@@ -80,7 +79,7 @@ data PExtern
   = PExternMemory (Persisted (W.MemoryInst (ST ())))
   | PExternGlobal (Persisted (W.GlobalInst (ST ())))
   | PExternOther
-  deriving (Show, Generic, ToJSON)
+  deriving Show
 
 instance Persistable (W.Extern f (ST s)) where
   type Persisted (W.Extern f (ST s)) = PExtern
@@ -99,7 +98,7 @@ data PModuleInst = PModuleInst
   , globals :: [Persisted (W.GlobalInst (ST ()))]
   , exports :: M.Map T.Text (Persisted (W.Extern Identity (ST ())))
   }
-  deriving (Show, Generic, ToJSON)
+  deriving Show
 
 instance Persistable (W.ModuleInst Identity (ST s)) where
   type Persisted (W.ModuleInst Identity (ST s)) = PModuleInst

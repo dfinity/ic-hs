@@ -18,7 +18,6 @@ module IC.Canister
 import qualified Data.Map as M
 import Data.List
 
-import IC.Debug.JSON
 import IC.Types
 import IC.Wasm.Winter (parseModule, exportedFunctions, Module)
 
@@ -41,8 +40,6 @@ data CanisterModule = CanisterModule
 
 instance Show CanisterModule where
     show _ = "CanisterModule{...}"
-instance ToJSON CanisterModule where
-    toJSON = placeholder "(CanisterModule)"
 
 parseCanister :: Blob -> Either String CanisterModule
 parseCanister bytes =
