@@ -25,7 +25,6 @@ common logic
   other-modules:       IC.Wasm.WinterMemory
   other-modules:       IC.Wasm.Winter.Persist
   other-modules:       IC.Wasm.Imports
-  other-modules:       IC.Debug.JSON
   build-depends:       base >=4.11 && <5
   build-depends:       optparse-applicative
   build-depends:       filepath
@@ -63,6 +62,7 @@ executable ic-ref
   other-modules:       IC.HTTP.Status
   other-modules:       IC.HTTP.Request
   other-modules:       IC.HTTP.RequestId
+  other-modules:       IC.Debug.JSON
   build-depends:       cborg
   build-depends:       aeson
   build-depends:       warp
