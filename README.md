@@ -85,26 +85,41 @@ To achieve these goals, the following design decisions are made:
    type-checking safety, and readablity of carefully selected portions of the
    code.
 
- * As far as possible, a module either corresponds closely to the spec, and is
-   written with readability as a high priority, avoiding language features that
-   obscure meaning (e.g. `IC.Ref`, `IC.Canister.Impl`) or it is a plumbing
-   module that handles some technical aspect (e.g. `IC.Wasm.Imports`).
-   This is an ongoing refinement process.
+ * As far as possible, a module either
 
-Installation of `ic-ref-run`
------------------------------
+   - corresponds closely to the spec, and is written with readability as a high
+     priority, avoiding language features that obscure meaning. The rough goal
+     is “executable pseudo-code”. The use of advanced langauge features or non-idiomatic
+     code that _help_ readability are encouraged.
+
+     Examples: `IC.Ref`, `IC.Canister.Impl`, `IC.HTTP.RequestId`
+
+   - is a plumbing module that handles some technical aspect, and pave the way
+     for the simplicity in the previously mentioned modules. It is expected
+     that reading such modules may require high level of familiarity with Haskell.
+
+     Examples: `IC.Wasm.Imports`, `IC.HTTP.CBOR`.
+
+   This is an ongoing refinement process, striving for a probably unattainable
+   ideal als the goal.
+
+Installation of `ic-ref` and `ic-ref-run`
+-----------------------------------------
 
 To install it into your normal environment, run from the top-level repository
 directory.
 
     nix-env -i -f . -A ic-ref
 
+This gives you the `ic-ref-run` binary (executes simple install-call-scripts)
+as well as `ic-ref` (runs a node at port 8001).
 
 Developing on ic-ref
 ---------------------
 
 Running `nix-shell` in the `ic-ref/` directory should give you an environment
 that allows you to build the project using `cabal new-build`.
+
 
 Updating Haskell Packages
 -------------------------
