@@ -1,4 +1,4 @@
-cabal-version:       >=1.10
+cabal-version:       2.2
 name:                ic-ref
 version:             0.1.0.0
 author:              Joachim Breitner
@@ -9,8 +9,8 @@ flag release
   default: False
   description: Release build, warnings are errors
 
-executable ic-ref-run
-  main-is:             ic-ref-run.hs
+common logic
+  default-language:    Haskell2010
   hs-source-dirs:      src
   other-modules:       IC.Ref
   other-modules:       IC.Types
@@ -25,7 +25,6 @@ executable ic-ref-run
   other-modules:       IC.Wasm.WinterMemory
   other-modules:       IC.Wasm.Winter.Persist
   other-modules:       IC.Wasm.Imports
-  other-modules:       IC.DRun.Parse
   build-depends:       base >=4.11 && <5
   build-depends:       optparse-applicative
   build-depends:       filepath
@@ -42,8 +41,34 @@ executable ic-ref-run
   build-depends:       primitive
   build-depends:       utf8-string
   build-depends:       hex-text
-  default-language:    Haskell2010
+
+executable ic-ref-run
+  import: logic
+  main-is:             ic-ref-run.hs
+  hs-source-dirs:      src
+  other-modules:       IC.DRun.Parse
   ghc-options:         -rtsopts
+  ghc-options:         -Wall -Wno-name-shadowing
+  if flag(release)
+    ghc-options:       -Werror
+
+executable ic-ref
+  import: logic
+  main-is:             ic-ref.hs
+  hs-source-dirs:      src
+  other-modules:       IC.HTTP.WAI
+  other-modules:       IC.HTTP.GenR
+  other-modules:       IC.HTTP.CBOR
+  other-modules:       IC.HTTP.Status
+  other-modules:       IC.HTTP.Request
+  other-modules:       IC.HTTP.RequestId
+  build-depends:       cborg
+  build-depends:       warp
+  build-depends:       wai
+  build-depends:       http-types
+  build-depends:       unordered-containers
+  build-depends:       cryptonite
+  build-depends:       memory
   ghc-options:         -Wall -Wno-name-shadowing
   if flag(release)
     ghc-options:       -Werror

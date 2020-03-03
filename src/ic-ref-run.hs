@@ -7,6 +7,8 @@ import Options.Applicative
 import Control.Monad (join, forM_)
 import Data.Monoid ((<>))
 import qualified Data.ByteString.Lazy as B
+import qualified Data.Text as T
+import qualified Data.Text.Encoding as T
 import Control.Monad.Trans
 import Control.Monad.Trans.State
 import Text.Printf
@@ -21,6 +23,9 @@ type DRun = StateT IC IO
 
 dummyUserId :: CanisterId
 dummyUserId = EntityId $ B.pack [0xCA, 0xFF, 0xEE]
+
+dummyRequestId :: AsyncRequest -> RequestID
+dummyRequestId = B.fromStrict . T.encodeUtf8 . T.pack . show
 
 printAsyncRequest :: AsyncRequest -> IO ()
 printAsyncRequest CreateRequest{} =
@@ -57,9 +62,10 @@ printReqStatus (Completed (CompleteArg blob)) =
 submitAndRun :: AsyncRequest -> DRun ReqResponse
 submitAndRun r = do
     lift $ printAsyncRequest r
-    submitRequest r
+    let rid = dummyRequestId r
+    submitRequest rid r
     runToCompletion
-    r <- readRequest (StatusRequest (requestId r))
+    r <- readRequest (StatusRequest rid)
     lift $ printReqStatus r
     return r
 
