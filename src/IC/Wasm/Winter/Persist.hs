@@ -130,12 +130,13 @@ instance (Eq k, Persistable a) => Persistable (M.Map k a) where
     zipWithM_ resume (M.elems xs) (M.elems ys)
 
 instance Persistable a => Persistable (IM.IntMap a) where
-  type Persisted (IM.IntMap a) = IM.IntMap (Persisted a)
+  type Persisted (IM.IntMap a) = M.Map Int (Persisted a)
   type M (IM.IntMap a) = M a
-  persist = mapM persist
+  persist = mapM persist . M.fromList . IM.toList
   resume xs ys = do
-    unless (IM.keys xs == IM.keys ys) $ fail "Map keys don’t match"
-    zipWithM_ resume (IM.elems xs) (IM.elems ys)
+    let ys' = IM.fromList (M.toList ys)
+    unless (IM.keys xs == IM.keys ys') $ fail "Map keys don’t match"
+    zipWithM_ resume (IM.elems xs) (IM.elems ys')
 
 instance Persistable a => Persistable (a, Int) where
   type Persisted (a, Int) = Persisted a
