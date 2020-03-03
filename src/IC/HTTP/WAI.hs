@@ -9,6 +9,7 @@ import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import Control.Monad.State
 import Data.Tuple
+import Data.Aeson as JSON
 
 import IC.Ref
 import IC.HTTP.GenR
@@ -16,6 +17,7 @@ import IC.HTTP.Status
 import IC.HTTP.CBOR
 import IC.HTTP.Request
 import IC.HTTP.RequestId
+import IC.Debug.JSON ()
 
 startApp :: IO Application
 startApp = do
@@ -25,6 +27,9 @@ startApp = do
 handle :: MVar IC -> Application
 handle stateVar req respond =
         case (requestMethod req, pathInfo req) of
+            ("GET", []) -> do
+                withIC $ \ic ->
+                    json status200 ic
             ("GET", ["api","v1","status"]) ->
                 cbor status200 IC.HTTP.Status.r
             ("POST", ["api","v1","submit"]) ->
@@ -44,17 +49,24 @@ handle stateVar req respond =
                         Left err -> invalidRequest err
                         Right ar -> do
                             r <- runIC $ readRequest ar
-                            print r
                             cbor status200 (IC.HTTP.Request.response r)
             _ -> notFound
   where
     runIC :: StateT IC IO a -> IO a
     runIC a = modifyMVar stateVar (fmap swap . runStateT a)
 
+    withIC :: (IC -> IO a) -> IO a
+    withIC a = readMVar stateVar >>= a
+
     cbor status gr = respond $ responseBuilder
         status
         [ (hContentType, "application/cbor") ]
         (IC.HTTP.CBOR.encode gr)
+
+    json status x = respond $ responseBuilder
+        status
+        [ (hContentType, "application/json") ]
+        (JSON.fromEncoding $ JSON.toEncoding x)
 
     invalidRequest msg = do
         print (T.unpack msg)

@@ -25,6 +25,7 @@ common logic
   other-modules:       IC.Wasm.WinterMemory
   other-modules:       IC.Wasm.Winter.Persist
   other-modules:       IC.Wasm.Imports
+  other-modules:       IC.Debug.JSON
   build-depends:       base >=4.11 && <5
   build-depends:       optparse-applicative
   build-depends:       filepath
@@ -63,12 +64,14 @@ executable ic-ref
   other-modules:       IC.HTTP.Request
   other-modules:       IC.HTTP.RequestId
   build-depends:       cborg
+  build-depends:       aeson
   build-depends:       warp
   build-depends:       wai
   build-depends:       http-types
   build-depends:       unordered-containers
   build-depends:       cryptonite
   build-depends:       memory
+  ghc-options:         -rtsopts
   ghc-options:         -Wall -Wno-name-shadowing
   if flag(release)
     ghc-options:       -Werror

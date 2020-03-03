@@ -1,5 +1,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveAnyClass #-}
 
 {-# OPTIONS_GHC -Wmissing-signatures #-}
 {-|
@@ -17,6 +19,7 @@ module IC.Canister.Persisted
 import Control.Monad.ST
 import Data.ByteString.Lazy (ByteString)
 
+import IC.Debug.JSON
 import IC.Types
 import IC.Wasm.Winter (Module)
 import IC.Wasm.Winter.Persist
@@ -24,6 +27,7 @@ import qualified IC.Canister.Interface as CI
 import IC.Canister.Imp
 
 data WasmState = WasmState Module CanisterId PInstance ByteString
+  deriving (Show, Generic, ToJSON)
 
 initialize :: Module -> CanisterId -> EntityId -> Blob -> TrapOr (InitResult, WasmState)
 initialize wasm_mod cid caller dat = runESST $ \esref ->
