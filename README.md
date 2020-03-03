@@ -79,6 +79,11 @@ compromising the main goals.
  * Debugging/logging/trace features that aid understanding the behaviour and/or
    help debug canisters.
 
+ * It could serve as a starting point for applying formal verfication to this
+   part of the system, e.g. by converting the (non-plumbing) modules to Coq
+   using `hs-to-coq`, or by implementing them in a theorem prover and
+   extracting Haskell code from it.
+
 To achieve these goals, the following design decisions are made:
 
  * `ic-ref` is implemented in Haskell, to optimize for development speed,
