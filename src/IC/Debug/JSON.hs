@@ -1,7 +1,6 @@
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE OverloadedStrings  #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 {- |
