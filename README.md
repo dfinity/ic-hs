@@ -103,8 +103,8 @@ To achieve these goals, the following design decisions are made:
    This is an ongoing refinement process, striving for a probably unattainable
    ideal als the goal.
 
-Installation of `ic-ref` and `ic-ref-run`
------------------------------------------
+Installation
+------------
 
 To install it into your normal environment, run from the top-level repository
 directory.
@@ -114,11 +114,25 @@ directory.
 This gives you the `ic-ref-run` binary (executes simple install-call-scripts)
 as well as `ic-ref` (runs a node at port 8001).
 
+Using
+-----
+
+The `ic-ref-run` program takes, as an argument, a file with `install`, `call`,
+`query`, `upgrade` commands, just like [`drun`].
+
+The `ic-ref` program starts a webserver at `http://0.0.0.0:8001/` that implements the public
+Internet Computer interface, and can be used with `dfx --client http://0.0.0.0:8001/`.
+
+If you point your browser to `http://0.0.0.0:8001/` you get the evolution of
+the IC state as JSON. Recommended to use Firefox, as it provides a nice UI for
+browsing JSON.
+
 Developing on ic-ref
 ---------------------
 
 Running `nix-shell` in the `ic-ref/` directory should give you an environment
-that allows you to build the project using `cabal new-build`.
+that allows you to build the project using `cabal new-build`. You can also run
+`cabal new-run ic-ref` to run it directly from source.
 
 
 Updating Haskell Packages
