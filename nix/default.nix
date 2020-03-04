@@ -7,7 +7,9 @@ let
     import nixpkgs_src {
       inherit system;
       overlays = [
-        (self: super: { sources = import sourcesnix { sourcesFile = ./sources.json; pkgs = super; }; })
+        (self: super: {
+          sources = import sourcesnix { sourcesFile = ./sources.json; pkgs = super; };
+        })
       ];
     };
 in

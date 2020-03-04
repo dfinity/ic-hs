@@ -32,6 +32,7 @@ import qualified Data.ByteString.Lazy as BS
 import Control.Monad.Identity
 import Control.Monad.Except
 import qualified Data.Map as M
+import qualified Data.Vector as V
 import qualified Data.IntMap as IM
 import qualified Data.Text.Lazy as T
 import Control.Monad.ST
@@ -80,10 +81,10 @@ initialize mod imps = withExceptT show $ do
       mods :: IM.IntMap (W.ModuleInst Identity (ST s))
       mods  = IM.fromList $ zip [1..]
         [ (W.emptyModuleInst def)
-          { W._miGlobals  = [ ]
-          , W._miTables   = [ ]
-          , W._miMemories = [ ]
-          , W._miFuncs    = [ ]
+          { W._miGlobals  = mempty
+          , W._miTables   = mempty
+          , W._miMemories = mempty
+          , W._miFuncs    = mempty
           , W._miExports  = M.fromList
             [ (,) fname $ W.ExternFunc $
               W.allocHostEff (W.FuncType arg_ty ret_ty)
@@ -101,7 +102,7 @@ initialize mod imps = withExceptT show $ do
 exportedFunctions :: Module -> [FuncName]
 exportedFunctions wasm_mod =
   [ T.unpack (W._exportName e)
-  | Identity e <- W._moduleExports wasm_mod
+  | Identity e <- V.toList $ W._moduleExports wasm_mod
   , W.FuncExport {} <- return $ W._exportDesc e
   ]
 
@@ -122,12 +123,12 @@ invokeTable (mods', ref) idx args = do
 getBytes :: Instance s -> W.Address -> W.Size -> HostM s BS.ByteString
 getBytes (mods', ref) ptr len = do
   let inst = mods' IM.! ref
-  let mem = head (W._miMemories inst)
+  let mem = V.head (W._miMemories inst)
   withExceptT show $ W.loadBytes mem ptr len
 
 setBytes :: Instance s -> W.Address -> BS.ByteString -> HostM s ()
 setBytes (mods', ref) ptr blob = do
   let inst = mods' IM.! ref
-  let mem = head (W._miMemories inst)
+  let mem = V.head (W._miMemories inst)
   withExceptT show $ W.storeBytes mem (fromIntegral ptr) blob
 

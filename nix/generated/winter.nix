@@ -22,7 +22,7 @@ mkDerivation {
   ];
   executableHaskellDepends = [
     base binary bytestring cmdargs containers data-default-class mtl
-    parsec text
+    parsec text vector
   ];
   testHaskellDepends = [
     array base binary bytestring containers data-default-class data-fix

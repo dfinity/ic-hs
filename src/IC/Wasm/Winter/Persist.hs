@@ -27,6 +27,7 @@ import Data.Primitive.MutVar
 import qualified Data.IntMap as IM
 import qualified Data.Map.Lazy as M
 import qualified Data.Text.Lazy as T
+import qualified Data.Vector as V
 import Data.ByteString.Lazy (ByteString)
 
 import qualified Wasm.Runtime.Global as W
@@ -94,8 +95,8 @@ instance Persistable (W.Extern f (ST s)) where
   resume _ _ = return ()
 
 data PModuleInst = PModuleInst
-  { memories :: [Persisted (W.MemoryInst (ST ()))]
-  , globals :: [Persisted (W.GlobalInst (ST ()))]
+  { memories :: V.Vector (Persisted (W.MemoryInst (ST ())))
+  , globals :: V.Vector (Persisted (W.GlobalInst (ST ())))
   , exports :: M.Map T.Text (Persisted (W.Extern Identity (ST ())))
   }
   deriving Show
@@ -120,6 +121,14 @@ instance Persistable a => Persistable [a] where
   resume xs ys = do
     unless (length xs == length ys) $ fail "Lengths don’t match"
     zipWithM_ resume xs ys
+
+instance Persistable a => Persistable (V.Vector a) where
+  type Persisted (V.Vector a) = V.Vector (Persisted a)
+  type M (V.Vector a) = M a
+  persist = mapM persist
+  resume xs ys = do
+    unless (V.length xs == V.length ys) $ fail "Lengths don’t match"
+    V.zipWithM_ resume xs ys
 
 instance (Eq k, Persistable a) => Persistable (M.Map k a) where
   type Persisted (M.Map k a) = M.Map k (Persisted a)
