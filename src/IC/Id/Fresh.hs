@@ -1,4 +1,4 @@
-module IC.Id where
+module IC.Id.Fresh where
 
 import IC.Types
 

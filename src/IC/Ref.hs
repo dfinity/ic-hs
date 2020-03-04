@@ -37,7 +37,7 @@ import Data.Foldable (toList)
 
 import IC.Types
 import IC.Canister
-import IC.Id
+import IC.Id.Fresh
 import IC.Logger
 
 -- Abstract HTTP Interface
