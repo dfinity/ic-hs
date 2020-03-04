@@ -17,6 +17,7 @@ module IC.Ref
   , ReqResponse
   , initialIC
   , submitRequest, readRequest
+  , runStep
   , runToCompletion
   -- $ Exported merely for introspection
   , CallContext(..)
@@ -391,12 +392,19 @@ starveCallContext ctxt_id = do
           | otherwise                = "canister did not respond"
   respondCallContext ctxt_id $ Reject (RC_CANISTER_ERROR, msg)
 
+-- | Returns true if a step was taken
+runStep :: ICT m => m Bool
+runStep =
+  nextReceived >>= \case
+    Just (rid,r) -> processRequest rid r >> return True
+    Nothing -> nextMessage >>= \case
+      Just m  -> processMessage m >> return True
+      Nothing -> nextStarved >>= \case
+        Just c  -> starveCallContext c >> return True
+        Nothing -> return False
+
 runToCompletion :: ICT m => m ()
 runToCompletion =
-  nextReceived >>= \case
-    Just (rid,r) -> processRequest rid r >> runToCompletion
-    Nothing -> nextMessage >>= \case
-      Just m  -> processMessage m >> runToCompletion
-      Nothing -> nextStarved >>= \case
-        Just c  -> starveCallContext c >> runToCompletion
-        Nothing -> return ()
+  runStep >>= \case
+    True -> runToCompletion
+    False -> return ()

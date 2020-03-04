@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE LambdaCase #-}
 
 module IC.HTTP.WAI where
 
@@ -32,13 +33,8 @@ handle stateVar req respond = case (requestMethod req, pathInfo req) of
         withCBOR $ \gr -> case IC.HTTP.Request.asyncRequest gr of
             Left err -> invalidRequest err
             Right ar -> do
-                runIC $ do
-                    -- enqueue request
-                    submitRequest (requestId gr) ar
-                    -- We could do the processing separately
-                    -- (e.g. a separte worker thread)
-                    -- also to show individual steps
-                    runToCompletion
+                runIC $ submitRequest (requestId gr) ar
+                loopIC runStep
                 cbor status200 emptyR
     ("POST", ["api","v1","read"]) ->
         withCBOR $ \gr -> case IC.HTTP.Request.syncRequest gr of
@@ -57,6 +53,16 @@ handle stateVar req respond = case (requestMethod req, pathInfo req) of
     peekIC a = modifyMVar stateVar $ \(s:ss) -> do
         (x, _s') <- runStateT a s
         return (s:ss, x)
+
+    stepIC :: StateT IC IO Bool -> IO Bool
+    stepIC a = modifyMVar stateVar $ \(s:ss) -> do
+        (changed, s') <- runStateT a s
+        return (if changed then s':s:ss else s:ss, changed)
+
+    loopIC :: StateT IC IO Bool -> IO ()
+    loopIC a = stepIC a >>= \case
+        True -> loopIC a
+        False -> return ()
 
     withHistory :: ([IC] -> IO a) -> IO a
     withHistory a = readMVar stateVar >>= a . reverse
