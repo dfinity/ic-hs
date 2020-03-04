@@ -24,10 +24,56 @@ rec {
       touch $out
     '';
 
+  public-spec =
+    # use old nixpkgs
+    let pkgs = nixpkgs.pkgs-old; in
+    pkgs.stdenv.mkDerivation {
+    name = "public-spec";
+    src = subpath ./spec;
+    phases = [ "unpackPhase" "buildPhase" "checkPhase" ];
+    buildInputs = with pkgs;
+      [ asciidoctor plantuml jre graphviz python cpio html-proofer ];
+    FONTCONFIG_FILE = pkgs.makeFontsConf { fontDirectories = []; };
+    asciidoctor_args = [
+      "-r asciidoctor-diagram"
+      "-a plantuml-format=svg"
+      "-a ditaa-format=svg"
+      "-a graphviz-format=svg"
+      "-a source-highlighter=rouge"
+      "-a rouge-css=style"
+    ];
+    buildPhase = ''
+      doc_path="spec"
+      mkdir -p $out/$doc_path
+      asciidoctor $asciidoctor_args --failure-level WARN -v \
+        -R $PWD -D $out/$doc_path/ index.adoc
+      find . -type f -name '*.png' | cpio -pdm $out/$doc_path/
+
+      mkdir -p $out/nix-support
+      echo "report spec $out/$doc_path index.html" >> $out/nix-support/hydra-build-products
+    '';
+
+    # These ones are needed for htmlproofer
+    LOCALE_ARCHIVE = pkgs.lib.optionalString pkgs.stdenv.isLinux "${pkgs.glibcLocales}/lib/locale/locale-archive";
+    LANG = "en_US.UTF-8";
+    LC_TYPE = "en_US.UTF-8";
+    LANGUAGE = "en_US.UTF-8";
+    doCheck = true;
+    checkPhase = ''
+      htmlproofer --disable-external $out/$doc_path
+      if [[ ! -s $out/$doc_path/index.html ]]; then
+        >&2 echo "There is no $out/$doc_path/index.html or it is empty, aborting."
+        exit 1
+      fi
+    '';
+
+  };
+
   all-systems-go = nixpkgs.releaseTools.aggregate {
     name = "all-systems-go";
     constituents = [
       ic-ref
+      public-spec
       check-generated
     ];
   };

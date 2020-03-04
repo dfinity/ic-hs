@@ -9,6 +9,10 @@ let
       overlays = [
         (self: super: {
           sources = import sourcesnix { sourcesFile = ./sources.json; pkgs = super; };
+
+          # old version of nixpkgs without this problem:
+          # https://github.com/NixOS/nixpkgs/pull/77149#issuecomment-594576339
+          pkgs-old = import pkgs.sources.nixpkgs-old { inherit system; };
         })
       ];
     };
