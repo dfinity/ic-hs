@@ -6,6 +6,8 @@ import qualified Data.ByteString.Lazy as BS
 import qualified Data.Map as M
 import qualified Data.Text as T
 import qualified Text.Hex as T
+import Data.Digest.CRC
+import Data.Digest.CRC8
 import Data.Int
 
 type (↦) = M.Map
@@ -25,7 +27,10 @@ prettyBlob :: Blob -> String
 prettyBlob b = "0x" ++ T.unpack (T.encodeHex (BS.toStrict b))
 
 prettyID :: EntityId -> String
-prettyID = prettyBlob . rawEntityId -- implement the "ic:…" stuff
+prettyID (EntityId blob) =
+    "ic:" <> T.unpack (T.encodeHex (BS.toStrict (blob <> BS.singleton checksum)))
+  where
+    CRC8 checksum = digest (BS.toStrict blob)
 
 newtype Responded = Responded Bool
   deriving Show

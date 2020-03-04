@@ -29,6 +29,7 @@ common logic
   build-depends:       optparse-applicative
   build-depends:       filepath
   build-depends:       hex-text
+  build-depends:       crc
   build-depends:       text
   build-depends:       bytestring
   build-depends:       containers

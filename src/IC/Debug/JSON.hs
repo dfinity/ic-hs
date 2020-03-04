@@ -154,8 +154,7 @@ instance ToJSON CanisterModule where
     toJSON = placeholder "(CanisterModule)"
 
 instance ToJSON EntityId where
-  -- TODO: Use ic: here
-  toJSON = toJSON . rawEntityId
+  toJSON = toJSON . prettyID
 
 instance ToJSONKey EntityId where
-  toJSONKey = contramapToJSONKeyFunction rawEntityId toJSONKey
+  toJSONKey = contramapToJSONKeyFunction prettyID toJSONKey
