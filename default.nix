@@ -25,15 +25,13 @@ rec {
     '';
 
   public-spec =
-    # use old nixpkgs
-    let pkgs = nixpkgs.pkgs-old; in
-    pkgs.stdenv.mkDerivation {
+    nixpkgs.stdenv.mkDerivation {
     name = "public-spec";
     src = subpath ./spec;
     phases = [ "unpackPhase" "buildPhase" "checkPhase" ];
-    buildInputs = with pkgs;
+    buildInputs = with nixpkgs;
       [ asciidoctor plantuml jre graphviz python cpio html-proofer ];
-    FONTCONFIG_FILE = pkgs.makeFontsConf { fontDirectories = []; };
+    FONTCONFIG_FILE = nixpkgs.makeFontsConf { fontDirectories = []; };
     asciidoctor_args = [
       "-r asciidoctor-diagram"
       "-a plantuml-format=svg"
@@ -54,7 +52,7 @@ rec {
     '';
 
     # These ones are needed for htmlproofer
-    LOCALE_ARCHIVE = pkgs.lib.optionalString pkgs.stdenv.isLinux "${pkgs.glibcLocales}/lib/locale/locale-archive";
+    LOCALE_ARCHIVE = nixpkgs.lib.optionalString nixpkgs.stdenv.isLinux "${nixpkgs.glibcLocales}/lib/locale/locale-archive";
     LANG = "en_US.UTF-8";
     LC_TYPE = "en_US.UTF-8";
     LANGUAGE = "en_US.UTF-8";
