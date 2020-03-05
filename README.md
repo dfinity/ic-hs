@@ -123,7 +123,8 @@ Using
 -----
 
 The `ic-ref-run` program takes, as an argument, a file with `install`, `call`,
-`query`, `upgrade` commands, just like [`drun`].
+`query`, `upgrade` commands, just like
+[`drun`](https://github.com/dfinity-lab/dfinity/tree/master/rs/drun/).
 
 The `ic-ref` program starts a webserver at `http://0.0.0.0:8001/` that implements the public
 Internet Computer interface, and can be used with `dfx --client http://0.0.0.0:8001/`.
