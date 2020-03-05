@@ -116,22 +116,24 @@ directory.
 
     nix-env -i -f . -A ic-ref
 
-This gives you the `ic-ref-run` binary (executes simple install-call-scripts)
-as well as `ic-ref` (runs a node at port 8001).
+This installs the following binaries in the PATH:
 
 Using
 -----
 
-The `ic-ref-run` program takes, as an argument, a file with `install`, `call`,
-`query`, `upgrade` commands, just like
-[`drun`](https://github.com/dfinity-lab/dfinity/tree/master/rs/drun/).
+* The `ic-ref-run` program takes, as an argument, a file with `install`, `call`,
+  `query`, `upgrade` commands, just like
+  [`drun`](https://github.com/dfinity-lab/dfinity/tree/master/rs/drun/).
 
-The `ic-ref` program starts a webserver at `http://0.0.0.0:8001/` that implements the public
-Internet Computer interface, and can be used with `dfx --client http://0.0.0.0:8001/`.
+* The `ic-ref` program starts a webserver at `http://0.0.0.0:8001/` that implements the public
+  Internet Computer interface, and can be used with `dfx --client http://0.0.0.0:8001/`.
 
-If you point your browser to `http://0.0.0.0:8001/` you get the evolution of
-the IC state as JSON. Recommended to use Firefox, as it provides a nice UI for
-browsing JSON.
+  If you point your browser to `http://0.0.0.0:8001/` you get the evolution of
+  the IC state as JSON. Recommended to use Firefox, as it provides a nice UI for
+  browsing JSON.
+
+* The `ic-request-id` tool takes a CBOR-request (stdin or via a file) and
+  calculates its request id.
 
 Developing on ic-ref
 ---------------------
