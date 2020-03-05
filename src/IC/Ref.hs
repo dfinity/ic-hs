@@ -383,7 +383,7 @@ processMessage (ResponseMessage ctxt_id response) = do
         { call_context = other_ctxt_id
         , entry = Closure callback response
         }
-    FromInit _ -> fail "unexpected Response in Init"
+    FromInit _ -> error "unexpected Response in Init"
 
 starveCallContext :: ICT m => CallId -> m ()
 starveCallContext ctxt_id = do

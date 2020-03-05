@@ -5,7 +5,6 @@ module Main where
 
 import Options.Applicative
 import Control.Monad (join, forM_)
-import Data.Monoid ((<>))
 import qualified Data.ByteString.Lazy as B
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T

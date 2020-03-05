@@ -3,7 +3,6 @@ module Main where
 
 import Options.Applicative
 import Control.Monad (join)
-import Data.Monoid ((<>))
 import qualified Data.ByteString.Lazy as BS
 import qualified Data.Text.IO as T
 import qualified Text.Hex as H

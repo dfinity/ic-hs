@@ -95,12 +95,12 @@ withES :: PrimMonad m =>
   m a -> m (a, ExecutionState (PrimState m))
 withES (_pref, esref) es f = do
   before <- stToPrim $ readSTRef esref
-  unless (isNothing before) $ fail "withES with non-empty es"
+  unless (isNothing before) $ error "withES with non-empty es"
   stToPrim $ writeSTRef esref $ Just es
   x <- f
   es' <- stToPrim $ readSTRef esref
   case es' of
-    Nothing -> fail "withES: ExecutionState lost"
+    Nothing -> error "withES: ExecutionState lost"
     Just es' -> do
       stToPrim $ writeSTRef esref Nothing
       return (x, es')
