@@ -18,10 +18,10 @@
         "homepage": "https://github.com/WebAssembly/spec/tree/master/interpreter",
         "owner": "dfinity-side-projects",
         "repo": "winter",
-        "rev": "c78014b9d5dba4ae9b4e75af806d88e38463358c",
-        "sha256": "0ix4zvw8b3lb1iawjalwqb0ssrcvmrrq2ry34prxhk6pcgx4n5n9",
+        "rev": "e2efac1a27bd049154f1be062639c5749018b604",
+        "sha256": "0dll9w8x5pqa1hyn8s55wlyk31gwqp7lbynixjp8329ycd2s8wfr",
         "type": "tarball",
-        "url": "https://github.com/dfinity-side-projects/winter/archive/c78014b9d5dba4ae9b4e75af806d88e38463358c.tar.gz",
+        "url": "https://github.com/dfinity-side-projects/winter/archive/e2efac1a27bd049154f1be062639c5749018b604.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     }
 }
