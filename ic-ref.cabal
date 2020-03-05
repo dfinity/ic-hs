@@ -51,6 +51,12 @@ common logic
   build-depends:       utf8-string
   build-depends:       hex-text
 
+common cbor
+  hs-source-dirs:      src
+  other-modules:       IC.HTTP.GenR
+  other-modules:       IC.HTTP.CBOR
+  other-modules:       IC.HTTP.RequestId
+
 executable ic-ref-run
   import: logic
   main-is:             ic-ref-run.hs
@@ -86,12 +92,8 @@ executable ic-ref
     ghc-options:       -Werror
 
 executable ic-request-id
-  import: logic
+  import: logic, cbor
   main-is:             ic-request-id.hs
-  hs-source-dirs:      src
-  other-modules:       IC.HTTP.GenR
-  other-modules:       IC.HTTP.CBOR
-  other-modules:       IC.HTTP.RequestId
   build-depends:       containers
   build-depends:       unordered-containers
   build-depends:       cborg
