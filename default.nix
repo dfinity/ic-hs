@@ -15,6 +15,18 @@ let haskellPackages = nixpkgs.haskellPackages.override {
 rec {
   inherit (haskellPackages) ic-ref;
 
+  # TODO: Let ic-ref pick the port
+  #
+  # ic-ref-test = nixpkgs.runCommandNoCC "ic-ref-test" {
+  #     nativeBuildInputs = [ haskellPackages.ic-ref ];
+  #   } ''
+  #     ic-ref &
+  #     ic-ref-test
+  #     kill %1
+  #     touch $out
+  #   '';
+
+
   check-generated = nixpkgs.runCommandNoCC "check-generated" {
       nativeBuildInputs = [ nixpkgs.diffutils ];
       expected = import ./nix/generate.nix { pkgs = nixpkgs; };
