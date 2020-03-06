@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE LambdaCase #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 module Main where
 
@@ -10,9 +11,19 @@ import qualified Data.ByteString.Builder as BS
 import qualified Data.HashMap.Lazy as HM
 import Network.HTTP.Client
 import Network.HTTP.Types
+import Data.List
 import Test.Tasty
 import Test.Tasty.HUnit
 import Control.Monad.Trans
+import Control.Concurrent
+import Control.Monad
+import System.FilePath
+import System.IO
+import System.Directory
+import System.Environment
+import System.Exit
+import System.Process.ByteString.Lazy
+import System.Random
 
 import IC.HTTP.GenR
 import IC.HTTP.GenR.Parse
@@ -58,10 +69,63 @@ postCBOR (Endpoint endpoint) path gr = do
     }
   httpLbs request manager
 
+pollDelay :: IO ()
+pollDelay = threadDelay $ 10 * 1000 -- 10 milliseonds
+
+loop :: HasCallStack => IO (Maybe a) -> IO a
+loop act = go (0::Int)
+  where
+    go 10000 = assertFailure "Polling timed out"
+    go n = act >>= \case
+      Just r -> return r
+      Nothing -> go (n+1)
+
+awaitCBOR :: HasCallStack => Endpoint -> GenR -> IO GenR
+awaitCBOR ep req = do
+  res <- postCBOR ep "/api/v1/submit" req
+  okCBOR res >>= emptyRec
+  loop $ do
+    pollDelay
+    res <- postCBOR ep "/api/v1/read" $ rec
+      [ "request_type" =: GText "request_status"
+      , "request_id" =: GBlob (BS.toStrict (requestId req))
+      ]
+    gr <- okCBOR res
+    flip record gr $ do
+        s <- field text "status"
+        case s of
+          "unknown" -> return Nothing
+          "pending" -> return Nothing -- FIXME: remove this
+          "processing" -> return Nothing
+          "received" -> return Nothing
+          "replied" -> swallowAllFields >> return (Just gr)
+          "rejected" -> swallowAllFields >> return (Just gr)
+          _ -> lift $ assertFailure $ "Unexpected status " ++ show s
+
 okCBOR :: HasCallStack => Response BS.ByteString -> IO GenR
 okCBOR response = do
-  responseStatus response @?= ok200
+  code2xx response
   asRight $ decode $ responseBody response
+
+emptyRec :: HasCallStack => GenR -> IO ()
+emptyRec = \case
+  GRec hm | HM.null hm -> return ()
+  _ -> assertFailure "Not an empty record"
+
+statusReply :: HasCallStack => GenR -> IO GenR
+statusReply = record $ do
+    s <- field text "status"
+    lift $ s @?= "replied"
+    field anyType "reply"
+
+statusReject :: HasCallStack => GenR -> IO ()
+statusReject = record $ do
+  s <- field text "status"
+  lift $ s @?= "rejected"
+  n <- field nat "reject_code"
+  lift $ n @?= 3
+  _ <- field text "reject_message"
+  return ()
 
 code4xx :: HasCallStack => Response BS.ByteString -> IO ()
 code4xx response = assertBool
@@ -69,19 +133,25 @@ code4xx response = assertBool
     (400 <= c && c < 500)
   where c = statusCode (responseStatus response)
 
+code2xx :: HasCallStack => Response BS.ByteString -> IO ()
+code2xx response = assertBool
+    ("Status " ++ show c ++ " is not 2xx")
+    (200 <= c && c < 300)
+  where c = statusCode (responseStatus response)
+
 -- Runs test once for each field with that field removed.
 omitFields :: GenR -> (GenR -> Assertion) -> [TestTree]
 omitFields (GRec hm) act =
     [ let hm' = HM.delete f hm
-      in testCase ("Omitting " ++ T.unpack f) $ act (GRec hm')
+      in testCase ("omitting " ++ T.unpack f) $ act (GRec hm')
     | f <- fields
     ]
-  where fields = HM.keys hm
+  where fields = sort $ HM.keys hm
 omitFields _ _ = error "omitFields needs a GRec"
 
 
 doesn'tExist :: Blob
-doesn'tExist = "DEADBEEF"
+doesn'tExist = "\xDE\xAD\xBE\xEF"
 
 
 queryToNonExistant :: GenR
@@ -91,6 +161,54 @@ queryToNonExistant = rec
     , "method_name" =: GText "foo"
     , "arg" =: GBlob "nothing to see here"
     ]
+
+requestStatusNonExistant :: GenR
+requestStatusNonExistant = rec
+    [ "request_type" =: GText "request_status"
+    , "request_id" =: GBlob (BS.toStrict doesn'tExist)
+    ]
+
+-- Only to test which fields are required
+dummyInstall :: GenR
+dummyInstall = rec
+    [ "request_type" =: GText "install_code"
+    -- FIXME, should not be optional: , "sender" =: GBlob (BS.toStrict doesn'tExist)
+    , "canister_id" =: GBlob (BS.toStrict doesn'tExist)
+    , "module" =: GBlob ""
+    , "arg" =: GBlob ""
+    ]
+
+-- We are using randomness to get fresh ids.
+-- Not the most principled way, but I don’t see much better ways.
+getFreshId :: IO BS.ByteString
+getFreshId = BS.pack <$> replicateM 16 randomIO
+
+getTestDir :: IO FilePath
+getTestDir =
+    lookupEnv "IC_TEST_DATA" >>= \case
+    Just fp -> return fp
+    Nothing -> do
+      -- nix use
+      exePath <- getExecutablePath
+      let exeRelPath = takeDirectory exePath </> "../test-data"
+      -- convenient for cabal new-run use
+      try [ exeRelPath, "test-data", "../test-data", "impl/test-data" ]
+  where
+    try (f:fs) = doesDirectoryExist f >>= \case
+      True -> return f
+      False -> try fs
+    try [] = error "getTestDir: Please set IC_TEST_DATA"
+
+getTestWasm :: FilePath -> IO BS.ByteString
+getTestWasm wat = do
+  dir <- getTestDir
+  (code, out, err) <- readProcessWithExitCode "wat2wasm"
+    [ dir </> wat <.> "wat", "-o", "/dev/stdout" ] ""
+  BS.hPutStr stderr err
+  if code /= ExitSuccess
+  then error "getTestWasm failed"
+  else return out
+
 
 icTests :: TestTree
 icTests = askOption $ \ep -> testGroup "Public Spec acceptance tests"
@@ -103,19 +221,74 @@ icTests = askOption $ \ep -> testGroup "Public Spec acceptance tests"
         _ <- optionalField text "impl_revision"
         return ()
 
-  , testGroup "query: required fields" $
-      omitFields queryToNonExistant $ \req ->
-        postCBOR ep "/api/v1/read" req >>= code4xx
+  , testGroup "create_canister"
+    [ testCase "no id given" $ do
+        gr <- awaitCBOR ep $ rec
+          [ "request_type" =: GText "create_canister"
+          , "sender" =: GBlob ""
+          ]
+        r <- statusReply gr
+        flip record r $ do
+          _ <- field blob "canister_id"
+          return ()
+    , testCaseSteps "desired id" $ \step -> do
+        step "Creating"
+        id <- getFreshId
+        gr <- awaitCBOR ep $ rec
+          [ "request_type" =: GText "create_canister"
+          , "sender" =: GBlob ""
+          , "desired_id" =: GBlob (BS.toStrict id)
+          ]
+        r <- statusReply gr
+        flip record r $ do
+          id' <- field blob "canister_id"
+          lift $ id' @=? id
 
-  , testCase "query to non-existing canister (status and reject code)" $ do
-      gr <- postCBOR ep "/api/v1/read" queryToNonExistant >>= okCBOR
-      flip record gr $ do
-        s <- field text "status"
-        lift $ s @?= "rejected"
-        n <- field nat "reject_code"
-        lift $ n @?= 3
-        _ <- field text "reject_message"
-        return ()
+        step "Creating again"
+        gr <- awaitCBOR ep $ rec
+          [ "request_type" =: GText "create_canister"
+          , "sender" =: GBlob ""
+          , "desired_id" =: GBlob (BS.toStrict id)
+          ]
+        statusReject gr
+    ]
+
+  , testGroup "install"
+    [ testGroup "required fields" $
+        omitFields dummyInstall $ \req ->
+          postCBOR ep "/api/v1/submit" req >>= code4xx
+
+    , testCase "trivial wasm" $ do
+        wasm <- getTestWasm "trivial"
+        -- FIXME: This should only work after canister has been registered
+        gr <- awaitCBOR ep $ rec
+          [ "request_type" =: GText "install_code"
+          , "sender" =: GBlob ""
+          , "canister_id" =: GBlob (BS.toStrict doesn'tExist)
+          , "module" =: GBlob (BS.toStrict wasm)
+          , "arg" =: GBlob ""
+          -- FIXME: , "mode" =: GText "install"
+          ]
+        r <- statusReply gr
+        flip record r $
+          return ()
+    ]
+
+  , testGroup "query"
+    [ testGroup "required fields" $
+        omitFields queryToNonExistant $ \req ->
+          postCBOR ep "/api/v1/read" req >>= code4xx
+
+    , testCase "non-existing canister" $ do
+        gr <- postCBOR ep "/api/v1/read" queryToNonExistant >>= okCBOR
+        statusReject gr
+    ]
+
+  , testGroup "request_status"
+    [ testGroup "required fields" $
+        omitFields requestStatusNonExistant $ \req ->
+          postCBOR ep "/api/v1/read" req >>= code4xx
+    ]
   ]
 
 

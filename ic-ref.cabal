@@ -112,3 +112,8 @@ executable ic-ref-test
   build-depends:       optparse-applicative
   build-depends:       http-client
   build-depends:       http-types
+  build-depends:       process-extras
+  build-depends:       random
+  build-depends:       filepath
+  build-depends:       directory
+

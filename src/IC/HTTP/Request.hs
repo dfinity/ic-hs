@@ -22,13 +22,18 @@ asyncRequest = record $ do
     t <- field text "request_type"
     _ <- optionalField blob "nonce"
     case t of
+        "create_canister" -> do
+            -- FIXME: Sender should not be optional
+            sender <- maybe dummyUserId EntityId <$> optionalField blob "sender"
+            desired_id <- fmap EntityId <$> optionalField blob "desired_id"
+            return $ CreateRequest sender desired_id
         "install_code" -> do
             cid <- EntityId <$> field blob "canister_id"
             -- FIXME: Sender should not be optional
             sender <- maybe dummyUserId EntityId <$> optionalField blob "sender"
             mod <- field blob "module"
             arg <- field blob "arg"
-            _ <- field percentage "compute_allocation"
+            _ <- optionalField percentage "compute_allocation"
             return $ InstallRequest cid sender mod arg
         "call" -> do
             cid <- EntityId <$> field blob "canister_id"
@@ -70,12 +75,13 @@ response = \case
         , "reject_code" =: GNat (fromIntegral (rejectCode c))
         , "reject_message" =: GText (T.pack s)
         ]
-    Completed CompleteUnit -> rec ["status" =: GText "replied"]
-    Completed (CompleteCanisterId id) -> rec
+    Completed r -> rec
         [ "status" =: GText "replied"
-        , "reply" =: rec [ "canister_id" =: GBlob (BS.toStrict (rawEntityId id)) ]
-        ]
-    Completed (CompleteArg blob) -> rec
-        [ "status" =: GText "replied"
-        , "reply" =: rec [ "arg" =: GBlob (BS.toStrict blob) ]
+        , "reply" =: case r of
+            CompleteUnit ->
+                rec []
+            CompleteCanisterId id ->
+                rec [ "canister_id" =: GBlob (BS.toStrict (rawEntityId id)) ]
+            CompleteArg blob ->
+                rec [ "arg" =: GBlob (BS.toStrict blob) ]
         ]

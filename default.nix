@@ -9,20 +9,27 @@ let stdenv = nixpkgs.stdenv; in
 let subpath = p: import ./nix/gitSource.nix p; in
 
 let haskellPackages = nixpkgs.haskellPackages.override {
-      overrides = import nix/haskell-packages.nix nixpkgs subpath;
-    }; in
+  overrides = import nix/haskell-packages.nix nixpkgs subpath;
+}; in
+
+let ic-ref = haskellPackages.ic-ref.overrideAttrs (old: {
+  installPhase = (old.installPhase or "") + ''
+    cp -rv test-data $out/test-data
+  '';
+}); in
 
 rec {
-  inherit (haskellPackages) ic-ref;
+  inherit ic-ref;
 
   ic-ref-test = nixpkgs.runCommandNoCC "ic-ref-test" {
-      nativeBuildInputs = [ haskellPackages.ic-ref ];
+      nativeBuildInputs = [ ic-ref nixpkgs.wabt ];
     } ''
+      function kill_ic_ref () { kill %1; }
       ic-ref --pick-port --write-port-to port &
+      trap kill_ic_ref EXIT PIPE
       sleep 1
       test -e port
       ic-ref-test --endpoint "http://0.0.0.0:$(cat port)/"
-      kill %1
       touch $out
     '';
 

@@ -21,11 +21,11 @@ import IC.HTTP.GenR
 -- A monad to parse a record
 -- (reading each field once, checking for left-over fields in the end)
 type RecordM m = StateT (HM.HashMap T.Text GenR) m
-type Field a = forall m. Parse m => GenR -> m a
+type Field a = forall m. HasCallStack => Parse m => GenR -> m a
 class Monad m => Parse m where parseError :: HasCallStack => T.Text -> m a
 instance Parse (Either T.Text) where  parseError = Left
 
-record :: Parse m => RecordM m a -> GenR -> m a
+record :: HasCallStack => Parse m => RecordM m a -> GenR -> m a
 record m (GRec hm) = (`evalStateT` hm) $ do
     x <- m
     -- Check for left-over fields
@@ -34,7 +34,6 @@ record m (GRec hm) = (`evalStateT` hm) $ do
         parseError $ "Unexpected fields: " <> T.intercalate ", " (HM.keys hm)
     return x
 record _ _ = parseError "Expected CBOR record"
-
 
 field :: HasCallStack => Parse m => Field a -> T.Text -> RecordM m a
 field parse name = do
@@ -51,6 +50,12 @@ optionalField parse name = do
     case HM.lookup name hm of
         Nothing -> return Nothing
         Just gr -> lift $ Just <$> parse gr
+
+swallowAllFields :: Monad m => RecordM m ()
+swallowAllFields = put HM.empty
+
+anyType :: Field GenR
+anyType = return
 
 text :: Field T.Text
 text (GText t) = return t

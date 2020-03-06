@@ -2,10 +2,11 @@
 # See ./nix/generate.nix for instructions.
 
 { mkDerivation, pkgs, aeson, base, binary, bytestring, cborg, containers
-, crc, cryptonite, data-default-class, filepath, hex-text
-, http-client, http-types, memory, mtl, optparse-applicative
-, primitive, stdenv, tasty, tasty-hunit, text, transformers
-, unordered-containers, utf8-string, vector, wai, warp, winter
+, crc, cryptonite, data-default-class, directory, filepath
+, hex-text, http-client, http-types, memory, mtl
+, optparse-applicative, primitive, process-extras, random, stdenv
+, tasty, tasty-hunit, text, transformers, unordered-containers
+, utf8-string, vector, wai, warp, winter
 }:
 mkDerivation {
   pname = "ic-ref";
@@ -15,10 +16,10 @@ mkDerivation {
   isExecutable = true;
   executableHaskellDepends = [
     aeson base binary bytestring cborg containers crc cryptonite
-    data-default-class filepath hex-text http-client http-types memory
-    mtl optparse-applicative primitive tasty tasty-hunit text
-    transformers unordered-containers utf8-string vector wai warp
-    winter
+    data-default-class directory filepath hex-text http-client
+    http-types memory mtl optparse-applicative primitive process-extras
+    random tasty tasty-hunit text transformers unordered-containers
+    utf8-string vector wai warp winter
   ];
   doCheck = false;
   license = "unknown";
