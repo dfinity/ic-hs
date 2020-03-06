@@ -80,10 +80,10 @@ loop act = go (0::Int)
       Just r -> return r
       Nothing -> go (n+1)
 
-awaitCBOR :: HasCallStack => Endpoint -> GenR -> IO GenR
+awaitCBOR :: Endpoint -> GenR -> IO GenR
 awaitCBOR ep req = do
   res <- postCBOR ep "/api/v1/submit" req
-  okCBOR res >>= emptyRec
+  code2xx res -- the body is unspecified
   loop $ do
     pollDelay
     res <- postCBOR ep "/api/v1/read" $ rec
