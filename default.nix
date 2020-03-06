@@ -15,16 +15,16 @@ let haskellPackages = nixpkgs.haskellPackages.override {
 rec {
   inherit (haskellPackages) ic-ref;
 
-  # TODO: Let ic-ref pick the port
-  #
-  # ic-ref-test = nixpkgs.runCommandNoCC "ic-ref-test" {
-  #     nativeBuildInputs = [ haskellPackages.ic-ref ];
-  #   } ''
-  #     ic-ref &
-  #     ic-ref-test
-  #     kill %1
-  #     touch $out
-  #   '';
+  ic-ref-test = nixpkgs.runCommandNoCC "ic-ref-test" {
+      nativeBuildInputs = [ haskellPackages.ic-ref ];
+    } ''
+      ic-ref --pick-port --write-port-to port &
+      sleep 1
+      test -e port
+      ic-ref-test --endpoint "http://0.0.0.0:$(cat port)/"
+      kill %1
+      touch $out
+    '';
 
 
   check-generated = nixpkgs.runCommandNoCC "check-generated" {
@@ -83,6 +83,7 @@ rec {
     name = "all-systems-go";
     constituents = [
       ic-ref
+      ic-ref-test
       public-spec
       check-generated
     ];

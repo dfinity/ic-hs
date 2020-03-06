@@ -89,6 +89,7 @@ executable ic-ref
   other-modules:       IC.HTTP.Status
   other-modules:       IC.HTTP.Request
   other-modules:       IC.Debug.JSON
+  build-depends:       optparse-applicative
   build-depends:       cborg
   build-depends:       aeson
   build-depends:       warp
