@@ -135,12 +135,15 @@ Using
 * The `ic-request-id` tool takes a CBOR-request (stdin or via a file) and
   calculates its request id.
 
+* The `ic-ref-test` acceptance test.
+  Run `ic-ref-test --endpoint http://localhost:8080/` to run against a specific node.
+
 Developing on ic-ref
 ---------------------
 
 Running `nix-shell` in the `ic-ref/` directory should give you an environment
 that allows you to build the project using `cabal new-build`. You can also run
-`cabal new-run ic-ref` to run it directly from source.
+`cabal new-run ic-ref` etc. to run it directly from source.
 
 
 Updating Haskell Packages

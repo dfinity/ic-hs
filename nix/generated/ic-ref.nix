@@ -3,9 +3,9 @@
 
 { mkDerivation, pkgs, aeson, base, binary, bytestring, cborg, containers
 , crc, cryptonite, data-default-class, filepath, hex-text
-, http-types, memory, mtl, optparse-applicative, primitive, stdenv
-, text, transformers, unordered-containers, utf8-string, vector
-, wai, warp, winter
+, http-client, http-types, memory, mtl, optparse-applicative
+, primitive, stdenv, tasty, tasty-hunit, text, transformers
+, unordered-containers, utf8-string, vector, wai, warp, winter
 }:
 mkDerivation {
   pname = "ic-ref";
@@ -15,9 +15,10 @@ mkDerivation {
   isExecutable = true;
   executableHaskellDepends = [
     aeson base binary bytestring cborg containers crc cryptonite
-    data-default-class filepath hex-text http-types memory mtl
-    optparse-applicative primitive text transformers
-    unordered-containers utf8-string vector wai warp winter
+    data-default-class filepath hex-text http-client http-types memory
+    mtl optparse-applicative primitive tasty tasty-hunit text
+    transformers unordered-containers utf8-string vector wai warp
+    winter
   ];
   doCheck = false;
   license = "unknown";

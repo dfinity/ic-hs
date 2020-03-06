@@ -24,3 +24,10 @@ data GenR
 
 emptyR :: GenR
 emptyR = GRec Data.HashMap.Lazy.empty
+
+-- For assembling generic records
+(=:) :: Text -> v -> HashMap Text v
+(=:) = Data.HashMap.Lazy.singleton
+rec :: [HashMap Text GenR] -> GenR
+rec = GRec . mconcat
+

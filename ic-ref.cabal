@@ -53,12 +53,14 @@ common cbor
   hs-source-dirs:      src
   other-modules:       IC.HTTP.GenR
   other-modules:       IC.HTTP.CBOR
+  other-modules:       IC.HTTP.GenR.Parse
   other-modules:       IC.HTTP.RequestId
   build-depends:       base >=4.13 && <5
   build-depends:       text
   build-depends:       bytestring
   build-depends:       containers
   build-depends:       unordered-containers
+  build-depends:       mtl
   build-depends:       cborg
   build-depends:       cryptonite
   build-depends:       memory
@@ -99,3 +101,13 @@ executable ic-request-id
   main-is:             ic-request-id.hs
   build-depends:       hex-text
   build-depends:       optparse-applicative
+
+executable ic-ref-test
+  import: cbor, ghc-flags
+  main-is:             ic-ref-test.hs
+  other-modules:       IC.Test.Options
+  build-depends:       tasty
+  build-depends:       tasty-hunit
+  build-depends:       optparse-applicative
+  build-depends:       http-client
+  build-depends:       http-types
