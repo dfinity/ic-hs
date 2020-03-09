@@ -461,6 +461,11 @@ icTests = askOption $ \ep -> testGroup "Public Spec acceptance tests"
       r <- query "get_state_query" "ABCD"
       r @?= ("ibis" <> "\x0\x0\x0\x0" <> "iota" <> "ABCD" <> "1234")
 
+      step "No reply"
+      callReject "no_reply" "" 5
+      step "No reply (query)"
+      queryReject "no_reply_query" "" 5
+
 
     ]
 

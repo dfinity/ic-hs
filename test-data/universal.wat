@@ -73,6 +73,8 @@
     (call $stable_write (i32.const 0) (i32.const 4) (i32.const 4))
   )
 
+  (func $no_reply)
+
   (memory $memory 1)
   (global (mut i32) (i32.const 0))
   (data 0 (i32.const 0) "memo")
@@ -86,5 +88,7 @@
   (export "canister_query grow_stable_mem_query" (func $grow_stable_mem))
   (export "canister_update set_stable_mem" (func $set_stable_mem))
   (export "canister_query set_stable_mem_query" (func $set_stable_mem))
+  (export "canister_update no_reply" (func $no_reply))
+  (export "canister_query no_reply_query" (func $no_reply))
 
 )
