@@ -244,10 +244,8 @@ icTests = askOption $ \ep -> testGroup "Public Spec acceptance tests"
           [ "request_type" =: GText "create_canister"
           , "sender" =: GBlob ""
           ]
-        r <- statusReply gr
-        flip record r $ do
-          _ <- field blob "canister_id"
-          return ()
+        _can_id <- statusReply gr >>= record (field blob "canister_id")
+        return ()
     , testCaseSteps "desired id" $ \step -> do
         step "Creating"
         id <- getFreshId
@@ -256,10 +254,8 @@ icTests = askOption $ \ep -> testGroup "Public Spec acceptance tests"
           , "sender" =: GBlob ""
           , "desired_id" =: GBlob (BS.toStrict id)
           ]
-        r <- statusReply gr
-        flip record r $ do
-          id' <- field blob "canister_id"
-          lift $ id' @=? id
+        id' <- statusReply gr >>= record (field blob "canister_id")
+        id' @=? id
 
         step "Creating again"
         gr <- awaitCBOR ep $ rec
@@ -275,13 +271,20 @@ icTests = askOption $ \ep -> testGroup "Public Spec acceptance tests"
         omitFields (envelope dummyInstall) $ \req ->
           postCBOR ep "/api/v1/submit" req >>= code4xx
 
-    , testCase "trivial wasm" $ do
+    , testCaseSteps "trivial wasm" $ \step -> do
+        step "Create"
+        gr <- awaitCBOR ep $ rec
+          [ "request_type" =: GText "create_canister"
+          , "sender" =: GBlob ""
+          ]
+        can_id <- statusReply gr >>= record (field blob "canister_id")
+
+        step "Install"
         wasm <- getTestWasm "trivial"
-        -- FIXME: This should only work after canister has been registered
         gr <- awaitCBOR ep $ rec
           [ "request_type" =: GText "install_code"
           , "sender" =: GBlob ""
-          , "canister_id" =: GBlob (BS.toStrict doesn'tExist)
+          , "canister_id" =: GBlob (BS.toStrict can_id)
           , "module" =: GBlob (BS.toStrict wasm)
           , "arg" =: GBlob ""
           -- FIXME: , "mode" =: GText "install"
