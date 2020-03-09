@@ -166,6 +166,7 @@ doesn'tExist = "\xDE\xAD\xBE\xEF"
 queryToNonExistant :: GenR
 queryToNonExistant = rec
     [ "request_type" =: GText "query"
+    , "sender" =: GBlob (BS.toStrict doesn'tExist)
     , "canister_id" =: GBlob (BS.toStrict doesn'tExist)
     , "method_name" =: GText "foo"
     , "arg" =: GBlob "nothing to see here"
@@ -181,7 +182,7 @@ requestStatusNonExistant = rec
 dummyInstall :: GenR
 dummyInstall = rec
     [ "request_type" =: GText "install_code"
-    -- FIXME, should not be optional: , "sender" =: GBlob (BS.toStrict doesn'tExist)
+    , "sender" =: GBlob (BS.toStrict doesn'tExist)
     , "canister_id" =: GBlob (BS.toStrict doesn'tExist)
     , "module" =: GBlob ""
     , "arg" =: GBlob ""

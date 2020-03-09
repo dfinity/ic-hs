@@ -29,22 +29,19 @@ asyncRequest = record $ do
     _ <- optionalField blob "nonce"
     case t of
         "create_canister" -> do
-            -- FIXME: Sender should not be optional
-            sender <- maybe dummyUserId EntityId <$> optionalField blob "sender"
+            sender <- EntityId <$> field blob "sender"
             desired_id <- fmap EntityId <$> optionalField blob "desired_id"
             return $ CreateRequest sender desired_id
         "install_code" -> do
             cid <- EntityId <$> field blob "canister_id"
-            -- FIXME: Sender should not be optional
-            sender <- maybe dummyUserId EntityId <$> optionalField blob "sender"
+            sender <- EntityId <$> field blob "sender"
             mod <- field blob "module"
             arg <- field blob "arg"
             _ <- optionalField percentage "compute_allocation"
             return $ InstallRequest cid sender mod arg
         "call" -> do
             cid <- EntityId <$> field blob "canister_id"
-            -- FIXME: Sender should not be optional
-            sender <- maybe dummyUserId EntityId <$> optionalField blob "sender"
+            sender <- EntityId <$> field blob "sender"
             method_name <- field text "method_name"
             arg <- field blob "arg"
             return $ UpdateRequest cid sender (T.unpack method_name) arg
@@ -60,8 +57,7 @@ syncRequest = record $ do
             return $ StatusRequest rid
         "query" -> do
             cid <- EntityId <$> field blob "canister_id"
-            -- FIXME: Sender should not be optional
-            sender <- maybe dummyUserId EntityId <$> optionalField blob "sender"
+            sender <- EntityId <$> field blob "sender"
             method_name <- field text "method_name"
             arg <- field blob "arg"
             return $ QueryRequest cid sender (T.unpack method_name) arg
