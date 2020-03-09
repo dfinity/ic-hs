@@ -230,22 +230,11 @@ processRequest rid (InstallRequest canister_id user_id can_mod dat reinstall) = 
           (False, True) -> res $ Rejected (RC_DESTINATION_INVALID, "canister is not empty during installation")
           (True, False) -> res $ Rejected (RC_DESTINATION_INVALID, "canister is empty during reinstallation")
           _ -> do
-            -- We only need a call context to be able to do inter-canister calls
-            -- from init, which is useful for Motoko testing, but not currently
-            -- allowed by the spec.
-            ctxt_id <- newCallContext $ CallContext
-              { canister = canister_id
-              , origin = FromInit user_id
-              , responded = Responded True
-              , last_trap = Nothing
-              }
-
             case init_method can_mod canister_id user_id dat of
               Trap msg ->
                 res $ Rejected (RC_CANISTER_ERROR, "Initialization trapped: " ++ msg)
-              Return (new_calls, wasm_state) -> do
+              Return wasm_state -> do
                 installCanister canister_id can_mod wasm_state
-                mapM_ (newCall ctxt_id) new_calls
                 res $ Completed CompleteUnit
 
 processRequest rid (UpgradeRequest canister_id user_id new_can_mod dat) = do

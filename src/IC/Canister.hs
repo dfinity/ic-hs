@@ -25,7 +25,7 @@ import qualified IC.Canister.Interface as CI
 -- Here we can swap out the persistence implementation
 import IC.Canister.Persisted
 
-type InitFunc = CanisterId -> EntityId -> Blob -> TrapOr (InitResult, WasmState)
+type InitFunc = CanisterId -> EntityId -> Blob -> TrapOr WasmState
 type UpdateFunc = WasmState -> TrapOr (WasmState, UpdateResult)
 type QueryFunc = WasmState -> TrapOr Response
 

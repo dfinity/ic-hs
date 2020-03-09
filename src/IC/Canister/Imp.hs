@@ -363,7 +363,7 @@ cantRespond = Responded True
 canRespond :: Responded
 canRespond = Responded False
 
-rawInitializeMethod :: ImpState s -> Module -> EntityId -> Blob -> ST s (TrapOr InitResult)
+rawInitializeMethod :: ImpState s -> Module -> EntityId -> Blob -> ST s (TrapOr ())
 rawInitializeMethod (ImpState esref cid inst sm) wasm_mod caller dat = do
   result <- runExceptT $ do
     let es = (initalExecutionState cid inst sm cantRespond)
@@ -383,9 +383,7 @@ rawInitializeMethod (ImpState esref cid inst sm) wasm_mod caller dat = do
 
   case result of
     Left  err -> return $ Trap err
-    Right (_, es') -> return $
-      -- TODO: extract canisters and calls here
-      Return (calls es')
+    Right (_, _es') -> return $ Return ()
 
 rawPreUpgrade :: ImpState s -> Module -> EntityId -> ST s (TrapOr Blob)
 rawPreUpgrade (ImpState esref cid inst sm) wasm_mod caller = do
