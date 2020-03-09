@@ -78,7 +78,9 @@ handle stateVar req respond = case (requestMethod req, pathInfo req) of
         (JSON.fromEncoding $ JSON.toEncoding x)
 
     invalidRequest msg = do
-        print (T.unpack msg)
+        when False $ print (T.unpack msg)
+        -- ^ When testing against dfx, and until it prints error messages
+        -- this can be enabled
         respond $ responseBuilder status400 [] (T.encodeUtf8Builder msg)
     notFound = respond $ responseLBS status404 [] "Not found\n"
 
