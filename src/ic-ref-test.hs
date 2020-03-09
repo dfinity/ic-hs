@@ -96,7 +96,6 @@ awaitCBOR ep req = do
         s <- field text "status"
         case s of
           "unknown" -> return Nothing
-          "pending" -> return Nothing -- FIXME: remove this
           "processing" -> return Nothing
           "received" -> return Nothing
           "replied" -> swallowAllFields >> return (Just gr)

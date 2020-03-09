@@ -73,11 +73,8 @@ syncRequest = record $ do
 response :: RequestStatus -> GenR
 response = \case
     Unknown -> rec ["status" =: GText "unknown"]
-    -- FIXME
-    -- Received -> rec ["status" =: GText "received"]
-    -- Processing -> rec ["status" =: GText "processing"]
-    Received -> rec ["status" =: GText "pending"]
-    Processing -> rec ["status" =: GText "pending"]
+    Received -> rec ["status" =: GText "received"]
+    Processing -> rec ["status" =: GText "processing"]
     Rejected (c, s) -> rec
         [ "status" =: GText "rejected"
         , "reject_code" =: GNat (fromIntegral (rejectCode c))
