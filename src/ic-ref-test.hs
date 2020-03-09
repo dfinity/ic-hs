@@ -408,6 +408,7 @@ icTests = askOption $ \ep -> testGroup "Public Spec acceptance tests"
             ]
           statusReject code gr
 
+
       step "Call (update)"
       r <- call "get_state" "ABCD"
       r @?= ("memo" <> "\x0\x0\x0\x0" <> "ABCD" <> "1234")
@@ -415,6 +416,11 @@ icTests = askOption $ \ep -> testGroup "Public Spec acceptance tests"
       step "Call (query)"
       r <- query "get_state_query" "ABCD"
       r @?= ("memo" <> "\x0\x0\x0\x0" <> "ABCD" <> "1234")
+
+      step "Non-existing call"
+      callReject "does_not_exist" "" 3
+      step "Non-existing query"
+      queryReject "does_not_exist" "" 3
 
       -- https://www.wordnik.com/lists/really-cool-four-letter-words
       step "Set mem (update)"
