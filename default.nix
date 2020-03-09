@@ -18,8 +18,11 @@ let ic-ref = haskellPackages.ic-ref.overrideAttrs (old: {
   '';
 }); in
 
+let ic-ref-coverage = nixpkgs.haskell.lib.doCoverage ic-ref; in
+
 rec {
   inherit ic-ref;
+  inherit ic-ref-coverage;
 
   ic-ref-test = nixpkgs.runCommandNoCC "ic-ref-test" {
       nativeBuildInputs = [ ic-ref nixpkgs.wabt ];
@@ -32,6 +35,26 @@ rec {
       ic-ref-test --endpoint "http://0.0.0.0:$(cat port)/"
       touch $out
     '';
+
+  coverage = nixpkgs.runCommandNoCC "ic-ref-test" {
+      nativeBuildInputs = [ haskellPackages.ghc ic-ref-coverage nixpkgs.wabt ];
+    } ''
+      function kill_ic_ref () { kill  %1; }
+      ic-ref --pick-port --write-port-to port &
+      trap kill_ic_ref EXIT PIPE
+      sleep 1
+      test -e port
+      ic-ref-test --endpoint "http://0.0.0.0:$(cat port)/"
+      kill -INT %1
+      trap - EXIT PIPE
+
+      find
+      LANG=C.UTF8 hpc markup ic-ref.tix --hpcdir=${ic-ref-coverage}/share/hpc/vanilla/mix/ic-ref --srcdir=${subpath ./impl}  --destdir $out
+
+      mkdir -p $out/nix-support
+      echo "report coverage $out hpc_index.html" >> $out/nix-support/hydra-build-products
+    '';
+
 
 
   check-generated = nixpkgs.runCommandNoCC "check-generated" {
