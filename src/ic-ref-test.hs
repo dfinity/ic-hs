@@ -113,6 +113,11 @@ emptyRec = \case
   GRec hm | HM.null hm -> return ()
   _ -> assertFailure "Not an empty record"
 
+statusUnknown :: HasCallStack => GenR -> IO ()
+statusUnknown = record $ do
+    s <- field text "status"
+    lift $ s @?= "unknown"
+
 statusReply :: HasCallStack => GenR -> IO GenR
 statusReply = record $ do
     s <- field text "status"
@@ -340,7 +345,10 @@ icTests = askOption $ \ep -> testGroup "Public Spec acceptance tests"
     ]
 
   , testGroup "request_status"
-    [ testGroup "required fields" $
+    [ testCase "unknown request" $ do
+        gr <- postCBOR ep "/api/v1/read" (envelope requestStatusNonExistant) >>= okCBOR
+        statusUnknown gr
+    , testGroup "required fields" $
         omitFields (envelope requestStatusNonExistant) $ \req ->
           postCBOR ep "/api/v1/read" req >>= code4xx
     ]
