@@ -12,6 +12,7 @@ import qualified Data.ByteString.Builder as BS
 import qualified Data.HashMap.Lazy as HM
 import Network.HTTP.Client
 import Network.HTTP.Types
+import Numeric.Natural
 import Data.List
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -81,8 +82,8 @@ loop act = go (0::Int)
       Just r -> return r
       Nothing -> go (n+1)
 
-awaitCBOR :: Endpoint -> GenR -> IO GenR
-awaitCBOR ep req = do
+submitCBOR :: Endpoint -> GenR -> IO GenR
+submitCBOR ep req = do
   res <- postCBOR ep "/api/v1/submit" $ envelope req
   code2xx res -- the body is unspecified
   loop $ do
@@ -102,6 +103,9 @@ awaitCBOR ep req = do
           "rejected" -> swallowAllFields >> return (Just gr)
           _ -> lift $ assertFailure $ "Unexpected status " ++ show s
 
+readCBOR :: Endpoint -> GenR -> IO GenR
+readCBOR ep req = postCBOR ep "/api/v1/read" (envelope req) >>= okCBOR
+
 okCBOR :: HasCallStack => Response BS.ByteString -> IO GenR
 okCBOR response = do
   code2xx response
@@ -120,15 +124,21 @@ statusUnknown = record $ do
 statusReply :: HasCallStack => GenR -> IO GenR
 statusReply = record $ do
     s <- field text "status"
-    lift $ s @?= "replied"
-    field anyType "reply"
+    if s == "replied"
+    then field anyType "reply"
+    else do
+      extra <-
+        if s == "rejected"
+        then ("\n" ++) . T.unpack <$> field text "reject_message"
+        else return ""
+      lift $ assertFailure $ "expected status == \"replied\" but got " ++ show s ++ extra
 
-statusReject :: HasCallStack => GenR -> IO ()
-statusReject = record $ do
+statusReject :: HasCallStack => Natural -> GenR -> IO ()
+statusReject code = record $ do
   s <- field text "status"
   lift $ s @?= "rejected"
   n <- field nat "reject_code"
-  lift $ n @?= 3
+  lift $ n @?= code
   _ <- field text "reject_message"
   return ()
 
@@ -244,7 +254,7 @@ icTests = askOption $ \ep -> testGroup "Public Spec acceptance tests"
 
   , testGroup "create_canister"
     [ testCase "no id given" $ do
-        gr <- awaitCBOR ep $ rec
+        gr <- submitCBOR ep $ rec
           [ "request_type" =: GText "create_canister"
           , "sender" =: GBlob ""
           ]
@@ -253,21 +263,21 @@ icTests = askOption $ \ep -> testGroup "Public Spec acceptance tests"
     , testCaseSteps "desired id" $ \step -> do
         step "Creating"
         id <- getFreshId
-        gr <- awaitCBOR ep $ rec
+        gr <- submitCBOR ep $ rec
           [ "request_type" =: GText "create_canister"
           , "sender" =: GBlob ""
           , "desired_id" =: GBlob (BS.toStrict id)
           ]
         id' <- statusReply gr >>= record (field blob "canister_id")
-        id' @=? id
+        id' @?= id
 
         step "Creating again"
-        gr <- awaitCBOR ep $ rec
+        gr <- submitCBOR ep $ rec
           [ "request_type" =: GText "create_canister"
           , "sender" =: GBlob ""
           , "desired_id" =: GBlob (BS.toStrict id)
           ]
-        statusReject gr
+        statusReject 3 gr
     ]
 
   , testGroup "install"
@@ -277,7 +287,7 @@ icTests = askOption $ \ep -> testGroup "Public Spec acceptance tests"
 
     , testCaseSteps "trivial wasm module" $ \step -> do
         step "Create"
-        gr <- awaitCBOR ep $ rec
+        gr <- submitCBOR ep $ rec
           [ "request_type" =: GText "create_canister"
           , "sender" =: GBlob ""
           ]
@@ -285,7 +295,7 @@ icTests = askOption $ \ep -> testGroup "Public Spec acceptance tests"
 
         step "Install"
         wasm <- getTestWasm "trivial"
-        gr <- awaitCBOR ep $ rec
+        gr <- submitCBOR ep $ rec
           [ "request_type" =: GText "install_code"
           , "sender" =: GBlob ""
           , "canister_id" =: GBlob (BS.toStrict can_id)
@@ -296,7 +306,7 @@ icTests = askOption $ \ep -> testGroup "Public Spec acceptance tests"
         flip record r $ return ()
 
         step "Install"
-        gr <- awaitCBOR ep $ rec
+        gr <- submitCBOR ep $ rec
           [ "request_type" =: GText "install_code"
           , "sender" =: GBlob ""
           , "canister_id" =: GBlob (BS.toStrict can_id)
@@ -304,11 +314,11 @@ icTests = askOption $ \ep -> testGroup "Public Spec acceptance tests"
           , "arg" =: GBlob ""
           , "mode" =: GText "install" -- NB: This is the default
           ]
-        statusReject gr
+        statusReject 3 gr
 
         step "Reinstall"
         wasm <- getTestWasm "trivial"
-        gr <- awaitCBOR ep $ rec
+        gr <- submitCBOR ep $ rec
           [ "request_type" =: GText "install_code"
           , "sender" =: GBlob ""
           , "canister_id" =: GBlob (BS.toStrict can_id)
@@ -321,7 +331,7 @@ icTests = askOption $ \ep -> testGroup "Public Spec acceptance tests"
 
         step "Upgrade"
         wasm <- getTestWasm "trivial"
-        gr <- awaitCBOR ep $ rec
+        gr <- submitCBOR ep $ rec
           [ "request_type" =: GText "install_code"
           , "sender" =: GBlob ""
           , "canister_id" =: GBlob (BS.toStrict can_id)
@@ -331,6 +341,127 @@ icTests = askOption $ \ep -> testGroup "Public Spec acceptance tests"
           ]
         r <- statusReply gr
         flip record r $ return ()
+
+  , testCaseSteps "universal wasm module" $ \step -> do
+      step "Create"
+      gr <- submitCBOR ep $ rec
+        [ "request_type" =: GText "create_canister"
+        , "sender" =: GBlob ""
+        ]
+      can_id <- statusReply gr >>= record (field blob "canister_id")
+
+      step "Install"
+      wasm <- getTestWasm "universal"
+      gr <- submitCBOR ep $ rec
+        [ "request_type" =: GText "install_code"
+        , "sender" =: GBlob ""
+        , "canister_id" =: GBlob (BS.toStrict can_id)
+        , "module" =: GBlob (BS.toStrict wasm)
+        , "arg" =: GBlob ""
+        ]
+      r <- statusReply gr
+      flip record r $ return ()
+
+      let
+        call :: HasCallStack => T.Text -> Blob -> IO Blob
+        call method_name arg = do
+          gr <- submitCBOR ep $ rec
+            [ "request_type" =: GText "call"
+            , "sender" =: GBlob "1234"
+            , "canister_id" =: GBlob (BS.toStrict can_id)
+            , "method_name" =: GText method_name
+            , "arg" =: GBlob (BS.toStrict arg)
+            ]
+          statusReply gr >>= record (field blob "arg")
+
+        callReject :: HasCallStack => T.Text -> Blob -> Natural -> IO ()
+        callReject method_name arg code = do
+          gr <- submitCBOR ep $ rec
+            [ "request_type" =: GText "call"
+            , "sender" =: GBlob "1234"
+            , "canister_id" =: GBlob (BS.toStrict can_id)
+            , "method_name" =: GText method_name
+            , "arg" =: GBlob (BS.toStrict arg)
+            ]
+          statusReject code gr
+
+      let
+        query :: HasCallStack => T.Text -> Blob -> IO Blob
+        query method_name arg = do
+          gr <- readCBOR ep $ rec
+            [ "request_type" =: GText "query"
+            , "sender" =: GBlob "1234"
+            , "canister_id" =: GBlob (BS.toStrict can_id)
+            , "method_name" =: GText method_name
+            , "arg" =: GBlob (BS.toStrict arg)
+            ]
+          statusReply gr >>= record (field blob "arg")
+
+        queryReject :: HasCallStack => T.Text -> Blob -> Natural -> IO ()
+        queryReject method_name arg code = do
+          gr <- readCBOR ep $ rec
+            [ "request_type" =: GText "query"
+            , "sender" =: GBlob "1234"
+            , "canister_id" =: GBlob (BS.toStrict can_id)
+            , "method_name" =: GText method_name
+            , "arg" =: GBlob (BS.toStrict arg)
+            ]
+          statusReject code gr
+
+      step "Call (update)"
+      r <- call "get_state" "ABCD"
+      r @?= ("memo" <> "\x0\x0\x0\x0" <> "ABCD" <> "1234")
+
+      step "Call (query)"
+      r <- query "get_state_query" "ABCD"
+      r @?= ("memo" <> "\x0\x0\x0\x0" <> "ABCD" <> "1234")
+
+      -- https://www.wordnik.com/lists/really-cool-four-letter-words
+      step "Set mem (update)"
+      r <- call "set_mem" "ibis"
+      r @?= "memo"
+      r <- query "get_state_query" "ABCD"
+      r @?= ("ibis" <> "\x0\x0\x0\x0" <> "ABCD" <> "1234")
+
+      step "Set mem (query)"
+      r <- query "set_mem_query" "pelf"
+      r @?= "ibis"
+      r <- query "get_state_query" "ABCD"
+      r @?= ("ibis" <> "\x0\x0\x0\x0" <> "ABCD" <> "1234")
+
+      step "Set stable mem (failing)"
+      callReject "set_stable_mem" "sofa" 5
+      r <- query "get_state_query" "ABCD"
+      r @?= ("ibis" <> "\x0\x0\x0\x0" <> "ABCD" <> "1234")
+
+      step "Set stable mem (failing, query)"
+      queryReject "set_stable_mem_query" "sofa" 5
+      r <- query "get_state_query" "ABCD"
+      r @?= ("ibis" <> "\x0\x0\x0\x0" <> "ABCD" <> "1234")
+
+      step "Grow stable memory (query)"
+      r <- query "grow_stable_mem_query" ""
+      r @?= "\x0\x0\x0\x0"
+
+      step "Grow stable memory (update)"
+      r <- call "grow_stable_mem" ""
+      r @?= "\x0\x0\x0\x0"
+      r <- call "grow_stable_mem" ""
+      r @?= "\x1\x0\x0\x0"
+
+      step "Set stable mem"
+      r <- call "set_stable_mem" "iota"
+      r @?= "\x0\x0\x0\x0"
+      r <- query "get_state_query" "ABCD"
+      r @?= ("ibis" <> "\x0\x0\x0\x0" <> "iota" <> "ABCD" <> "1234")
+
+      step "Set stable mem (query)"
+      r <- query "set_stable_mem_query" "oboe"
+      r @?= "iota"
+      r <- query "get_state_query" "ABCD"
+      r @?= ("ibis" <> "\x0\x0\x0\x0" <> "iota" <> "ABCD" <> "1234")
+
+
     ]
 
   , testGroup "query"
@@ -340,7 +471,7 @@ icTests = askOption $ \ep -> testGroup "Public Spec acceptance tests"
 
     , testCase "non-existing canister" $ do
         gr <- postCBOR ep "/api/v1/read" (envelope queryToNonExistant) >>= okCBOR
-        statusReject gr
+        statusReject 3 gr
     ]
 
   , testGroup "request_status"
