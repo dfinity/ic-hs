@@ -12,6 +12,7 @@ mkDerivation {
   pname = "ic-ref";
   version = "0.1.0.0";
   src = import ../gitSource.nix "impl";
+  configureFlags = [ "-frelease" ];
   isLibrary = false;
   isExecutable = true;
   executableHaskellDepends = [

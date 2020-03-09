@@ -56,7 +56,7 @@ let
     extraCabal2nixOptions = "--no-check";
   });
 
-  ic-ref = localHaskellSrc2nixWithDoc "ic-ref" "impl" "--no-check";
+  ic-ref = localHaskellSrc2nixWithDoc "ic-ref" "impl" "--no-check -frelease";
   random = localHaskellSrc2nixWithDoc "qc-motoko" "test/random" "";
   lsp-int = localHaskellSrc2nixWithDoc "lsp-int" "test/lsp-int" "";
 
