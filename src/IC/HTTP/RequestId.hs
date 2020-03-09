@@ -23,7 +23,7 @@ encodeKV :: (T.Text, GenR) -> BS.ByteString
 encodeKV (k,v) = h (encodeText k) <> h (encodeVal v)
 
 encodeVal :: GenR -> BS.ByteString
-encodeVal (GBlob b) = BS.fromStrict b
+encodeVal (GBlob b) = b
 encodeVal (GText t) = encodeText t
 encodeVal (GNat n) = encodeNat n
 encodeVal (GRec _) = error "requestID: Nested record"

@@ -86,7 +86,7 @@ response = \case
             CompleteUnit ->
                 rec []
             CompleteCanisterId id ->
-                rec [ "canister_id" =: GBlob (BS.toStrict (rawEntityId id)) ]
+                rec [ "canister_id" =: GBlob (rawEntityId id) ]
             CompleteArg blob ->
-                rec [ "arg" =: GBlob (BS.toStrict blob) ]
+                rec [ "arg" =: GBlob blob ]
         ]

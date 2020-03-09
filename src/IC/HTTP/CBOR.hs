@@ -22,7 +22,7 @@ encode r = toBuilder $ encodeTerm $ TTagged 55799 $ go r
   where
     go (GNat n) = TInteger (fromIntegral n)
     go (GText t) = TString t
-    go (GBlob b) = TBytes b
+    go (GBlob b) = TBytes (BS.toStrict b)
     go (GRec m) = TMap [ (TString k, go v) | (k,v) <- HM.toList m ]
 
 decode :: ByteString -> Either T.Text GenR
@@ -40,7 +40,7 @@ decode s =
     go (TInt n) = return $ GNat (fromIntegral n)
     go (TInteger n) | n < 0 = Left "Negative integer"
     go (TInteger n) = return $ GNat (fromIntegral n)
-    go (TBytes b) = return $ GBlob b
+    go (TBytes b) = return $ GBlob $ BS.fromStrict b
     go (TString t) = return $ GText t
     go (TMap kv) = do
         tv <- mapM keyVal kv

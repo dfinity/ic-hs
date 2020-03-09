@@ -12,7 +12,7 @@ module IC.HTTP.GenR where
 
 import Numeric.Natural
 import Data.Text
-import Data.ByteString
+import Data.ByteString.Lazy
 import Data.HashMap.Lazy
 
 data GenR

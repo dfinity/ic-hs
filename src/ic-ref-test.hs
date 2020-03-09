@@ -90,7 +90,7 @@ submitCBOR ep req = do
     pollDelay
     res <- postCBOR ep "/api/v1/read" $ envelope $ rec
       [ "request_type" =: GText "request_status"
-      , "request_id" =: GBlob (BS.toStrict (requestId req))
+      , "request_id" =: GBlob (requestId req)
       ]
     gr <- okCBOR res
     flip record gr $ do
@@ -180,8 +180,8 @@ doesn'tExist = "\xDE\xAD\xBE\xEF"
 queryToNonExistant :: GenR
 queryToNonExistant = rec
     [ "request_type" =: GText "query"
-    , "sender" =: GBlob (BS.toStrict doesn'tExist)
-    , "canister_id" =: GBlob (BS.toStrict doesn'tExist)
+    , "sender" =: GBlob doesn'tExist
+    , "canister_id" =: GBlob doesn'tExist
     , "method_name" =: GText "foo"
     , "arg" =: GBlob "nothing to see here"
     ]
@@ -189,15 +189,15 @@ queryToNonExistant = rec
 requestStatusNonExistant :: GenR
 requestStatusNonExistant = rec
     [ "request_type" =: GText "request_status"
-    , "request_id" =: GBlob (BS.toStrict doesn'tExist)
+    , "request_id" =: GBlob doesn'tExist
     ]
 
 -- Only to test which fields are required
 dummyInstall :: GenR
 dummyInstall = rec
     [ "request_type" =: GText "install_code"
-    , "sender" =: GBlob (BS.toStrict doesn'tExist)
-    , "canister_id" =: GBlob (BS.toStrict doesn'tExist)
+    , "sender" =: GBlob doesn'tExist
+    , "canister_id" =: GBlob doesn'tExist
     , "module" =: GBlob ""
     , "arg" =: GBlob ""
     ]
@@ -266,7 +266,7 @@ icTests = askOption $ \ep -> testGroup "Public Spec acceptance tests"
         gr <- submitCBOR ep $ rec
           [ "request_type" =: GText "create_canister"
           , "sender" =: GBlob ""
-          , "desired_id" =: GBlob (BS.toStrict id)
+          , "desired_id" =: GBlob id
           ]
         id' <- statusReply gr >>= record (field blob "canister_id")
         id' @?= id
@@ -275,7 +275,7 @@ icTests = askOption $ \ep -> testGroup "Public Spec acceptance tests"
         gr <- submitCBOR ep $ rec
           [ "request_type" =: GText "create_canister"
           , "sender" =: GBlob ""
-          , "desired_id" =: GBlob (BS.toStrict id)
+          , "desired_id" =: GBlob id
           ]
         statusReject 3 gr
     ]
@@ -298,8 +298,8 @@ icTests = askOption $ \ep -> testGroup "Public Spec acceptance tests"
         gr <- submitCBOR ep $ rec
           [ "request_type" =: GText "install_code"
           , "sender" =: GBlob ""
-          , "canister_id" =: GBlob (BS.toStrict can_id)
-          , "module" =: GBlob (BS.toStrict wasm)
+          , "canister_id" =: GBlob can_id
+          , "module" =: GBlob wasm
           , "arg" =: GBlob ""
           ]
         r <- statusReply gr
@@ -309,8 +309,8 @@ icTests = askOption $ \ep -> testGroup "Public Spec acceptance tests"
         gr <- submitCBOR ep $ rec
           [ "request_type" =: GText "install_code"
           , "sender" =: GBlob ""
-          , "canister_id" =: GBlob (BS.toStrict can_id)
-          , "module" =: GBlob (BS.toStrict wasm)
+          , "canister_id" =: GBlob can_id
+          , "module" =: GBlob wasm
           , "arg" =: GBlob ""
           , "mode" =: GText "install" -- NB: This is the default
           ]
@@ -321,8 +321,8 @@ icTests = askOption $ \ep -> testGroup "Public Spec acceptance tests"
         gr <- submitCBOR ep $ rec
           [ "request_type" =: GText "install_code"
           , "sender" =: GBlob ""
-          , "canister_id" =: GBlob (BS.toStrict can_id)
-          , "module" =: GBlob (BS.toStrict wasm)
+          , "canister_id" =: GBlob can_id
+          , "module" =: GBlob wasm
           , "arg" =: GBlob ""
           , "mode" =: GText "reinstall"
           ]
@@ -334,8 +334,8 @@ icTests = askOption $ \ep -> testGroup "Public Spec acceptance tests"
         gr <- submitCBOR ep $ rec
           [ "request_type" =: GText "install_code"
           , "sender" =: GBlob ""
-          , "canister_id" =: GBlob (BS.toStrict can_id)
-          , "module" =: GBlob (BS.toStrict wasm)
+          , "canister_id" =: GBlob can_id
+          , "module" =: GBlob wasm
           , "arg" =: GBlob ""
           , "mode" =: GText "upgrade"
           ]
@@ -355,8 +355,8 @@ icTests = askOption $ \ep -> testGroup "Public Spec acceptance tests"
       gr <- submitCBOR ep $ rec
         [ "request_type" =: GText "install_code"
         , "sender" =: GBlob ""
-        , "canister_id" =: GBlob (BS.toStrict can_id)
-        , "module" =: GBlob (BS.toStrict wasm)
+        , "canister_id" =: GBlob can_id
+        , "module" =: GBlob wasm
         , "arg" =: GBlob ""
         ]
       r <- statusReply gr
@@ -368,9 +368,9 @@ icTests = askOption $ \ep -> testGroup "Public Spec acceptance tests"
           gr <- submitCBOR ep $ rec
             [ "request_type" =: GText "call"
             , "sender" =: GBlob "1234"
-            , "canister_id" =: GBlob (BS.toStrict can_id)
+            , "canister_id" =: GBlob can_id
             , "method_name" =: GText method_name
-            , "arg" =: GBlob (BS.toStrict arg)
+            , "arg" =: GBlob arg
             ]
           statusReply gr >>= record (field blob "arg")
 
@@ -379,9 +379,9 @@ icTests = askOption $ \ep -> testGroup "Public Spec acceptance tests"
           gr <- submitCBOR ep $ rec
             [ "request_type" =: GText "call"
             , "sender" =: GBlob "1234"
-            , "canister_id" =: GBlob (BS.toStrict can_id)
+            , "canister_id" =: GBlob can_id
             , "method_name" =: GText method_name
-            , "arg" =: GBlob (BS.toStrict arg)
+            , "arg" =: GBlob arg
             ]
           statusReject code gr
 
@@ -391,9 +391,9 @@ icTests = askOption $ \ep -> testGroup "Public Spec acceptance tests"
           gr <- readCBOR ep $ rec
             [ "request_type" =: GText "query"
             , "sender" =: GBlob "1234"
-            , "canister_id" =: GBlob (BS.toStrict can_id)
+            , "canister_id" =: GBlob can_id
             , "method_name" =: GText method_name
-            , "arg" =: GBlob (BS.toStrict arg)
+            , "arg" =: GBlob arg
             ]
           statusReply gr >>= record (field blob "arg")
 
@@ -402,9 +402,9 @@ icTests = askOption $ \ep -> testGroup "Public Spec acceptance tests"
           gr <- readCBOR ep $ rec
             [ "request_type" =: GText "query"
             , "sender" =: GBlob "1234"
-            , "canister_id" =: GBlob (BS.toStrict can_id)
+            , "canister_id" =: GBlob can_id
             , "method_name" =: GText method_name
-            , "arg" =: GBlob (BS.toStrict arg)
+            , "arg" =: GBlob arg
             ]
           statusReject code gr
 

@@ -62,7 +62,7 @@ text (GText t) = return t
 text _ = parseError "Expected text value"
 
 blob :: Field BS.ByteString
-blob (GBlob b) = return (BS.fromStrict b)
+blob (GBlob b) = return b
 blob _ = parseError "Expected blob"
 
 nat :: Field Natural
