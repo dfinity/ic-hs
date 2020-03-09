@@ -6,6 +6,7 @@ module Main where
 -- Todo: Break module into plumbing and actual tests
 
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as T
 import qualified Data.ByteString.Lazy as BS
 import qualified Data.ByteString.Builder as BS
 import qualified Data.HashMap.Lazy as HM
@@ -82,11 +83,11 @@ loop act = go (0::Int)
 
 awaitCBOR :: Endpoint -> GenR -> IO GenR
 awaitCBOR ep req = do
-  res <- postCBOR ep "/api/v1/submit" req
+  res <- postCBOR ep "/api/v1/submit" $ envelope req
   code2xx res -- the body is unspecified
   loop $ do
     pollDelay
-    res <- postCBOR ep "/api/v1/read" $ rec
+    res <- postCBOR ep "/api/v1/read" $ envelope $ rec
       [ "request_type" =: GText "request_status"
       , "request_id" =: GBlob (BS.toStrict (requestId req))
       ]
@@ -135,16 +136,24 @@ code4xx response = assertBool
 
 code2xx :: HasCallStack => Response BS.ByteString -> IO ()
 code2xx response = assertBool
-    ("Status " ++ show c ++ " is not 2xx")
+    ("Status " ++ show c ++ " is not 2xx\n" ++ msg)
     (200 <= c && c < 300)
-  where c = statusCode (responseStatus response)
+  where
+    c = statusCode (responseStatus response)
+    msg = T.unpack (T.decodeUtf8 (BS.toStrict (responseBody response)))
 
--- Runs test once for each field with that field removed.
+
+-- Runs test once for each field with that field removed, including
+-- nested fields
 omitFields :: GenR -> (GenR -> Assertion) -> [TestTree]
 omitFields (GRec hm) act =
     [ let hm' = HM.delete f hm
       in testCase ("omitting " ++ T.unpack f) $ act (GRec hm')
     | f <- fields
+    ] ++ concat
+    [ omitFields val $ \val' -> act (GRec (HM.insert f val' hm))
+    | f <- fields
+    , val@(GRec _) <- return $ hm HM.! f
     ]
   where fields = sort $ HM.keys hm
 omitFields _ _ = error "omitFields needs a GRec"
@@ -176,6 +185,13 @@ dummyInstall = rec
     , "canister_id" =: GBlob (BS.toStrict doesn'tExist)
     , "module" =: GBlob ""
     , "arg" =: GBlob ""
+    ]
+
+envelope :: GenR -> GenR
+envelope content = rec
+    [ "sender_pubkey" =: GBlob "dummy_pubkey"
+    , "sender_sig" =: GBlob "dummy_sig"
+    , "content" =: content
     ]
 
 -- We are using randomness to get fresh ids.
@@ -255,7 +271,7 @@ icTests = askOption $ \ep -> testGroup "Public Spec acceptance tests"
 
   , testGroup "install"
     [ testGroup "required fields" $
-        omitFields dummyInstall $ \req ->
+        omitFields (envelope dummyInstall) $ \req ->
           postCBOR ep "/api/v1/submit" req >>= code4xx
 
     , testCase "trivial wasm" $ do
@@ -276,17 +292,17 @@ icTests = askOption $ \ep -> testGroup "Public Spec acceptance tests"
 
   , testGroup "query"
     [ testGroup "required fields" $
-        omitFields queryToNonExistant $ \req ->
+        omitFields (envelope queryToNonExistant) $ \req ->
           postCBOR ep "/api/v1/read" req >>= code4xx
 
     , testCase "non-existing canister" $ do
-        gr <- postCBOR ep "/api/v1/read" queryToNonExistant >>= okCBOR
+        gr <- postCBOR ep "/api/v1/read" (envelope queryToNonExistant) >>= okCBOR
         statusReject gr
     ]
 
   , testGroup "request_status"
     [ testGroup "required fields" $
-        omitFields requestStatusNonExistant $ \req ->
+        omitFields (envelope requestStatusNonExistant) $ \req ->
           postCBOR ep "/api/v1/read" req >>= code4xx
     ]
   ]

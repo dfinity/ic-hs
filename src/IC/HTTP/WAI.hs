@@ -30,14 +30,14 @@ handle stateVar req respond = case (requestMethod req, pathInfo req) of
     ("GET", ["api","v1","status"]) ->
         cbor status200 IC.HTTP.Status.r
     ("POST", ["api","v1","submit"]) ->
-        withCBOR $ \gr -> case IC.HTTP.Request.asyncRequest gr of
+        withSignedCBOR $ \gr -> case  asyncRequest gr of
             Left err -> invalidRequest err
             Right ar -> do
                 runIC $ submitRequest (requestId gr) ar
                 loopIC runStep
                 cbor status200 emptyR
     ("POST", ["api","v1","read"]) ->
-        withCBOR $ \gr -> case IC.HTTP.Request.syncRequest gr of
+        withSignedCBOR $ \gr -> case syncRequest gr of
             Left err -> invalidRequest err
             Right ar -> do
                 r <- peekIC $ readRequest ar
@@ -89,4 +89,8 @@ handle stateVar req respond = case (requestMethod req, pathInfo req) of
                 Left err -> invalidRequest err
                 Right gr -> k gr
         _ -> invalidRequest "Expected application/cbor request"
+
+    withSignedCBOR k = withCBOR $ \gr -> case stripEnvelope gr of
+        Left err -> invalidRequest err
+        Right content -> k content
 

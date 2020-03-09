@@ -16,6 +16,12 @@ import IC.HTTP.GenR.Parse
 dummyUserId :: EntityId
 dummyUserId = EntityId $ BS.pack [0xCA, 0xFF, 0xEE]
 
+stripEnvelope :: GenR -> Either T.Text GenR
+stripEnvelope = record $ do
+    _ <- field blob "sender_pubkey"
+    _ <- field blob "sender_sig"
+    field anyType "content"
+
 -- Parsing requests to /submit
 asyncRequest :: GenR -> Either T.Text AsyncRequest
 asyncRequest = record $ do
