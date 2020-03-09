@@ -86,7 +86,7 @@ work msg_file = do
       Install cid filename arg -> do
         wasm <- liftIO $ B.readFile filename
         _ <- submitAndRun (CreateRequest user_id (Just (EntityId cid)))
-        submitAndRun (InstallRequest (EntityId cid) user_id wasm arg)
+        submitAndRun (InstallRequest (EntityId cid) user_id wasm arg False)
       Upgrade cid filename arg -> do
         wasm <- liftIO $ B.readFile filename
         submitAndRun (UpgradeRequest (EntityId cid) user_id wasm arg)

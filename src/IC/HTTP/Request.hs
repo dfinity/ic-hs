@@ -6,6 +6,7 @@ module IC.HTTP.Request where
 import qualified Data.Text as T
 import qualified Data.ByteString.Lazy as BS
 import Control.Monad.Except
+import Data.Maybe
 
 import IC.Types
 import IC.Ref (AsyncRequest(..), SyncRequest(..),
@@ -38,7 +39,12 @@ asyncRequest = record $ do
             mod <- field blob "module"
             arg <- field blob "arg"
             _ <- optionalField percentage "compute_allocation"
-            return $ InstallRequest cid sender mod arg
+            mode <- fromMaybe "install" <$> optionalField text "mode"
+            case mode of
+                "install" -> return $ InstallRequest cid sender mod arg False
+                "reinstall" -> return $ InstallRequest cid sender mod arg True
+                "upgrade" -> return $ UpgradeRequest cid sender mod arg
+                _ -> throwError $ "mode field should be one of install, reinstall, upgrade, not " <> T.pack (show mode)
         "call" -> do
             cid <- EntityId <$> field blob "canister_id"
             sender <- EntityId <$> field blob "sender"

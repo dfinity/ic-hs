@@ -271,7 +271,7 @@ icTests = askOption $ \ep -> testGroup "Public Spec acceptance tests"
         omitFields (envelope dummyInstall) $ \req ->
           postCBOR ep "/api/v1/submit" req >>= code4xx
 
-    , testCaseSteps "trivial wasm" $ \step -> do
+    , testCaseSteps "trivial wasm module" $ \step -> do
         step "Create"
         gr <- awaitCBOR ep $ rec
           [ "request_type" =: GText "create_canister"
@@ -287,11 +287,46 @@ icTests = askOption $ \ep -> testGroup "Public Spec acceptance tests"
           , "canister_id" =: GBlob (BS.toStrict can_id)
           , "module" =: GBlob (BS.toStrict wasm)
           , "arg" =: GBlob ""
-          -- FIXME: , "mode" =: GText "install"
           ]
         r <- statusReply gr
-        flip record r $
-          return ()
+        flip record r $ return ()
+
+        step "Install"
+        gr <- awaitCBOR ep $ rec
+          [ "request_type" =: GText "install_code"
+          , "sender" =: GBlob ""
+          , "canister_id" =: GBlob (BS.toStrict can_id)
+          , "module" =: GBlob (BS.toStrict wasm)
+          , "arg" =: GBlob ""
+          , "mode" =: GText "install" -- NB: This is the default
+          ]
+        statusReject gr
+
+        step "Reinstall"
+        wasm <- getTestWasm "trivial"
+        gr <- awaitCBOR ep $ rec
+          [ "request_type" =: GText "install_code"
+          , "sender" =: GBlob ""
+          , "canister_id" =: GBlob (BS.toStrict can_id)
+          , "module" =: GBlob (BS.toStrict wasm)
+          , "arg" =: GBlob ""
+          , "mode" =: GText "reinstall"
+          ]
+        r <- statusReply gr
+        flip record r $ return ()
+
+        step "Upgrade"
+        wasm <- getTestWasm "trivial"
+        gr <- awaitCBOR ep $ rec
+          [ "request_type" =: GText "install_code"
+          , "sender" =: GBlob ""
+          , "canister_id" =: GBlob (BS.toStrict can_id)
+          , "module" =: GBlob (BS.toStrict wasm)
+          , "arg" =: GBlob ""
+          , "mode" =: GText "upgrade"
+          ]
+        r <- statusReply gr
+        flip record r $ return ()
     ]
 
   , testGroup "query"

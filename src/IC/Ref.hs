@@ -45,7 +45,7 @@ import IC.Logger
 
 data AsyncRequest
     = CreateRequest UserId (Maybe CanisterId)
-    | InstallRequest CanisterId UserId Blob Blob
+    | InstallRequest CanisterId UserId Blob Blob Bool
     | UpgradeRequest CanisterId UserId Blob Blob
     | UpdateRequest CanisterId UserId MethodName Blob
   deriving (Eq, Ord, Show)
@@ -219,32 +219,34 @@ processRequest rid (CreateRequest _user_id Nothing) = do
   createEmptyCanister new_id
   setReqStatus rid $ Completed $ CompleteCanisterId new_id
 
-processRequest rid (InstallRequest canister_id user_id can_mod dat) = do
+processRequest rid (InstallRequest canister_id user_id can_mod dat reinstall) = do
   let res = setReqStatus rid
   case parseCanister can_mod of
     Left err -> res $ Rejected (RC_SYS_FATAL, "Parsing failed: " ++ err)
     Right can_mod ->
       gets (M.lookup canister_id . canisters) >>= \case
         Nothing -> res $ Rejected (RC_DESTINATION_INVALID, "canister does not exist: " ++ show canister_id)
-        Just (Just _) -> res $ Rejected (RC_DESTINATION_INVALID, "canister is not empty")
-        Just Nothing -> do
-          -- We only need a call context to be able to do inter-canister calls
-          -- from init, which is useful for Motoko testing, but not currently
-          -- allowed by the spec.
-          ctxt_id <- newCallContext $ CallContext
-            { canister = canister_id
-            , origin = FromInit user_id
-            , responded = Responded True
-            , last_trap = Nothing
-            }
+        Just old_canister -> case (reinstall, isJust old_canister) of
+          (False, True) -> res $ Rejected (RC_DESTINATION_INVALID, "canister is not empty during installation")
+          (True, False) -> res $ Rejected (RC_DESTINATION_INVALID, "canister is empty during reinstallation")
+          _ -> do
+            -- We only need a call context to be able to do inter-canister calls
+            -- from init, which is useful for Motoko testing, but not currently
+            -- allowed by the spec.
+            ctxt_id <- newCallContext $ CallContext
+              { canister = canister_id
+              , origin = FromInit user_id
+              , responded = Responded True
+              , last_trap = Nothing
+              }
 
-          case init_method can_mod canister_id user_id dat of
-            Trap msg ->
-              res $ Rejected (RC_CANISTER_ERROR, "Initialization trapped: " ++ msg)
-            Return (new_calls, wasm_state) -> do
-              installCanister canister_id can_mod wasm_state
-              mapM_ (newCall ctxt_id) new_calls
-              res $ Completed CompleteUnit
+            case init_method can_mod canister_id user_id dat of
+              Trap msg ->
+                res $ Rejected (RC_CANISTER_ERROR, "Initialization trapped: " ++ msg)
+              Return (new_calls, wasm_state) -> do
+                installCanister canister_id can_mod wasm_state
+                mapM_ (newCall ctxt_id) new_calls
+                res $ Completed CompleteUnit
 
 processRequest rid (UpgradeRequest canister_id user_id new_can_mod dat) = do
   let res = setReqStatus rid
@@ -309,7 +311,7 @@ rememberTrap ctxt_id msg =
 callerOfRequest :: ICT m => RequestID -> m EntityId
 callerOfRequest rid = gets (M.lookup rid . requests) >>= \case
     Just (CreateRequest user_id _, _) -> return user_id
-    Just (InstallRequest _ user_id _ _, _) -> return user_id
+    Just (InstallRequest _ user_id _ _ _, _) -> return user_id
     Just (UpgradeRequest _ user_id _ _, _) -> return user_id
     Just (UpdateRequest _ user_id _ _, _) -> return user_id
     Nothing -> error "callerOfRequest"
