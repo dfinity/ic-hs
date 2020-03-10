@@ -24,6 +24,7 @@ common logic
   other-modules:       IC.Canister
   other-modules:       IC.Id.Fresh
   other-modules:       IC.Logger
+  other-modules:       IC.Utils
   other-modules:       IC.Canister.Imp
   other-modules:       IC.Canister.Interface
   other-modules:       IC.Canister.Pure
