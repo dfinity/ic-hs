@@ -171,24 +171,34 @@ setCanisterState cid wasm_state = modify $ \ic ->
 -- Synchronous requests
 
 readRequest :: ICM m => SyncRequest -> m ReqResponse
+readRequest req = handle $ case req of
 
-readRequest (StatusRequest rid) =
-  gets (findRequest rid) >>= \case
-    Just (_r,status) -> return status
-    Nothing -> return Unknown
+  StatusRequest rid ->
+    gets (findRequest rid) >>= \case
+      Just (_r,status) -> return status
+      Nothing -> return Unknown
 
-readRequest (QueryRequest canister_id user_id method arg) =
-  gets (M.lookup canister_id . canisters) >>= \case
-    Nothing -> return $ Rejected (RC_DESTINATION_INVALID, "canister does not exist")
-    Just Nothing -> return $ Rejected (RC_DESTINATION_INVALID, "canister is empty")
-    Just (Just (CanState wasm_state can_mod)) ->
-      case M.lookup method (query_methods can_mod) of
-        Nothing -> return $ Rejected (RC_DESTINATION_INVALID, "query method does not exist")
-        Just f ->
-          case f user_id arg wasm_state of
-            Trap msg -> return $ Rejected (RC_CANISTER_ERROR, "canister trapped: " ++ msg)
-            Return (Reply res) -> return $ Completed (CompleteArg res)
-            Return (Reject (rc,rm)) -> return $ Rejected (rc, rm)
+  QueryRequest canister_id user_id method arg -> do
+    canister <- gets (M.lookup canister_id . canisters)
+      `orElse` reject RC_DESTINATION_INVALID ("canister does not exist: " ++ show canister_id)
+    CanState wasm_state can_mod <- return canister
+      `orElse` reject RC_DESTINATION_INVALID "canister_is_empty"
+    f <- return (M.lookup method (query_methods can_mod))
+      `orElse` reject RC_DESTINATION_INVALID "query method does not exist"
+
+    case f user_id arg wasm_state of
+      Trap msg -> reject RC_CANISTER_ERROR $ "canister trapped: " ++ msg
+      Return (Reject (rc,rm)) -> reject rc rm
+      Return (Reply res) -> return $ Completed (CompleteArg res)
+
+  where
+
+    -- Plumbig function to allow early exit (rejecting) upon errors.
+    handle :: ICM m =>
+      (forall m'. (MonadError (RejectCode, String) m', ICM m') => m' ReqResponse) -> m ReqResponse
+    handle act = runExceptT act >>= \case
+      Left (code, msg) -> return (Rejected (code, msg))
+      Right res -> return res
 
 -- Asynchronous requests
 
@@ -210,46 +220,41 @@ processRequest rid req = handle $ case req of
     when exists $
       reject RC_DESTINATION_INVALID "Desired canister id already exists"
     createEmptyCanister desired
-    return $ Completed $ CompleteCanisterId desired
+    return $ Completed (CompleteCanisterId desired)
 
   CreateRequest _user_id Nothing -> do
     existing_canisters <- gets (M.keys . canisters)
     let new_id = freshId existing_canisters
     createEmptyCanister new_id
-    return $ Completed $ CompleteCanisterId new_id
+    return $ Completed (CompleteCanisterId new_id)
 
-  InstallRequest canister_id user_id can_mod dat reinstall ->
-    case parseCanister can_mod of
-      Left err -> reject RC_SYS_FATAL $ "Parsing failed: " ++ err
-      Right can_mod ->
-        gets (M.lookup canister_id . canisters) >>= \case
-          Nothing -> reject RC_DESTINATION_INVALID $ "canister does not exist: " ++ show canister_id
-          Just old_canister -> case (reinstall, isJust old_canister) of
-            (False, True) -> reject RC_DESTINATION_INVALID "canister is not empty during installation"
-            (True, False) -> reject RC_DESTINATION_INVALID "canister is empty during reinstallation"
-            _ -> case init_method can_mod canister_id user_id dat of
-              Trap msg ->
-                reject RC_CANISTER_ERROR $ "Initialization trapped: " ++ msg
-              Return wasm_state -> do
-                insertCanister canister_id can_mod wasm_state
-                return $ Completed CompleteUnit
+  InstallRequest canister_id user_id can_mod_data dat reinstall -> do
+    can_mod <- return (parseCanister can_mod_data)
+      `onErr` (\err -> reject RC_SYS_FATAL $ "Parsing failed: " ++ err)
+    old_canister <- gets (M.lookup canister_id . canisters)
+      `orElse` reject RC_DESTINATION_INVALID ("canister does not exist: " ++ show canister_id)
+    when (not reinstall && isJust old_canister) $
+      reject RC_DESTINATION_INVALID "canister is not empty during installation"
+    when (reinstall && isNothing old_canister) $
+      reject RC_DESTINATION_INVALID "canister is empty during reinstallation"
+    wasm_state <- return (init_method can_mod canister_id user_id dat)
+      `onTrap` (\msg -> reject RC_CANISTER_ERROR $ "Initialization trapped: " ++ msg)
+    insertCanister canister_id can_mod wasm_state
+    return $ Completed CompleteUnit
 
-  UpgradeRequest canister_id user_id new_can_mod dat ->
-    case parseCanister new_can_mod of
-      Left err -> reject RC_SYS_FATAL $ "Parsing failed: " ++ err
-      Right new_can_mod ->
-        gets (M.lookup canister_id . canisters) >>= \case
-          Nothing -> reject RC_DESTINATION_INVALID $ "canister does not exist: " ++ show canister_id
-          Just Nothing -> reject RC_DESTINATION_INVALID "canister is empty"
-          Just (Just (CanState old_wasm_state old_can_mod)) ->
-            case pre_upgrade_method old_can_mod old_wasm_state user_id of
-              Trap msg -> reject RC_CANISTER_ERROR $ "Pre-upgrade trapped: " ++ msg
-              Return mem ->
-                case post_upgrade_method new_can_mod user_id user_id mem dat of
-                  Trap msg -> reject RC_CANISTER_ERROR $ "post-upgrade trapped: " ++ msg
-                  Return new_wasm_state -> do
-                    insertCanister canister_id new_can_mod new_wasm_state
-                    return $ Completed CompleteUnit
+  UpgradeRequest canister_id user_id new_can_mod_data dat -> do
+    new_can_mod <- return (parseCanister new_can_mod_data)
+      `onErr` (\err -> reject RC_SYS_FATAL $ "Parsing failed: " ++ err)
+    old_canister <- gets (M.lookup canister_id . canisters)
+      `orElse` reject RC_DESTINATION_INVALID ("canister does not exist: " ++ show canister_id)
+    CanState old_wasm_state old_can_mod <- return old_canister
+      `orElse` reject RC_DESTINATION_INVALID "canister_is_empty"
+    mem <- return (pre_upgrade_method old_can_mod old_wasm_state user_id)
+      `onTrap` (\msg -> reject RC_CANISTER_ERROR $ "Pre-upgrade trapped: " ++ msg)
+    new_wasm_state <- return (post_upgrade_method new_can_mod user_id user_id mem dat)
+      `onTrap` (\msg -> reject RC_CANISTER_ERROR $ "Post-upgrade trapped: " ++ msg)
+    insertCanister canister_id new_can_mod new_wasm_state
+    return $ Completed CompleteUnit
 
   UpdateRequest canister_id _user_id method arg -> do
     ctxt_id <- newCallContext $ CallContext
@@ -263,6 +268,7 @@ processRequest rid req = handle $ case req of
       , entry = Public method arg
       }
     return Processing
+
   where
     -- Plumbig function to allow early exit (updating the request status) upon errors.
     handle :: ICM m =>
@@ -270,9 +276,6 @@ processRequest rid req = handle $ case req of
     handle act = runExceptT act >>= \case
       Left (code, msg) -> setReqStatus rid (Rejected (code, msg))
       Right res -> setReqStatus rid res
-
-    reject code msg = throwError (code, msg)
-
 
 -- Call context handling
 
@@ -429,3 +432,18 @@ runStep =
 
 runToCompletion :: ICM m => m ()
 runToCompletion = repeatWhileTrue runStep
+
+-- Error handling plumbing
+reject :: MonadError (RejectCode, String) m => RejectCode -> String -> m a2
+reject code msg = throwError (code, msg)
+
+onErr :: Monad m => m (Either a b) -> (a -> m b) -> m b
+onErr a b = a >>= either b return
+
+orElse :: Monad m => m (Maybe a) -> m a -> m a
+orElse a b = a >>= maybe b return
+
+onTrap :: Monad m => m (TrapOr a) -> (String -> m a) -> m a
+onTrap a b = a >>= \case { Trap msg -> b msg; Return x -> return x }
+
+
