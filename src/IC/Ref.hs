@@ -181,7 +181,7 @@ getNonemptyCanisterState cid =
 -- Synchronous requests
 
 readRequest :: ICM m => SyncRequest -> m ReqResponse
-readRequest req = handle $ case req of
+readRequest req = onReject (return . Rejected) $ case req of
 
   StatusRequest rid ->
     gets (findRequest rid) >>= \case
@@ -198,14 +198,6 @@ readRequest req = handle $ case req of
       Return (Reject (rc,rm)) -> reject rc rm
       Return (Reply res) -> return $ Completed (CompleteArg res)
 
-  where
-    -- Plumbing function to allow early exit (rejecting) upon errors.
-    handle :: ICM m =>
-      (forall m'. (CanReject m', ICM m') => m' ReqResponse) -> m ReqResponse
-    handle act = runExceptT act >>= \case
-      Left (code, msg) -> return (Rejected (code, msg))
-      Right res -> return res
-
 -- Asynchronous requests
 
 -- | Submission simply enqueues requests
@@ -220,7 +212,7 @@ submitRequest rid r = modify $ \ic ->
 
 processRequest :: ICM m => RequestID -> AsyncRequest -> m ()
 
-processRequest rid req = handle $ case req of
+processRequest rid req = (setReqStatus rid =<<) $ onReject (return . Rejected) $ case req of
   CreateRequest _user_id (Just desired) -> do
     exists <- gets (M.member desired . canisters)
     when exists $
@@ -271,14 +263,6 @@ processRequest rid req = handle $ case req of
       }
     return Processing
 
-  where
-    -- Plumbig function to allow early exit (updating the request status) upon errors.
-    handle :: ICM m =>
-      (forall m'. (CanReject m', ICM m') => m' ReqResponse) -> m ()
-    handle act = runExceptT act >>= \case
-      Left (code, msg) -> setReqStatus rid (Rejected (code, msg))
-      Right res -> setReqStatus rid res
-
 -- Call context handling
 
 newCallContext :: ICM m => CallContext -> m CallId
@@ -298,6 +282,10 @@ respondCallContext ctxt_id response = do
   -- TODO: check no prior response
   modifyCallContext ctxt_id $ \ctxt -> ctxt { responded = Responded True }
   enqueueMessage $ ResponseMessage { call_context = ctxt_id, response }
+
+rejectCallContext :: ICM m => CallId -> (RejectCode, String) -> m ()
+rejectCallContext ctxt_id =
+  respondCallContext ctxt_id . Reject
 
 rememberTrap :: ICM m => CallId -> String -> m ()
 rememberTrap ctxt_id msg =
@@ -322,7 +310,7 @@ starveCallContext ctxt_id = do
   ctxt <- getCallContext ctxt_id
   let msg | Just t <- last_trap ctxt = "canister trapped: " ++ t
           | otherwise                = "canister did not respond"
-  respondCallContext ctxt_id $ Reject (RC_CANISTER_ERROR, msg)
+  rejectCallContext ctxt_id (RC_CANISTER_ERROR, msg)
 
 -- Message handling
 
@@ -331,7 +319,7 @@ enqueueMessage m = modify $ \ic -> ic { messages = messages ic :|> m }
 
 processMessage :: ICM m => Message -> m ()
 processMessage m = case m of
-  CallMessage ctxt_id entry -> handle ctxt_id $ do
+  CallMessage ctxt_id entry -> onReject (rejectCallContext ctxt_id) $ do
     callee <- calleeOfCallID ctxt_id
     cs <- getNonemptyCanisterState callee
     invokeEntry ctxt_id cs entry >>= \case
@@ -356,13 +344,6 @@ processMessage m = case m of
           , entry = Closure callback response
           }
       FromInit _ -> error "unexpected Response in Init"
-  where
-    -- Plumbing function to allow early exit (rejecting) upon errors.
-    handle :: ICM m => CallId ->
-      (forall m'. (CanReject m', ICM m') => m' ()) -> m ()
-    handle ctxt_id act = runExceptT act >>= \case
-      Left (code, msg) -> respondCallContext ctxt_id (Reject (code, msg))
-      Right res -> return res
 
 invokeEntry :: ICM m =>
     CallId -> CanState -> EntryPoint ->
@@ -444,6 +425,14 @@ runToCompletion = repeatWhileTrue runStep
 type CanReject = MonadError (RejectCode, String)
 reject :: CanReject m => RejectCode -> String -> m a2
 reject code msg = throwError (code, msg)
+
+onReject :: ICM m =>
+  ((RejectCode, String) -> m b) ->
+  (forall m'. (CanReject m', ICM m') => m' b) -> m b
+onReject h act = runExceptT act >>= \case
+  Left cs -> h cs
+  Right x -> return x
+
 
 onErr :: Monad m => m (Either a b) -> (a -> m b) -> m b
 onErr a b = a >>= either b return
