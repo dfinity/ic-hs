@@ -479,6 +479,9 @@ icTests = askOption $ \ep -> testGroup "Public Spec acceptance tests"
       step "Self-call (query)"
       queryReject "forward_call" can_id 3
 
+      step "Inter-canister call to non-existant"
+      r <- call "forward_call" doesn'tExist
+      BS.take 4 r @?= "\x03\x0\x0\x0"
     ]
 
   , testGroup "query"

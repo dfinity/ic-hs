@@ -20,6 +20,7 @@
   (import "ic0" "stable_write" (func $stable_write (param $offset i32) (param $src i32) (param $size i32)))
   (import "ic0" "msg_arg_data_size" (func $msg_arg_data_size (result i32)))
   (import "ic0" "msg_arg_data_copy" (func $msg_arg_data_copy (param i32) (param i32) (param i32)))
+  (import "ic0" "msg_reject_code" (func $msg_reject_code (result i32)))
   (import "ic0" "msg_reject_msg_size" (func $msg_reject_msg_size (result i32)))
   (import "ic0" "msg_reject_msg_copy" (func $msg_reject_msg_copy (param i32) (param i32) (param i32)))
   (import "ic0" "msg_caller_size" (func $msg_caller_size (result i32)))
@@ -80,7 +81,7 @@
 
   ;; inter-canister call: calls get_state on the canister whose id is provided
   ;; as the argument, with an empty argument
-  ;; Both callbacks simply reply the argument / reject message
+  ;; Both callbacks simply reply the argument / reject code + message
   (func $forward_call
     (call $msg_arg_data_copy (global.get $scratch) (i32.const 0) (call $msg_arg_data_size))
     (call $call_simple
@@ -99,6 +100,8 @@
     (call $msg_reply)
   )
   (func $reject_callback
+    (i32.store (global.get $scratch) (call $msg_reject_code))
+    (call $msg_reply_data_append (global.get $scratch) (i32.const 4))
     (call $msg_reject_msg_copy (global.get $scratch) (i32.const 0) (call $msg_reject_msg_size))
     (call $msg_reply_data_append (global.get $scratch) (call $msg_reject_msg_size))
     (call $msg_reply)
