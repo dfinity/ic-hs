@@ -422,6 +422,10 @@ icTests = askOption $ \ep -> testGroup "Public Spec acceptance tests"
       step "Non-existing query"
       queryReject "does_not_exist" "" 3
 
+      step "canister_self"
+      r <- query "get_canister_self" ""
+      r @?= can_id
+
       -- https://www.wordnik.com/lists/really-cool-four-letter-words
       step "Set mem (update)"
       r <- call "set_mem" "ibis"

@@ -25,6 +25,8 @@
   (import "ic0" "msg_reject_msg_copy" (func $msg_reject_msg_copy (param i32) (param i32) (param i32)))
   (import "ic0" "msg_caller_size" (func $msg_caller_size (result i32)))
   (import "ic0" "msg_caller_copy" (func $msg_caller_copy (param i32) (param i32) (param i32)))
+  (import "ic0" "canister_self_size" (func $canister_self_size (result i32)))
+  (import "ic0" "canister_self_copy" (func $canister_self_copy (param i32) (param i32) (param i32)))
   (import "ic0" "call_simple" (func $call_simple (param i32 i32 i32 i32 i32 i32 i32 i32 i32 i32) (result i32)))
 
   ;; get_state returns, via simple concatentation:
@@ -51,6 +53,12 @@
     (call $msg_caller_copy (global.get $scratch) (i32.const 0) (call $msg_caller_size))
     (call $msg_reply_data_append (global.get $scratch) (call $msg_caller_size))
 
+    (call $msg_reply)
+   )
+
+  (func $get_canister_self
+    (call $canister_self_copy (global.get $scratch) (i32.const 0) (call $canister_self_size))
+    (call $msg_reply_data_append (global.get $scratch) (call $canister_self_size))
     (call $msg_reply)
    )
 
@@ -128,4 +136,5 @@
   (export "canister_query no_reply_query" (func $no_reply))
   (export "canister_update forward_call" (func $forward_call))
   (export "canister_update_query forward_call_query" (func $forward_call))
+  (export "canister_query get_canister_self" (func $get_canister_self))
 )
