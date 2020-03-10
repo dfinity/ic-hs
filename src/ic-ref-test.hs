@@ -426,6 +426,12 @@ icTests = askOption $ \ep -> testGroup "Public Spec acceptance tests"
       r <- query "get_canister_self" ""
       r @?= can_id
 
+      step "reject (update)"
+      callReject "reject" "FOOBAR" 4
+
+      step "reject (query)"
+      queryReject "reject_query" "FOOBAR" 4
+
       -- https://www.wordnik.com/lists/really-cool-four-letter-words
       step "Set mem (update)"
       r <- call "set_mem" "ibis"

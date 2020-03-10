@@ -14,6 +14,7 @@
 (module
   (import "ic0" "msg_reply" (func $msg_reply))
   (import "ic0" "msg_reply_data_append" (func $msg_reply_data_append (param i32 i32)))
+  (import "ic0" "msg_reject" (func $msg_reject (param i32 i32)))
   (import "ic0" "stable_size" (func $stable_size (result i32)))
   (import "ic0" "stable_grow" (func $stable_grow (param i32) (result i32)))
   (import "ic0" "stable_read" (func $stable_read (param $dst i32) (param $offset i32) (param $size i32)))
@@ -54,6 +55,12 @@
     (call $msg_reply_data_append (global.get $scratch) (call $msg_caller_size))
 
     (call $msg_reply)
+   )
+
+  ;; just reject with the argument
+  (func $reject
+    (call $msg_arg_data_copy (global.get $scratch) (i32.const 0) (call $msg_arg_data_size))
+    (call $msg_reject (global.get $scratch) (call $msg_arg_data_size))
    )
 
   (func $get_canister_self
@@ -137,4 +144,6 @@
   (export "canister_update forward_call" (func $forward_call))
   (export "canister_update_query forward_call_query" (func $forward_call))
   (export "canister_query get_canister_self" (func $get_canister_self))
+  (export "canister_update reject" (func $reject))
+  (export "canister_query reject_query" (func $reject))
 )
