@@ -105,7 +105,6 @@ data CallContext = CallContext
 data CallOrigin
   = FromUser RequestID
   | FromCanister CallId Callback
-  | FromInit EntityId
   deriving (Show)
 
 data Message
@@ -297,7 +296,6 @@ callerOfCallID ctxt_id = do
   case origin ctxt of
     FromUser rid -> callerOfRequest rid
     FromCanister other_ctxt_id _callback -> calleeOfCallID other_ctxt_id
-    FromInit entity_id -> return entity_id
 
 calleeOfCallID :: ICM m => CallId -> m EntityId
 calleeOfCallID ctxt_id = canister <$> getCallContext ctxt_id
@@ -343,7 +341,6 @@ processMessage m = case m of
           { call_context = other_ctxt_id
           , entry = Closure callback response
           }
-      FromInit _ -> error "unexpected Response in Init"
 
 invokeEntry :: ICM m =>
     CallId -> CanState -> EntryPoint ->
