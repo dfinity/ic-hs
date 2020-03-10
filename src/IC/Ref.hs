@@ -171,12 +171,12 @@ setCanisterState cid wasm_state = modify $ \ic ->
 getCanisterState :: (CanReject m, ICM m) => CanisterId -> m (Maybe CanState)
 getCanisterState cid =
   gets (M.lookup cid . canisters)
-    `orElse` reject RC_DESTINATION_INVALID ("canister does not exist: " ++ show cid)
+    `orElse` reject RC_DESTINATION_INVALID ("canister does not exist: " ++ prettyID cid)
 
 getNonemptyCanisterState :: (CanReject m, ICM m) => CanisterId -> m CanState
 getNonemptyCanisterState cid =
   getCanisterState cid
-    `orElse` reject RC_DESTINATION_INVALID ("canister is empty:" ++ show cid)
+    `orElse` reject RC_DESTINATION_INVALID ("canister is empty:" ++ prettyID cid)
 
 -- Synchronous requests
 

@@ -472,6 +472,12 @@ icTests = askOption $ \ep -> testGroup "Public Spec acceptance tests"
       step "No reply (query)"
       queryReject "no_reply_query" "" 5
 
+      step "Self-call"
+      r <- call "forward_call" can_id
+      r @?= ("ibis" <> "\x0\x0\x0\x0" <> "iota" <> can_id)
+
+      step "Self-call (query)"
+      queryReject "forward_call" can_id 3
 
     ]
 
