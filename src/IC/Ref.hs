@@ -168,6 +168,16 @@ setCanisterState :: ICM m => CanisterId -> WasmState -> m ()
 setCanisterState cid wasm_state = modify $ \ic ->
   ic { canisters = M.adjust (fmap (\cs -> cs { wasm_state })) cid (canisters ic) }
 
+getCanisterState :: (CanReject m, ICM m) => CanisterId -> m (Maybe CanState)
+getCanisterState cid =
+  gets (M.lookup cid . canisters)
+    `orElse` reject RC_DESTINATION_INVALID ("canister does not exist: " ++ show cid)
+
+getNonemptyCanisterState :: (CanReject m, ICM m) => CanisterId -> m CanState
+getNonemptyCanisterState cid =
+  getCanisterState cid
+    `orElse` reject RC_DESTINATION_INVALID ("canister is empty:" ++ show cid)
+
 -- Synchronous requests
 
 readRequest :: ICM m => SyncRequest -> m ReqResponse
@@ -179,10 +189,7 @@ readRequest req = handle $ case req of
       Nothing -> return Unknown
 
   QueryRequest canister_id user_id method arg -> do
-    canister <- gets (M.lookup canister_id . canisters)
-      `orElse` reject RC_DESTINATION_INVALID ("canister does not exist: " ++ show canister_id)
-    CanState wasm_state can_mod <- return canister
-      `orElse` reject RC_DESTINATION_INVALID "canister_is_empty"
+    CanState wasm_state can_mod <- getNonemptyCanisterState canister_id
     f <- return (M.lookup method (query_methods can_mod))
       `orElse` reject RC_DESTINATION_INVALID "query method does not exist"
 
@@ -192,10 +199,9 @@ readRequest req = handle $ case req of
       Return (Reply res) -> return $ Completed (CompleteArg res)
 
   where
-
-    -- Plumbig function to allow early exit (rejecting) upon errors.
+    -- Plumbing function to allow early exit (rejecting) upon errors.
     handle :: ICM m =>
-      (forall m'. (MonadError (RejectCode, String) m', ICM m') => m' ReqResponse) -> m ReqResponse
+      (forall m'. (CanReject m', ICM m') => m' ReqResponse) -> m ReqResponse
     handle act = runExceptT act >>= \case
       Left (code, msg) -> return (Rejected (code, msg))
       Right res -> return res
@@ -231,8 +237,7 @@ processRequest rid req = handle $ case req of
   InstallRequest canister_id user_id can_mod_data dat reinstall -> do
     can_mod <- return (parseCanister can_mod_data)
       `onErr` (\err -> reject RC_SYS_FATAL $ "Parsing failed: " ++ err)
-    old_canister <- gets (M.lookup canister_id . canisters)
-      `orElse` reject RC_DESTINATION_INVALID ("canister does not exist: " ++ show canister_id)
+    old_canister <- getCanisterState canister_id
     when (not reinstall && isJust old_canister) $
       reject RC_DESTINATION_INVALID "canister is not empty during installation"
     when (reinstall && isNothing old_canister) $
@@ -245,10 +250,7 @@ processRequest rid req = handle $ case req of
   UpgradeRequest canister_id user_id new_can_mod_data dat -> do
     new_can_mod <- return (parseCanister new_can_mod_data)
       `onErr` (\err -> reject RC_SYS_FATAL $ "Parsing failed: " ++ err)
-    old_canister <- gets (M.lookup canister_id . canisters)
-      `orElse` reject RC_DESTINATION_INVALID ("canister does not exist: " ++ show canister_id)
-    CanState old_wasm_state old_can_mod <- return old_canister
-      `orElse` reject RC_DESTINATION_INVALID "canister_is_empty"
+    CanState old_wasm_state old_can_mod <- getNonemptyCanisterState canister_id
     mem <- return (pre_upgrade_method old_can_mod old_wasm_state user_id)
       `onTrap` (\msg -> reject RC_CANISTER_ERROR $ "Pre-upgrade trapped: " ++ msg)
     new_wasm_state <- return (post_upgrade_method new_can_mod user_id user_id mem dat)
@@ -272,7 +274,7 @@ processRequest rid req = handle $ case req of
   where
     -- Plumbig function to allow early exit (updating the request status) upon errors.
     handle :: ICM m =>
-      (forall m'. (MonadError (RejectCode, String) m', ICM m') => m' ReqResponse) -> m ()
+      (forall m'. (CanReject m', ICM m') => m' ReqResponse) -> m ()
     handle act = runExceptT act >>= \case
       Left (code, msg) -> setReqStatus rid (Rejected (code, msg))
       Right res -> setReqStatus rid res
@@ -328,35 +330,39 @@ enqueueMessage :: ICM m => Message -> m ()
 enqueueMessage m = modify $ \ic -> ic { messages = messages ic :|> m }
 
 processMessage :: ICM m => Message -> m ()
-processMessage (CallMessage ctxt_id entry) = do
-  callee <- calleeOfCallID ctxt_id
-  let res r = respondCallContext ctxt_id r
-  gets (M.lookup callee . canisters) >>= \case
-    Nothing -> res $ Reject (RC_DESTINATION_INVALID, "canister does not exist: " ++ show callee)
-    Just Nothing -> res $ Reject (RC_DESTINATION_INVALID, "canister is empty")
-    Just (Just cs) ->
-      invokeEntry ctxt_id cs entry >>= \case
-        Trap msg -> do
-          logTrap msg
-          rememberTrap ctxt_id msg
-        Return (new_state, (new_calls, mb_response)) -> do
-          setCanisterState callee new_state
-          mapM_ (newCall ctxt_id) new_calls
-          mapM_ res mb_response
+processMessage m = case m of
+  CallMessage ctxt_id entry -> handle ctxt_id $ do
+    callee <- calleeOfCallID ctxt_id
+    cs <- getNonemptyCanisterState callee
+    invokeEntry ctxt_id cs entry >>= \case
+      Trap msg -> do
+        logTrap msg
+        rememberTrap ctxt_id msg
+      Return (new_state, (new_calls, mb_response)) -> do
+        setCanisterState callee new_state
+        mapM_ (newCall ctxt_id) new_calls
+        mapM_ (respondCallContext ctxt_id) mb_response
 
-processMessage (ResponseMessage ctxt_id response) = do
-  ctxt <- getCallContext ctxt_id
-  case origin ctxt of
-    FromUser rid -> setReqStatus rid $
-      case response of
-        Reject (rc, msg) -> Rejected (rc, msg)
-        Reply blob -> Completed (CompleteArg blob)
-    FromCanister other_ctxt_id callback ->
-      enqueueMessage $ CallMessage
-        { call_context = other_ctxt_id
-        , entry = Closure callback response
-        }
-    FromInit _ -> error "unexpected Response in Init"
+  ResponseMessage ctxt_id response -> do
+    ctxt <- getCallContext ctxt_id
+    case origin ctxt of
+      FromUser rid -> setReqStatus rid $
+        case response of
+          Reject (rc, msg) -> Rejected (rc, msg)
+          Reply blob -> Completed (CompleteArg blob)
+      FromCanister other_ctxt_id callback ->
+        enqueueMessage $ CallMessage
+          { call_context = other_ctxt_id
+          , entry = Closure callback response
+          }
+      FromInit _ -> error "unexpected Response in Init"
+  where
+    -- Plumbing function to allow early exit (rejecting) upon errors.
+    handle :: ICM m => CallId ->
+      (forall m'. (CanReject m', ICM m') => m' ()) -> m ()
+    handle ctxt_id act = runExceptT act >>= \case
+      Left (code, msg) -> respondCallContext ctxt_id (Reject (code, msg))
+      Right res -> return res
 
 invokeEntry :: ICM m =>
     CallId -> CanState -> EntryPoint ->
@@ -434,7 +440,9 @@ runToCompletion :: ICM m => m ()
 runToCompletion = repeatWhileTrue runStep
 
 -- Error handling plumbing
-reject :: MonadError (RejectCode, String) m => RejectCode -> String -> m a2
+
+type CanReject = MonadError (RejectCode, String)
+reject :: CanReject m => RejectCode -> String -> m a2
 reject code msg = throwError (code, msg)
 
 onErr :: Monad m => m (Either a b) -> (a -> m b) -> m b
