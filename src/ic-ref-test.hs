@@ -411,11 +411,11 @@ icTests = askOption $ \ep -> testGroup "Public Spec acceptance tests"
 
       step "Call (update)"
       r <- call "get_state" "ABCD"
-      r @?= ("memo" <> "\x0\x0\x0\x0" <> "ABCD" <> "1234")
+      r @?= ("INIT" <> "\x0\x0\x0\x0" <> "ABCD" <> "1234")
 
       step "Call (query)"
       r <- query "get_state_query" "ABCD"
-      r @?= ("memo" <> "\x0\x0\x0\x0" <> "ABCD" <> "1234")
+      r @?= ("INIT" <> "\x0\x0\x0\x0" <> "ABCD" <> "1234")
 
       step "Non-existing call"
       callReject "does_not_exist" "" 3
@@ -435,7 +435,7 @@ icTests = askOption $ \ep -> testGroup "Public Spec acceptance tests"
       -- https://www.wordnik.com/lists/really-cool-four-letter-words
       step "Set mem (update)"
       r <- call "set_mem" "ibis"
-      r @?= "memo"
+      r @?= "INIT"
       r <- query "get_state_query" "ABCD"
       r @?= ("ibis" <> "\x0\x0\x0\x0" <> "ABCD" <> "1234")
 

@@ -30,6 +30,11 @@
   (import "ic0" "canister_self_copy" (func $canister_self_copy (param i32) (param i32) (param i32)))
   (import "ic0" "call_simple" (func $call_simple (param i32 i32 i32 i32 i32 i32 i32 i32 i32 i32) (result i32)))
 
+  (func $init
+    ;; update state to see that init ran
+    (i32.store (i32.const 0) (i32.const 0x54494E49)) ;; "INIT"
+  )
+
   ;; get_state returns, via simple concatentation:
   ;; * the heap content (first four bytes)
   ;; * the content of the global
@@ -127,10 +132,11 @@
   (global (mut i32) (i32.const 0))
   (global $scratch i32 (i32.const 14))
   (global $get_state i32 (i32.const 4))
-  (data 0 (i32.const 0) "memo")
+  (data 0 (i32.const 0) "blnk")
   (data 0 (i32.const 4) "get_state") ;; get_state
   (export "memory" (memory $memory))
 
+  (export "canister_init" (func $init))
   (export "canister_update get_state" (func $get_state))
   (export "canister_query get_state_query" (func $get_state))
   (export "canister_update set_mem" (func $set_mem))
