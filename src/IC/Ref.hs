@@ -229,10 +229,10 @@ processRequest rid req = (setReqStatus rid =<<) $ onReject (return . Rejected) $
   InstallRequest canister_id user_id can_mod_data dat reinstall -> do
     can_mod <- return (parseCanister can_mod_data)
       `onErr` (\err -> reject RC_SYS_FATAL $ "Parsing failed: " ++ err)
-    old_canister <- getCanisterState canister_id
-    when (not reinstall && isJust old_canister) $
+    was_empty <- isNothing <$> getCanisterState canister_id
+    when (not reinstall && not was_empty) $
       reject RC_DESTINATION_INVALID "canister is not empty during installation"
-    when (reinstall && isNothing old_canister) $
+    when (reinstall && was_empty) $
       reject RC_DESTINATION_INVALID "canister is empty during reinstallation"
     wasm_state <- return (init_method can_mod canister_id user_id dat)
       `onTrap` (\msg -> reject RC_CANISTER_ERROR $ "Initialization trapped: " ++ msg)
