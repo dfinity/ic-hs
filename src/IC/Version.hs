@@ -4,5 +4,5 @@ module IC.Version where
 import Data.Text
 
 specVersion, implVersion :: Text
-specVersion = "0.1"
-implVersion = "0.1.0.1"
+specVersion = "0.2"
+implVersion = "0.2.0.0"
