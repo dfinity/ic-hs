@@ -27,6 +27,7 @@ import System.Exit
 import System.Process.ByteString.Lazy
 import System.Random
 
+import IC.Version
 import IC.HTTP.GenR
 import IC.HTTP.GenR.Parse
 import IC.HTTP.CBOR (decode, encode)
@@ -246,11 +247,12 @@ icTests = askOption $ \ep -> testGroup "Public Spec acceptance tests"
   [ testCase "status endpoint" $ do
       gr <- getCBOR ep "/api/v1/status" >>= okCBOR
       flip record gr $ do
-        _ <- field text "ic_api_version"
+        v <- field text "ic_api_version"
         _ <- optionalField text "impl_source"
         _ <- optionalField text "impl_version"
         _ <- optionalField text "impl_revision"
-        return ()
+
+        lift $ v @?= specVersion
 
   , testGroup "create_canister"
     [ testCase "no id given" $ do

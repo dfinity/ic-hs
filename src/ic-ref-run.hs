@@ -12,6 +12,7 @@ import Control.Monad.Trans
 import Control.Monad.Trans.State
 import Text.Printf
 
+import IC.Version
 import IC.Types
 import IC.Ref
 import IC.DRun.Parse (Ingress(..), parseFile)
@@ -95,22 +96,25 @@ work msg_file = do
 
 main :: IO ()
 main = join . customExecParser (prefs showHelpOnError) $
-  info (helper <*> parser)
+  info (helper <*> versions <*> parser)
   (  fullDesc
-  <> header "Internet Computer Canister runner"
+  <> header ("Internet Computer canister runner " <> T.unpack implVersion)
   <> progDesc "This runs an IC canister against a list of messages."
   )
   where
+    versions :: Parser (a -> a)
+    versions =
+          infoOption (T.unpack implVersion) (long "version" <> help "show version number")
+      <*> infoOption (T.unpack specVersion) (long "spec-version" <> help "show spec version number")
     parser :: Parser (IO ())
-    parser =
-      work
-        <$  strOption
-            (  long "config"
-            <> short 'c'
-            <> metavar "CONFIG"
-            <> value ""
-            )
-        <*> strArgument
-            (  metavar "script"
-            <> help "messages to execute"
-            )
+    parser = work
+      <$  strOption
+          (  long "config"
+          <> short 'c'
+          <> metavar "CONFIG"
+          <> value ""
+          )
+      <*> strArgument
+          (  metavar "script"
+          <> help "messages to execute"
+              )

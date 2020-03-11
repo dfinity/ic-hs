@@ -138,6 +138,9 @@ Using
 * The `ic-ref-test` acceptance test.
   Run `ic-ref-test --endpoint http://localhost:8080/` to run against a specific node.
 
+Both `ic-ref` and `ic-ref-run` can report the spec version (`--spec-version`)
+and implementation version (`--version`).
+
 Developing on ic-ref
 ---------------------
 

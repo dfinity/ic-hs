@@ -1,6 +1,6 @@
 cabal-version:       2.2
 name:                ic-ref
-version:             0.1.0.0
+version:             0.1.0.1
 author:              Joachim Breitner
 build-type:          Simple
 
@@ -16,6 +16,11 @@ flag release
 -- cannot be used on all files, due to
 --
 -- > cabal: Cannot open a repl for multiple components at once.
+
+common version
+  hs-source-dirs:      src
+  other-modules:       IC.Version
+  build-depends:       text
 
 common logic
   hs-source-dirs:      src
@@ -77,14 +82,14 @@ common ghc-flags
     ghc-options:       -Werror
 
 executable ic-ref-run
-  import: logic, ghc-flags
+  import: version, logic, ghc-flags
   main-is:             ic-ref-run.hs
   hs-source-dirs:      src
   other-modules:       IC.DRun.Parse
   build-depends:       optparse-applicative
 
 executable ic-ref
-  import: logic, cbor, ghc-flags
+  import: version, logic, cbor, ghc-flags
   main-is:             ic-ref.hs
   other-modules:       IC.HTTP.WAI
   other-modules:       IC.HTTP.Status
@@ -99,13 +104,13 @@ executable ic-ref
   build-depends:       unordered-containers
 
 executable ic-request-id
-  import: cbor, ghc-flags
+  import: version, cbor, ghc-flags
   main-is:             ic-request-id.hs
   build-depends:       hex-text
   build-depends:       optparse-applicative
 
 executable ic-ref-test
-  import: cbor, ghc-flags
+  import: version, cbor, ghc-flags
   main-is:             ic-ref-test.hs
   other-modules:       IC.Test.Options
   build-depends:       tasty
