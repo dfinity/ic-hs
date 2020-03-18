@@ -110,7 +110,8 @@ loop act = go (0::Int)
 submitCBOR :: Endpoint -> GenR -> IO GenR
 submitCBOR ep req = do
   res <- postCBOR ep "/api/v1/submit" $ envelope req
-  code2xx res -- the body is unspecified
+  code202 res
+  assertBool "Response body not empty" (BS.null (responseBody res))
   loop $ do
     pollDelay
     res <- postCBOR ep "/api/v1/read" $ envelope $ rec
@@ -181,6 +182,13 @@ code2xx response = assertBool
     c = statusCode (responseStatus response)
     msg = T.unpack (T.decodeUtf8 (BS.toStrict (responseBody response)))
 
+code202 :: HasCallStack => Response BS.ByteString -> IO ()
+code202 response = assertBool
+    ("Status " ++ show c ++ " is not 202\n" ++ msg)
+    (c == 202)
+  where
+    c = statusCode (responseStatus response)
+    msg = T.unpack (T.decodeUtf8 (BS.toStrict (responseBody response)))
 
 -- Runs test once for each field with that field removed, including
 -- nested fields
