@@ -379,11 +379,12 @@ rawInitializeMethod (ImpState esref cid inst sm) wasm_mod caller dat = do
     if "canister_init" `elem` exportedFunctions wasm_mod
     then withES esref es $ void $ invokeExport inst "canister_init" []
     else return ((), es)
-         -- TODO: Check no calls are made
 
   case result of
     Left  err -> return $ Trap err
-    Right (_, _es') -> return $ Return ()
+    Right (_, es')
+        | null (calls es') -> return $ Return ()
+        | otherwise        -> return $ Trap "cannot call from init"
 
 rawPreUpgrade :: ImpState s -> Module -> EntityId -> ST s (TrapOr Blob)
 rawPreUpgrade (ImpState esref cid inst sm) wasm_mod caller = do
@@ -400,11 +401,12 @@ rawPreUpgrade (ImpState esref cid inst sm) wasm_mod caller = do
     if "canister_pre_upgrade" `elem` exportedFunctions wasm_mod
     then withES esref es $ void $ invokeExport inst "canister_pre_upgrade" []
     else return ((), es)
-         -- TODO: Check no calls are made
 
   case result of
     Left  err -> return $ Trap err
-    Right (_, es') -> Return <$> Mem.export (stableMem es')
+    Right (_, es')
+        | null (calls es') -> Return <$> Mem.export (stableMem es')
+        | otherwise        -> return $ Trap "cannot call from pre_upgrade"
 
 rawPostUpgrade :: ImpState s -> Module -> EntityId -> Blob -> Blob -> ST s (TrapOr ())
 rawPostUpgrade (ImpState esref cid inst sm) wasm_mod caller mem dat = do
@@ -422,11 +424,12 @@ rawPostUpgrade (ImpState esref cid inst sm) wasm_mod caller mem dat = do
     if "canister_post_upgrade" `elem` exportedFunctions wasm_mod
     then withES esref es $ void $ invokeExport inst "canister_post_upgrade" []
     else return ((), es)
-         -- TODO: Check no calls are made
 
   case result of
     Left  err -> return $ Trap err
-    Right ((), _es') -> return $ Return ()
+    Right (_, es')
+        | null (calls es') -> return $ Return ()
+        | otherwise        -> return $ Trap "cannot call from post_upgrade"
 
 rawQueryMethod :: ImpState s -> MethodName -> EntityId -> Blob -> ST s (TrapOr Response)
 rawQueryMethod (ImpState esref cid inst sm) method caller dat = do
@@ -440,11 +443,11 @@ rawQueryMethod (ImpState esref cid inst sm) method caller dat = do
             }
   result <- runExceptT $ withES esref es $
     invokeExport inst ("canister_query " ++ method) []
-    -- TODO: Check no calls are made
 
   case result of
     Left err -> return $ Trap err
     Right (_, es')
+      | not (null (calls es')) -> return $ Trap "cannot call from query"
       | Just r <- response es' -> return $ Return r
       | otherwise -> return $ Trap "No response"
 
