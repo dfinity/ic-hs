@@ -16,6 +16,7 @@ import Numeric.Natural
 import Data.List
 import Test.Tasty
 import Test.Tasty.HUnit
+import Test.Tasty.Runners.Html
 import Control.Monad.Trans
 import Control.Concurrent
 import Control.Monad
@@ -39,7 +40,7 @@ type Blob = BS.ByteString
 main :: IO ()
 main = defaultMainWithIngredients ingredients tests
   where
-    ingredients = defaultIngredients ++ [includingOptions [endpointOption]]
+    ingredients = htmlRunner : defaultIngredients ++ [includingOptions [endpointOption]]
 
 tests :: TestTree
 tests = testGroup "Tests" [icTests, idTests]

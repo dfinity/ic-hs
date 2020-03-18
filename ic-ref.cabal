@@ -115,6 +115,7 @@ executable ic-ref-test
   other-modules:       IC.Test.Options
   build-depends:       tasty
   build-depends:       tasty-hunit
+  build-depends:       tasty-html
   build-depends:       optparse-applicative
   build-depends:       http-client
   build-depends:       http-types

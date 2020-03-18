@@ -5,8 +5,8 @@
 , crc, cryptonite, data-default-class, directory, filepath
 , hex-text, http-client, http-types, memory, mtl
 , optparse-applicative, primitive, process-extras, random, stdenv
-, tasty, tasty-hunit, text, transformers, unordered-containers
-, utf8-string, vector, wai, warp, winter
+, tasty, tasty-html, tasty-hunit, text, transformers
+, unordered-containers, utf8-string, vector, wai, warp, winter
 }:
 mkDerivation {
   pname = "ic-ref";
@@ -19,8 +19,8 @@ mkDerivation {
     aeson base binary bytestring cborg containers crc cryptonite
     data-default-class directory filepath hex-text http-client
     http-types memory mtl optparse-applicative primitive process-extras
-    random tasty tasty-hunit text transformers unordered-containers
-    utf8-string vector wai warp winter
+    random tasty tasty-html tasty-hunit text transformers
+    unordered-containers utf8-string vector wai warp winter
   ];
   doCheck = false;
   license = "unknown";
