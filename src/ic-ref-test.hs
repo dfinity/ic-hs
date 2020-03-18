@@ -276,7 +276,7 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
         _ <- optionalField text "impl_version"
         _ <- optionalField text "impl_revision"
 
-        lift $ unless (v == specVersion || v == "unreleased") $
+        lift $ unless (v == specVersion || v == "unversioned") $
             assertFailure $ "ic_api_version should be " ++ show specVersion ++ " or \"unversioned\", not " ++ show v
 
   , testCase "spec compliance claimed" $ do
