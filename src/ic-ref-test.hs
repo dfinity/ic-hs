@@ -17,6 +17,8 @@ import Numeric.Natural
 import Data.List
 import Test.Tasty
 import Test.Tasty.HUnit
+import Test.Tasty.Ingredients
+import Test.Tasty.Ingredients.Basic
 import Test.Tasty.Runners.Html
 import Control.Monad.Trans
 import Control.Concurrent
@@ -44,7 +46,11 @@ main :: IO ()
 main = withTestSuitePrimer $ \primeTestSuite ->
     defaultMainWithIngredients ingredients (tests primeTestSuite)
   where
-    ingredients = htmlRunner : defaultIngredients ++ [includingOptions [endpointOption]]
+    ingredients =
+      [ listingTests
+      , includingOptions [endpointOption]
+      , htmlRunner `composeReporters` consoleTestReporter
+      ]
 
 -- | This helper function runs the main action, and passes a way to prime the
 -- test suite. If this primer is _not_ executed, the program will always
