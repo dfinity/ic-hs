@@ -351,11 +351,13 @@ invokeEntry ctxt_id (CanState wasm_state can_mod) entry = do
       Public method dat -> do
         caller <- callerOfCallID ctxt_id
         case M.lookup method (update_methods can_mod) of
-          Just f ->
-            return $ f caller responded dat wasm_state
-          Nothing -> do
-            let reject = Reject (RC_DESTINATION_INVALID, "update method does not exist: " ++ method)
-            return $ Return (wasm_state, ([], Just reject))
+          Just f -> return $ f caller responded dat wasm_state
+          Nothing ->
+            case M.lookup method (query_methods can_mod) of
+              Just f -> return $ asUpdate f caller responded dat wasm_state
+              Nothing -> do
+                let reject = Reject (RC_DESTINATION_INVALID, "method does not exist: " ++ method)
+                return $ Return (wasm_state, ([], Just reject))
       Closure cb r ->
         return $ callbacks can_mod cb responded r wasm_state
 

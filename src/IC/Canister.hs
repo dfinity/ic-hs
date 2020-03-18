@@ -12,6 +12,7 @@ module IC.Canister
     , parseCanister
     , CanisterModule(..)
     , InitFunc, UpdateFunc, QueryFunc
+    , asUpdate
     )
     where
 
@@ -70,3 +71,13 @@ concreteToAbstractModule wasm_mod = CanisterModule
   , post_upgrade_method = \cid caller mem dat ->
         initializeUpgrade wasm_mod cid caller mem dat
   }
+
+-- | Turns a query function into an update function
+asUpdate ::
+  (EntityId -> Blob -> QueryFunc) ->
+  (EntityId -> Responded -> Blob -> UpdateFunc)
+asUpdate f caller (Responded responded) dat wasm_state
+  | responded = error "asUpdate: responded == True"
+  | otherwise =
+    (\res -> (wasm_state, ([], Just res))) <$>
+    f caller dat wasm_state
