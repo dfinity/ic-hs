@@ -91,7 +91,7 @@ executable ic-ref-run
 executable ic-ref
   import: version, logic, cbor, ghc-flags
   main-is:             ic-ref.hs
-  other-modules:       IC.HTTP.WAI
+  other-modules:       IC.HTTP
   other-modules:       IC.HTTP.Status
   other-modules:       IC.HTTP.Request
   other-modules:       IC.Debug.JSON

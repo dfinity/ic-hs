@@ -1,7 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
-
-module IC.HTTP.WAI where
+module IC.HTTP where
 
 import Network.Wai
 import Control.Concurrent.MVar
