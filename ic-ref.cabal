@@ -112,7 +112,10 @@ executable ic-request-id
 executable ic-ref-test
   import: version, cbor, ghc-flags
   main-is:             ic-ref-test.hs
+  other-modules:       IC.Test.Spec
+  other-modules:       IC.Test.Id
   other-modules:       IC.Test.Options
+  other-modules:       IC.Test.Universal
   build-depends:       tasty
   build-depends:       tasty-hunit
   build-depends:       tasty-html

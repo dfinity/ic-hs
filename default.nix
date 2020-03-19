@@ -3,10 +3,29 @@
 }:
 
 let nixpkgs = import ./nix { inherit system; }; in
-
 let stdenv = nixpkgs.stdenv; in
-
 let subpath = p: import ./nix/gitSource.nix p; in
+
+# Building the universal_canister is relatively convluted:
+#  * We need to use the rust patches from common, as they
+#    include a rustc with the wasm32-unknown-unknown target
+#  * Not sure if I am using naersk the right way here.
+let rust_pkgs = import nixpkgs.sources.common { inherit system; }; in
+let universal-canister = (rust_pkgs.naersk.buildPackage rec {
+    name = "universal-canister";
+    src = subpath ./universal-canister;
+    root = ./universal-canister;
+    CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_LINKER = "${rust_pkgs.llvmPackages_9.lld}/bin/lld";
+    cargoBuildOptions = x : x ++ [ "--target wasm32-unknown-unknown" ];
+    doCheck = false;
+    release = true;
+}).overrideAttrs (old: {
+    postFixup = (old.postFixup or "") + ''
+      mv $out/bin/universal_canister $out/universal_canister.wasm
+      rmdir $out/bin
+    '';
+}); in
+
 
 let haskellPackages = nixpkgs.haskellPackages.override {
   overrides = import nix/haskell-packages.nix nixpkgs subpath;
@@ -15,14 +34,19 @@ let haskellPackages = nixpkgs.haskellPackages.override {
 let ic-ref = haskellPackages.ic-ref.overrideAttrs (old: {
   installPhase = (old.installPhase or "") + ''
     cp -rv test-data $out/test-data
+    # replace symlink with actually built
+    rm -f $out/test-data/universal_canister.wasm
+    cp ${universal-canister}/universal_canister.wasm $out/test-data
   '';
 }); in
 
 let ic-ref-coverage = nixpkgs.haskell.lib.doCoverage ic-ref; in
 
+
 rec {
   inherit ic-ref;
   inherit ic-ref-coverage;
+  inherit universal-canister;
 
   ic-ref-test = nixpkgs.runCommandNoCC "ic-ref-test" {
       nativeBuildInputs = [ ic-ref nixpkgs.wabt ];
@@ -114,6 +138,7 @@ rec {
     constituents = [
       ic-ref
       ic-ref-test
+      universal-canister
       public-spec
       check-generated
     ];
