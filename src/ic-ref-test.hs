@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 module Main where
 
@@ -16,12 +17,16 @@ import Numeric.Natural
 import Data.List
 import Test.Tasty
 import Test.Tasty.HUnit
+import Test.Tasty.Ingredients
+import Test.Tasty.Ingredients.Basic
 import Test.Tasty.Runners.Html
 import Control.Monad.Trans
 import Control.Concurrent
 import Control.Monad
 import System.FilePath
 import System.IO
+import Data.IORef
+import Control.Exception
 import System.Directory
 import System.Environment
 import System.Exit
@@ -38,12 +43,30 @@ import IC.Test.Options
 type Blob = BS.ByteString
 
 main :: IO ()
-main = defaultMainWithIngredients ingredients tests
+main = withTestSuitePrimer $ \primeTestSuite ->
+    defaultMainWithIngredients ingredients (tests primeTestSuite)
   where
-    ingredients = htmlRunner : defaultIngredients ++ [includingOptions [endpointOption]]
+    ingredients =
+      [ listingTests
+      , includingOptions [endpointOption]
+      , htmlRunner `composeReporters` consoleTestReporter
+      ]
 
-tests :: TestTree
-tests = testGroup "Tests" [icTests, idTests]
+-- | This helper function runs the main action, and passes a way to prime the
+-- test suite. If this primer is _not_ executed, the program will always
+-- return success (but still list failing tests)
+withTestSuitePrimer :: (IO () -> IO ()) -> IO ()
+withTestSuitePrimer main = do
+    specCompliant <- newIORef False
+    let primeTestSuite = writeIORef specCompliant True
+    main primeTestSuite `catch`
+        (\(e :: ExitCode) -> readIORef specCompliant >>= \case
+            False -> throwIO ExitSuccess
+            True -> throwIO e)
+
+
+tests :: IO () -> TestTree
+tests primeTestSuite = testGroup "Tests" [icTests primeTestSuite, idTests]
 
 -- To use IC.HTTP.CBOR with HUnit
 instance Parse IO where parseError = assertFailure . T.unpack
@@ -87,7 +110,8 @@ loop act = go (0::Int)
 submitCBOR :: Endpoint -> GenR -> IO GenR
 submitCBOR ep req = do
   res <- postCBOR ep "/api/v1/submit" $ envelope req
-  code2xx res -- the body is unspecified
+  code202 res
+  assertBool "Response body not empty" (BS.null (responseBody res))
   loop $ do
     pollDelay
     res <- postCBOR ep "/api/v1/read" $ envelope $ rec
@@ -158,6 +182,13 @@ code2xx response = assertBool
     c = statusCode (responseStatus response)
     msg = T.unpack (T.decodeUtf8 (BS.toStrict (responseBody response)))
 
+code202 :: HasCallStack => Response BS.ByteString -> IO ()
+code202 response = assertBool
+    ("Status " ++ show c ++ " is not 202\n" ++ msg)
+    (c == 202)
+  where
+    c = statusCode (responseStatus response)
+    msg = T.unpack (T.decodeUtf8 (BS.toStrict (responseBody response)))
 
 -- Runs test once for each field with that field removed, including
 -- nested fields
@@ -243,8 +274,8 @@ getTestWasm wat = do
   else return out
 
 
-icTests :: TestTree
-icTests = askOption $ \ep -> testGroup "Public Spec acceptance tests"
+icTests :: IO () -> TestTree
+icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance tests"
   [ testCase "status endpoint" $ do
       gr <- getCBOR ep "/api/v1/status" >>= okCBOR
       flip record gr $ do
@@ -253,7 +284,23 @@ icTests = askOption $ \ep -> testGroup "Public Spec acceptance tests"
         _ <- optionalField text "impl_version"
         _ <- optionalField text "impl_revision"
 
-        lift $ v @?= specVersion
+        lift $ unless (v == specVersion || v == "unversioned") $
+            assertFailure $ "ic_api_version should be " ++ show specVersion ++ " or \"unversioned\", not " ++ show v
+
+  , testCase "spec compliance claimed" $ do
+      gr <- getCBOR ep "/api/v1/status" >>= okCBOR
+      flip record gr $ do
+        v <- field text "ic_api_version"
+        _ <- optionalField text "impl_source"
+        _ <- optionalField text "impl_version"
+        _ <- optionalField text "impl_revision"
+
+        lift $ unless (v == specVersion) $
+            assertFailure $ "ic_api_version is not " ++ show specVersion ++ ", so no spec compliance assumed"
+
+        -- The system claims to be spec-compliant.
+        -- So lets make sure the error code of ic-ref-test reflects reality
+        lift primeTestSuite
 
   , testGroup "create_canister"
     [ testCase "no id given" $ do

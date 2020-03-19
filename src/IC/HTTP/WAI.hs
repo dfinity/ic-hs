@@ -12,7 +12,6 @@ import Control.Monad.State
 import Data.Aeson as JSON
 
 import IC.Ref
-import IC.HTTP.GenR
 import IC.HTTP.Status
 import IC.HTTP.CBOR
 import IC.HTTP.Request
@@ -35,7 +34,7 @@ handle stateVar req respond = case (requestMethod req, pathInfo req) of
             Right ar -> do
                 runIC $ submitRequest (requestId gr) ar
                 loopIC runStep
-                cbor status200 emptyR
+                empty status202
     ("POST", ["api","v1","read"]) ->
         withSignedCBOR $ \gr -> case syncRequest gr of
             Left err -> invalidRequest err
@@ -66,6 +65,8 @@ handle stateVar req respond = case (requestMethod req, pathInfo req) of
 
     withHistory :: ([IC] -> IO a) -> IO a
     withHistory a = readMVar stateVar >>= a . reverse
+
+    empty status = respond $ responseBuilder status [ ] mempty
 
     cbor status gr = respond $ responseBuilder
         status
