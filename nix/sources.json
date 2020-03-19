@@ -1,4 +1,11 @@
 {
+    "common": {
+        "branch": "master",
+        "ref": "master",
+        "repo": "ssh://git@github.com/dfinity-lab/common",
+        "rev": "c83d968179e9c927b8bcf1cc9e34b21ba56faff1",
+        "type": "git"
+    },
     "nixpkgs": {
         "branch": "nixpkgs-unstable",
         "description": "A read-only mirror of NixOS/nixpkgs tracking the released channels. Send issues and PRs to",
