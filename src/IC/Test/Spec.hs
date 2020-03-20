@@ -54,13 +54,15 @@ defaultSK = createSecretKey "fixed32byteseedfortesting"
 otherSK :: SecretKey
 otherSK = createSecretKey "anotherfixed32byteseedfortesting"
 
-defaultSender :: Blob
-defaultSender = mkSelfAuthenticatingId $ toPublicKey defaultSK
+defaultUser :: Blob
+defaultUser = mkSelfAuthenticatingId $ toPublicKey defaultSK
+otherUser :: Blob
+otherUser = mkSelfAuthenticatingId $ toPublicKey otherSK
 
 queryToNonExistant :: GenR
 queryToNonExistant = rec
     [ "request_type" =: GText "query"
-    , "sender" =: GBlob defaultSender
+    , "sender" =: GBlob defaultUser
     , "canister_id" =: GBlob doesn'tExist
     , "method_name" =: GText "foo"
     , "arg" =: GBlob "nothing to see here"
@@ -76,7 +78,7 @@ requestStatusNonExistant = rec
 minimalInstall :: GenR
 minimalInstall = rec
     [ "request_type" =: GText "install_code"
-    , "sender" =: GBlob defaultSender
+    , "sender" =: GBlob defaultUser
     , "canister_id" =: GBlob doesn'tExist
     , "module" =: GBlob ""
     , "arg" =: GBlob ""
@@ -120,15 +122,16 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
     [ testCase "no id given" $ do
         cid <- submitCBOR ep >=> createReply $ rec
           [ "request_type" =: GText "create_canister"
-          , "sender" =: GBlob defaultSender
+          , "sender" =: GBlob defaultUser
           ]
         assertBool "opaque id expected" $ isOpaqueId cid
     , testCaseSteps "desired id" $ \step -> do
         step "Creating"
-        id <- getFreshId
+        bytes <- getRand8Bytes
+        let id = mkDerivedId defaultUser bytes
         id' <- submitCBOR ep >=> createReply $ rec
           [ "request_type" =: GText "create_canister"
-          , "sender" =: GBlob defaultSender
+          , "sender" =: GBlob defaultUser
           , "desired_id" =: GBlob id
           ]
         id' @?= id
@@ -136,7 +139,26 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
         step "Creating again"
         submitCBOR ep >=> statusReject 3 $ rec
           [ "request_type" =: GText "create_canister"
-          , "sender" =: GBlob defaultSender
+          , "sender" =: GBlob defaultUser
+          , "desired_id" =: GBlob id
+          ]
+
+    , testCaseSteps "desired id (wrong class)" $ \step -> do
+        step "Creating"
+        id <- mkOpaqueId <$> getRand8Bytes
+        submitCBOR ep >=> statusReject 3 $ rec
+          [ "request_type" =: GText "create_canister"
+          , "sender" =: GBlob defaultUser
+          , "desired_id" =: GBlob id
+          ]
+
+    , testCaseSteps "desired id (wrong user)" $ \step -> do
+        step "Creating"
+        bytes <- getRand8Bytes
+        let id = mkDerivedId otherUser bytes
+        submitCBOR ep >=> statusReject 3 $ rec
+          [ "request_type" =: GText "create_canister"
+          , "sender" =: GBlob defaultUser
           , "desired_id" =: GBlob id
           ]
     ]
@@ -150,14 +172,14 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
         step "Create"
         can_id <- submitCBOR ep >=> createReply $ rec
           [ "request_type" =: GText "create_canister"
-          , "sender" =: GBlob defaultSender
+          , "sender" =: GBlob defaultUser
           ]
 
         step "Install"
         trivial_wasm <- getTestWat "trivial"
         submitCBOR ep >=> emptyReply $ rec
           [ "request_type" =: GText "install_code"
-          , "sender" =: GBlob defaultSender
+          , "sender" =: GBlob defaultUser
           , "canister_id" =: GBlob can_id
           , "module" =: GBlob trivial_wasm
           , "arg" =: GBlob ""
@@ -166,7 +188,7 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
         step "Install"
         submitCBOR ep >=> statusReject 3 $ rec
           [ "request_type" =: GText "install_code"
-          , "sender" =: GBlob defaultSender
+          , "sender" =: GBlob defaultUser
           , "canister_id" =: GBlob can_id
           , "module" =: GBlob trivial_wasm
           , "arg" =: GBlob ""
@@ -176,7 +198,7 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
         step "Reinstall"
         submitCBOR ep >=> statusReply >=> emptyRec $ rec
           [ "request_type" =: GText "install_code"
-          , "sender" =: GBlob defaultSender
+          , "sender" =: GBlob defaultUser
           , "canister_id" =: GBlob can_id
           , "module" =: GBlob trivial_wasm
           , "arg" =: GBlob ""
@@ -186,7 +208,7 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
         step "Upgrade"
         submitCBOR ep >=> emptyReply $ rec
           [ "request_type" =: GText "install_code"
-          , "sender" =: GBlob defaultSender
+          , "sender" =: GBlob defaultUser
           , "canister_id" =: GBlob can_id
           , "module" =: GBlob trivial_wasm
           , "arg" =: GBlob ""
@@ -205,12 +227,12 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
       install' prog = do
         cid <- submitCBOR ep >=> createReply $ rec
           [ "request_type" =: GText "create_canister"
-          , "sender" =: GBlob defaultSender
+          , "sender" =: GBlob defaultUser
           ]
         trivial_wasm <- getTestWasm "universal_canister"
         gr <- submitCBOR ep $ rec
           [ "request_type" =: GText "install_code"
-          , "sender" =: GBlob defaultSender
+          , "sender" =: GBlob defaultUser
           , "canister_id" =: GBlob cid
           , "module" =: GBlob trivial_wasm
           , "arg" =: GBlob (run prog)
@@ -227,7 +249,7 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
       call' :: HasCallStack => Blob -> Prog -> IO GenR
       call' cid prog = submitCBOR ep $ rec
           [ "request_type" =: GText "call"
-          , "sender" =: GBlob defaultSender
+          , "sender" =: GBlob defaultUser
           , "canister_id" =: GBlob cid
           , "method_name" =: GText "update"
           , "arg" =: GBlob (run prog)
@@ -240,7 +262,7 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
       query' cid prog =
         readCBOR ep $ rec
           [ "request_type" =: GText "query"
-          , "sender" =: GBlob defaultSender
+          , "sender" =: GBlob defaultUser
           , "canister_id" =: GBlob cid
           , "method_name" =: GText "query"
           , "arg" =: GBlob (run prog)
@@ -283,11 +305,11 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
 
         step "Caller"
         r <- call cid $ replyData caller
-        r @?= defaultSender
+        r @?= defaultUser
 
         step "Caller (query)"
         r <- query cid $ replyData caller
-        r @?= defaultSender
+        r @?= defaultUser
 
       , testCase "self" $ do
         cid <- install noop
@@ -445,7 +467,7 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
       , testCase "caller (in init)" $ do
         cid <- install $ setGlobal caller
         r <- query cid $ replyData getGlobal
-        r @?= defaultSender
+        r @?= defaultUser
 
       , testCase "self (in init)" $ do
         cid <- install $ setGlobal self
@@ -500,11 +522,11 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
       [ testCase "in query" $ do
         cid <- submitCBOR ep >=> createReply $ rec
           [ "request_type" =: GText "create_canister"
-          , "sender" =: GBlob defaultSender
+          , "sender" =: GBlob defaultUser
           ]
         let query = rec
               [ "request_type" =: GText "query"
-              , "sender" =: GBlob defaultSender
+              , "sender" =: GBlob defaultUser
               , "canister_id" =: GBlob cid
               , "method_name" =: GText "foo"
               , "arg" =: GBlob "nothing to see here"
@@ -515,7 +537,7 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
       , testCase "in request status" $ do
           let req = rec
                 [ "request_type" =: GText "create_canister"
-                , "sender" =: GBlob defaultSender
+                , "sender" =: GBlob defaultUser
                 ]
           _cid <- submitCBOR ep req >>= createReply
           let status_req = rec
@@ -526,11 +548,11 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
       , testCase "in install" $ do
         cid <- submitCBOR ep >=> createReply $ rec
           [ "request_type" =: GText "create_canister"
-          , "sender" =: GBlob defaultSender
+          , "sender" =: GBlob defaultUser
           ]
         let req = rec
               [ "request_type" =: GText "install_code"
-              , "sender" =: GBlob defaultSender
+              , "sender" =: GBlob defaultUser
               , "canister_id" =: GBlob cid
               , "module" =: GBlob ""
               , "arg" =: GBlob ""
@@ -548,11 +570,11 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
       , testCase "in call" $ do
         cid <- submitCBOR ep >=> createReply $ rec
           [ "request_type" =: GText "create_canister"
-          , "sender" =: GBlob defaultSender
+          , "sender" =: GBlob defaultUser
           ]
         let req = rec
               [ "request_type" =: GText "call"
-              , "sender" =: GBlob defaultSender
+              , "sender" =: GBlob defaultUser
               , "canister_id" =: GBlob cid
               , "method_name" =: GText "foo"
               , "arg" =: GBlob "nothing to see here"
@@ -747,10 +769,8 @@ omitFields (GRec hm) act =
 omitFields _ _ = error "omitFields needs a GRec"
 
 
--- We are using randomness to get fresh ids.
--- Not the most principled way, but I don’t see much better ways.
-getFreshId :: IO BS.ByteString
-getFreshId = BS.pack <$> replicateM 16 randomIO
+getRand8Bytes :: IO BS.ByteString
+getRand8Bytes = BS.pack <$> replicateM 8 randomIO
 
 -- * Test data access
 

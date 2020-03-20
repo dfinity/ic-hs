@@ -242,7 +242,10 @@ submitRequest rid r = modify $ \ic ->
 processRequest :: ICM m => RequestID -> AsyncRequest -> m ()
 
 processRequest rid req = (setReqStatus rid =<<) $ onReject (return . Rejected) $ case req of
-  CreateRequest _user_id (Just desired) -> do
+  CreateRequest user_id (Just desired) -> do
+    unless (isDerivedId (rawEntityId user_id) (rawEntityId desired)) $
+      reject RC_DESTINATION_INVALID "Desired canister id not derived from sender id"
+
     exists <- gets (M.member desired . canisters)
     when exists $
       reject RC_DESTINATION_INVALID "Desired canister id already exists"
