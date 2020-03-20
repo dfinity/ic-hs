@@ -9,19 +9,23 @@ import Control.Monad.Except
 import Data.Maybe
 
 import IC.Types
+import IC.Crypto
 import IC.Ref (AsyncRequest(..), SyncRequest(..),
   RequestStatus(..), CompletionValue(..))
+import IC.HTTP.RequestId
 import IC.HTTP.GenR
 import IC.HTTP.GenR.Parse
 
 dummyUserId :: EntityId
 dummyUserId = EntityId $ BS.pack [0xCA, 0xFF, 0xEE]
 
-stripEnvelope :: GenR -> Either T.Text GenR
+stripEnvelope :: GenR -> Either T.Text (PublicKey, GenR)
 stripEnvelope = record $ do
-    _ <- field blob "sender_pubkey"
-    _ <- field blob "sender_sig"
-    field anyType "content"
+    pk <- field blob "sender_pubkey"
+    sig <- field blob "sender_sig"
+    content <- field anyType "content"
+    lift $ verify pk (requestId content) sig
+    return (pk, content)
 
 -- Parsing requests to /submit
 asyncRequest :: GenR -> Either T.Text AsyncRequest

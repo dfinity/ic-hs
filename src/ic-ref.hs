@@ -4,7 +4,7 @@ import Control.Concurrent
 import Control.Monad (join, forever)
 import Network.Wai.Handler.Warp
 import qualified Data.Text as T
-import IC.HTTP.WAI
+import IC.HTTP
 import IC.Version
 
 defaultPort :: Port
@@ -15,11 +15,11 @@ work :: Bool -> Maybe FilePath -> IO ()
 work pickPort writePortTo = do
     putStrLn "Starting ic-ref..."
     if pickPort
-    then withApplication IC.HTTP.WAI.startApp $ \port -> do
+    then withApplication IC.HTTP.startApp $ \port -> do
         greet port
         forever (threadDelay maxBound)
     else do
-        app <- IC.HTTP.WAI.startApp
+        app <- IC.HTTP.startApp
         greet defaultPort
         run defaultPort app
   where

@@ -1,7 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
-
-module IC.HTTP.WAI where
+module IC.HTTP where
 
 import Network.Wai
 import Control.Concurrent.MVar
@@ -29,18 +28,25 @@ handle stateVar req respond = case (requestMethod req, pathInfo req) of
     ("GET", ["api","v1","status"]) ->
         cbor status200 IC.HTTP.Status.r
     ("POST", ["api","v1","submit"]) ->
-        withSignedCBOR $ \gr -> case  asyncRequest gr of
+        withSignedCBOR $ \(pk, gr) -> case asyncRequest gr of
             Left err -> invalidRequest err
-            Right ar -> do
-                runIC $ submitRequest (requestId gr) ar
-                loopIC runStep
-                empty status202
+            Right ar -> (<* loopIC runStep) $ runIC $ do
+                authd <- authAsyncRequest pk ar
+                if authd
+                then do
+                    submitRequest (requestId gr) ar
+                    lift $ empty status202
+                else lift $ invalidRequest "Wrong signature"
     ("POST", ["api","v1","read"]) ->
-        withSignedCBOR $ \gr -> case syncRequest gr of
+        withSignedCBOR $ \(pk,gr) -> case syncRequest gr of
             Left err -> invalidRequest err
-            Right ar -> do
-                r <- peekIC $ readRequest ar
-                cbor status200 (IC.HTTP.Request.response r)
+            Right sr -> peekIC $ do
+                authd <- authSyncRequest pk sr
+                if authd
+                then do
+                    r <- readRequest sr
+                    lift $ cbor status200 (IC.HTTP.Request.response r)
+                else lift $ invalidRequest "Wrong signature"
     _ -> notFound
   where
     runIC :: StateT IC IO a -> IO a
@@ -49,9 +55,9 @@ handle stateVar req respond = case (requestMethod req, pathInfo req) of
         return (s':s:ss, x)
 
     peekIC :: StateT IC IO a -> IO a
-    peekIC a = modifyMVar stateVar $ \(s:ss) -> do
-        (x, _s') <- runStateT a s
-        return (s:ss, x)
+    peekIC a = do
+        (s:_) <- readMVar stateVar
+        evalStateT a s
 
     stepIC :: StateT IC IO Bool -> IO Bool
     stepIC a = modifyMVar stateVar $ \(s:ss) -> do

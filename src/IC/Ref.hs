@@ -16,11 +16,14 @@ CBOR-level processing has already happened.
 module IC.Ref
   ( IC(..)
   , AsyncRequest(..)
+  , callerOfAsync
   , SyncRequest(..)
   , RequestStatus(..)
   , CompletionValue(..)
   , ReqResponse
   , initialIC
+  , authSyncRequest
+  , authAsyncRequest
   , submitRequest
   , readRequest
   , runStep
@@ -40,6 +43,7 @@ import Control.Monad.State.Class
 import Control.Monad.Except
 import Data.Sequence (Seq(..))
 import Data.Foldable (toList)
+import IC.Id.Forms hiding (Blob)
 
 import IC.Types
 import IC.Canister
@@ -144,12 +148,16 @@ setReqStatus :: ICM m => RequestID -> RequestStatus -> m ()
 setReqStatus rid s = modify $ \ic ->
   ic { requests = M.adjust (\(r,_) -> (r,s)) rid (requests ic) }
 
+callerOfAsync :: AsyncRequest -> EntityId
+callerOfAsync = \case
+    CreateRequest user_id _ -> user_id
+    InstallRequest _ user_id _ _ _ -> user_id
+    UpgradeRequest _ user_id _ _ -> user_id
+    UpdateRequest _ user_id _ _ -> user_id
+
 callerOfRequest :: ICM m => RequestID -> m EntityId
 callerOfRequest rid = gets (M.lookup rid . requests) >>= \case
-    Just (CreateRequest user_id _, _) -> return user_id
-    Just (InstallRequest _ user_id _ _ _, _) -> return user_id
-    Just (UpgradeRequest _ user_id _ _, _) -> return user_id
-    Just (UpdateRequest _ user_id _ _, _) -> return user_id
+    Just (ar,_) -> return (callerOfAsync ar)
     Nothing -> error "callerOfRequest"
 
 
@@ -176,6 +184,28 @@ getNonemptyCanisterState :: (CanReject m, ICM m) => CanisterId -> m CanState
 getNonemptyCanisterState cid =
   getCanisterState cid
     `orElse` reject RC_DESTINATION_INVALID ("canister is empty:" ++ prettyID cid)
+
+-- Authentication of requests
+
+-- This is monadic, as authentication may depend on the state of the system
+-- for request status: Whether the request exists and who owns it
+-- in general: eventually there will be user key management
+
+authUser :: ICM m => PublicKey -> EntityId -> m Bool
+authUser pk id = return $ -- This is monadic to allow for key management
+    isSelfAuthenticatingId pk (rawEntityId id)
+
+authAsyncRequest :: ICM m => PublicKey -> AsyncRequest -> m Bool
+authAsyncRequest pk ar = authUser pk (callerOfAsync ar)
+
+authSyncRequest :: ICM m => PublicKey -> SyncRequest -> m Bool
+authSyncRequest pk = \case
+  StatusRequest rid ->
+    gets (findRequest rid) >>= \case
+      Just (ar,_) -> authUser pk (callerOfAsync ar)
+      Nothing -> return False
+  QueryRequest _ user_id _ _ ->
+    authUser pk user_id
 
 -- Synchronous requests
 
@@ -212,7 +242,10 @@ submitRequest rid r = modify $ \ic ->
 processRequest :: ICM m => RequestID -> AsyncRequest -> m ()
 
 processRequest rid req = (setReqStatus rid =<<) $ onReject (return . Rejected) $ case req of
-  CreateRequest _user_id (Just desired) -> do
+  CreateRequest user_id (Just desired) -> do
+    unless (isDerivedId (rawEntityId user_id) (rawEntityId desired)) $
+      reject RC_DESTINATION_INVALID "Desired canister id not derived from sender id"
+
     exists <- gets (M.member desired . canisters)
     when exists $
       reject RC_DESTINATION_INVALID "Desired canister id already exists"

@@ -15,6 +15,7 @@ type (↦) = M.Map
 -- Basic types
 
 type Blob = BS.ByteString
+type PublicKey = Blob
 newtype EntityId = EntityId { rawEntityId :: Blob }
     deriving (Show, Eq, Ord)
 
