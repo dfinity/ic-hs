@@ -2,7 +2,7 @@
 # See ./nix/generate.nix for instructions.
 
 { mkDerivation, pkgs, aeson, base, binary, bytestring, cborg, containers
-, crc, cryptonite, data-default-class, directory, filepath
+, crc, cryptonite, data-default-class, directory, ed25519, filepath
 , hex-text, http-client, http-types, memory, mtl
 , optparse-applicative, primitive, process-extras, random, stdenv
 , tasty, tasty-html, tasty-hunit, text, transformers
@@ -17,7 +17,7 @@ mkDerivation {
   isExecutable = true;
   executableHaskellDepends = [
     aeson base binary bytestring cborg containers crc cryptonite
-    data-default-class directory filepath hex-text http-client
+    data-default-class directory ed25519 filepath hex-text http-client
     http-types memory mtl optparse-applicative primitive process-extras
     random tasty tasty-html tasty-hunit text transformers
     unordered-containers utf8-string vector wai warp winter
