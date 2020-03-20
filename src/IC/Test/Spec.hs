@@ -118,11 +118,11 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
 
   , testGroup "create_canister"
     [ testCase "no id given" $ do
-        _can_id <- submitCBOR ep >=> createReply $ rec
+        cid <- submitCBOR ep >=> createReply $ rec
           [ "request_type" =: GText "create_canister"
           , "sender" =: GBlob defaultSender
           ]
-        return ()
+        assertBool "opaque id expected" $ isOpaqueId cid
     , testCaseSteps "desired id" $ \step -> do
         step "Creating"
         id <- getFreshId
@@ -250,7 +250,9 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
       query cid prog = query' cid prog >>= callReply
 
     in
-      [ testCase "create and install" $ void $ install noop
+      [ testCase "create and install" $ do
+        cid <- install noop
+        assertBool "opaque id expected" $ isOpaqueId cid
 
       , testCaseSteps "simple calls" $ \step -> do
         cid <- install noop
@@ -496,14 +498,14 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
     , ("with wrong key", envelope otherSK)
     ] <&> \(name, env) -> testGroup name
       [ testCase "in query" $ do
-        can_id <- submitCBOR ep >=> createReply $ rec
+        cid <- submitCBOR ep >=> createReply $ rec
           [ "request_type" =: GText "create_canister"
           , "sender" =: GBlob defaultSender
           ]
         let query = rec
               [ "request_type" =: GText "query"
               , "sender" =: GBlob defaultSender
-              , "canister_id" =: GBlob can_id
+              , "canister_id" =: GBlob cid
               , "method_name" =: GText "foo"
               , "arg" =: GBlob "nothing to see here"
               ]
@@ -515,21 +517,21 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
                 [ "request_type" =: GText "create_canister"
                 , "sender" =: GBlob defaultSender
                 ]
-          _can_id <- submitCBOR ep req >>= createReply
+          _cid <- submitCBOR ep req >>= createReply
           let status_req = rec
                 [ "request_type" =: GText "request_status"
                 , "request_id" =: GBlob (requestId req)
                 ]
           postCBOR ep "/api/v1/read/" (env status_req) >>= code4xx
       , testCase "in install" $ do
-        can_id <- submitCBOR ep >=> createReply $ rec
+        cid <- submitCBOR ep >=> createReply $ rec
           [ "request_type" =: GText "create_canister"
           , "sender" =: GBlob defaultSender
           ]
         let req = rec
               [ "request_type" =: GText "install_code"
               , "sender" =: GBlob defaultSender
-              , "canister_id" =: GBlob can_id
+              , "canister_id" =: GBlob cid
               , "module" =: GBlob ""
               , "arg" =: GBlob ""
               ]
@@ -544,14 +546,14 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
         postCBOR ep "/api/v1/read/" (envelope defaultSK status_req) >>= code4xx
 
       , testCase "in call" $ do
-        can_id <- submitCBOR ep >=> createReply $ rec
+        cid <- submitCBOR ep >=> createReply $ rec
           [ "request_type" =: GText "create_canister"
           , "sender" =: GBlob defaultSender
           ]
         let req = rec
               [ "request_type" =: GText "call"
               , "sender" =: GBlob defaultSender
-              , "canister_id" =: GBlob can_id
+              , "canister_id" =: GBlob cid
               , "method_name" =: GText "foo"
               , "arg" =: GBlob "nothing to see here"
               ]
