@@ -371,6 +371,25 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
             otherSide
         r @?= ("Hello " <> cid <> " this is " <> cid)
 
+        step "Reject code is 0 in reply"
+        r <- call cid $
+          call_simple
+            (bytes cid)
+            "query"
+            (callback (replyData (i2b reject_code)))
+            (callback replyRejectData)
+            otherSide
+        r @?= "\x0\x0\x0\x0"
+
+        step "Reject message traps in reply"
+        call' cid >=> statusReject 5 $
+          call_simple
+            (bytes cid)
+            "query"
+            (callback replyRejectData)
+            (callback replyRejectData)
+            otherSide
+
         step "Second reply in callback"
         r <- call cid $
           setGlobal "FOO" >>>
