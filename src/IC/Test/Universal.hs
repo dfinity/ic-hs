@@ -147,6 +147,9 @@ setGlobal = op 21
 getGlobal :: Exp 'B
 getGlobal = op 22
 
+badPrint :: Prog
+badPrint = op 23
+
 
 -- Some convenience combinators
 

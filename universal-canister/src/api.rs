@@ -161,6 +161,13 @@ pub fn print(data : &[u8]) {
     }
 }
 
+pub fn bad_print() {
+    unsafe {
+        ic0::debug_print(u32::max_value()-2, 1);
+        ic0::debug_print(u32::max_value()-2, 3);
+    }
+}
+
 /// Traps with the given message.
 pub fn trap_with_blob(data: &[u8]) -> ! {
     unsafe {

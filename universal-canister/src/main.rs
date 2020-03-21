@@ -169,6 +169,9 @@ fn eval(ops : Ops) {
         21 => set_global(stack.pop_blob()),
         22 => stack.push_blob(get_global()),
 
+        // bad print
+        23 => api::bad_print(),
+
         _ => api::trap_with(&format!("unknown op {}", op)),
       }
   }

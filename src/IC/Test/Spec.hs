@@ -484,6 +484,10 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
         r <- query cid $ debugPrint "ic-ref-test print" >>> reply
         r @?= ""
 
+        step "Using debug_print with invalid bounds"
+        r <- query cid $ badPrint >>> reply
+        r @?= ""
+
         step "Explicit trap"
         call' cid >=> statusReject 5 $ trap "trapping"
         step "Explicit trap (query)"
