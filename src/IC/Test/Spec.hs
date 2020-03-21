@@ -303,6 +303,12 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
         step "Double reply (query)"
         query' cid >=> statusReject 5 $ reply >>> reply
 
+        step "Reply data append after reply"
+        call' cid >=> statusReject 5 $ reply >>> replyDataAppend "foo"
+
+        step "Reply data append after reject"
+        call' cid >=> statusReject 5 $ reject "bar" >>> replyDataAppend "foo"
+
         step "Caller"
         r <- call cid $ replyData caller
         r @?= defaultUser
