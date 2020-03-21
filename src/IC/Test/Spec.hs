@@ -778,6 +778,7 @@ statusResonse = record $ do
     _ <- optionalField text "impl_source"
     _ <- optionalField text "impl_version"
     _ <- optionalField text "impl_revision"
+    swallowAllFields -- More fields are explicitly allowed
     return v
 
 -- * Programmatic test generation
