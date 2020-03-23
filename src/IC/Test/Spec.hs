@@ -492,6 +492,58 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
         r <- call cid $ replyData (stableRead (int 0) (int 3))
         r @?= "FOO"
 
+      , testGroup "upgrades" $
+        let upgrade :: HasCallStack => Blob -> Prog -> IO GenR
+            upgrade cid prog = do
+              trivial_wasm <- getTestWasm "universal_canister"
+              submitCBOR ep $ rec
+                [ "request_type" =: GText "install_code"
+                , "sender" =: GBlob defaultUser
+                , "canister_id" =: GBlob cid
+                , "module" =: GBlob trivial_wasm
+                , "arg" =: GBlob (run prog)
+                , "mode" =: GText "upgrade"
+                ]
+
+            installForUpgrade on_pre_upgrade = install $
+                setGlobal "FOO" >>>
+                ignore (stableGrow (int 1)) >>>
+                stableWrite (int 0) "BAR______" >>>
+                onPreUpgrade (callback on_pre_upgrade)
+
+            checkNoUpgrade cid = do
+              r <- query cid $ replyData getGlobal
+              r @?= "FOO"
+              r <- query cid $ replyData (stableRead (int 0) (int 9))
+              r @?= "BAR______"
+        in
+        [ testCase "succeeding" $ do
+          -- check that the pre-upgrade hook has access to the old state
+          cid <- installForUpgrade $ stableWrite (int 3) getGlobal
+          checkNoUpgrade cid
+
+          upgrade cid >=> emptyReply $ stableWrite (int 6) (stableRead (int 0) (int 3))
+
+          r <- query cid $ replyData getGlobal
+          r @?= ""
+          r <- query cid $ replyData (stableRead (int 0) (int 9))
+          r @?= "BARFOOBAR"
+
+        , testCase "trapping in pre-upgrade" $ do
+          cid <- installForUpgrade $ trap "trap in pre-upgrade"
+          checkNoUpgrade cid
+
+          upgrade cid >=> statusReject 5 $ noop
+          checkNoUpgrade cid
+
+        , testCase "trapping in post-upgrade" $ do
+          cid <- installForUpgrade $ stableWrite (int 3) getGlobal
+          checkNoUpgrade cid
+
+          upgrade cid >=> statusReject 5 $ trap "trap in post-upgrade"
+          checkNoUpgrade cid
+        ]
+
       , testGroup "debug facilities"
         [ simpleTestCase "Using debug_print" $ \cid -> do
           r <- call cid $ debugPrint "ic-ref-test print" >>> reply
