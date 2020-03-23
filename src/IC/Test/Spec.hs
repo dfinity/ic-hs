@@ -84,6 +84,13 @@ minimalInstall = rec
     , "arg" =: GBlob ""
     ]
 
+addNonce :: GenR -> IO GenR
+addNonce (GRec hm) | "nonce" `HM.member` hm = return (GRec hm)
+addNonce (GRec hm) = do
+  nonce <- getRand8Bytes
+  return $ GRec $ HM.insert "nonce" (GBlob nonce) hm
+addNonce r = return r
+
 envelope :: SecretKey -> GenR -> GenR
 envelope sk content = rec
     [ "sender_pubkey" =: GBlob (toPublicKey sk)
@@ -576,7 +583,7 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
       , testCase "in unknown request status" $
           postCBOR ep "/api/v1/read/" (env requestStatusNonExistant) >>= code4xx
       , testCase "in request status" $ do
-          let req = rec
+          req <- addNonce $ rec
                 [ "request_type" =: GText "create_canister"
                 , "sender" =: GBlob defaultUser
                 ]
@@ -587,48 +594,48 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
                 ]
           postCBOR ep "/api/v1/read/" (env status_req) >>= code4xx
       , testCase "in install" $ do
-        cid <- submitCBOR ep >=> createReply $ rec
-          [ "request_type" =: GText "create_canister"
-          , "sender" =: GBlob defaultUser
-          ]
-        let req = rec
-              [ "request_type" =: GText "install_code"
-              , "sender" =: GBlob defaultUser
-              , "canister_id" =: GBlob cid
-              , "module" =: GBlob ""
-              , "arg" =: GBlob ""
-              ]
-        postCBOR ep "/api/v1/submit" (env req) >>= code202_or_4xx
+          cid <- submitCBOR ep >=> createReply $ rec
+            [ "request_type" =: GText "create_canister"
+            , "sender" =: GBlob defaultUser
+            ]
+          req <- addNonce $ rec
+                [ "request_type" =: GText "install_code"
+                , "sender" =: GBlob defaultUser
+                , "canister_id" =: GBlob cid
+                , "module" =: GBlob ""
+                , "arg" =: GBlob ""
+                ]
+          postCBOR ep "/api/v1/submit" (env req) >>= code202_or_4xx
 
-        -- Also check that the request was not created
-        ingressDelay
-        let status_req = rec
-              [ "request_type" =: GText "request_status"
-              , "request_id" =: GBlob (requestId req)
-              ]
-        postCBOR ep "/api/v1/read/" (envelope defaultSK status_req) >>= code4xx
+          -- Also check that the request was not created
+          ingressDelay
+          let status_req = rec
+                [ "request_type" =: GText "request_status"
+                , "request_id" =: GBlob (requestId req)
+                ]
+          postCBOR ep "/api/v1/read/" (envelope defaultSK status_req) >>= code4xx
 
       , testCase "in call" $ do
-        cid <- submitCBOR ep >=> createReply $ rec
-          [ "request_type" =: GText "create_canister"
-          , "sender" =: GBlob defaultUser
-          ]
-        let req = rec
-              [ "request_type" =: GText "call"
-              , "sender" =: GBlob defaultUser
-              , "canister_id" =: GBlob cid
-              , "method_name" =: GText "foo"
-              , "arg" =: GBlob "nothing to see here"
-              ]
-        postCBOR ep "/api/v1/submit" (env req) >>= code202_or_4xx
+          cid <- submitCBOR ep >=> createReply $ rec
+            [ "request_type" =: GText "create_canister"
+            , "sender" =: GBlob defaultUser
+            ]
+          req <- addNonce $ rec
+                [ "request_type" =: GText "call"
+                , "sender" =: GBlob defaultUser
+                , "canister_id" =: GBlob cid
+                , "method_name" =: GText "foo"
+                , "arg" =: GBlob "nothing to see here"
+                ]
+          postCBOR ep "/api/v1/submit" (env req) >>= code202_or_4xx
 
-        -- Also check that the request was not created
-        ingressDelay
-        let status_req = rec
-              [ "request_type" =: GText "request_status"
-              , "request_id" =: GBlob (requestId req)
-              ]
-        postCBOR ep "/api/v1/read/" (envelope defaultSK status_req) >>= code4xx
+          -- Also check that the request was not created
+          ingressDelay
+          let status_req = rec
+                [ "request_type" =: GText "request_status"
+                , "request_id" =: GBlob (requestId req)
+                ]
+          postCBOR ep "/api/v1/read/" (envelope defaultSK status_req) >>= code4xx
       ]
   ]
 
@@ -675,10 +682,11 @@ postCBOR (Endpoint endpoint) path gr = do
 readCBOR :: Endpoint -> GenR -> IO GenR
 readCBOR ep req = postCBOR ep "/api/v1/read" (envelope defaultSK req) >>= okCBOR
 
--- | Add envelope to CVBOR, post to "submit", poll for the request response, and
--- return decoded CBOR
+-- | Add envelope to CBOR, and a nonce if not there, post to "submit", poll for
+-- the request response, and return decoded CBOR
 submitCBOR :: Endpoint -> GenR -> IO GenR
 submitCBOR ep req = do
+  req <- addNonce req
   res <- postCBOR ep "/api/v1/submit" (envelope defaultSK req)
   code202 res
   assertBool "Response body not empty" (BS.null (responseBody res))
