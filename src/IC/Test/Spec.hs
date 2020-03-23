@@ -84,6 +84,13 @@ minimalInstall = rec
     , "arg" =: GBlob ""
     ]
 
+addNonce :: GenR -> IO GenR
+addNonce (GRec hm) | "nonce" `HM.member` hm = return (GRec hm)
+addNonce (GRec hm) = do
+  nonce <- getRand8Bytes
+  return $ GRec $ HM.insert "nonce" (GBlob nonce) hm
+addNonce r = return r
+
 envelope :: SecretKey -> GenR -> GenR
 envelope sk content = rec
     [ "sender_pubkey" =: GBlob (toPublicKey sk)
@@ -143,8 +150,7 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
           , "desired_id" =: GBlob id
           ]
 
-    , testCaseSteps "desired id (wrong class)" $ \step -> do
-        step "Creating"
+    , testCase "desired id (wrong class)" $ do
         id <- mkOpaqueId <$> getRand8Bytes
         submitCBOR ep >=> statusReject 3 $ rec
           [ "request_type" =: GText "create_canister"
@@ -152,8 +158,7 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
           , "desired_id" =: GBlob id
           ]
 
-    , testCaseSteps "desired id (wrong user)" $ \step -> do
-        step "Creating"
+    , testCase "desired id (wrong user)" $ do
         bytes <- getRand8Bytes
         let id = mkDerivedId otherUser bytes
         submitCBOR ep >=> statusReject 3 $ rec
@@ -175,8 +180,20 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
           , "sender" =: GBlob defaultUser
           ]
 
-        step "Install"
         trivial_wasm <- getTestWat "trivial"
+
+        step "Reinstall fails"
+        submitCBOR ep >=> statusReject 3 $ rec
+          [ "request_type" =: GText "install_code"
+          , "sender" =: GBlob defaultUser
+          , "canister_id" =: GBlob can_id
+          , "module" =: GBlob trivial_wasm
+          , "arg" =: GBlob ""
+          , "mode" =: GText "reinstall"
+          ]
+
+
+        step "Install"
         submitCBOR ep >=> emptyReply $ rec
           [ "request_type" =: GText "install_code"
           , "sender" =: GBlob defaultUser
@@ -185,7 +202,7 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
           , "arg" =: GBlob ""
           ]
 
-        step "Install"
+        step "Install again fails"
         submitCBOR ep >=> statusReject 3 $ rec
           [ "request_type" =: GText "install_code"
           , "sender" =: GBlob defaultUser
@@ -271,142 +288,226 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
       query :: HasCallStack => Blob -> Prog -> IO Blob
       query cid prog = query' cid prog >>= callReply
 
+      -- Shortcut for test cases that just need one canister
+      simpleTestCase :: String -> (Blob -> IO ()) -> TestTree
+      simpleTestCase name act =
+        testCase name $ install noop >>= act
+
     in
       [ testCase "create and install" $ do
         cid <- install noop
         assertBool "opaque id expected" $ isOpaqueId cid
 
-      , testCaseSteps "simple calls" $ \step -> do
-        cid <- install noop
+      , testGroup "simple calls"
+        [ simpleTestCase "Call" $ \cid -> do
+          r <- call cid $ replyData "ABCD"
+          r @?= "ABCD"
 
-        step "Call"
-        r <- call cid $ replyData "ABCD"
-        r @?= "ABCD"
+        , simpleTestCase "Call (query)" $ \cid -> do
+          r <- query cid $ replyData "ABCD"
+          r @?= "ABCD"
 
-        step "Call (query)"
-        r <- query cid $ replyData "ABCD"
-        r @?= "ABCD"
+        , simpleTestCase "Call no non-existant update method" $ \cid ->
+          submitCBOR ep >=> statusReject 3 $ rec
+              [ "request_type" =: GText "call"
+              , "sender" =: GBlob defaultUser
+              , "canister_id" =: GBlob cid
+              , "method_name" =: GText "no_such_update"
+              , "arg" =: GBlob ""
+              ]
 
-        step "reject"
-        call' cid >=> statusReject 4 $ reject "ABCD"
+        , simpleTestCase "Call no non-existant query method" $ \cid ->
+          readCBOR ep >=> statusReject 3 $ rec
+              [ "request_type" =: GText "query"
+              , "sender" =: GBlob defaultUser
+              , "canister_id" =: GBlob cid
+              , "method_name" =: GText "no_such_update"
+              , "arg" =: GBlob ""
+              ]
 
-        step "reject (query)"
-        query' cid >=> statusReject 4 $ reject "ABCD"
+        , simpleTestCase "reject" $ \cid ->
+          call' cid >=> statusReject 4 $ reject "ABCD"
 
-        step "No reply"
-        call' cid >=> statusReject 5 $ noop
-        step "No reply (query)"
-        query' cid >=> statusReject 5 $ noop
+        , simpleTestCase "reject (query)" $ \cid ->
+          query' cid >=> statusReject 4 $ reject "ABCD"
 
-        step "Double reply"
-        call' cid >=> statusReject 5 $ reply >>> reply
-        step "Double reply (query)"
-        query' cid >=> statusReject 5 $ reply >>> reply
+        , simpleTestCase "No reply" $ \cid ->
+          call' cid >=> statusReject 5 $ noop
 
-        step "Caller"
-        r <- call cid $ replyData caller
-        r @?= defaultUser
+        , simpleTestCase "No reply (query)" $ \cid ->
+          query' cid >=> statusReject 5 $ noop
 
-        step "Caller (query)"
-        r <- query cid $ replyData caller
-        r @?= defaultUser
+        , simpleTestCase "Double reply" $ \cid ->
+          call' cid >=> statusReject 5 $ reply >>> reply
 
-      , testCase "self" $ do
-        cid <- install noop
+        , simpleTestCase "Double reply (query)" $ \cid ->
+          query' cid >=> statusReject 5 $ reply >>> reply
+
+        , simpleTestCase "Reply data append after reply" $ \cid ->
+          call' cid >=> statusReject 5 $ reply >>> replyDataAppend "foo"
+
+        , simpleTestCase "Reply data append after reject" $ \cid ->
+          call' cid >=> statusReject 5 $ reject "bar" >>> replyDataAppend "foo"
+
+        , simpleTestCase "Caller" $ \cid -> do
+          r <- call cid $ replyData caller
+          r @?= defaultUser
+
+        , simpleTestCase "Caller (query)" $ \cid -> do
+          r <- query cid $ replyData caller
+          r @?= defaultUser
+      ]
+
+      , simpleTestCase "self" $ \cid -> do
         r <- query cid $ replyData self
         r @?= cid
 
-      , testCaseSteps "inter-canister calls" $ \step -> do
-        cid <- install noop
-
-        step "Call to nonexistant"
-        r <- call cid $
-          call_simple
-            "foo"
-            "bar"
-            ""
-            (callback replyRejectData)
-            ""
-        BS.take 4 r @?= "\x03\x0\x0\x0"
-
+      , testGroup "inter-canister calls" $
         let otherSide = callback $
               replyDataAppend "Hello " >>>
               replyDataAppend caller  >>>
               replyDataAppend " this is " >>>
               replyDataAppend self  >>>
-              reply
+              reply in
+        [ simpleTestCase "to nonexistant canister" $ \cid -> do
+          r <- call cid $
+            call_simple
+              "foo"
+              "bar"
+              (callback noop)
+              (callback replyRejectData)
+              (callback noop)
+          BS.take 4 r @?= "\x03\x0\x0\x0"
 
-        step "Call from query traps"
-        query' cid >=> statusReject 5 $
-          call_simple
-            (bytes cid)
-            "update"
-            (callback replyArgData)
-            (callback replyRejectData)
-            otherSide
+        , simpleTestCase "to nonexistant method" $ \cid -> do
+          r <- call cid $
+            call_simple
+              (bytes cid)
+              "bar"
+              (callback noop)
+              (callback replyRejectData)
+              (callback noop)
+          BS.take 4 r @?= "\x03\x0\x0\x0"
 
-        step "Self-call (to update)"
-        r <- call cid $
-          call_simple
-            (bytes cid)
-            "update"
-            (callback replyArgData)
-            (callback replyRejectData)
-            otherSide
-        r @?= ("Hello " <> cid <> " this is " <> cid)
+        , simpleTestCase "Call from query traps" $ \cid -> do
+          query' cid >=> statusReject 5 $
+            call_simple
+              (bytes cid)
+              "update"
+              (callback replyArgData)
+              (callback replyRejectData)
+              otherSide
 
-        step "Self-call (to query)"
-        r <- call cid $
-          call_simple
-            (bytes cid)
-            "query"
-            (callback replyArgData)
-            (callback replyRejectData)
-            otherSide
-        r @?= ("Hello " <> cid <> " this is " <> cid)
+        , simpleTestCase "Self-call (to update)" $ \cid -> do
+          r <- call cid $
+            call_simple
+              (bytes cid)
+              "update"
+              (callback replyArgData)
+              (callback replyRejectData)
+              otherSide
+          r @?= ("Hello " <> cid <> " this is " <> cid)
 
-        step "Second reply in callback"
-        r <- call cid $
-          setGlobal "FOO" >>>
-          replyData "First reply" >>>
-          call_simple
-            (bytes cid)
-            "query"
-            (callback (
-              setGlobal "BAR" >>>
-              replyData "Second reply"
-            ))
-            (callback (setGlobal "BAZ" >>> replyRejectData))
-            otherSide
-        r @?= "First reply"
+        , simpleTestCase "Self-call (to query)" $ \cid -> do
+          r <- call cid $
+            call_simple
+              (bytes cid)
+              "query"
+              (callback replyArgData)
+              (callback replyRejectData)
+              otherSide
+          r @?= ("Hello " <> cid <> " this is " <> cid)
 
-        -- now check that the callback trapped and did not actual change the global
-        -- This check is maybe not as good as we want: There is no guarantee
-        -- that the IC actually tried to process the reply message before we do
-        -- this query.
-        r <- query cid $ replyData getGlobal
-        r @?= "FOO"
+        , simpleTestCase "Reject code is 0 in reply" $ \cid -> do
+          r <- call cid $
+            call_simple
+              (bytes cid)
+              "query"
+              (callback (replyData (i2b reject_code)))
+              (callback replyRejectData)
+              otherSide
+          r @?= "\x0\x0\x0\x0"
 
-        cid2 <- install noop
-        step "Call to other canister (to update)"
-        r <- call cid $
-          call_simple
-            (bytes cid2)
-            "update"
-            (callback replyArgData)
-            (callback replyRejectData)
-            otherSide
-        r @?= ("Hello " <> cid <> " this is " <> cid2)
+        , simpleTestCase "traps in reply: getting reject message" $ \cid ->
+          call' cid >=> statusReject 5 $
+            call_simple
+              (bytes cid)
+              "query"
+              (callback replyRejectData)
+              (callback replyRejectData)
+              otherSide
 
-        step "Call to other canister (to query)"
-        r <- call cid $
-          call_simple
-            (bytes cid2)
-            "query"
-            (callback replyArgData)
-            (callback replyRejectData)
-            otherSide
-        r @?= ("Hello " <> cid <> " this is " <> cid2)
+        , simpleTestCase "traps in reply: getting caller" $ \cid ->
+          call' cid >=> statusReject 5 $
+            call_simple
+              (bytes cid)
+              "query"
+              (callback (replyData caller))
+              (callback replyRejectData)
+              otherSide
+
+        , simpleTestCase "traps in reject: getting argument" $ \cid ->
+          call' cid >=> statusReject 5 $
+            call_simple
+              (bytes cid)
+              "query"
+              (callback replyArgData)
+              (callback replyArgData)
+              (callback (reject "rejecting!"))
+
+        , simpleTestCase "traps in reject: getting caller" $ \cid ->
+          call' cid >=> statusReject 5 $
+            call_simple
+              (bytes cid)
+              "query"
+              (callback replyArgData)
+              (callback (replyData caller))
+              (callback (reject "rejecting!"))
+
+        , simpleTestCase "Second reply in callback" $ \cid -> do
+          r <- call cid $
+            setGlobal "FOO" >>>
+            replyData "First reply" >>>
+            call_simple
+              (bytes cid)
+              "query"
+              (callback (
+                setGlobal "BAR" >>>
+                replyData "Second reply"
+              ))
+              (callback (setGlobal "BAZ" >>> replyRejectData))
+              otherSide
+          r @?= "First reply"
+
+          -- now check that the callback trapped and did not actual change the global
+          -- This check is maybe not as good as we want: There is no guarantee
+          -- that the IC actually tried to process the reply message before we do
+          -- this query.
+          r <- query cid $ replyData getGlobal
+          r @?= "FOO"
+
+        , simpleTestCase "Call to other canister (to update)" $ \cid -> do
+          cid2 <- install noop
+          r <- call cid $
+            call_simple
+              (bytes cid2)
+              "update"
+              (callback replyArgData)
+              (callback replyRejectData)
+              otherSide
+          r @?= ("Hello " <> cid <> " this is " <> cid2)
+
+        , simpleTestCase "Call to other canister (to query)" $ \cid -> do
+          cid2 <- install noop
+          r <- call cid $
+            call_simple
+              (bytes cid2)
+              "query"
+              (callback replyArgData)
+              (callback replyRejectData)
+              otherSide
+          r @?= ("Hello " <> cid <> " this is " <> cid2)
+        ]
 
       , testCaseSteps "stable memory" $ \step -> do
         cid <- install noop
@@ -448,21 +549,115 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
         r <- call cid $ replyData (stableRead (int 0) (int 3))
         r @?= "FOO"
 
-      , testCaseSteps "debug facilities" $ \step -> do
-        cid <- install noop
+      , testGroup "upgrades" $
+        let upgrade :: HasCallStack => Blob -> Prog -> IO GenR
+            upgrade cid prog = do
+              trivial_wasm <- getTestWasm "universal_canister"
+              submitCBOR ep $ rec
+                [ "request_type" =: GText "install_code"
+                , "sender" =: GBlob defaultUser
+                , "canister_id" =: GBlob cid
+                , "module" =: GBlob trivial_wasm
+                , "arg" =: GBlob (run prog)
+                , "mode" =: GText "upgrade"
+                ]
 
-        step "Using debug_print"
-        r <- call cid $ debugPrint "ic-ref-test print" >>> reply
-        r @?= ""
+            installForUpgrade on_pre_upgrade = install $
+                setGlobal "FOO" >>>
+                ignore (stableGrow (int 1)) >>>
+                stableWrite (int 0) "BAR______" >>>
+                onPreUpgrade (callback on_pre_upgrade)
 
-        step "Using debug_print (query)"
-        r <- query cid $ debugPrint "ic-ref-test print" >>> reply
-        r @?= ""
+            checkNoUpgrade cid = do
+              r <- query cid $ replyData getGlobal
+              r @?= "FOO"
+              r <- query cid $ replyData (stableRead (int 0) (int 9))
+              r @?= "BAR______"
+        in
+        [ testCase "succeeding" $ do
+          -- check that the pre-upgrade hook has access to the old state
+          cid <- installForUpgrade $ stableWrite (int 3) getGlobal
+          checkNoUpgrade cid
 
-        step "Explicit trap"
-        call' cid >=> statusReject 5 $ trap "trapping"
-        step "Explicit trap (query)"
-        query' cid >=> statusReject 5 $ trap "trapping"
+          upgrade cid >=> emptyReply $ stableWrite (int 6) (stableRead (int 0) (int 3))
+
+          r <- query cid $ replyData getGlobal
+          r @?= ""
+          r <- query cid $ replyData (stableRead (int 0) (int 9))
+          r @?= "BARFOOBAR"
+
+        , testCase "trapping in pre-upgrade" $ do
+          cid <- installForUpgrade $ trap "trap in pre-upgrade"
+          checkNoUpgrade cid
+
+          upgrade cid >=> statusReject 5 $ noop
+          checkNoUpgrade cid
+
+        , testCase "trapping in pre-upgrade (by calling)" $ do
+          cid <- installForUpgrade $ trap "trap in pre-upgrade"
+          r <- call cid $
+            reply >>>
+            onPreUpgrade (callback (
+                call_simple
+                    (bytes cid)
+                    "query"
+                    (callback replyArgData)
+                    (callback replyRejectData)
+                    (callback noop)
+            ))
+          r @?= ""
+          checkNoUpgrade cid
+
+          upgrade cid >=> statusReject 5 $ noop
+          checkNoUpgrade cid
+
+        , testCase "trapping in pre-upgrade (by accessing arg)" $ do
+          cid <- installForUpgrade $ ignore argData
+          checkNoUpgrade cid
+
+          upgrade cid >=> statusReject 5 $ noop
+          checkNoUpgrade cid
+
+        , testCase "trapping in post-upgrade" $ do
+          cid <- installForUpgrade $ stableWrite (int 3) getGlobal
+          checkNoUpgrade cid
+
+          upgrade cid >=> statusReject 5 $ trap "trap in post-upgrade"
+          checkNoUpgrade cid
+
+        , testCase "trapping in post-upgrade (by calling)" $ do
+          cid <- installForUpgrade $ stableWrite (int 3) getGlobal
+          checkNoUpgrade cid
+
+          upgrade cid >=> statusReject 5 $
+            call_simple
+                (bytes cid)
+                "query"
+                (callback replyArgData)
+                (callback replyRejectData)
+                (callback noop)
+          checkNoUpgrade cid
+        ]
+
+      , testGroup "debug facilities"
+        [ simpleTestCase "Using debug_print" $ \cid -> do
+          r <- call cid $ debugPrint "ic-ref-test print" >>> reply
+          r @?= ""
+
+        , simpleTestCase "Using debug_print (query)" $ \cid -> do
+          r <- query cid $ debugPrint "ic-ref-test print" >>> reply
+          r @?= ""
+
+        , simpleTestCase "Using debug_print with invalid bounds" $ \cid -> do
+          r <- query cid $ badPrint >>> reply
+          r @?= ""
+
+        , simpleTestCase "Explicit trap" $ \cid -> do
+          call' cid >=> statusReject 5 $ trap "trapping"
+
+        , simpleTestCase "Explicit trap (query)" $ \cid -> do
+          query' cid >=> statusReject 5 $ trap "trapping"
+        ]
 
       , testCase "caller (in init)" $ do
         cid <- install $ setGlobal caller
@@ -535,7 +730,7 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
       , testCase "in unknown request status" $
           postCBOR ep "/api/v1/read/" (env requestStatusNonExistant) >>= code4xx
       , testCase "in request status" $ do
-          let req = rec
+          req <- addNonce $ rec
                 [ "request_type" =: GText "create_canister"
                 , "sender" =: GBlob defaultUser
                 ]
@@ -546,48 +741,48 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
                 ]
           postCBOR ep "/api/v1/read/" (env status_req) >>= code4xx
       , testCase "in install" $ do
-        cid <- submitCBOR ep >=> createReply $ rec
-          [ "request_type" =: GText "create_canister"
-          , "sender" =: GBlob defaultUser
-          ]
-        let req = rec
-              [ "request_type" =: GText "install_code"
-              , "sender" =: GBlob defaultUser
-              , "canister_id" =: GBlob cid
-              , "module" =: GBlob ""
-              , "arg" =: GBlob ""
-              ]
-        postCBOR ep "/api/v1/submit" (env req) >>= code202_or_4xx
+          cid <- submitCBOR ep >=> createReply $ rec
+            [ "request_type" =: GText "create_canister"
+            , "sender" =: GBlob defaultUser
+            ]
+          req <- addNonce $ rec
+                [ "request_type" =: GText "install_code"
+                , "sender" =: GBlob defaultUser
+                , "canister_id" =: GBlob cid
+                , "module" =: GBlob ""
+                , "arg" =: GBlob ""
+                ]
+          postCBOR ep "/api/v1/submit" (env req) >>= code202_or_4xx
 
-        -- Also check that the request was not created
-        ingressDelay
-        let status_req = rec
-              [ "request_type" =: GText "request_status"
-              , "request_id" =: GBlob (requestId req)
-              ]
-        postCBOR ep "/api/v1/read/" (envelope defaultSK status_req) >>= code4xx
+          -- Also check that the request was not created
+          ingressDelay
+          let status_req = rec
+                [ "request_type" =: GText "request_status"
+                , "request_id" =: GBlob (requestId req)
+                ]
+          postCBOR ep "/api/v1/read/" (envelope defaultSK status_req) >>= code4xx
 
       , testCase "in call" $ do
-        cid <- submitCBOR ep >=> createReply $ rec
-          [ "request_type" =: GText "create_canister"
-          , "sender" =: GBlob defaultUser
-          ]
-        let req = rec
-              [ "request_type" =: GText "call"
-              , "sender" =: GBlob defaultUser
-              , "canister_id" =: GBlob cid
-              , "method_name" =: GText "foo"
-              , "arg" =: GBlob "nothing to see here"
-              ]
-        postCBOR ep "/api/v1/submit" (env req) >>= code202_or_4xx
+          cid <- submitCBOR ep >=> createReply $ rec
+            [ "request_type" =: GText "create_canister"
+            , "sender" =: GBlob defaultUser
+            ]
+          req <- addNonce $ rec
+                [ "request_type" =: GText "call"
+                , "sender" =: GBlob defaultUser
+                , "canister_id" =: GBlob cid
+                , "method_name" =: GText "foo"
+                , "arg" =: GBlob "nothing to see here"
+                ]
+          postCBOR ep "/api/v1/submit" (env req) >>= code202_or_4xx
 
-        -- Also check that the request was not created
-        ingressDelay
-        let status_req = rec
-              [ "request_type" =: GText "request_status"
-              , "request_id" =: GBlob (requestId req)
-              ]
-        postCBOR ep "/api/v1/read/" (envelope defaultSK status_req) >>= code4xx
+          -- Also check that the request was not created
+          ingressDelay
+          let status_req = rec
+                [ "request_type" =: GText "request_status"
+                , "request_id" =: GBlob (requestId req)
+                ]
+          postCBOR ep "/api/v1/read/" (envelope defaultSK status_req) >>= code4xx
       ]
   ]
 
@@ -634,10 +829,11 @@ postCBOR (Endpoint endpoint) path gr = do
 readCBOR :: Endpoint -> GenR -> IO GenR
 readCBOR ep req = postCBOR ep "/api/v1/read" (envelope defaultSK req) >>= okCBOR
 
--- | Add envelope to CVBOR, post to "submit", poll for the request response, and
--- return decoded CBOR
+-- | Add envelope to CBOR, and a nonce if not there, post to "submit", poll for
+-- the request response, and return decoded CBOR
 submitCBOR :: Endpoint -> GenR -> IO GenR
 submitCBOR ep req = do
+  req <- addNonce req
   res <- postCBOR ep "/api/v1/submit" (envelope defaultSK req)
   code202 res
   assertBool "Response body not empty" (BS.null (responseBody res))
@@ -749,6 +945,7 @@ statusResonse = record $ do
     _ <- optionalField text "impl_source"
     _ <- optionalField text "impl_version"
     _ <- optionalField text "impl_revision"
+    swallowAllFields -- More fields are explicitly allowed
     return v
 
 -- * Programmatic test generation

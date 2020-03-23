@@ -169,6 +169,12 @@ fn eval(ops : Ops) {
         21 => set_global(stack.pop_blob()),
         22 => stack.push_blob(get_global()),
 
+        // bad print
+        23 => api::bad_print(),
+
+        // the pre-upgrade script
+        24 => set_pre_upgrade(stack.pop_blob()),
+
         _ => api::trap_with(&format!("unknown op {}", op)),
       }
   }
@@ -191,6 +197,18 @@ fn init() {
   eval(&api::arg_data());
 }
 
+#[export_name = "canister_pre_upgrade"]
+fn pre_upgrade() {
+  setup();
+  eval(&get_pre_upgrade());
+}
+
+#[export_name = "canister_post_upgrade"]
+fn post_upgrade() {
+  setup();
+  eval(&api::arg_data());
+}
+
 /* A global variable */
 lazy_static! {
   static ref GLOBAL : Mutex<Vec<u8>> = Mutex::new(Vec::new());
@@ -200,6 +218,17 @@ fn set_global(data : Vec<u8>) {
 }
 fn get_global() -> Vec<u8> {
   GLOBAL.lock().unwrap().clone()
+}
+
+/* A variable to store what to execute upon pre_upgrade */
+lazy_static! {
+  static ref PRE_UPGRADE : Mutex<Vec<u8>> = Mutex::new(Vec::new());
+}
+fn set_pre_upgrade(data : Vec<u8>) {
+  *PRE_UPGRADE.lock().unwrap() = data;
+}
+fn get_pre_upgrade() -> Vec<u8> {
+  PRE_UPGRADE.lock().unwrap().clone()
 }
 
 /* Callback handling */

@@ -78,8 +78,8 @@ op x = mkOp x mempty
 noop :: Prog
 noop = op 0
 
-drop :: Exp t -> Prog
-drop = op 1
+ignore :: Exp t -> Prog
+ignore = op 1
 
 int :: Word32 -> Exp 'I
 int x = Exp $ word8 2 <> word32LE x
@@ -146,6 +146,12 @@ setGlobal = op 21
 
 getGlobal :: Exp 'B
 getGlobal = op 22
+
+badPrint :: Prog
+badPrint = op 23
+
+onPreUpgrade :: Exp 'B -> Prog
+onPreUpgrade = op 24
 
 
 -- Some convenience combinators

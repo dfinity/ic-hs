@@ -33,8 +33,7 @@ decode s =
   where
     begin (leftOver, _) | not (BS.null leftOver) = Left "Left-over bytes"
     begin (_, TTagged 55799 t) = go t
-    -- begin _ = fail "Expected CBOR request to begin with tag 55799"
-    begin (_, t) = go t
+    begin _ = Left "Expected CBOR request to begin with tag 55799"
 
     go (TInt n) | n < 0 = Left "Negative integer"
     go (TInt n) = return $ GNat (fromIntegral n)
