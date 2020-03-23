@@ -143,8 +143,7 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
           , "desired_id" =: GBlob id
           ]
 
-    , testCaseSteps "desired id (wrong class)" $ \step -> do
-        step "Creating"
+    , testCase "desired id (wrong class)" $ do
         id <- mkOpaqueId <$> getRand8Bytes
         submitCBOR ep >=> statusReject 3 $ rec
           [ "request_type" =: GText "create_canister"
@@ -152,8 +151,7 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
           , "desired_id" =: GBlob id
           ]
 
-    , testCaseSteps "desired id (wrong user)" $ \step -> do
-        step "Creating"
+    , testCase "desired id (wrong user)" $ do
         bytes <- getRand8Bytes
         let id = mkDerivedId otherUser bytes
         submitCBOR ep >=> statusReject 3 $ rec
@@ -175,8 +173,20 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
           , "sender" =: GBlob defaultUser
           ]
 
-        step "Install"
         trivial_wasm <- getTestWat "trivial"
+
+        step "Reinstall fails"
+        submitCBOR ep >=> statusReject 3 $ rec
+          [ "request_type" =: GText "install_code"
+          , "sender" =: GBlob defaultUser
+          , "canister_id" =: GBlob can_id
+          , "module" =: GBlob trivial_wasm
+          , "arg" =: GBlob ""
+          , "mode" =: GText "reinstall"
+          ]
+
+
+        step "Install"
         submitCBOR ep >=> emptyReply $ rec
           [ "request_type" =: GText "install_code"
           , "sender" =: GBlob defaultUser
@@ -185,7 +195,7 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
           , "arg" =: GBlob ""
           ]
 
-        step "Install"
+        step "Install again fails"
         submitCBOR ep >=> statusReject 3 $ rec
           [ "request_type" =: GText "install_code"
           , "sender" =: GBlob defaultUser
@@ -271,167 +281,169 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
       query :: HasCallStack => Blob -> Prog -> IO Blob
       query cid prog = query' cid prog >>= callReply
 
+      -- Shortcut for test cases that just need one canister
+      simpleTestCase :: String -> (Blob -> IO ()) -> TestTree
+      simpleTestCase name act =
+        testCase name $ install noop >>= act
+
     in
       [ testCase "create and install" $ do
         cid <- install noop
         assertBool "opaque id expected" $ isOpaqueId cid
 
-      , testCaseSteps "simple calls" $ \step -> do
-        cid <- install noop
+      , testGroup "simple calls"
+        [ simpleTestCase "Call" $ \cid -> do
+          r <- call cid $ replyData "ABCD"
+          r @?= "ABCD"
 
-        step "Call"
-        r <- call cid $ replyData "ABCD"
-        r @?= "ABCD"
+        , simpleTestCase "Call (query)" $ \cid -> do
+          r <- query cid $ replyData "ABCD"
+          r @?= "ABCD"
 
-        step "Call (query)"
-        r <- query cid $ replyData "ABCD"
-        r @?= "ABCD"
+        , simpleTestCase "reject" $ \cid -> do
+          call' cid >=> statusReject 4 $ reject "ABCD"
 
-        step "reject"
-        call' cid >=> statusReject 4 $ reject "ABCD"
+        , simpleTestCase "reject (query)" $ \cid -> do
+          query' cid >=> statusReject 4 $ reject "ABCD"
 
-        step "reject (query)"
-        query' cid >=> statusReject 4 $ reject "ABCD"
+        , simpleTestCase "No reply" $ \cid -> do
+          call' cid >=> statusReject 5 $ noop
+        , simpleTestCase "No reply (query)" $ \cid -> do
+          query' cid >=> statusReject 5 $ noop
 
-        step "No reply"
-        call' cid >=> statusReject 5 $ noop
-        step "No reply (query)"
-        query' cid >=> statusReject 5 $ noop
+        , simpleTestCase "Double reply" $ \cid -> do
+          call' cid >=> statusReject 5 $ reply >>> reply
+        , simpleTestCase "Double reply (query)" $ \cid -> do
+          query' cid >=> statusReject 5 $ reply >>> reply
 
-        step "Double reply"
-        call' cid >=> statusReject 5 $ reply >>> reply
-        step "Double reply (query)"
-        query' cid >=> statusReject 5 $ reply >>> reply
+        , simpleTestCase "Reply data append after reply" $ \cid -> do
+          call' cid >=> statusReject 5 $ reply >>> replyDataAppend "foo"
 
-        step "Reply data append after reply"
-        call' cid >=> statusReject 5 $ reply >>> replyDataAppend "foo"
+        , simpleTestCase "Reply data append after reject" $ \cid -> do
+          call' cid >=> statusReject 5 $ reject "bar" >>> replyDataAppend "foo"
 
-        step "Reply data append after reject"
-        call' cid >=> statusReject 5 $ reject "bar" >>> replyDataAppend "foo"
+        , simpleTestCase "Caller" $ \cid -> do
+          r <- call cid $ replyData caller
+          r @?= defaultUser
 
-        step "Caller"
-        r <- call cid $ replyData caller
-        r @?= defaultUser
+        , simpleTestCase "Caller (query)" $ \cid -> do
+          r <- query cid $ replyData caller
+          r @?= defaultUser
+      ]
 
-        step "Caller (query)"
-        r <- query cid $ replyData caller
-        r @?= defaultUser
-
-      , testCase "self" $ do
-        cid <- install noop
+      , simpleTestCase "self" $ \cid -> do
         r <- query cid $ replyData self
         r @?= cid
 
-      , testCaseSteps "inter-canister calls" $ \step -> do
-        cid <- install noop
-
-        step "Call to nonexistant"
-        r <- call cid $
-          call_simple
-            "foo"
-            "bar"
-            ""
-            (callback replyRejectData)
-            ""
-        BS.take 4 r @?= "\x03\x0\x0\x0"
-
+      , testGroup "inter-canister calls" $
         let otherSide = callback $
               replyDataAppend "Hello " >>>
               replyDataAppend caller  >>>
               replyDataAppend " this is " >>>
               replyDataAppend self  >>>
-              reply
+              reply in
+        [ simpleTestCase "to nonexistant" $ \cid -> do
+          r <- call cid $
+            call_simple
+              "foo"
+              "bar"
+              ""
+              (callback replyRejectData)
+              ""
+          BS.take 4 r @?= "\x03\x0\x0\x0"
 
-        step "Call from query traps"
-        query' cid >=> statusReject 5 $
-          call_simple
-            (bytes cid)
-            "update"
-            (callback replyArgData)
-            (callback replyRejectData)
-            otherSide
+        , simpleTestCase "Call from query traps" $ \cid -> do
+          query' cid >=> statusReject 5 $
+            call_simple
+              (bytes cid)
+              "update"
+              (callback replyArgData)
+              (callback replyRejectData)
+              otherSide
 
-        step "Self-call (to update)"
-        r <- call cid $
-          call_simple
-            (bytes cid)
-            "update"
-            (callback replyArgData)
-            (callback replyRejectData)
-            otherSide
-        r @?= ("Hello " <> cid <> " this is " <> cid)
+        , simpleTestCase "Self-call (to update)" $ \cid -> do
+          r <- call cid $
+            call_simple
+              (bytes cid)
+              "update"
+              (callback replyArgData)
+              (callback replyRejectData)
+              otherSide
+          r @?= ("Hello " <> cid <> " this is " <> cid)
 
-        step "Self-call (to query)"
-        r <- call cid $
-          call_simple
-            (bytes cid)
-            "query"
-            (callback replyArgData)
-            (callback replyRejectData)
-            otherSide
-        r @?= ("Hello " <> cid <> " this is " <> cid)
+        , simpleTestCase "Self-call (to query)" $ \cid -> do
+          r <- call cid $
+            call_simple
+              (bytes cid)
+              "query"
+              (callback replyArgData)
+              (callback replyRejectData)
+              otherSide
+          r @?= ("Hello " <> cid <> " this is " <> cid)
 
-        step "Reject code is 0 in reply"
-        r <- call cid $
-          call_simple
-            (bytes cid)
-            "query"
-            (callback (replyData (i2b reject_code)))
-            (callback replyRejectData)
-            otherSide
-        r @?= "\x0\x0\x0\x0"
+        , simpleTestCase "Reject code is 0 in reply" $ \cid -> do
+          r <- call cid $
+            call_simple
+              (bytes cid)
+              "query"
+              (callback (replyData (i2b reject_code)))
+              (callback replyRejectData)
+              otherSide
+          r @?= "\x0\x0\x0\x0"
 
-        step "Reject message traps in reply"
-        call' cid >=> statusReject 5 $
-          call_simple
-            (bytes cid)
-            "query"
-            (callback replyRejectData)
-            (callback replyRejectData)
-            otherSide
+        , simpleTestCase "Reject message traps in reply" $ \cid -> do
+          call' cid >=> statusReject 5 $
+            call_simple
+              (bytes cid)
+              "query"
+              (callback replyRejectData)
+              (callback replyRejectData)
+              otherSide
 
-        step "Second reply in callback"
-        r <- call cid $
-          setGlobal "FOO" >>>
-          replyData "First reply" >>>
-          call_simple
-            (bytes cid)
-            "query"
-            (callback (
-              setGlobal "BAR" >>>
-              replyData "Second reply"
-            ))
-            (callback (setGlobal "BAZ" >>> replyRejectData))
-            otherSide
-        r @?= "First reply"
+        , simpleTestCase "Second reply in callback" $ \cid -> do
+          r <- call cid $
+            setGlobal "FOO" >>>
+            replyData "First reply" >>>
+            call_simple
+              (bytes cid)
+              "query"
+              (callback (
+                setGlobal "BAR" >>>
+                replyData "Second reply"
+              ))
+              (callback (setGlobal "BAZ" >>> replyRejectData))
+              otherSide
+          r @?= "First reply"
 
-        -- now check that the callback trapped and did not actual change the global
-        -- This check is maybe not as good as we want: There is no guarantee
-        -- that the IC actually tried to process the reply message before we do
-        -- this query.
-        r <- query cid $ replyData getGlobal
-        r @?= "FOO"
+          -- now check that the callback trapped and did not actual change the global
+          -- This check is maybe not as good as we want: There is no guarantee
+          -- that the IC actually tried to process the reply message before we do
+          -- this query.
+          r <- query cid $ replyData getGlobal
+          r @?= "FOO"
 
-        cid2 <- install noop
-        step "Call to other canister (to update)"
-        r <- call cid $
-          call_simple
-            (bytes cid2)
-            "update"
-            (callback replyArgData)
-            (callback replyRejectData)
-            otherSide
-        r @?= ("Hello " <> cid <> " this is " <> cid2)
+        , simpleTestCase "Call to other canister (to update)" $ \cid -> do
+          cid2 <- install noop
+          r <- call cid $
+            call_simple
+              (bytes cid2)
+              "update"
+              (callback replyArgData)
+              (callback replyRejectData)
+              otherSide
+          r @?= ("Hello " <> cid <> " this is " <> cid2)
 
-        step "Call to other canister (to query)"
-        r <- call cid $
-          call_simple
-            (bytes cid2)
-            "query"
-            (callback replyArgData)
-            (callback replyRejectData)
-            otherSide
-        r @?= ("Hello " <> cid <> " this is " <> cid2)
+        , simpleTestCase "Call to other canister (to query)" $ \cid -> do
+          cid2 <- install noop
+          r <- call cid $
+            call_simple
+              (bytes cid2)
+              "query"
+              (callback replyArgData)
+              (callback replyRejectData)
+              otherSide
+          r @?= ("Hello " <> cid <> " this is " <> cid2)
+        ]
 
       , testCaseSteps "stable memory" $ \step -> do
         cid <- install noop
@@ -473,25 +485,25 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
         r <- call cid $ replyData (stableRead (int 0) (int 3))
         r @?= "FOO"
 
-      , testCaseSteps "debug facilities" $ \step -> do
-        cid <- install noop
+      , testGroup "debug facilities"
+        [ simpleTestCase "Using debug_print" $ \cid -> do
+          r <- call cid $ debugPrint "ic-ref-test print" >>> reply
+          r @?= ""
 
-        step "Using debug_print"
-        r <- call cid $ debugPrint "ic-ref-test print" >>> reply
-        r @?= ""
+        , simpleTestCase "Using debug_print (query)" $ \cid -> do
+          r <- query cid $ debugPrint "ic-ref-test print" >>> reply
+          r @?= ""
 
-        step "Using debug_print (query)"
-        r <- query cid $ debugPrint "ic-ref-test print" >>> reply
-        r @?= ""
+        , simpleTestCase "Using debug_print with invalid bounds" $ \cid -> do
+          r <- query cid $ badPrint >>> reply
+          r @?= ""
 
-        step "Using debug_print with invalid bounds"
-        r <- query cid $ badPrint >>> reply
-        r @?= ""
+        , simpleTestCase "Explicit trap" $ \cid -> do
+          call' cid >=> statusReject 5 $ trap "trapping"
 
-        step "Explicit trap"
-        call' cid >=> statusReject 5 $ trap "trapping"
-        step "Explicit trap (query)"
-        query' cid >=> statusReject 5 $ trap "trapping"
+        , simpleTestCase "Explicit trap (query)" $ \cid -> do
+          query' cid >=> statusReject 5 $ trap "trapping"
+        ]
 
       , testCase "caller (in init)" $ do
         cid <- install $ setGlobal caller
