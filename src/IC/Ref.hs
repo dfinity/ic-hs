@@ -233,7 +233,9 @@ readRequest req = onReject (return . Rejected) $ case req of
 
 submitRequest :: ICM m => RequestID -> AsyncRequest -> m ()
 submitRequest rid r = modify $ \ic ->
-  ic { requests = M.insert rid (r, Received) (requests ic) }
+  if M.member rid (requests ic)
+  then ic
+  else ic { requests = M.insert rid (r, Received) (requests ic) }
 
 
 -- | Eventually, they are processed
