@@ -593,11 +593,49 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
           upgrade cid >=> statusReject 5 $ noop
           checkNoUpgrade cid
 
+        , testCase "trapping in pre-upgrade (by calling)" $ do
+          cid <- installForUpgrade $ trap "trap in pre-upgrade"
+          r <- call cid $
+            reply >>>
+            onPreUpgrade (callback (
+                call_simple
+                    (bytes cid)
+                    "query"
+                    (callback replyArgData)
+                    (callback replyRejectData)
+                    (callback noop)
+            ))
+          r @?= ""
+          checkNoUpgrade cid
+
+          upgrade cid >=> statusReject 5 $ noop
+          checkNoUpgrade cid
+
+        , testCase "trapping in pre-upgrade (by accessing arg)" $ do
+          cid <- installForUpgrade $ ignore argData
+          checkNoUpgrade cid
+
+          upgrade cid >=> statusReject 5 $ noop
+          checkNoUpgrade cid
+
         , testCase "trapping in post-upgrade" $ do
           cid <- installForUpgrade $ stableWrite (int 3) getGlobal
           checkNoUpgrade cid
 
           upgrade cid >=> statusReject 5 $ trap "trap in post-upgrade"
+          checkNoUpgrade cid
+
+        , testCase "trapping in post-upgrade (by calling)" $ do
+          cid <- installForUpgrade $ stableWrite (int 3) getGlobal
+          checkNoUpgrade cid
+
+          upgrade cid >=> statusReject 5 $
+            call_simple
+                (bytes cid)
+                "query"
+                (callback replyArgData)
+                (callback replyRejectData)
+                (callback noop)
           checkNoUpgrade cid
         ]
 
