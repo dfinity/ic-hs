@@ -56,8 +56,11 @@ rec {
       trap kill_ic_ref EXIT PIPE
       sleep 1
       test -e port
-      ic-ref-test --endpoint "http://0.0.0.0:$(cat port)/"
-      touch $out
+      mkdir -p $out
+      ic-ref-test --endpoint "http://0.0.0.0:$(cat port)/" --html $out/report.html
+
+      mkdir -p $out/nix-support
+      echo "report test-results $out report.html" >> $out/nix-support/hydra-build-products
     '';
 
   coverage = nixpkgs.runCommandNoCC "ic-ref-test" {
