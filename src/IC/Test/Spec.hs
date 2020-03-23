@@ -398,7 +398,7 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
               otherSide
           r @?= "\x0\x0\x0\x0"
 
-        , simpleTestCase "Reject message traps in reply" $ \cid -> do
+        , simpleTestCase "traps in reply: getting reject message" $ \cid ->
           call' cid >=> statusReject 5 $
             call_simple
               (bytes cid)
@@ -406,6 +406,33 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
               (callback replyRejectData)
               (callback replyRejectData)
               otherSide
+
+        , simpleTestCase "traps in reply: getting caller" $ \cid ->
+          call' cid >=> statusReject 5 $
+            call_simple
+              (bytes cid)
+              "query"
+              (callback (replyData caller))
+              (callback replyRejectData)
+              otherSide
+
+        , simpleTestCase "traps in reject: getting argument" $ \cid ->
+          call' cid >=> statusReject 5 $
+            call_simple
+              (bytes cid)
+              "query"
+              (callback replyArgData)
+              (callback replyArgData)
+              (callback (reject "rejecting!"))
+
+        , simpleTestCase "traps in reject: getting caller" $ \cid ->
+          call' cid >=> statusReject 5 $
+            call_simple
+              (bytes cid)
+              "query"
+              (callback replyArgData)
+              (callback (replyData caller))
+              (callback (reject "rejecting!"))
 
         , simpleTestCase "Second reply in callback" $ \cid -> do
           r <- call cid $
