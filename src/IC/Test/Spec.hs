@@ -307,26 +307,46 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
           r <- query cid $ replyData "ABCD"
           r @?= "ABCD"
 
-        , simpleTestCase "reject" $ \cid -> do
+        , simpleTestCase "Call no non-existant update method" $ \cid ->
+          submitCBOR ep >=> statusReject 3 $ rec
+              [ "request_type" =: GText "call"
+              , "sender" =: GBlob defaultUser
+              , "canister_id" =: GBlob cid
+              , "method_name" =: GText "no_such_update"
+              , "arg" =: GBlob ""
+              ]
+
+        , simpleTestCase "Call no non-existant query method" $ \cid ->
+          readCBOR ep >=> statusReject 3 $ rec
+              [ "request_type" =: GText "query"
+              , "sender" =: GBlob defaultUser
+              , "canister_id" =: GBlob cid
+              , "method_name" =: GText "no_such_update"
+              , "arg" =: GBlob ""
+              ]
+
+        , simpleTestCase "reject" $ \cid ->
           call' cid >=> statusReject 4 $ reject "ABCD"
 
-        , simpleTestCase "reject (query)" $ \cid -> do
+        , simpleTestCase "reject (query)" $ \cid ->
           query' cid >=> statusReject 4 $ reject "ABCD"
 
-        , simpleTestCase "No reply" $ \cid -> do
+        , simpleTestCase "No reply" $ \cid ->
           call' cid >=> statusReject 5 $ noop
-        , simpleTestCase "No reply (query)" $ \cid -> do
+
+        , simpleTestCase "No reply (query)" $ \cid ->
           query' cid >=> statusReject 5 $ noop
 
-        , simpleTestCase "Double reply" $ \cid -> do
+        , simpleTestCase "Double reply" $ \cid ->
           call' cid >=> statusReject 5 $ reply >>> reply
-        , simpleTestCase "Double reply (query)" $ \cid -> do
+
+        , simpleTestCase "Double reply (query)" $ \cid ->
           query' cid >=> statusReject 5 $ reply >>> reply
 
-        , simpleTestCase "Reply data append after reply" $ \cid -> do
+        , simpleTestCase "Reply data append after reply" $ \cid ->
           call' cid >=> statusReject 5 $ reply >>> replyDataAppend "foo"
 
-        , simpleTestCase "Reply data append after reject" $ \cid -> do
+        , simpleTestCase "Reply data append after reject" $ \cid ->
           call' cid >=> statusReject 5 $ reject "bar" >>> replyDataAppend "foo"
 
         , simpleTestCase "Caller" $ \cid -> do
@@ -349,14 +369,24 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
               replyDataAppend " this is " >>>
               replyDataAppend self  >>>
               reply in
-        [ simpleTestCase "to nonexistant" $ \cid -> do
+        [ simpleTestCase "to nonexistant canister" $ \cid -> do
           r <- call cid $
             call_simple
               "foo"
               "bar"
-              ""
+              (callback noop)
               (callback replyRejectData)
-              ""
+              (callback noop)
+          BS.take 4 r @?= "\x03\x0\x0\x0"
+
+        , simpleTestCase "to nonexistant method" $ \cid -> do
+          r <- call cid $
+            call_simple
+              (bytes cid)
+              "bar"
+              (callback noop)
+              (callback replyRejectData)
+              (callback noop)
           BS.take 4 r @?= "\x03\x0\x0\x0"
 
         , simpleTestCase "Call from query traps" $ \cid -> do
