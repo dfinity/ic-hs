@@ -10,7 +10,7 @@ import Data.Maybe
 
 import IC.Types
 import IC.Crypto
-import IC.Ref (AsyncRequest(..), SyncRequest(..),
+import IC.Ref (IDChoice(..), AsyncRequest(..), SyncRequest(..),
   RequestStatus(..), CompletionValue(..))
 import IC.HTTP.RequestId
 import IC.HTTP.GenR
@@ -35,7 +35,7 @@ asyncRequest = record $ do
     case t of
         "create_canister" -> do
             sender <- EntityId <$> field blob "sender"
-            desired_id <- fmap EntityId <$> optionalField blob "desired_id"
+            desired_id <- maybe SystemPicks (Desired . EntityId) <$> optionalField blob "desired_id"
             return $ CreateRequest sender desired_id
         "install_code" -> do
             cid <- EntityId <$> field blob "canister_id"
