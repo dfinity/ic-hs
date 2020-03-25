@@ -165,7 +165,7 @@ build output produced by
     cd ../universal_canister
     cargo build --target wasm32-unknown-unknown --release
 
-now yuo can run the test suite with
+now you can run the test suite with
 
     cabal new-build ic-ref-test
 
