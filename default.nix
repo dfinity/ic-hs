@@ -16,6 +16,7 @@ let universal-canister = (rust_pkgs.naersk.buildPackage rec {
     src = subpath ./universal-canister;
     root = ./universal-canister;
     CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_LINKER = "${rust_pkgs.llvmPackages_9.lld}/bin/lld";
+    RUSTFLAGS = "-C link-arg=-s"; # much smaller wasm
     cargoBuildOptions = x : x ++ [ "--target wasm32-unknown-unknown" ];
     doCheck = false;
     release = true;
@@ -148,13 +149,18 @@ rec {
     ];
   };
 
-  # include shell in default so that the cache has the extra shell packages
+  # include shell in default.nix so that the nix cache will have pre-built versions
+  # of all the dependencies that are only dependent on by nix-shell.
   shell =
     let extra-pkgs = [
       nixpkgs.cabal-install
       nixpkgs.ghcid
-    ]; in
+    ] ++
+    # and to build the rust stuff
+    universal-canister.nativeBuildInputs; in
+
     haskellPackages.ic-ref.env.overrideAttrs (old: {
       nativeBuildInputs = (old.nativeBuildInputs or []) ++ extra-pkgs ;
+      CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_LINKER = "${rust_pkgs.llvmPackages_9.lld}/bin/lld";
     });
 }

@@ -48,17 +48,14 @@ let
       src_subst = "import ../gitSource.nix \"${path}\"";
     };
 
-
-  winter = (haskellSrc2nixWithDoc {
+  winter = haskellSrc2nixWithDoc {
     name = "winter";
     src = pkgs.sources.winter;
     src_subst = "pkgs.sources.winter";
     extraCabal2nixOptions = "--no-check";
-  });
+  };
 
   ic-ref = localHaskellSrc2nixWithDoc "ic-ref" "impl" "--no-check -frelease";
-  random = localHaskellSrc2nixWithDoc "qc-motoko" "test/random" "";
-  lsp-int = localHaskellSrc2nixWithDoc "lsp-int" "test/lsp-int" "";
 
   allGenerated = pkgs.runCommandNoCC "generated" {} ''
     mkdir -p $out

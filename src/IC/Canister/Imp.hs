@@ -59,8 +59,8 @@ data ExecutionState s = ExecutionState
   }
 
 
-initalExecutionState :: CanisterId -> Instance s -> Memory s -> Responded -> ExecutionState s
-initalExecutionState self_id inst stableMem responded = ExecutionState
+initialExecutionState :: CanisterId -> Instance s -> Memory s -> Responded -> ExecutionState s
+initialExecutionState self_id inst stableMem responded = ExecutionState
   { inst
   , stableMem
   , self_id
@@ -366,7 +366,7 @@ canRespond = Responded False
 rawInitializeMethod :: ImpState s -> Module -> EntityId -> Blob -> ST s (TrapOr ())
 rawInitializeMethod (ImpState esref cid inst sm) wasm_mod caller dat = do
   result <- runExceptT $ do
-    let es = (initalExecutionState cid inst sm cantRespond)
+    let es = (initialExecutionState cid inst sm cantRespond)
               { params = Params
                   { param_dat    = Just dat
                   , param_caller = Just caller
@@ -389,7 +389,7 @@ rawInitializeMethod (ImpState esref cid inst sm) wasm_mod caller dat = do
 rawPreUpgrade :: ImpState s -> Module -> EntityId -> ST s (TrapOr Blob)
 rawPreUpgrade (ImpState esref cid inst sm) wasm_mod caller = do
   result <- runExceptT $ do
-    let es = (initalExecutionState cid inst sm cantRespond)
+    let es = (initialExecutionState cid inst sm cantRespond)
               { params = Params
                   { param_dat    = Nothing
                   , param_caller = Just caller
@@ -411,7 +411,7 @@ rawPreUpgrade (ImpState esref cid inst sm) wasm_mod caller = do
 rawPostUpgrade :: ImpState s -> Module -> EntityId -> Blob -> Blob -> ST s (TrapOr ())
 rawPostUpgrade (ImpState esref cid inst sm) wasm_mod caller mem dat = do
   result <- runExceptT $ do
-    let es = (initalExecutionState cid inst sm cantRespond)
+    let es = (initialExecutionState cid inst sm cantRespond)
               { params = Params
                   { param_dat    = Just dat
                   , param_caller = Just caller
@@ -433,7 +433,7 @@ rawPostUpgrade (ImpState esref cid inst sm) wasm_mod caller mem dat = do
 
 rawQueryMethod :: ImpState s -> MethodName -> EntityId -> Blob -> ST s (TrapOr Response)
 rawQueryMethod (ImpState esref cid inst sm) method caller dat = do
-  let es = (initalExecutionState cid inst sm canRespond)
+  let es = (initialExecutionState cid inst sm canRespond)
             { params = Params
                 { param_dat    = Just dat
                 , param_caller = Just caller
@@ -453,7 +453,7 @@ rawQueryMethod (ImpState esref cid inst sm) method caller dat = do
 
 rawUpdateMethod :: ImpState s -> MethodName -> EntityId -> Responded -> Blob -> ST s (TrapOr UpdateResult)
 rawUpdateMethod (ImpState esref cid inst sm) method caller responded dat = do
-  let es = (initalExecutionState cid inst sm responded)
+  let es = (initialExecutionState cid inst sm responded)
             { params = Params
                 { param_dat    = Just dat
                 , param_caller = Just caller
@@ -475,7 +475,7 @@ rawCallbackMethod (ImpState esref cid inst sm) callback responded res = do
           Params { param_dat = Just dat, param_caller = Nothing, reject_code = 0, reject_message = "" }
         Reject (rc, reject_message) ->
           Params { param_dat = Nothing, param_caller = Nothing, reject_code = rejectCode rc, reject_message }
-  let es = (initalExecutionState cid inst sm responded) { params }
+  let es = (initialExecutionState cid inst sm responded) { params }
 
   let WasmClosure fun_idx env = case res of
         Reply {}  -> reply_callback callback

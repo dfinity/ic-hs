@@ -15,6 +15,7 @@ CBOR-level processing has already happened.
 -}
 module IC.Ref
   ( IC(..)
+  , IDChoice(..)
   , AsyncRequest(..)
   , callerOfAsync
   , SyncRequest(..)
@@ -53,8 +54,14 @@ import IC.Logger
 
 -- Abstract HTTP Interface
 
+data IDChoice
+    = SystemPicks
+    | ForcedChoice CanisterId -- ^ only for use from ic-ref-run
+    | Desired CanisterId
+  deriving (Eq, Ord, Show)
+
 data AsyncRequest
-    = CreateRequest UserId (Maybe CanisterId)
+    = CreateRequest UserId IDChoice
     | InstallRequest CanisterId UserId Blob Blob Bool
     | UpgradeRequest CanisterId UserId Blob Blob
     | UpdateRequest CanisterId UserId MethodName Blob
@@ -244,19 +251,17 @@ submitRequest rid r = modify $ \ic ->
 processRequest :: ICM m => RequestID -> AsyncRequest -> m ()
 
 processRequest rid req = (setReqStatus rid =<<) $ onReject (return . Rejected) $ case req of
-  CreateRequest user_id (Just desired) -> do
-    unless (isDerivedId (rawEntityId user_id) (rawEntityId desired)) $
-      reject RC_DESTINATION_INVALID "Desired canister id not derived from sender id"
-
-    exists <- gets (M.member desired . canisters)
+  CreateRequest user_id id_choice -> do
+    new_id <- case id_choice of
+      SystemPicks -> gets (freshId . M.keys . canisters)
+      ForcedChoice id -> return id
+      Desired id -> do
+        unless (isDerivedId (rawEntityId user_id) (rawEntityId id)) $
+          reject RC_DESTINATION_INVALID "Desired canister id not derived from sender id"
+        return id
+    exists <- gets (M.member new_id . canisters)
     when exists $
       reject RC_DESTINATION_INVALID "Desired canister id already exists"
-    createEmptyCanister desired
-    return $ Completed (CompleteCanisterId desired)
-
-  CreateRequest _user_id Nothing -> do
-    existing_canisters <- gets (M.keys . canisters)
-    let new_id = freshId existing_canisters
     createEmptyCanister new_id
     return $ Completed (CompleteCanisterId new_id)
 

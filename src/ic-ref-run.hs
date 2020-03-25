@@ -6,11 +6,13 @@ module Main where
 import Options.Applicative
 import Control.Monad (join, forM_)
 import qualified Data.ByteString.Lazy as B
+import qualified Data.ByteString.Builder as B
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import Control.Monad.Trans
 import Control.Monad.Trans.State
 import Text.Printf
+import Data.IORef
 
 import IC.Version
 import IC.Types
@@ -59,10 +61,12 @@ printReqStatus (Completed (CompleteCanisterId id)) =
 printReqStatus (Completed (CompleteArg blob)) =
     printf "← completed: %s\n" (prettyBlob blob)
 
-submitAndRun :: AsyncRequest -> DRun ReqResponse
-submitAndRun r = do
+
+
+submitAndRun :: IO RequestID -> AsyncRequest -> DRun ReqResponse
+submitAndRun mkRid r = do
     lift $ printAsyncRequest r
-    let rid = dummyRequestId r
+    rid <- lift mkRid
     submitRequest rid r
     runToCompletion
     r <- readRequest (StatusRequest rid)
@@ -76,23 +80,32 @@ submitRead r = do
     lift $ printReqStatus r
     return r
 
+newRequestIdProvider :: IO (IO RequestID)
+newRequestIdProvider = do
+  ref <- newIORef 0
+  return $ do
+    modifyIORef ref (+1)
+    i <- readIORef ref
+    return $ B.toLazyByteString $ B.word64BE i
+
 work :: FilePath -> IO ()
 work msg_file = do
   msgs <- parseFile msg_file
 
   let user_id = dummyUserId
+  getRid <- newRequestIdProvider
 
   flip evalStateT initialIC $
     forM_ msgs $ \case
       Install cid filename arg -> do
         wasm <- liftIO $ B.readFile filename
-        _ <- submitAndRun (CreateRequest user_id (Just (EntityId cid)))
-        submitAndRun (InstallRequest (EntityId cid) user_id wasm arg False)
+        _ <- submitAndRun getRid (CreateRequest user_id (ForcedChoice (EntityId cid)))
+        submitAndRun getRid (InstallRequest (EntityId cid) user_id wasm arg False)
       Upgrade cid filename arg -> do
         wasm <- liftIO $ B.readFile filename
-        submitAndRun (UpgradeRequest (EntityId cid) user_id wasm arg)
+        submitAndRun getRid (UpgradeRequest (EntityId cid) user_id wasm arg)
       Query  cid method arg -> submitRead  (QueryRequest (EntityId cid) user_id method arg)
-      Update cid method arg -> submitAndRun (UpdateRequest (EntityId cid) user_id method arg)
+      Update cid method arg -> submitAndRun getRid (UpdateRequest (EntityId cid) user_id method arg)
 
 main :: IO ()
 main = join . customExecParser (prefs showHelpOnError) $

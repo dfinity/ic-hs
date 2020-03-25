@@ -971,10 +971,10 @@ getRand8Bytes = BS.pack <$> replicateM 8 randomIO
 
 -- * Test data access
 
-getTestDir :: IO FilePath
-getTestDir =
+getTestFile :: FilePath -> IO FilePath
+getTestFile file =
     lookupEnv "IC_TEST_DATA" >>= \case
-    Just fp -> return fp
+    Just fp -> return $ fp </> file
     Nothing -> do
       -- nix use
       exePath <- getExecutablePath
@@ -982,16 +982,16 @@ getTestDir =
       -- convenient for cabal new-run use
       try [ exeRelPath, "test-data", "../test-data", "impl/test-data" ]
   where
-    try (f:fs) = doesDirectoryExist f >>= \case
-      True -> return f
-      False -> try fs
-    try [] = error "getTestDir: Please set IC_TEST_DATA"
+    try (d:ds) = doesFileExist (d </> file) >>= \case
+      True -> return (d </> file)
+      False -> try ds
+    try [] = error $ "getTestDir: Could not read " ++ file ++ " from test-data/. Please consult impl/README.md"
 
 getTestWat :: FilePath -> IO BS.ByteString
 getTestWat wat = do
-  dir <- getTestDir
+  fp <- getTestFile $ wat <.> "wat"
   (code, out, err) <- readProcessWithExitCode "wat2wasm"
-    [ dir </> wat <.> "wat", "-o", "/dev/stdout" ] ""
+    [ fp , "-o", "/dev/stdout" ] ""
   BS.hPutStr stderr err
   if code /= ExitSuccess
   then error "getTestWat failed"
@@ -999,5 +999,5 @@ getTestWat wat = do
 
 getTestWasm :: FilePath -> IO BS.ByteString
 getTestWasm base = do
-  dir <- getTestDir
-  BS.readFile (dir </> base <.> "wasm")
+  fp <- getTestFile $ base <.> "wasm"
+  BS.readFile fp
