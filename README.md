@@ -116,7 +116,8 @@ directory.
 
     nix-env -i -f . -A ic-ref
 
-This installs the following binaries in the PATH:
+This installs the all binaries (`ic-ref`, `ic-ref-test`, `ic-ref-run`) in your
+the PATH.
 
 Using
 -----
@@ -144,10 +145,36 @@ and implementation version (`--version`).
 Developing on ic-ref
 ---------------------
 
-Running `nix-shell` in the `ic-ref/` directory should give you an environment
+Running `nix-shell` in the `ic-ref/impl` directory gives you an environment
 that allows you to build the project using `cabal new-build`. You can also run
 `cabal new-run ic-ref` etc. to run it directly from source.
 
+One possible workflow is to run
+
+    ghcid -c 'cabal new-repl ic-ref' -rMain.main
+
+which will run `ic-ref` and restart upon file changes.
+
+Developing on ic-ref-test
+-------------------------
+
+Before running the test suite, make sure you have built the universal canister.
+The symbolic link in `impl/test-data/universal_canister.wasm` points to the
+build output produced by
+
+    cd ../universal_canister
+    cargo build --target wasm32-unknown-unknown --release
+
+now yuo can run the test suite with
+
+    cabal new-build ic-ref-test
+
+The `-p` flag, i.e.
+
+    cabal new-build ic-ref-test -- -p upgrade
+
+allows you can run tests selectively (i.e. only those whose name include
+“upgrade”).
 
 Updating Haskell Packages
 -------------------------
