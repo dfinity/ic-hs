@@ -6,16 +6,12 @@ let nixpkgs = import ./nix { inherit system; }; in
 let stdenv = nixpkgs.stdenv; in
 let subpath = p: import ./nix/gitSource.nix p; in
 
-# Building the universal_canister is relatively convluted:
-#  * We need to use the rust patches from common, as they
-#    include a rustc with the wasm32-unknown-unknown target
-#  * Not sure if I am using naersk the right way here.
-let rust_pkgs = import nixpkgs.sources.common { inherit system; }; in
-let universal-canister = (rust_pkgs.naersk.buildPackage rec {
+let naersk = nixpkgs.callPackage nixpkgs.sources.naersk {}; in
+let universal-canister = (naersk.buildPackage rec {
     name = "universal-canister";
     src = subpath ./universal-canister;
     root = ./universal-canister;
-    CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_LINKER = "${rust_pkgs.llvmPackages_9.lld}/bin/lld";
+    CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_LINKER = "${nixpkgs.llvmPackages_9.lld}/bin/lld";
     RUSTFLAGS = "-C link-arg=-s"; # much smaller wasm
     cargoBuildOptions = x : x ++ [ "--target wasm32-unknown-unknown" ];
     doCheck = false;
@@ -161,6 +157,6 @@ rec {
 
     haskellPackages.ic-ref.env.overrideAttrs (old: {
       nativeBuildInputs = (old.nativeBuildInputs or []) ++ extra-pkgs ;
-      CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_LINKER = "${rust_pkgs.llvmPackages_9.lld}/bin/lld";
+      CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_LINKER = "${nixpkgs.llvmPackages_9.lld}/bin/lld";
     });
 }
