@@ -55,12 +55,20 @@ let
     extraCabal2nixOptions = "--no-check";
   };
 
+  hs-to-coq = haskellSrc2nixWithDoc {
+    name = "hs-to-coq";
+    src = pkgs.sources.hs-to-coq;
+    src_subst = "pkgs.sources.hs-to-coq";
+    extraCabal2nixOptions = "";
+  };
+
   ic-ref = localHaskellSrc2nixWithDoc "ic-ref" "impl" "--no-check -frelease";
 
   allGenerated = pkgs.runCommandNoCC "generated" {} ''
     mkdir -p $out
     cp ${winter}/default.nix $out/winter.nix
     cp ${ic-ref}/default.nix $out/ic-ref.nix
+    cp ${hs-to-coq}/default.nix $out/hs-to-coq.nix
   '';
 in
 allGenerated

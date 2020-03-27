@@ -32,6 +32,61 @@ let haskellPackages = nixpkgs.haskellPackages.override {
   overrides = import nix/haskell-packages.nix nixpkgs subpath;
 }; in
 
+
+let hs-to-coq-pkgs = nixpkgs.haskell.packages."lts-12.26"; in
+let hs-to-coq = hs-to-coq-pkgs.callPackage nix/generated/hs-to-coq.nix {}; in
+
+let ic-ref-coq-files = nixpkgs.runCommandNoCC "ic-ref-coq-files" {
+    nativeBuildInputs = [ hs-to-coq-pkgs.ghc hs-to-coq ];
+    src = subpath impl/src;
+  } ''
+    # running hs-to-coq requires loading files into GHC-the-library
+    # so we need the dependencies available
+    packageConfDir="$TMPDIR/package.conf.d"
+    mkdir -p $packageConfDir
+    cp -f "${hs-to-coq-pkgs.memory}/lib/${hs-to-coq-pkgs.ghc.name}/package.conf.d/"*.conf $packageConfDir/
+    cp -f "${hs-to-coq-pkgs.basement}/lib/${hs-to-coq-pkgs.ghc.name}/package.conf.d/"*.conf $packageConfDir/
+    cp -f "${hs-to-coq-pkgs.cryptonite}/lib/${hs-to-coq-pkgs.ghc.name}/package.conf.d/"*.conf $packageConfDir/
+    cp -f "${nixpkgs.haskell.packages.ghc844.primitive}/lib/${hs-to-coq-pkgs.ghc.name}/package.conf.d/"*.conf $packageConfDir/
+    cp -f "${nixpkgs.haskell.packages.ghc844.vector}/lib/${hs-to-coq-pkgs.ghc.name}/package.conf.d/"*.conf $packageConfDir/
+    cp -f "${nixpkgs.haskell.packages.ghc844.base16-bytestring}/lib/${hs-to-coq-pkgs.ghc.name}/package.conf.d/"*.conf $packageConfDir/
+    cp -f "${nixpkgs.haskell.packages.ghc844.hex-text}/lib/${hs-to-coq-pkgs.ghc.name}/package.conf.d/"*.conf $packageConfDir/
+    cp -f "${nixpkgs.haskell.lib.markUnbroken (nixpkgs.haskell.lib.dontCheck nixpkgs.haskell.packages.ghc844.crc)}/lib/${hs-to-coq-pkgs.ghc.name}/package.conf.d/"*.conf $packageConfDir/
+    ghc-pkg --package-conf="$packageConfDir" recache
+
+    GHC_PACKAGE_PATH=$packageConfDir: ghc-pkg check
+
+    mkdir -p $out
+    GHC_PACKAGE_PATH=$packageConfDir: LANG=C.UTF8 hs-to-coq -i $src/ IC.Ref --iface-dir $out --iface-dir ${nixpkgs.sources.hs-to-coq}/base -e ${nixpkgs.sources.hs-to-coq}/base/edits -o $out/ --midamble=${./midamble} -e ${./edit} --ghc -DCANISTER_FAKE
+    touch $out
+  ''; in
+
+let all-coq-files = nixpkgs.runCommandNoCC "all-coq-files" {
+    nativeBuildInputs = [
+      nixpkgs.coq
+    ];
+    paths = [
+      ic-ref-coq-files
+      (nixpkgs.sources.hs-to-coq + "/base")
+      (nixpkgs.sources.hs-to-coq + "/examples/transformers/lib")
+      (nixpkgs.sources.hs-to-coq + "/examples/containers/lib")
+    ];
+    passAsFile = [ "paths" ];
+  } ''
+      mkdir -p $out
+      for i in $(cat $pathsPath); do
+        ${nixpkgs.xorg.lndir}/bin/lndir -ignorelinks -silent $i $out
+      done
+      cd $out
+      rm Makefile README.md _CoqProject
+      rm Data/SequenceManual.v
+      rm Data/Char.v
+      echo '-R . ""' > _CoqProject
+      find -name \*.v >> _CoqProject
+      coq_makefile -f _CoqProject -o  Makefile
+      make
+    ''; in
+
 let ic-ref = haskellPackages.ic-ref.overrideAttrs (old: {
   installPhase = (old.installPhase or "") + ''
     cp -rv test-data $out/test-data
@@ -48,6 +103,9 @@ rec {
   inherit ic-ref;
   inherit ic-ref-coverage;
   inherit universal-canister;
+  inherit hs-to-coq;
+  inherit ic-ref-coq-files;
+  inherit all-coq-files;
 
   ic-ref-test = nixpkgs.runCommandNoCC "ic-ref-test" {
       nativeBuildInputs = [ ic-ref nixpkgs.wabt ];

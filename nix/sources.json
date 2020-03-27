@@ -6,6 +6,18 @@
         "rev": "c83d968179e9c927b8bcf1cc9e34b21ba56faff1",
         "type": "git"
     },
+    "hs-to-coq": {
+        "branch": "master",
+        "description": "Convert Haskell source code to Coq source code",
+        "homepage": "https://hs-to-coq.readthedocs.io",
+        "owner": "antalsz",
+        "repo": "hs-to-coq",
+        "rev": "d600760489201df07a163a471823ded1c2dbdf7d",
+        "sha256": "0997ymf0i20b9anx0i5k150v81p0f0dn8lrzxxx1ch8mic8lqi0m",
+        "type": "tarball",
+        "url": "https://github.com/antalsz/hs-to-coq/archive/d600760489201df07a163a471823ded1c2dbdf7d.tar.gz",
+        "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
+    },
     "nixpkgs": {
         "branch": "nixpkgs-unstable",
         "description": "A read-only mirror of NixOS/nixpkgs tracking the released channels. Send issues and PRs to",
