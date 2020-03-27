@@ -17,6 +17,10 @@ flag release
 --
 -- > cabal: Cannot open a repl for multiple components at once.
 
+flag canister-persisted
+  default: True
+  manual: True
+
 common version
   hs-source-dirs:      src
   other-modules:       IC.Version
@@ -57,6 +61,11 @@ common logic
   build-depends:       hex-text
   build-depends:       cryptonite
   build-depends:       memory
+
+  if flag(canister-persisted)
+    cpp-options: -DCANISTER_PERSISTED
+  else
+    cpp-options: -DCANISTER_PURE
 
 common cbor
   hs-source-dirs:      src
