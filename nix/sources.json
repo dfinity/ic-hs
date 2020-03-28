@@ -8,6 +8,7 @@
     },
     "hs-to-coq": {
         "branch": "master",
+        "builtin": false,
         "description": "Convert Haskell source code to Coq source code",
         "homepage": "https://hs-to-coq.readthedocs.io",
         "owner": "antalsz",
