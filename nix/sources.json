@@ -28,7 +28,7 @@
         "rev": "29ca177c684cb42f0ea57171be5653b9b5060ba7",
         "sha256": "13hw3ppc49ikfyfvsgx6ih3s0z3wk3m6xdyb850cjkgdd9lz23zr",
         "type": "tarball",
-        "url": "https://github.com/nomeata/nixpkgs/archive/29ca177c684cb42f0ea57171be5653b9b5060ba7.tar.gz",
+        "url": "https://github.com/nixos/nixpkgs/archive/29ca177c684cb42f0ea57171be5653b9b5060ba7.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "winter": {
