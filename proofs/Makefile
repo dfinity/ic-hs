@@ -13,6 +13,7 @@ VFILES_GEN     = $(addprefix lib/,$(addsuffix .v,$(MODULES)))
 
 VFILES   = $(VFILES_GEN)
 
+
 all:  vfiles coqfiles lib theories
 vfiles: $(VFILES)
 coqfiles: lib/README.md lib/Makefile vfiles
@@ -34,7 +35,7 @@ lib/README.md:
 	echo 'This directory contains a Coq’ified versions of ic-ref' >> $@
 	echo 'Do not edit files here!' >> $@
 
-coq: lib/Makefile $(VFILES)
+lib: lib/Makefile $(VFILES)
 	$(MAKE) -C lib -f Makefile OPT=$(COQFLAGS)
 
 theories: theories/Makefile
@@ -64,4 +65,6 @@ $(VFILES_GEN): lib/%.v : $$(wildcard module-edits/$$*/preamble.v) $$(wildcard mo
 
 clean:
 	rm -rf lib
-	rm -f $(THEORIES)/Makefile
+	rm -f theories/Makefile
+
+.PHONY: vfiles coqfiles lib theories clean
