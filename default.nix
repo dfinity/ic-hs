@@ -61,31 +61,50 @@ let ic-ref-coq-files = nixpkgs.runCommandNoCC "ic-ref-coq-files" {
     touch $out
   ''; in
 
-let all-coq-files = nixpkgs.runCommandNoCC "all-coq-files" {
-    nativeBuildInputs = [
-      nixpkgs.coq
-    ];
-    paths = [
-      ic-ref-coq-files
-      (nixpkgs.sources.hs-to-coq + "/base")
-      (nixpkgs.sources.hs-to-coq + "/examples/transformers/lib")
-      (nixpkgs.sources.hs-to-coq + "/examples/containers/lib")
-    ];
-    passAsFile = [ "paths" ];
-  } ''
-      mkdir -p $out
-      for i in $(cat $pathsPath); do
-        ${nixpkgs.xorg.lndir}/bin/lndir -ignorelinks -silent $i $out
-      done
-      cd $out
-      rm Makefile README.md _CoqProject
-      rm Data/SequenceManual.v
-      rm Data/Char.v
+let
+  mkCoqLib = { name, src, subdir, delete ? [], deps ? [] }:
+   stdenv.mkDerivation {
+    name = "coq${nixpkgs.coq.coq-version}-${name}";
+    inherit src;
+    preBuild = ''
+      cd ${subdir}
       echo '-R . ""' > _CoqProject
+      rm -f ${nixpkgs.lib.concatStringsSep " " delete}
       find -name \*.v >> _CoqProject
-      coq_makefile -f _CoqProject -o  Makefile
-      make
-    ''; in
+      coq_makefile -f _CoqProject -o Makefile
+    '';
+    buildInputs = [ nixpkgs.coq ] ++ deps;
+    installFlags = "COQLIB=$(out)/lib/coq/${nixpkgs.coq.coq-version}/";
+    meta = { description = "hs-to-coq coq library ${name}"; };
+  };
+
+  coq-base = mkCoqLib {
+    name = "base";
+    src = nixpkgs.sources.hs-to-coq;
+    subdir = "base";
+    delete = ["Data/Char.v"];
+  };
+  coq-transformers = mkCoqLib {
+    name = "transformers";
+    src = nixpkgs.sources.hs-to-coq;
+    subdir = "examples/transformers/lib";
+    deps = [ coq-base ];
+  };
+  coq-containers = mkCoqLib {
+    name = "containers";
+    src = nixpkgs.sources.hs-to-coq;
+    subdir = "examples/containers/lib";
+    deps = [ coq-base ];
+    delete = ["Data/SequenceManual.v"];
+  };
+  coq-ic-ref = mkCoqLib {
+    name = "ic-ref";
+    src = ic-ref-coq-files;
+    subdir = ".";
+    deps = [ coq-base coq-transformers coq-containers ];
+  };
+in
+
 
 let ic-ref = haskellPackages.ic-ref.overrideAttrs (old: {
   installPhase = (old.installPhase or "") + ''
@@ -104,8 +123,7 @@ rec {
   inherit ic-ref-coverage;
   inherit universal-canister;
   inherit hs-to-coq;
-  inherit ic-ref-coq-files;
-  inherit all-coq-files;
+  inherit coq-ic-ref;
 
   ic-ref-test = nixpkgs.runCommandNoCC "ic-ref-test" {
       nativeBuildInputs = [ ic-ref nixpkgs.wabt ];
@@ -215,7 +233,10 @@ rec {
       nixpkgs.ghcid
     ] ++
     # and to build the rust stuff
-    universal-canister.nativeBuildInputs; in
+    universal-canister.nativeBuildInputs ++
+    # and a bunch of coq stuff
+    [ nixpkgs.coq coq-base coq-containers coq-transformers coq-ic-ref ]
+    ; in
 
     haskellPackages.ic-ref.env.overrideAttrs (old: {
       nativeBuildInputs = (old.nativeBuildInputs or []) ++ extra-pkgs ;
