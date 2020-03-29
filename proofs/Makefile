@@ -1,6 +1,5 @@
 HS_TO_COQ ?= hs-to-coq
 SRC ?= ../impl/src
-OUT ?= lib
 
 MODULES = \
   IC/Utils \
@@ -10,43 +9,48 @@ MODULES = \
   IC/Canister \
   IC/Ref \
 
-VFILES_GEN     = $(addprefix $(OUT)/,$(addsuffix .v,$(MODULES)))
+VFILES_GEN     = $(addprefix lib/,$(addsuffix .v,$(MODULES)))
 
 VFILES   = $(VFILES_GEN)
 
-all:  vfiles coqfiles coq
+all:  vfiles coqfiles lib theories
 vfiles: $(VFILES)
-coqfiles: $(OUT)/README.md $(OUT)/Makefile vfiles
+coqfiles: lib/README.md lib/Makefile vfiles
 
-$(OUT)/_CoqProject : Makefile
-	mkdir -p $(OUT)
+lib/_CoqProject : Makefile
+	mkdir -p lib
 	> $@
 	echo '-Q . ""' >> $@
 	echo $(addsuffix .v,$(MODULES)) >> $@
 
-$(OUT)/Makefile: $(OUT)/_CoqProject
-	cd $(OUT); coq_makefile -f _CoqProject -o Makefile
+lib/Makefile: lib/_CoqProject
+	cd lib; coq_makefile -f _CoqProject -o Makefile
+theories/Makefile: theories/_CoqProject
+	cd theories; coq_makefile -f _CoqProject -o Makefile
 
-$(OUT)/README.md:
-	mkdir -p $(OUT)
+lib/README.md:
+	mkdir -p lib
 	> $@
 	echo 'This directory contains a Coq’ified versions of ic-ref' >> $@
 	echo 'Do not edit files here!' >> $@
 
-coq: $(OUT)/Makefile $(VFILES)
-	$(MAKE) -C $(OUT) -f Makefile OPT=$(COQFLAGS)
+coq: lib/Makefile $(VFILES)
+	$(MAKE) -C lib -f Makefile OPT=$(COQFLAGS)
+
+theories: theories/Makefile
+	$(MAKE) -C theories -f Makefile OPT=$(COQFLAGS)
 
 HS_TO_COQ_OPTS := \
     -e edits \
     -N \
     -i $(SRC) \
-    --iface-dir $(OUT) \
+    --iface-dir lib \
     --ghc -DCANISTER_FAKE \
-    -o $(OUT) \
+    -o lib \
 
 
 .SECONDEXPANSION:
-$(VFILES_GEN): $(OUT)/%.v : $$(wildcard module-edits/$$*/preamble.v) $$(wildcard module-edits/$$*/midamble.v)  $$(wildcard module-edits/$$*/edits) edits
+$(VFILES_GEN): lib/%.v : $$(wildcard module-edits/$$*/preamble.v) $$(wildcard module-edits/$$*/midamble.v)  $$(wildcard module-edits/$$*/edits) edits
 	$(HS_TO_COQ) $(addprefix -e , $(wildcard module-edits/$*/edits)) \
 	             $(addprefix -p , $(wildcard module-edits/$*/preamble.v)) \
 	             $(addprefix --midamble , $(wildcard module-edits/$*/midamble.v)) \
@@ -59,4 +63,5 @@ $(VFILES_GEN): $(OUT)/%.v : $$(wildcard module-edits/$$*/preamble.v) $$(wildcard
 	test -e $@
 
 clean:
-	rm -rf $(OUT)
+	rm -rf lib
+	rm -f $(THEORIES)/Makefile

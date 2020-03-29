@@ -1,0 +1,6 @@
+Makefile
+Makefile.conf
+*.aux
+*.glob
+*.vo
+.coqdeps.d

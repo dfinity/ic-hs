@@ -113,17 +113,17 @@ let
       test -e lib/IC/Ref.v # sanity check
     '';
     installPhase = ''
-      cp -r lib $out
+      cp -r lib/* $out
     '';
   };
 
-  mkCoqLib = { name, src, subdir, delete ? [], deps ? [] }:
+  mkCoqLib = { name, src, prefix ? "\"\"", subdir ? ".", delete ? [], deps ? [] }:
    stdenv.mkDerivation {
     name = "coq${nixpkgs.coq.coq-version}-${name}";
     inherit src;
     preBuild = ''
       cd ${subdir}
-      echo '-R . ""' > _CoqProject
+      echo '-Q . ${prefix}' > _CoqProject
       rm -f ${nixpkgs.lib.concatStringsSep " " delete}
       find -name \*.v >> _CoqProject
       coq_makefile -f _CoqProject -o Makefile
@@ -155,8 +155,13 @@ let
   coq-ic-ref = mkCoqLib {
     name = "ic-ref";
     src = ic-ref-coq-files;
-    subdir = ".";
     deps = [ coq-base coq-transformers coq-containers ];
+  };
+  coq-ic-ref-theories = mkCoqLib {
+    name = "ic-ref-theories";
+    prefix = "Proofs";
+    src = subpath proofs/theories;
+    deps = [ coq-base coq-transformers coq-containers coq-ic-ref ];
   };
 in
 
@@ -181,6 +186,7 @@ rec {
   inherit ic-ref-ghc-env;
   inherit ic-ref-coq-files;
   inherit coq-ic-ref;
+  inherit coq-ic-ref-theories;
   inherit hs-to-coq-base;
 
   ic-ref-test = nixpkgs.runCommandNoCC "ic-ref-test" {
