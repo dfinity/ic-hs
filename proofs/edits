@@ -1,0 +1,149 @@
+skip module GHC.Show
+skip class GHC.Show.Show
+skip module Data.Digest.CRC
+skip module Data.Digest.CRC8
+skip module Data.Text.Show
+skip module Data.ByteString.Lazy
+skip module Text.Hex
+
+redefine Definition IC.Types.prettyID : IC.Types.CanisterId -> GHC.Base.String := fun x => rawEntityId x.
+skip IC.Types.prettyBlob
+
+rename type Data.ByteString.Lazy.Internal.ByteString = GHC.Base.String
+rename type Data.ByteString.Internal.ByteString = GHC.Base.String
+
+rename value Data.ByteString.Lazy.drop = GHC.List.drop
+rename value Data.ByteString.Lazy.take = GHC.List.take
+rename value Data.ByteString.Lazy.length = GHC.List.length
+rename value Data.ByteString.Lazy.last = GHC.List.last
+rename value Data.ByteString.Lazy.fromStrict = id
+rewrite forall x, Data.ByteString.Lazy.singleton x = cons x nil
+
+redefine Definition IC.Id.Forms.h : GHC.Base.String -> GHC.Base.String := fun x => x.
+
+rename type GHC.Int.Int32 = GHC.Num.Int
+
+rename value IC.Types.WasmClosure = IC.Types.Mk_WasmClosure
+rename value IC.Types.Responded = IC.Types.Mk_Responded
+rename value IC.Types.Callback = IC.Types.Mk_Callback
+rename value IC.Types.EntityId = IC.Types.Mk_EntityId
+rename value IC.Types.MethodCall = IC.Types.Mk_MethodCall
+rename value IC.Ref.CanState = IC.Ref.Mk_CanState
+rename value IC.Ref.CallContext = IC.Ref.Mk_CallContext
+rename value IC.Ref.IC = IC.Ref.Mk_IC
+
+# todo: make abstract
+rename value IC.Canister.WasmState = IC.Canister.Mk_WasmState
+rename value IC.Canister.CanisterModule = IC.Canister.Mk_CanisterModule
+
+rename type IC.Types.op_z21a6U__ = IC.Types.Map
+
+add IC.Types Instance Unpeel_EntityId : GHC.Prim.Unpeel EntityId Blob :=
+      GHC.Prim.Build_Unpeel _ _ rawEntityId Mk_EntityId.
+order Unpeel_EntityId IC.Types.Eq___EntityId_op_zeze__
+
+add type IC.Types Instance IC.Types.Default__TrapOp a : GHC.Err.Default (IC.Types.TrapOr a) :=
+  GHC.Err.Build_Default _ (Trap GHC.Err.default).
+add type IC.Types Instance IC.Types.Default__Responded : GHC.Err.Default IC.Types.Responded :=
+  GHC.Err.Build_Default _ (IC.Types.Mk_Responded GHC.Err.default).
+add type IC.Types Instance IC.Types.Default__Response : GHC.Err.Default IC.Types.Response :=
+  GHC.Err.Build_Default _ (IC.Types.Reply GHC.Err.default).
+add type IC.Ref Instance IC.Ref.Default__EntryPoint : GHC.Err.Default IC.Ref.EntryPoint :=
+  GHC.Err.Build_Default _ (IC.Ref.Public GHC.Err.default GHC.Err.default).
+add type IC.Ref Instance IC.Ref.Default__CallOrigin : GHC.Err.Default IC.Ref.CallOrigin :=
+  GHC.Err.Build_Default _ (IC.Ref.FromUser GHC.Err.default).
+order IC.Ref.Default__EntryPoint IC.Ref.Default__Message
+order IC.Ref.Default__CallOrigin IC.Ref.Default__Message
+
+skip IC.Utils.repeatWhileTrue
+
+skip module IC.Logger
+
+skip module Data.ByteArray.Methods
+rename value Data.ByteArray.Methods.conver = id
+
+axiomatize definition IC.Id.Fresh.freshId
+
+rewrite forall x, Data.Tuple.fst (Data.Map.Internal.findMax x) = GHC.List.last (Data.Map.Internal.keys x)
+rewrite forall m x, (Data.Map.Internal.!) m x = Data.Map.Internal.findWithDefault GHC.Err.default x m
+
+skip module Control.Monad.Error.Class
+skip module Control.Monad.State.Class
+skip IC.Ref.ICM
+skip IC.Ref.CanReject
+
+rename value Control.Monad.State.Class.modify = Control.Monad.Trans.State.Lazy.modify
+rename value Control.Monad.State.Class.state = Control.Monad.Trans.State.Lazy.state
+rename value Control.Monad.State.Class.gets = Control.Monad.Trans.State.Lazy.gets
+rename value Control.Monad.Error.Class.throwError = Control.Monad.Trans.Except.throwE
+
+add type IC.Ref Definition IC.Ref.M := Control.Monad.Trans.State.Lazy.StateT IC.Ref.IC Data.Functor.Identity.Identity.
+add type IC.Ref Definition IC.Ref.RM := Control.Monad.Trans.Except.ExceptT (IC.Types.RejectCode * GHC.Base.String) IC.Ref.M.
+
+add IC.Ref Definition IC.Ref.liftRM {a} : M a -> RM a := Control.Monad.Trans.Class.lift.
+
+set type IC.Ref.submitRequest no type
+set type IC.Ref.setReqStatus : IC.Types.RequestID -> (IC.Ref.RequestStatus -> M unit)
+set type IC.Ref.setCanState no type
+set type IC.Ref.reject : forall {a}, IC.Types.RejectCode -> (GHC.Base.String -> IC.Ref.RM a)
+set type IC.Ref.setCanisterState no type
+set type IC.Ref.popMessage no type
+set type IC.Ref.onReject : forall {b}, ((IC.Types.RejectCode * GHC.Base.String)-> M b) -> (RM b -> M b)
+set type IC.Ref.nextStarved no type
+set type IC.Ref.nextReceived no type
+set type IC.Ref.newCallContext no type
+set type IC.Ref.modifyCallContext no type
+set type IC.Ref.rememberTrap no type
+set type IC.Ref.insertCanister no type
+set type IC.Ref.getNonemptyCanisterState no type
+set type IC.Ref.getCallContext no type
+set type IC.Ref.respondedCallID no type
+set type IC.Ref.getCanisterState no type
+set type IC.Ref.readRequest no type
+set type IC.Ref.enqueueMessage no type
+set type IC.Ref.newCall no type
+set type IC.Ref.respondCallContext no type
+set type IC.Ref.rejectCallContext no type
+set type IC.Ref.starveCallContext no type
+set type IC.Ref.createEmptyCanister no type
+set type IC.Ref.processRequest no type
+set type IC.Ref.callerOfRequest no type
+set type IC.Ref.calleeOfCallID no type
+set type IC.Ref.callerOfCallID no type
+set type IC.Ref.invokeEntry no type
+set type IC.Ref.processMessage no type
+set type IC.Ref.runStep no type
+set type IC.Ref.runToCompletion no type
+set type IC.Ref.authUser : IC.Types.Blob -> (IC.Types.CanisterId -> M bool)
+set type IC.Ref.authSyncRequest no type
+set type IC.Ref.authAsyncRequest no type
+
+in IC.Ref.getCanisterState rewrite forall f, Control.Monad.Trans.State.Lazy.gets f = IC.Ref.liftRM (Control.Monad.Trans.State.Lazy.gets f)
+in IC.Ref.readRequest rewrite forall f, Control.Monad.Trans.State.Lazy.gets f = IC.Ref.liftRM (Control.Monad.Trans.State.Lazy.gets f)
+in IC.Ref.processRequest rewrite forall f, Control.Monad.Trans.State.Lazy.gets f = IC.Ref.liftRM (Control.Monad.Trans.State.Lazy.gets f)
+in IC.Ref.processRequest rewrite forall x, IC.Ref.createEmptyCanister x = IC.Ref.liftRM (IC.Ref.createEmptyCanister x)
+in IC.Ref.processRequest rewrite forall x y z, IC.Ref.insertCanister x y z = IC.Ref.liftRM (IC.Ref.insertCanister x y z)
+in IC.Ref.processRequest rewrite forall x, IC.Ref.enqueueMessage x = IC.Ref.liftRM (IC.Ref.enqueueMessage x)
+in IC.Ref.processRequest rewrite forall x, IC.Ref.enqueueMessage GHC.Base.$ x = IC.Ref.liftRM (IC.Ref.enqueueMessage x)
+in IC.Ref.processRequest rewrite forall x, IC.Ref.newCallContext x = IC.Ref.liftRM (IC.Ref.newCallContext x)
+in IC.Ref.processRequest rewrite forall x, IC.Ref.newCallContext GHC.Base.$ x = IC.Ref.liftRM (IC.Ref.newCallContext x)
+in IC.Ref.processRequest rewrite forall x y, IC.Ref.modifyCallContext x y = IC.Ref.liftRM (IC.Ref.modifyCallContext x y)
+
+in IC.Ref.processMessage rewrite forall x y z, IC.Ref.invokeEntry x y z = IC.Ref.liftRM (IC.Ref.invokeEntry x y z)
+in IC.Ref.processMessage rewrite forall x y, IC.Ref.setCanisterState x y = IC.Ref.liftRM (IC.Ref.setCanisterState x y)
+in IC.Ref.processMessage rewrite forall x, IC.Ref.newCall x = (fun y => IC.Ref.liftRM (IC.Ref.newCall x y))
+in IC.Ref.processMessage rewrite forall x, IC.Ref.respondCallContext x = (fun y => IC.Ref.liftRM (IC.Ref.respondCallContext x y))
+in IC.Ref.processMessage rewrite forall x, IC.Ref.calleeOfCallID x = IC.Ref.liftRM (IC.Ref.calleeOfCallID x)
+in IC.Ref.processMessage rewrite forall x y, IC.Ref.rememberTrap x y = IC.Ref.liftRM (IC.Ref.rememberTrap x y)
+
+rewrite forall x, IC.Logger.logTrap msg = GHC.Base.return_ tt
+
+skip module Data.Sequence
+skip module Data.Sequence.Internal
+rename type Data.Sequence.Internal.Seq = list
+rename value Data.Sequence.Internal.Empty = nil
+rename value Data.Sequence.Internal.op_ZCzlzb__ = cons
+rewrite forall xs x, (Data.Sequence.Internal.:|>) xs x = app xs (cons x nil)
+
+
+skip IC.Ref.runToCompletion

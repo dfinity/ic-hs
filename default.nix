@@ -34,12 +34,13 @@ let haskellPackages = nixpkgs.haskellPackages.override {
 
 
 let hs-to-coq-pkgs = nixpkgs.haskell.packages."lts-12.26"; in
-let hs-to-coq = hs-to-coq-pkgs.callPackage nix/generated/hs-to-coq.nix {}; in
+let hs-to-coq-unwrapped = hs-to-coq-pkgs.callPackage nix/generated/hs-to-coq.nix {}; in
 
 # running hs-to-coq requires loading files into GHC-the-library
 # so we need the dependencies available. This derivation
 # builds the appropriate package data base
-let ic-ref-ghc-env = nixpkgs.runCommandNoCC "ic-ref-ghc-env" {
+let
+  ic-ref-ghc-env = nixpkgs.runCommandNoCC "ic-ref-ghc-env" {
     nativeBuildInputs = [ hs-to-coq-pkgs.ghc ];
   } ''
     packageConfDir="$out"
@@ -54,18 +55,68 @@ let ic-ref-ghc-env = nixpkgs.runCommandNoCC "ic-ref-ghc-env" {
     cp -f "${nixpkgs.haskell.lib.markUnbroken (nixpkgs.haskell.lib.dontCheck nixpkgs.haskell.packages.ghc844.crc)}/lib/${hs-to-coq-pkgs.ghc.name}/package.conf.d/"*.conf $packageConfDir/
     ghc-pkg --package-conf="$packageConfDir" recache
     GHC_PACKAGE_PATH=$packageConfDir: ghc-pkg check
-  ''; in
+  '';
 
-let ic-ref-coq-files = nixpkgs.runCommandNoCC "ic-ref-coq-files" {
-    nativeBuildInputs = [ hs-to-coq-pkgs.ghc hs-to-coq ];
-    src = subpath impl/src;
-  } ''
-    mkdir -p $out
-    GHC_PACKAGE_PATH=${ic-ref-ghc-env}: LANG=C.UTF8 hs-to-coq -i $src/ IC.Ref --iface-dir $out --iface-dir ${nixpkgs.sources.hs-to-coq}/base -e ${nixpkgs.sources.hs-to-coq}/base/edits -o $out/ --midamble=${./midamble} -e ${./edit} --ghc -DCANISTER_FAKE
-    test -e $out/IC/Ref.v # sanity check
-  ''; in
+  hs-to-coq = stdenv.mkDerivation {
+    name = "hs-to-coq";
+    phases = [ "buildPhase" "fixupPhase" ];
+    setupHook = nixpkgs.writeText "setupHook.sh" ''
+      addHsToCoqPath () {
+        if test -d "''$1/lib/hs-to-coq"; then
+          export HS_TO_COQ_ARGS="''${HS_TO_COQ_ARGS-}''${HS_TO_COQ_ARGS:+ }--iface-dir=''$1/lib/hs-to-coq/"
+        fi
+        if test -e "''$1/lib/hs-to-coq/edits"; then
+          export HS_TO_COQ_ARGS="''${HS_TO_COQ_ARGS-}''${HS_TO_COQ_ARGS:+ }-e ''$1/lib/hs-to-coq/edits"
+        fi
+      }
+      addEnvHooks "$targetOffset" addHsToCoqPath
+    '';
+    buildPhase = ''
+      mkdir -p $out/bin
+      cat > $out/bin/hs-to-coq <<__END__
+      #!/usr/bin/env bash
+      unset NIX_GHCPKG NIX_GHC_LIBDIR NIX_GHC_DOCDIR NIX_GHC
+      export GHC_PACKAGE_PATH=${ic-ref-ghc-env}:
+      exec ${hs-to-coq-unwrapped}/bin/hs-to-coq \$HS_TO_COQ_ARGS "\$@"
+      __END__
+      chmod +x $out/bin/hs-to-coq
+    '';
+  };
 
-let
+  mkHsToCoqLib = name: src: subpath: stdenv.mkDerivation {
+    name = name;
+    src = src;
+    phases = [ "unpackPhase" "installPhase" ];
+    installPhase = ''
+      cd ${subpath}
+      mkdir -p $out/lib/hs-to-coq/
+      shopt -s globstar
+      cp --parents --dereference --target-directory=$out/lib/hs-to-coq **/*.h2ci
+      if test -e edits; then cp --dereference edits $out/lib/hs-to-coq; fi
+    '';
+  };
+
+  hs-to-coq-base = mkHsToCoqLib "base" nixpkgs.sources.hs-to-coq "base";
+  hs-to-coq-transformers = mkHsToCoqLib "transformers" nixpkgs.sources.hs-to-coq "examples/transformers/lib";
+  hs-to-coq-containers = mkHsToCoqLib "containers" nixpkgs.sources.hs-to-coq "examples/containers/lib";
+
+  ic-ref-coq-files = stdenv.mkDerivation {
+    name = "ic-ref-coq-files";
+    nativeBuildInputs = [
+      hs-to-coq-pkgs.ghc hs-to-coq
+      hs-to-coq-base hs-to-coq-transformers hs-to-coq-containers
+    ];
+    src = subpath ./proofs;
+    buildPhase = ''
+      mkdir -p $out
+      LANG=C.UTF8 SRC=${subpath impl/src} make vfiles
+      test -e lib/IC/Ref.v # sanity check
+    '';
+    installPhase = ''
+      cp -r lib $out
+    '';
+  };
+
   mkCoqLib = { name, src, subdir, delete ? [], deps ? [] }:
    stdenv.mkDerivation {
     name = "coq${nixpkgs.coq.coq-version}-${name}";
@@ -127,7 +178,10 @@ rec {
   inherit ic-ref-coverage;
   inherit universal-canister;
   inherit hs-to-coq;
+  inherit ic-ref-ghc-env;
+  inherit ic-ref-coq-files;
   inherit coq-ic-ref;
+  inherit hs-to-coq-base;
 
   ic-ref-test = nixpkgs.runCommandNoCC "ic-ref-test" {
       nativeBuildInputs = [ ic-ref nixpkgs.wabt ];
@@ -239,7 +293,11 @@ rec {
     # and to build the rust stuff
     universal-canister.nativeBuildInputs ++
     # and a bunch of coq stuff
-    [ nixpkgs.coq coq-base coq-containers coq-transformers coq-ic-ref ]
+    [ nixpkgs.coq
+      coq-base coq-containers coq-transformers
+      hs-to-coq
+      hs-to-coq-base hs-to-coq-transformers hs-to-coq-containers
+    ]
     ; in
 
     haskellPackages.ic-ref.env.overrideAttrs (old: {
