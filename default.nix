@@ -139,6 +139,13 @@ let
     subdir = "base";
     delete = ["Data/Char.v"];
   };
+  coq-base-thy = mkCoqLib {
+    name = "base-thy";
+    src = nixpkgs.sources.hs-to-coq;
+    subdir = "base-thy";
+    deps = [ coq-base ];
+    prefix = "Proofs";
+  };
   coq-transformers = mkCoqLib {
     name = "transformers";
     src = nixpkgs.sources.hs-to-coq;
@@ -159,9 +166,9 @@ let
   };
   coq-ic-ref-theories = mkCoqLib {
     name = "ic-ref-theories";
-    prefix = "Proofs";
     src = subpath proofs/theories;
-    deps = [ coq-base coq-transformers coq-containers coq-ic-ref ];
+    deps = [ coq-base coq-transformers coq-containers coq-ic-ref coq-base-thy ];
+    prefix = "Proofs";
   };
 in
 
@@ -301,6 +308,7 @@ rec {
     # and a bunch of coq stuff
     [ nixpkgs.coq
       coq-base coq-containers coq-transformers
+      coq-base-thy
       hs-to-coq
       hs-to-coq-base hs-to-coq-transformers hs-to-coq-containers
     ]

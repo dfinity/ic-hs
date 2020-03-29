@@ -27,7 +27,45 @@ Ltac destruct_match :=
     destruct a eqn:Heq
   end.
 
+
 (* Lemmas about State *)
+
+Set Warnings "-masking-absolute-name".
+Require Import Proofs.GHC.Base.
+Require Import Coq.Logic.FunctionalExtensionality.
+
+Instance instance_FunctorLaws_StateT {S} {m} `{FunctorLaws m} : FunctorLaws (StateT S m).
+Proof.
+ constructor.
+ * intros.
+   destruct x as [x].
+   unfold fmap, Functor__StateT, fmap__, Lazy.Functor__StateT_fmap.
+   f_equal. apply functional_extensionality. intro s.
+   simpl.
+   rewrite <- functor_identity.
+   f_equal. apply functional_extensionality. destruct x0. reflexivity.
+ * intros.
+   destruct x as [x]. 
+   unfold fmap, Functor__StateT, fmap__, Lazy.Functor__StateT_fmap.
+   f_equal. apply functional_extensionality. intro s.
+   simpl.
+   rewrite functor_composition.
+   f_equal. apply functional_extensionality. destruct x0. reflexivity.
+Qed.
+
+(* Why does this fail? Looks quite like in
+   examples/transformers/theories/Control/Monad/Trans/Reader.v
+   Maybe the diamond type class instance problem?
+ *)
+Fail Instance instance_ApplicativeLaws_StateT {S} {m} `{Functor m} `{Applicative m} `{FunctorLaws m} `{ApplicativeLaws m} `{Monad m}:
+  ApplicativeLaws (StateT S m).
+Instance instance_ApplicativeLaws_StateT {S} {m} {H : Functor m} {H2 : @Applicative m H} {H3 : @FunctorLaws m H} {H4 : @ApplicativeLaws m H H2 H3} {H5 : Monad m}:
+  @ApplicativeLaws (StateT S m) (@Functor__StateT m S H) (@Applicative__StateT m S H H H2 H5) instance_FunctorLaws_StateT.
+Admitted.
+
+Instance instance_MonadLaws_StateT {S} {m} `{FunctorLaws m} `{ApplicativeLaws m}  `{MonadLaws m} : MonadLaws (StateT S m).
+Admitted.
+
 
 Lemma runState_state:
   forall A B (f : A -> (B * A)) s, runState (state f) s = f s.
@@ -57,7 +95,8 @@ Lemma runState_then:
   runState (m1 >> m2) s = 
     let s' := snd (runState m1 s) in
     runState m2 s'.
-Proof. intros.
+Proof.
+ intros.
   destruct m1 as [m1].
   repeat unfold runState, Base.op_z2218U__, runIdentity, runStateT,
     op_zgzg__, Monad__StateT, op_zgzg____, Lazy.Monad__StateT_op_zgzg__,
@@ -74,12 +113,26 @@ Lemma runState_gets:
   runState (gets f >>= m) s = runState (m (f s)) s.
 Proof. intros. reflexivity. Qed.
 
-
-Lemma onReject_liftRM_then:
-  forall A B f (g : M A) (h : RM B) s,
-  runState (onReject f (liftRM g >> h)) s = runState (g >> onReject f h) s.
+Lemma state_extensionality:
+  forall S A (m1 m2 : StateT S Identity A),
+  (forall s, runState m1 s = runState m2 s) -> m1 = m2.
 Proof.
   intros.
+  destruct m1 as [m1], m2 as [m2]. 
+  f_equal. apply functional_extensionality. intro s.
+  specialize (H s).
+  unfold runState, Base.op_z2218U__, runIdentity, runStateT in H. 
+  destruct (m1 s), (m2 s).
+  congruence.
+Qed.
+
+
+Lemma onReject_liftRM_then:
+  forall A B f (g : M A) (h : RM B),
+  onReject f (liftRM g >> h) = (g >> onReject f h).
+Proof.
+  intros.
+  apply state_extensionality. intro s.
   destruct g as [g].
   repeat unfold onReject, Except.runExceptT, liftRM, Class.lift,
     op_zgzgze__, op_zgzg__, Monad__StateT,
@@ -100,10 +153,11 @@ Proof.
 Qed.
 
 Lemma onReject_liftRM_bind:
-  forall A B f (g : M A) (h : A -> RM B) s,
-  runState (onReject f (liftRM g >>= h)) s = runState (g >>= (fun x => onReject f (h x))) s.
+  forall A B f (g : M A) (h : A -> RM B),
+  onReject f (liftRM g >>= h) = (g >>= (fun x => onReject f (h x))).
 Proof.
   intros.
+  apply state_extensionality. intro s.
   destruct g as [g].
   repeat unfold onReject, Except.runExceptT, liftRM, Class.lift,
     op_zgzgze__, op_zgzg__, Monad__StateT,
@@ -123,27 +177,22 @@ Proof.
   reflexivity.
 Qed.
 
-Lemma runState_onReject_return:
-  forall A f (x : A) s,
-  runState (onReject f (return_ x)) s = (x,s).
-Proof. intros. reflexivity. Qed.
+Lemma onReject_return:
+  forall A f (x : A),
+  onReject f (return_ x) = return_ x.
+Proof. intros. apply state_extensionality. intro. reflexivity. Qed. 
 
 
-Lemma runState_onReject_throwE:
-  forall A B f x (h : RM A) s,
-  runState (onReject f ((Except.throwE x : RM B) >> h)) s = runState (f x) s.
-Proof. intros. reflexivity. Qed.
+Lemma onReject_throwE:
+  forall A B f x (h : RM A),
+  (onReject f ((Except.throwE x : RM B) >> h)) = f x.
+Proof. intros.  apply state_extensionality. intro. reflexivity. Qed.
 
 Lemma pure_then_RM:
   forall A B f (x : A) (a : RM B) s,
   runState (onReject f (pure x >> a)) s = runState (onReject f a) s.
+(* This should follow from the MonadLaws *)
 Proof. intros. reflexivity. Qed.
-
-Lemma reassoc_bind_bind_RM:
-  forall A B C f s (a : RM A) (b : A -> RM B) (c : B -> RM C),
-  runState (onReject f ((a >>= b) >>= c)) s
-  = runState (onReject f (a >>= b >>= c)) s.
-Admitted.
 
 
 Definition ICInvariant Q P :=
@@ -197,7 +246,7 @@ Proof.
            match goal with | [ |- context[when ?P] ] => destruct P eqn:Hwhen end.
            ++ unfold when.
               unfold reject.
-              rewrite runState_onReject_throwE.
+              rewrite onReject_throwE.
               simpl.
               destruct s0. simpl. assumption.
            ++ unfold when. rewrite pure_then_RM.
@@ -206,7 +255,7 @@ Proof.
               rewrite runState_then.
               unfold modify. rewrite runState_state.
               unfold snd.
-              rewrite runState_onReject_return.
+              rewrite onReject_return, runState_return.
               unfold setReqStatus.
               unfold modify. rewrite runState_state.
               unfold Base.op_z2218U__ in *.
@@ -221,5 +270,4 @@ Proof.
            ++ unfold Monad.unless.
               (* need monad laws. Maybe see if with FunExt we can instantiate
                  GHC.Base.MonadLaws *)
-Admitted.              
-              
+Admitted.
