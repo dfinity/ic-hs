@@ -36,13 +36,13 @@ let haskellPackages = nixpkgs.haskellPackages.override {
 let hs-to-coq-pkgs = nixpkgs.haskell.packages."lts-12.26"; in
 let hs-to-coq = hs-to-coq-pkgs.callPackage nix/generated/hs-to-coq.nix {}; in
 
-let ic-ref-coq-files = nixpkgs.runCommandNoCC "ic-ref-coq-files" {
-    nativeBuildInputs = [ hs-to-coq-pkgs.ghc hs-to-coq ];
-    src = subpath impl/src;
+# running hs-to-coq requires loading files into GHC-the-library
+# so we need the dependencies available. This derivation
+# builds the appropriate package data base
+let ic-ref-ghc-env = nixpkgs.runCommandNoCC "ic-ref-ghc-env" {
+    nativeBuildInputs = [ hs-to-coq-pkgs.ghc ];
   } ''
-    # running hs-to-coq requires loading files into GHC-the-library
-    # so we need the dependencies available
-    packageConfDir="$TMPDIR/package.conf.d"
+    packageConfDir="$out"
     mkdir -p $packageConfDir
     cp -f "${hs-to-coq-pkgs.memory}/lib/${hs-to-coq-pkgs.ghc.name}/package.conf.d/"*.conf $packageConfDir/
     cp -f "${hs-to-coq-pkgs.basement}/lib/${hs-to-coq-pkgs.ghc.name}/package.conf.d/"*.conf $packageConfDir/
@@ -53,12 +53,16 @@ let ic-ref-coq-files = nixpkgs.runCommandNoCC "ic-ref-coq-files" {
     cp -f "${nixpkgs.haskell.packages.ghc844.hex-text}/lib/${hs-to-coq-pkgs.ghc.name}/package.conf.d/"*.conf $packageConfDir/
     cp -f "${nixpkgs.haskell.lib.markUnbroken (nixpkgs.haskell.lib.dontCheck nixpkgs.haskell.packages.ghc844.crc)}/lib/${hs-to-coq-pkgs.ghc.name}/package.conf.d/"*.conf $packageConfDir/
     ghc-pkg --package-conf="$packageConfDir" recache
-
     GHC_PACKAGE_PATH=$packageConfDir: ghc-pkg check
+  ''; in
 
+let ic-ref-coq-files = nixpkgs.runCommandNoCC "ic-ref-coq-files" {
+    nativeBuildInputs = [ hs-to-coq-pkgs.ghc hs-to-coq ];
+    src = subpath impl/src;
+  } ''
     mkdir -p $out
-    GHC_PACKAGE_PATH=$packageConfDir: LANG=C.UTF8 hs-to-coq -i $src/ IC.Ref --iface-dir $out --iface-dir ${nixpkgs.sources.hs-to-coq}/base -e ${nixpkgs.sources.hs-to-coq}/base/edits -o $out/ --midamble=${./midamble} -e ${./edit} --ghc -DCANISTER_FAKE
-    touch $out
+    GHC_PACKAGE_PATH=${ic-ref-ghc-env}: LANG=C.UTF8 hs-to-coq -i $src/ IC.Ref --iface-dir $out --iface-dir ${nixpkgs.sources.hs-to-coq}/base -e ${nixpkgs.sources.hs-to-coq}/base/edits -o $out/ --midamble=${./midamble} -e ${./edit} --ghc -DCANISTER_FAKE
+    test -e $out/IC/Ref.v # sanity check
   ''; in
 
 let
