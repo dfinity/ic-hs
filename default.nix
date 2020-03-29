@@ -59,6 +59,7 @@ let
 
   hs-to-coq = stdenv.mkDerivation {
     name = "hs-to-coq";
+    buildInputs = [ nixpkgs.makeWrapper ];
     phases = [ "buildPhase" "fixupPhase" ];
     setupHook = nixpkgs.writeText "setupHook.sh" ''
       addHsToCoqPath () {
@@ -72,14 +73,13 @@ let
       addEnvHooks "$targetOffset" addHsToCoqPath
     '';
     buildPhase = ''
-      mkdir -p $out/bin
-      cat > $out/bin/hs-to-coq <<__END__
-      #!/usr/bin/env bash
-      unset NIX_GHCPKG NIX_GHC_LIBDIR NIX_GHC_DOCDIR NIX_GHC
-      export GHC_PACKAGE_PATH=${ic-ref-ghc-env}:
-      exec ${hs-to-coq-unwrapped}/bin/hs-to-coq \$HS_TO_COQ_ARGS "\$@"
-      __END__
-      chmod +x $out/bin/hs-to-coq
+      makeWrapper ${hs-to-coq-unwrapped}/bin/hs-to-coq $out/bin/hs-to-coq \
+        --unset NIX_GHCPKG \
+        --unset NIX_GHC_LIBDIR \
+        --unset NIX_GHC_DOCDIR \
+        --unset NIX_GHC \
+        --set GHC_PACKAGE_PATH "${ic-ref-ghc-env}:" \
+        --add-flags \$HS_TO_COQ_ARGS
     '';
   };
 
