@@ -7,16 +7,16 @@
         "type": "git"
     },
     "hs-to-coq": {
-        "branch": "master",
+        "branch": "monad-law-then",
         "builtin": false,
         "description": "Convert Haskell source code to Coq source code",
         "homepage": "https://hs-to-coq.readthedocs.io",
         "owner": "antalsz",
         "repo": "hs-to-coq",
-        "rev": "d600760489201df07a163a471823ded1c2dbdf7d",
-        "sha256": "0997ymf0i20b9anx0i5k150v81p0f0dn8lrzxxx1ch8mic8lqi0m",
+        "rev": "1bfd273692150d10e32e57b9a726083a24fd3217",
+        "sha256": "1v68i5a46mhz7595qzv07akr0n5ck75h5dwg6n6xqjgj3p09w0ka",
         "type": "tarball",
-        "url": "https://github.com/antalsz/hs-to-coq/archive/d600760489201df07a163a471823ded1c2dbdf7d.tar.gz",
+        "url": "https://github.com/antalsz/hs-to-coq/archive/1bfd273692150d10e32e57b9a726083a24fd3217.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "nixpkgs": {
