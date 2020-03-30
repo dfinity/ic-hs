@@ -20,15 +20,15 @@
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "nixpkgs": {
-        "branch": "no-git.haskell.org",
+        "branch": "master",
         "description": "A read-only mirror of NixOS/nixpkgs tracking the released channels. Send issues and PRs to",
         "homepage": "https://github.com/NixOS/nixpkgs",
-        "owner": "nomeata",
+        "owner": "nixos",
         "repo": "nixpkgs",
-        "rev": "29ca177c684cb42f0ea57171be5653b9b5060ba7",
-        "sha256": "13hw3ppc49ikfyfvsgx6ih3s0z3wk3m6xdyb850cjkgdd9lz23zr",
+        "rev": "ecfb2b41ced59fc107a82dc3a0df288f519c461c",
+        "sha256": "13fljjn43nf8sxvnr2yvdnfrzl5wb24nqp5gmzkmk3s3zf94qs2j",
         "type": "tarball",
-        "url": "https://github.com/nixos/nixpkgs/archive/29ca177c684cb42f0ea57171be5653b9b5060ba7.tar.gz",
+        "url": "https://github.com/nixos/nixpkgs/archive/ecfb2b41ced59fc107a82dc3a0df288f519c461c.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "winter": {
