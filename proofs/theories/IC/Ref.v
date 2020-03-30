@@ -272,6 +272,7 @@ Proof.
   eapply H2; apply H1; assumption.
 Qed.
 
+
 Lemma SP_fmap:
   forall {a b s} P P' R (f : a -> b) (act : State s a),
   SP P P' (fun x => R (f x)) act ->
@@ -377,30 +378,19 @@ Proof.
   assumption.
 Qed.
 
-
-Lemma onReject_liftRM_then:
-  forall A B f (g : M A) (h : RM B),
-  onReject f (liftRM g >> h) = (g >> onReject f h).
+Lemma runExceptT_liftRM_bind:
+  forall A B (g : M A) (h : A -> RM B),
+  runExceptT (liftRM g >>= h) = (g >>= (fun x => runExceptT (h x))).
 Proof.
   intros.
-  apply state_extensionality. intro s.
-  destruct g as [g].
-  repeat unfold onReject, runExceptT, liftRM, Class.lift,
-    op_zgzgze__, op_zgzg__, Monad__StateT,
-    Lazy.Monad__StateT_op_zgzgze__, op_zgzgze____, op_zgzg____,
-    Lazy.Monad__StateT_op_zgzg__, Lazy.Monad__StateT_op_zgzgze__,
-    runState, Base.op_z2218U__, runIdentity, runStateT,
-    Except.Monad__ExceptT,  Except.Monad__ExceptT_op_zgzg__,
-    Except.Monad__ExceptT_op_zgzgze__, Except.MonadTrans__ExceptT,
-    Except.runExceptT, Except.MonadTrans__ExceptT_lift,
-    Class.lift__, Monad__Identity, Identity.Monad__Identity_op_zgzgze__,
-    liftM, return_, return___, Lazy.Monad__StateT_return_, pure, 
-    Applicative__StateT, pure__, Lazy.Applicative__StateT_pure,
-    Identity.Monad__Identity_return_, Applicative__Identity,
-    Identity.Applicative__Identity_pure.
-  destruct (g s) as [gs].
-  destruct gs.
-  reflexivity.
+  unfold liftRM, Class.lift, MonadTrans__ExceptT, Class.lift__,
+     Except.MonadTrans__ExceptT_lift, Base.op_z2218U__,
+     liftM.
+ simpl.
+ rewrite <- monad_composition.
+ f_equal. apply functional_extensionality. intro.
+ rewrite monad_left_id.
+ reflexivity.
 Qed.
 
 Lemma onReject_liftRM_bind:
@@ -408,24 +398,19 @@ Lemma onReject_liftRM_bind:
   onReject f (liftRM g >>= h) = (g >>= (fun x => onReject f (h x))).
 Proof.
   intros.
-  apply state_extensionality. intro s.
-  destruct g as [g].
-  repeat unfold onReject, runExceptT, liftRM, Class.lift,
-    op_zgzgze__, op_zgzg__, Monad__StateT,
-    Lazy.Monad__StateT_op_zgzgze__, op_zgzgze____, op_zgzg____,
-    Lazy.Monad__StateT_op_zgzg__, Lazy.Monad__StateT_op_zgzgze__,
-    runState, Base.op_z2218U__, runIdentity, runStateT,
-    Monad__ExceptT,  Except.Monad__ExceptT_op_zgzg__,
-    Monad__ExceptT_op_zgzgze__, MonadTrans__ExceptT,
-    runExceptT, Except.MonadTrans__ExceptT_lift,
-    Class.lift__, Monad__Identity, Identity.Monad__Identity_op_zgzgze__,
-    liftM, return_, return___, Lazy.Monad__StateT_return_, pure, 
-    Applicative__StateT, pure__, Lazy.Applicative__StateT_pure,
-    Identity.Monad__Identity_return_, Applicative__Identity,
-    Identity.Applicative__Identity_pure.
-  destruct (g s) as [gs].
-  destruct gs.
+  unfold onReject.
+  rewrite runExceptT_liftRM_bind.
+  rewrite <- monad_composition.
   reflexivity.
+Qed.
+
+Lemma onReject_liftRM_then:
+  forall A B f (g : M A) (h : RM B),
+  onReject f (liftRM g >> h) = (g >> onReject f h).
+Proof.
+  intros.
+  rewrite 2 monad_then.
+  apply onReject_liftRM_bind.
 Qed.
 
 Lemma onReject_return:
@@ -461,11 +446,48 @@ Lemma onReject_throwE:
   (onReject f ((throwE x : RM B) >> h)) = f x.
 Proof. intros.  apply state_extensionality. intro. reflexivity. Qed.
 
-Lemma pure_then_RM:
-  forall A B f (x : A) (a : RM B) s,
-  runState (onReject f (pure x >> a)) s = runState (onReject f a) s.
-(* This should follow from the MonadLaws *)
-Proof. intros. reflexivity. Qed.
+Lemma pure_then:
+  forall M `{MonadLaws M} A B (x : A) (act : M B),
+   (pure x >> act) = act.
+Proof.
+  intros.
+  rewrite monad_applicative_pure. 
+  rewrite monad_then.
+  rewrite monad_left_id.
+  reflexivity.
+Qed.
+
+Lemma fmap_bind:
+  forall M `{MonadLaws M} A B C (f : B -> C) (act1 : M A) (act2 : A -> M B),
+   fmap f (act1 >>= act2) = (act1 >>= (fun x => fmap f (act2 x))).
+Proof.
+  intros.
+  rewrite applicative_fmap.
+  rewrite monad_applicative_pure.
+  rewrite monad_applicative_ap.
+  unfold ap.
+  rewrite monad_left_id.
+  rewrite <- monad_composition.
+  f_equal.
+  apply functional_extensionality.
+  intros.
+  rewrite applicative_fmap.
+  rewrite monad_applicative_pure.
+  rewrite monad_applicative_ap.
+  unfold ap.
+  rewrite monad_left_id.
+  reflexivity.
+Qed.
+
+Lemma fmap_bind_RM:
+  forall A B C (f : B -> C) (act1 : RM A) (act2 : A -> RM B),
+    fmap f (act1 >>= act2) = (act1 >>= (fun x => fmap f (act2 x))).
+Proof.
+  intros.
+  (* Why doesn't type class resolution work here without help.? *)
+  apply fmap_bind with (ApplicativeLaws0 := instance_ApplicativeLaws_ExceptT).
+  typeclasses eauto.
+Qed.
 
 Definition PRight {A B} P (x : Either A B) := match x with
   | Left e => True
@@ -500,6 +522,15 @@ Proof.
     - apply H0. assumption.
 Qed.
 
+Lemma ESP_bind_any:
+  forall {s e a b} (P : s -> Prop) (R' : b -> Prop)
+  (act1 : ExceptT e (State s) a) act2,
+  ESP P (fun _ => True) act1 ->
+  (forall (x : a), ESP P R' (act2 x)) ->
+  ESP P R' (act1 >>= act2).
+Proof. intros. eapply ESP_bind. apply H. intros. auto. Qed.
+
+
 Lemma ESP_then:
   forall {s e a b} (P : s -> Prop) (R : b -> Prop)
   (act1 : ExceptT e (State s) a) act2,
@@ -509,11 +540,29 @@ Lemma ESP_then:
 Proof.
   intros.
   rewrite monad_then.
-  eapply ESP_bind.
+  apply ESP_bind_any.
   apply H.
   intros.
   apply H0.
 Qed.
+
+Lemma ESP_fmap:
+  forall {e a b s} P R (f : a -> b) (act : ExceptT e (State s) a),
+  ESP P (fun x => R (f x)) act ->
+  ESP P R (fmap f act).
+Proof.
+  intros.
+  unfold ESP.
+  apply SP_fmap.
+  intros s0 H1.
+  specialize (H s0 H1).
+  destruct H.
+  split. apply H.
+  destruct (fst (runState (runExceptT act) s0)).
+  trivial.
+  apply H0.
+Qed.
+
 
 
 Lemma ESP_throwE:
@@ -623,12 +672,12 @@ Proof.
                  rewrite throwE_bind'.
                  apply ESP_throwE.
         ** intros.
-           apply ESP_bind with (R := fun _  => True).
+           apply ESP_bind_any.
            -- apply ESP_liftRM.
               apply SP_gets.
               apply SP_get.
               intros. trivial.
-           -- intros ex _.
+           -- intros.
               apply ESP_then; [|apply ESP_then].
               ++ unfold when.
                  destruct_match.
@@ -638,7 +687,70 @@ Proof.
                  admit. (* todo *)
               ++ apply ESP_return; trivial.
       - (* install request *)
-        admit.
+        apply SP_onReject.
+        intro; apply SP_return; trivial.
+        apply ESP_bind_any.
+        { unfold onErr.
+           apply ESP_bind_any.
+           apply ESP_return; trivial.
+           intros. destruct x; simpl.
+           unfold reject.
+           apply ESP_throwE.
+           apply ESP_return; trivial.
+        }
+        intros.
+        apply SP_bind with (P' := fun s => P s /\ member c (canisters s) = true) (R := fun _ => True).
+        { unfold Functor.op_zlzdzg__.
+          unfold getCanisterState, orElse.
+          rewrite fmap_bind_RM.
+          rewrite runExceptT_liftRM_bind.
+          eapply SP_bind with (R := fun csoo => member c (canisters s) = Maybe.isJust csoo).
+          apply SP_gets. apply SP_get. intros. eassumption H.
+          
+          
+          SearchAbout fmap op_zgzgze__.
+          apply fmap_bind_RM.
+          
+          
+          
+          apply ESP_bind_any.
+          { apply ESP_liftRM. apply SP_gets. apply SP_get. trivial. }
+          intros.
+          destruct x0; simpl.
+          * apply ESP_return. trivial.
+          * unfold reject. apply ESP_throwE.
+        }
+        intros.
+        apply ESP_then.
+        { unfold when. destruct_match.
+          * unfold reject. apply ESP_throwE.
+          * rewrite monad_applicative_pure. apply ESP_return. trivial.
+        }
+        apply ESP_then.
+        { unfold when. destruct_match.
+          * unfold reject. apply ESP_throwE.
+          * rewrite monad_applicative_pure. apply ESP_return. trivial.
+        }
+        apply ESP_bind_any.
+        { unfold onTrap.
+          apply ESP_bind_any.
+          { apply ESP_return; trivial. }
+          intros.
+          destruct_match.
+          * unfold reject. apply ESP_throwE.
+          * apply ESP_return; trivial.
+        }
+        intros.
+        apply ESP_then.
+        { apply ESP_liftRM.
+          unfold insertCanister.
+          apply SP_modify.
+          intros.
+          destruct s; subst P; simpl in *.
+          (* need to know that c was already a member *)
+          admit.
+        }
+        apply ESP_return; trivial.
       - (* upgrade request *)
         admit.
       - (* update call request *) 
