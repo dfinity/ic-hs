@@ -133,6 +133,57 @@ Instance instance_MonadLaws_ExceptT
   MonadLaws (ExceptT E m).
 Admitted.
 
+Lemma pure_then:
+  forall M `{MonadLaws M} A B (x : A) (act : M B),
+   (pure x >> act) = act.
+Proof.
+  intros.
+  rewrite monad_applicative_pure. 
+  rewrite monad_then.
+  rewrite monad_left_id.
+  reflexivity.
+Qed.
+
+Lemma fmap_to_bind:
+  forall M `{MonadLaws M} A B (f : A -> B) (act : M A),
+   fmap f act = (act >>= (fun x => return_ (f x))).
+Proof.
+  intros.
+  rewrite applicative_fmap.
+  rewrite monad_applicative_pure.
+  rewrite monad_applicative_ap.
+  unfold ap.
+  rewrite monad_left_id.
+  reflexivity.
+Qed.
+
+
+Lemma fmap_bind:
+  forall M `{MonadLaws M} A B C (f : B -> C) (act1 : M A) (act2 : A -> M B),
+   fmap f (act1 >>= act2) = (act1 >>= (fun x => fmap f (act2 x))).
+Proof.
+  intros.
+  (* WTF? *)
+  erewrite fmap_to_bind; try typeclasses eauto.
+  rewrite <- monad_composition.
+  f_equal.
+  apply functional_extensionality.
+  intros.
+  erewrite fmap_to_bind; try typeclasses eauto.
+  reflexivity.
+Qed.
+
+Lemma fmap_bind_RM:
+  forall A B C (f : B -> C) (act1 : RM A) (act2 : A -> RM B),
+    fmap f (act1 >>= act2) = (act1 >>= (fun x => fmap f (act2 x))).
+Proof.
+  intros.
+  eapply fmap_bind.
+  typeclasses eauto.
+  (* Why doesn't type class resolution work here without help.? *)
+Qed.
+
+
 Lemma runState_state:
   forall A B (f : A -> (B * A)) s, runState (state f) s = f s.
 Proof. intros. reflexivity. Qed.
@@ -209,74 +260,64 @@ Proof.
 Qed.
 
 
-Definition SP {a} {s} (P Q : s -> Prop) (R : a -> Prop) (act : State s a) :=
-  forall s, P s -> Q (snd (runState act s)) /\ R (fst (runState act s)).
+Definition SP {a} {s} (P : s -> Prop) (Q : a -> s -> Prop) (act : State s a) :=
+  forall s, P s -> Q (fst (runState act s)) (snd (runState act s)).
 
-Definition StateInvariant {a} {s} (P : s -> Prop) (act : State s a) :=
-  SP P P (fun _ => True) act.
-
-
-Lemma SP_snd_runState:
-  forall {a s} (P P' : s -> Prop) (R : a -> Prop) (act : State s a) (x : s),
-  SP P P' R act ->
-  P x ->
-  P' (snd (runState act x)).
-Proof.
-  intros.
-  unfold SP in H.
-  apply H. assumption.
-Qed.
 
 Lemma SP_return:
-  forall {a s} (P : s -> Prop) (Q : a -> Prop) (x : a),
-  Q x -> SP P P Q (return_ x).
-Proof. intros. intros s0 HP. split; assumption. Qed.
+  forall {a s} (P : s -> Prop) (Q : a -> s -> Prop) (x : a),
+  (forall s, P s -> Q x s) -> SP P Q (return_ x).
+Proof. intros. intros s0 HP. apply H. apply HP. Qed.
 
 
 Lemma SP_put:
-  forall {s} (P P' : s -> Prop) x,
-  P' x ->
-  SP P P' (fun _ => True) (put x).
-Proof. intros. intros s0 _. split; [ apply H | trivial ]. Qed.
+  forall {s} (P : s -> Prop) (Q : unit -> s -> Prop) (x : s),
+  Q tt x ->  SP P Q (put x).
+Proof. intros. intros s0 _. apply H. Qed.
 
 Lemma SP_get:
-  forall {s} (P : s -> Prop) (R : s -> Prop),
-  (forall s, P s -> R s) ->
-  SP P P R get.
-Proof. intros. intros s0 H2. split; auto. Qed.
+  forall {s} (P : s -> Prop) (Q : s -> s -> Prop),
+  (forall s, P s -> Q s s) ->
+  SP P Q get.
+Proof. intros. intros s0 H2. apply H. apply H2. Qed.
 
 Lemma SP_gets:
-  forall {s a} (P : s -> Prop) P' (f : s -> a),
-  SP P P (fun x => P' (f x)) get ->
-  SP P P P' (gets f).
-Proof. intros. intros s0 H1. apply H. assumption. Qed.
+  forall {s a} (P : s -> Prop) (Q : a -> s -> Prop) (f : s -> a),
+  (forall s, P s -> Q (f s) s) ->
+  SP P Q (gets f).
+Proof. intros. intros s0 H1. apply H. apply H1. Qed.
+
+Lemma SP_state:
+  forall {S A} (P : S -> Prop) (Q : A -> S -> Prop) (f : S -> A * S),
+  (forall s, P s -> Q (fst (f s)) (snd (f s))) ->
+  SP P Q (state f).
+Proof. intros. intros s0 H1. apply H. apply H1. Qed.
+
 
 Lemma SP_modify:
-  forall {S} (P : S -> Prop) (P' : S -> Prop) (f : S -> S),
-  (forall s, P s -> P' (f s)) ->
-  SP P P' (fun _ => True) (modify f).
-Proof. intros. intros s0 H1. split; auto.
- unfold modify. rewrite runState_state. simpl. auto. Qed.
+  forall {S} (P : S -> Prop) (Q : unit -> S -> Prop) (f : S -> S),
+  (forall s, P s -> Q tt (f s)) ->
+  SP P Q (modify f).
+Proof. intros. intros s0 H1. apply H. apply H1. Qed.
 
 Lemma SP_bind:
-  forall {a b s} P P' P'' R R' (act1 : State s a) (act2 : a -> State s b),
-  SP P P' R act1 ->
-  (forall x, R x -> SP P' P'' R' (act2 x)) ->
-  SP P P'' R' (act1 >>= act2).
+  forall {a b s} P Q R (act1 : State s a) (act2 : a -> State s b),
+  SP P Q act1 ->
+  (forall x, SP (Q x) R (act2 x)) ->
+  SP P R (act1 >>= act2).
 Proof.
-  intros ?????????? H1 H2.
-  intros s0 H.
-  simpl.
-  rewrite runState_bind.
-  expand_pairs.
-  eapply H2; apply H1; assumption.
+  intros.
+  intros ??.
+  rewrite runState_bind. expand_pairs.
+  apply H0.
+  apply H.
+  apply H1.
 Qed.
 
-
 Lemma SP_fmap:
-  forall {a b s} P P' R (f : a -> b) (act : State s a),
-  SP P P' (fun x => R (f x)) act ->
-  SP P P' R (fmap f act).
+  forall {a b s} P Q (f : a -> b) (act : State s a),
+  SP P (fun x => Q (f x)) act ->
+  SP P Q (fmap f act).
 Proof.
   intros.
   intros s0 H1.
@@ -284,6 +325,9 @@ Proof.
   expand_pairs. simpl.
   apply H. assumption.
 Qed.
+
+Definition StateInvariant {a} {s} (P : s -> Prop) (act : State s a) :=
+  SP P (fun _ => P) act.
 
 Lemma StateInvariant_return:
   forall {a s} (P : s -> Prop) (x : a),
@@ -293,7 +337,7 @@ Proof. intros. apply SP_return. trivial. Qed.
 Lemma StateInvariant_get:
   forall {s} (P : s -> Prop),
   StateInvariant P get.
-Proof. intros. eapply SP_get. split. Qed.
+Proof. intros. eapply SP_get. intros. assumption. Qed.
 
 
 Lemma StateInvariant_gets:
@@ -310,7 +354,18 @@ Lemma StateInvariant_bind:
 Proof.
   intros. eapply SP_bind.
   * apply H.
-  * intros ? _.  apply H0.
+  * intros ?.  apply H0.
+Qed.
+
+Lemma StateInvariant_then:
+  forall {a b s} P (act1 : State s a) (act2 : State s b),
+  StateInvariant P act1 ->
+  StateInvariant P act2 ->
+  StateInvariant P (act1 >> act2).
+Proof.
+  intros.
+  rewrite monad_then.
+  apply StateInvariant_bind; tauto.
 Qed.
 
 Lemma StateInvariant_bind_return: (*  acommon pattern *)
@@ -324,7 +379,7 @@ Proof.
   * intro. apply StateInvariant_return.
 Qed.
 
-Lemma StateInvarinat_fmap:
+Lemma StateInvariant_fmap:
   forall {a b s} P (f : a -> b) (act : State s a),
   StateInvariant P act ->
   StateInvariant P (fmap f act).
@@ -346,7 +401,7 @@ Proof.
   rewrite monad_applicative_ap.
   unfold ap.
   apply StateInvariant_bind; [|intros; apply StateInvariant_bind; intros].
-  apply StateInvarinat_fmap; assumption.
+  apply StateInvariant_fmap; assumption.
   assumption.
   apply StateInvariant_return.
 Qed.
@@ -378,6 +433,11 @@ Proof.
   assumption.
 Qed.
 
+Lemma runExceptT_return:
+  forall A E (x : A),
+  runExceptT (e := E) (m := M) (return_ x) = return_ (Right x).
+Proof. intros. reflexivity. Qed.
+
 Lemma runExceptT_liftRM_bind:
   forall A B (g : M A) (h : A -> RM B),
   runExceptT (liftRM g >>= h) = (g >>= (fun x => runExceptT (h x))).
@@ -386,12 +446,20 @@ Proof.
   unfold liftRM, Class.lift, MonadTrans__ExceptT, Class.lift__,
      Except.MonadTrans__ExceptT_lift, Base.op_z2218U__,
      liftM.
- simpl.
- rewrite <- monad_composition.
- f_equal. apply functional_extensionality. intro.
- rewrite monad_left_id.
- reflexivity.
+  simpl.
+  rewrite <- monad_composition.
+  f_equal. apply functional_extensionality. intro.
+  rewrite monad_left_id.
+  reflexivity.
 Qed.
+
+
+Lemma onReject_return:
+  forall A f (x : A),
+  onReject f (return_ x) = return_ x.
+Proof. intros. apply state_extensionality. intro. reflexivity. Qed. 
+
+
 
 Lemma onReject_liftRM_bind:
   forall A B f (g : M A) (h : A -> RM B),
@@ -404,6 +472,18 @@ Proof.
   reflexivity.
 Qed.
 
+Lemma onReject_liftRM:
+  forall A f (g : M A),
+  onReject f (liftRM g) = g.
+Proof.
+  intros.
+  rewrite <- monad_right_id with (m := liftRM g).
+  rewrite <- monad_right_id with (m := g) at 2.
+  rewrite onReject_liftRM_bind.
+  reflexivity.
+Qed.
+
+
 Lemma onReject_liftRM_then:
   forall A B f (g : M A) (h : RM B),
   onReject f (liftRM g >> h) = (g >> onReject f h).
@@ -412,12 +492,6 @@ Proof.
   rewrite 2 monad_then.
   apply onReject_liftRM_bind.
 Qed.
-
-Lemma onReject_return:
-  forall A f (x : A),
-  onReject f (return_ x) = return_ x.
-Proof. intros. apply state_extensionality. intro. reflexivity. Qed. 
-
 
 Lemma throwE_bind:
   forall M E A B (e : E) (act : A -> ExceptT E M B) `{MLM : MonadLaws M},
@@ -446,68 +520,26 @@ Lemma onReject_throwE:
   (onReject f ((throwE x : RM B) >> h)) = f x.
 Proof. intros.  apply state_extensionality. intro. reflexivity. Qed.
 
-Lemma pure_then:
-  forall M `{MonadLaws M} A B (x : A) (act : M B),
-   (pure x >> act) = act.
-Proof.
-  intros.
-  rewrite monad_applicative_pure. 
-  rewrite monad_then.
-  rewrite monad_left_id.
-  reflexivity.
-Qed.
-
-Lemma fmap_bind:
-  forall M `{MonadLaws M} A B C (f : B -> C) (act1 : M A) (act2 : A -> M B),
-   fmap f (act1 >>= act2) = (act1 >>= (fun x => fmap f (act2 x))).
-Proof.
-  intros.
-  rewrite applicative_fmap.
-  rewrite monad_applicative_pure.
-  rewrite monad_applicative_ap.
-  unfold ap.
-  rewrite monad_left_id.
-  rewrite <- monad_composition.
-  f_equal.
-  apply functional_extensionality.
-  intros.
-  rewrite applicative_fmap.
-  rewrite monad_applicative_pure.
-  rewrite monad_applicative_ap.
-  unfold ap.
-  rewrite monad_left_id.
-  reflexivity.
-Qed.
-
-Lemma fmap_bind_RM:
-  forall A B C (f : B -> C) (act1 : RM A) (act2 : A -> RM B),
-    fmap f (act1 >>= act2) = (act1 >>= (fun x => fmap f (act2 x))).
-Proof.
-  intros.
-  (* Why doesn't type class resolution work here without help.? *)
-  apply fmap_bind with (ApplicativeLaws0 := instance_ApplicativeLaws_ExceptT).
-  typeclasses eauto.
-Qed.
-
-Definition PRight {A B} P (x : Either A B) := match x with
+Definition PRight {A B S} P (s : S) (x : Either A B) := match x with
   | Left e => True
-  | Right y => P y
+  | Right y => P y s
   end.
 
-Definition ESP {S A E} (P : S -> Prop) (R : A -> Prop) (act : ExceptT E (State S) A) :=
-  SP P P (PRight R) (runExceptT act).
+Definition ESP {S A E} (P : S -> Prop) (R : A -> S -> Prop) (act : ExceptT E (State S) A) :=
+  SP P (fun x s => PRight R s x /\ P s) (runExceptT act).
 
 Lemma ESP_return:
-  forall {s e a} (P : s -> Prop) (R : a -> Prop) (x : a),
-  R x -> (ESP (E := e)) P R (return_ x).
-Proof. intros. apply SP_return. trivial. Qed.
+  forall {s e a} (P : s -> Prop) (R : a -> s -> Prop) (x : a),
+  (forall s, P s -> R x s) ->
+  (ESP (E := e)) P R (return_ x).
+Proof. intros. apply SP_return. intros. simpl. auto. Qed.
 
 Lemma ESP_bind:
-  forall {s e a b} (P : s -> Prop) R (R' : b -> Prop)
+  forall {s e a b} (P : s -> Prop) Q (R : b -> s -> Prop)
   (act1 : ExceptT e (State s) a) act2,
-  ESP P R act1 ->
-  (forall (x : a), R x -> ESP P R' (act2 x)) ->
-  ESP P R' (act1 >>= act2).
+  ESP P Q act1 ->
+  (forall (x : a), ESP (fun s => Q x s /\ P s) R (act2 x)) ->
+  ESP P R (act1 >>= act2).
 Proof.
   intros.
   unfold ESP in *.
@@ -516,25 +548,37 @@ Proof.
   simpl in *.
   eapply SP_bind.
   * apply H.
-  * intros. unfold PRight in H1.
+  * simpl. intros.
     destruct x.
     - apply SP_return. trivial.
-    - apply H0. assumption.
+    - specialize (H0 a0).
+      unfold runExceptT.
+      simpl in *.
+      intros ??.
+      specialize (H0 s0 H1).
+      simpl in *.
+      tauto.
 Qed.
 
 Lemma ESP_bind_any:
-  forall {s e a b} (P : s -> Prop) (R' : b -> Prop)
+  forall {s e a b} (P : s -> Prop) (R : b -> s -> Prop)
   (act1 : ExceptT e (State s) a) act2,
-  ESP P (fun _ => True) act1 ->
-  (forall (x : a), ESP P R' (act2 x)) ->
-  ESP P R' (act1 >>= act2).
-Proof. intros. eapply ESP_bind. apply H. intros. auto. Qed.
-
+  ESP P (fun _ _ => True) act1 ->
+  (forall (x : a), ESP P R (act2 x)) ->
+  ESP P R (act1 >>= act2).
+Proof. intros. eapply ESP_bind. apply H.
+  intros.
+  intros ??.
+  destruct H1.
+  specialize (H0 x s0 H2).
+  simpl in *.
+  tauto.
+Qed.
 
 Lemma ESP_then:
-  forall {s e a b} (P : s -> Prop) (R : b -> Prop)
+  forall {s e a b} (P : s -> Prop) (R : b -> s -> Prop)
   (act1 : ExceptT e (State s) a) act2,
-  ESP P (fun _ => True) act1 ->
+  ESP P (fun _ _ => True) act1 ->
   ESP P R act2 ->
   ESP P R (act1 >> act2).
 Proof.
@@ -552,28 +596,25 @@ Lemma ESP_fmap:
   ESP P R (fmap f act).
 Proof.
   intros.
-  unfold ESP.
-  apply SP_fmap.
-  intros s0 H1.
-  specialize (H s0 H1).
-  destruct H.
-  split. apply H.
-  destruct (fst (runState (runExceptT act) s0)).
-  trivial.
+  erewrite fmap_to_bind; try typeclasses eauto.
+  eapply ESP_bind.
+  apply H.
+  intros.
+  apply ESP_return.
+  intros.
   apply H0.
 Qed.
 
 
-
 Lemma ESP_throwE:
-  forall {s e a} (P : s -> Prop) (R : a -> Prop) (x : e),
+  forall {s e a} (P : s -> Prop) (R : a -> s -> Prop) (x : e),
   ESP P R (throwE x).
-Proof. intros. apply SP_return. constructor. Qed.
+Proof. intros. apply SP_return. intros. split. constructor. assumption. Qed.
 
 
 Lemma ESP_liftRM:
   forall {A P R} (act : M A),
-  SP P P R act ->
+  SP P (fun x s => R x s /\ P s) act ->
   ESP P R (liftRM act).
 Proof.
   intros.
@@ -583,27 +624,46 @@ Proof.
   simpl.
   eapply SP_bind.
   * apply H.
-  * intros. apply SP_return. apply H0.
+  * intros. apply SP_return. intros. apply H0.
 Qed.
 
 Lemma SP_onReject:
   forall {A} P R
   (act : RM A) f,
-  (forall e, SP P P R (f e)) ->
+  (forall e, SP P (fun x s => R x s /\ P s) (f e)) ->
   ESP P R act ->
-  SP P P R (onReject f act).
+  SP P (fun x s => R x s /\ P s) (onReject f act).
 Proof.
   intros.
   unfold onReject.
   eapply SP_bind.
   * apply H0.
   * intros.
-    unfold PRight in H1.
+    simpl in *.
     destruct x.
-    - apply H.
-    - apply SP_return. assumption.
+    - intros ??. apply H. apply H1.
+    - apply SP_return. intros. assumption.
 Qed.
 
+
+Lemma StateInvariant_onReject:
+  forall {A} P
+  (act : RM A) f,
+  (forall e, StateInvariant P (f e)) ->
+  ESP P (fun _ _ => True) act ->
+  StateInvariant P (onReject f act).
+Proof.
+  intros.
+  intros.
+  unfold onReject.
+  eapply SP_bind.
+  * apply H0.
+  * intros.
+    simpl in *.
+    destruct x.
+    - intros ??. apply H. apply H1.
+    - apply SP_return. intros. apply H1.
+Qed.
 
 Definition ICInvariant Q P :=
   P initialIC /\
@@ -616,6 +676,24 @@ Definition ICInvariant Q P :=
 
 
 Definition any_request (pk : Blob) (r : AsyncRequest) := True.
+
+Lemma StateInvariant_getCallContext:
+  forall P c, StateInvariant P (getCallContext c).
+Proof.
+  intros.
+  unfold getCallContext.
+  apply StateInvariant_gets.
+Qed.
+
+Lemma StateInvariant_calleeOfCallID:
+  forall P c, StateInvariant P (calleeOfCallID c).
+Proof.
+   unfold calleeOfCallID, Functor.op_zlzdzg__.
+   intros.
+   apply StateInvariant_fmap.
+   apply StateInvariant_getCallContext.
+Qed.
+
 
 Theorem no_empty_canister_id :
   ICInvariant any_request (fun s =>
@@ -645,15 +723,14 @@ Proof.
       apply StateInvariant_bind; [|intros; apply SP_modify; destruct s; simpl; auto].
       destruct_match.
       - (* Create request *)
-        apply SP_onReject.
+        apply StateInvariant_onReject.
         intro; apply SP_return; trivial.
-        set (R' := fun new_id => not (new_id = Mk_EntityId nil)).
-        apply ESP_bind with (R := R').
+        set (R' := fun new_id (s : IC) => not (new_id = Mk_EntityId nil)).
+        apply ESP_bind with (Q := R').
         ** destruct_match.
            -- (* System picks *)
               apply ESP_liftRM.
               apply SP_gets.
-              apply SP_get.
               intros.
               subst R'; unfold op_z2218U__; simpl.
               admit. (* fresh id is not nil *)
@@ -675,8 +752,7 @@ Proof.
            apply ESP_bind_any.
            -- apply ESP_liftRM.
               apply SP_gets.
-              apply SP_get.
-              intros. trivial.
+              intros. split; trivial.
            -- intros.
               apply ESP_then; [|apply ESP_then].
               ++ unfold when.
@@ -684,10 +760,17 @@ Proof.
                  *** unfold reject. apply ESP_throwE.
                  *** rewrite monad_applicative_pure. apply ESP_return. trivial.
               ++ apply ESP_liftRM.
-                 admit. (* todo *)
+                 unfold createEmptyCanister.
+                 apply SP_modify. intros.
+                 split; trivial.
+                 destruct s; subst P R'; simpl in *.
+                 split.
+                 tauto.
+                 (* map proofs *)
+                 admit.
               ++ apply ESP_return; trivial.
       - (* install request *)
-        apply SP_onReject.
+        apply StateInvariant_onReject.
         intro; apply SP_return; trivial.
         apply ESP_bind_any.
         { unfold onErr.
@@ -699,26 +782,22 @@ Proof.
            apply ESP_return; trivial.
         }
         intros.
-        apply SP_bind with (P' := fun s => P s /\ member c (canisters s) = true) (R := fun _ => True).
+        apply ESP_bind with (Q := fun x s => member c (canisters s) = true).
         { unfold Functor.op_zlzdzg__.
           unfold getCanisterState, orElse.
           rewrite fmap_bind_RM.
-          rewrite runExceptT_liftRM_bind.
-          eapply SP_bind with (R := fun csoo => member c (canisters s) = Maybe.isJust csoo).
-          apply SP_gets. apply SP_get. intros. eassumption H.
-          
-          
-          SearchAbout fmap op_zgzgze__.
-          apply fmap_bind_RM.
-          
-          
-          
-          apply ESP_bind_any.
-          { apply ESP_liftRM. apply SP_gets. apply SP_get. trivial. }
+          apply ESP_bind with (Q := fun x s => member c (canisters s) = Maybe.isJust x).
+          { apply SP_gets. intros. unfold Base.op_z2218U__.
+            split; try assumption. simpl.
+            admit. (*  stuff about member and lookup *)
+          }
           intros.
+          apply ESP_fmap.
           destruct x0; simpl.
-          * apply ESP_return. trivial.
-          * unfold reject. apply ESP_throwE.
+          * apply ESP_return.
+            intros. tauto.
+          * unfold reject. unfold Base.op_z2218U__.
+            apply ESP_throwE.
         }
         intros.
         apply ESP_then.
@@ -747,14 +826,174 @@ Proof.
           apply SP_modify.
           intros.
           destruct s; subst P; simpl in *.
-          (* need to know that c was already a member *)
-          admit.
+          split; try auto.
+          destruct H.
+          split.
+          * (* it's an artifact of how ESP is setup that we have to prove this *)
+             admit.
+          * (* map stuff *)
+            admit.
         }
         apply ESP_return; trivial.
       - (* upgrade request *)
-        admit.
-      - (* update call request *) 
-        admit.
+        apply StateInvariant_onReject.
+        intro; apply SP_return; trivial.
+        apply ESP_bind_any.
+        { unfold onErr.
+           apply ESP_bind_any.
+           apply ESP_return; trivial.
+           intros. destruct x; simpl.
+           unfold reject.
+           apply ESP_throwE.
+           apply ESP_return; trivial.
+        }
+        intros.
+        apply ESP_bind with (Q := fun x s => member c (canisters s) = true).
+        { unfold Functor.op_zlzdzg__.
+          unfold getNonemptyCanisterState, getCanisterState, orElse.
+          rewrite <- monad_composition.
+          apply ESP_bind with (Q := fun x s => member c (canisters s) = Maybe.isJust x).
+          { apply SP_gets. intros. unfold Base.op_z2218U__.
+            split; try assumption. simpl.
+            admit. (*  stuff about member and lookup *)
+          }
+          intros.
+          destruct x0; simpl.
+          * rewrite monad_left_id.
+            destruct o; simpl.
+            + apply ESP_return. intros. tauto.
+            + unfold reject. apply ESP_throwE.
+          * unfold reject. apply ESP_throwE.
+        }
+        intros. destruct x0.
+        apply ESP_bind_any.
+        { unfold onTrap.
+          apply ESP_bind_any.
+          { apply ESP_return; trivial. }
+          intros.
+          destruct_match.
+          * unfold reject. apply ESP_throwE.
+          * apply ESP_return; trivial.
+        }
+        intros.
+        apply ESP_bind_any.
+        { unfold onTrap.
+          apply ESP_bind_any.
+          { apply ESP_return; trivial. }
+          intros.
+          destruct_match.
+          * unfold reject. apply ESP_throwE.
+          * apply ESP_return; trivial.
+        }
+        intros.
+        apply ESP_then.
+        { apply ESP_liftRM.
+          unfold insertCanister.
+          apply SP_modify.
+          intros.
+          destruct s; subst P; simpl in *.
+          split; try auto.
+          destruct H.
+          split.
+          * (* it's an artifact of how ESP is setup that we have to prove this *)
+             admit.
+          * (* map stuff *)
+            admit.
+        }
+        apply ESP_return; trivial.
+     - (* update call request *) 
+        rewrite onReject_liftRM_bind.
+        apply StateInvariant_bind.
+        { unfold newCallContext.
+          apply SP_state.
+          intros. destruct s; subst P; simpl.
+          apply H.
+        }
+        intros.
+        rewrite onReject_liftRM_then.
+        apply StateInvariant_then.
+        { unfold enqueueMessage.
+          apply SP_modify.
+          intros. destruct s; subst P; simpl.
+          apply H.
+        }
+        unfold onReject.
+        rewrite runExceptT_return.
+        rewrite monad_left_id.
+        apply StateInvariant_return.
     + (* pop message *)
-      admit.
+      apply StateInvariant_bind.
+      {
+        unfold popMessage.
+        apply SP_state.
+        intros. destruct s; destruct_match; subst P; simpl; auto.
+      }
+      intros.
+      destruct_match.
+      - (* process message *)
+        unfold processMessage.
+        apply StateInvariant_then; [|apply StateInvariant_return].
+        destruct_match.
+        ** rewrite onReject_liftRM_bind.
+           apply StateInvariant_bind.
+           { apply StateInvariant_calleeOfCallID.
+           }
+           intros.
+           unfold getNonemptyCanisterState, getCanisterState, orElse.
+           repeat rewrite <- monad_composition.
+           rewrite onReject_liftRM_bind.
+           apply StateInvariant_bind.
+           { apply StateInvariant_gets.
+           }
+           intros.
+           unfold Maybe.maybe.
+           destruct_match.
+           ++ rewrite monad_left_id.
+              destruct_match.
+              -- rewrite monad_left_id.
+                 rewrite onReject_liftRM_bind.
+                 unfold invokeEntry. destruct_match.
+                 repeat rewrite <- monad_composition.
+                 apply StateInvariant_bind.
+                 { unfold respondedCallID.
+                   apply StateInvariant_fmap.
+                   apply StateInvariant_getCallContext.
+                 }
+                 intros.
+                 destruct_match.
+                 *** repeat rewrite <- monad_composition.
+                     apply StateInvariant_bind.
+                     {
+                       unfold callerOfCallID. 
+                       apply StateInvariant_bind.
+                       { apply StateInvariant_getCallContext. }
+                       intros.
+                       destruct_match.
+                       --- unfold callerOfRequest.
+                           apply StateInvariant_bind.
+                           { apply StateInvariant_gets. }
+                           intros.
+                           destruct_match.
+                           +++ expand_pairs.
+                               apply StateInvariant_return.
+                           +++ admit. (* Partiality! *)
+                       --- apply StateInvariant_calleeOfCallID.
+                     }
+                     intros.
+                     destruct_match.
+                     --- rewrite monad_left_id.
+                         destruct_match.
+                         +++ rewrite monad_then. rewrite monad_left_id.
+                             rewrite onReject_liftRM.
+                             unfold rememberTrap.
+                             unfold modifyCallContext.
+                             apply SP_modify.
+                             intros.
+                             destruct s0; subst P; simpl.
+                             apply H.
+                         +++ 
+                       
+
+        
+        
 Admitted.
