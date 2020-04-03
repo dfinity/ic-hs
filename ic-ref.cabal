@@ -134,4 +134,3 @@ executable ic-ref-test
   build-depends:       random
   build-depends:       filepath
   build-depends:       directory
-

@@ -44,6 +44,7 @@ asyncRequest = record $ do
             arg <- field blob "arg"
             _ <- optionalField percentage "compute_allocation"
             mode <- fromMaybe "install" <$> optionalField text "mode"
+            _ <- optionalField nat "memory_allocation"
             case mode of
                 "install" -> return $ InstallRequest cid sender mod arg False
                 "reinstall" -> return $ InstallRequest cid sender mod arg True
