@@ -1,10 +1,16 @@
 {
-    "common": {
+    "naersk": {
         "branch": "master",
-        "ref": "master",
-        "repo": "ssh://git@github.com/dfinity-lab/common",
-        "rev": "c83d968179e9c927b8bcf1cc9e34b21ba56faff1",
-        "type": "git"
+        "builtin": false,
+        "description": "Build rust crates in Nix. No configuration, no code generation, no IFD. Sandbox friendly.",
+        "homepage": "",
+        "owner": "nmattia",
+        "repo": "naersk",
+        "rev": "50dc93e9702ff70266d58406b8f1575b403ee540",
+        "sha256": "0gd82f1676rirs66454niknkhz5v7m7f9h3zxvyiipx8sczr9bb4",
+        "type": "tarball",
+        "url": "https://github.com/nmattia/naersk/archive/50dc93e9702ff70266d58406b8f1575b403ee540.tar.gz",
+        "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "nixpkgs": {
         "branch": "nixpkgs-unstable",

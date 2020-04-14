@@ -11,6 +11,7 @@ module IC.Test.Spec (icTests) where
 
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
+import qualified Data.Text.Encoding.Error as T
 import qualified Data.ByteString.Lazy as BS
 import qualified Data.ByteString.Builder as BS
 import qualified Data.HashMap.Lazy as HM
@@ -882,7 +883,7 @@ codePred expt pred response = assertBool
     (pred c)
   where
     c = statusCode (responseStatus response)
-    msg = T.unpack (T.decodeUtf8 (BS.toStrict (responseBody response)))
+    msg = T.unpack (T.decodeUtf8With T.lenientDecode (BS.toStrict (BS.take 200 (responseBody response))))
 
 code2xx, code202, code4xx, code202_or_4xx  :: HasCallStack => Response BS.ByteString -> IO ()
 code2xx = codePred "2xx" $ \c -> 200 <= c && c < 300
