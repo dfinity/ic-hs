@@ -97,7 +97,7 @@ rec {
     src = subpath ./spec;
     phases = [ "unpackPhase" "buildPhase" "checkPhase" ];
     buildInputs = with nixpkgs;
-      [ asciidoctor plantuml jre graphviz python cpio html-proofer ];
+      [ asciidoctor plantuml jre graphviz python cpio html-proofer cddl ];
     FONTCONFIG_FILE = nixpkgs.makeFontsConf { fontDirectories = []; };
     asciidoctor_args = [
       "-r asciidoctor-diagram"
@@ -113,6 +113,8 @@ rec {
       asciidoctor $asciidoctor_args --failure-level WARN -v \
         -R $PWD -D $out/$doc_path/ index.adoc
       find . -type f -name '*.png' | cpio -pdm $out/$doc_path/
+      cp requests.cddl $out/$doc_path
+
 
       mkdir -p $out/nix-support
       echo "report spec $out/$doc_path index.html" >> $out/nix-support/hydra-build-products
@@ -138,6 +140,9 @@ rec {
         >&2 echo "There is no $out/$doc_path/index.html or it is empty, aborting."
         exit 1
       fi
+
+      # also check cddl
+      cddl requests.cddl generate 1 > /dev/null
     '';
 
   };
