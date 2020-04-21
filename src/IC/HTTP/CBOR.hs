@@ -10,7 +10,7 @@ import Data.HashMap.Lazy as HM
 import Codec.CBOR.Term
 import Codec.CBOR.Write
 import Codec.CBOR.Read
-import Data.Binary.Builder (Builder)
+import Data.ByteString.Builder (Builder)
 import qualified Data.ByteString.Lazy as BS
 import Data.ByteString.Lazy (ByteString)
 import Data.Bifunctor

@@ -47,9 +47,9 @@ common logic
   build-depends:       bytestring
   build-depends:       containers
   build-depends:       winter
+  build-depends:       binary
   build-depends:       mtl
   build-depends:       transformers
-  build-depends:       binary
   build-depends:       data-default-class
   build-depends:       vector
   build-depends:       primitive
@@ -75,7 +75,6 @@ common cbor
   build-depends:       cborg
   build-depends:       cryptonite
   build-depends:       memory
-  build-depends:       binary
   build-depends:       leb128
   build-depends:       ed25519
   build-depends:       cryptonite
