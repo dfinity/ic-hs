@@ -39,7 +39,7 @@ common logic
   other-modules:       IC.Wasm.WinterMemory
   other-modules:       IC.Wasm.Winter.Persist
   other-modules:       IC.Wasm.Imports
-  build-depends:       base >=4.13 && <5
+  build-depends:       base >=4.12 && <5
   build-depends:       filepath
   build-depends:       hex-text
   build-depends:       crc
@@ -66,7 +66,7 @@ common cbor
   other-modules:       IC.HTTP.RequestId
   other-modules:       IC.Id.Forms
   other-modules:       IC.Crypto
-  build-depends:       base >=4.13 && <5
+  build-depends:       base >=4.12 && <5
   build-depends:       text
   build-depends:       bytestring
   build-depends:       containers
