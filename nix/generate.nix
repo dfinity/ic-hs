@@ -1,6 +1,6 @@
 # This file generates the contents of nix/generated/. Use
 #
-#   cp -rfv $(nix-build generate.nix --no-link)/ generated/
+#  ( set -e; cp -fv $(nix-build generate.nix --no-link)/* generated/)
 #
 # to update
 
@@ -21,7 +21,7 @@ let
   # Finally the `src` attribute in the `default.nix` will be defined as
   # `src_subst` such that it can be pointed to local or niv-managed
   # sources.
-  haskellSrc2nixWithDoc = {name, src, src_subst, extraCabal2nixOptions}:
+  haskellSrc2nixWithDoc = {name, src, src_subst, extraCabal2nixOptions ? ""}:
     let
       drv = pkgs.haskellPackages.haskellSrc2nix {
         inherit name extraCabal2nixOptions src;
@@ -54,6 +54,11 @@ let
     src_subst = "pkgs.sources.winter";
     extraCabal2nixOptions = "--no-check";
   };
+  leb128 = haskellSrc2nixWithDoc {
+    name = "leb128";
+    src = pkgs.sources.leb128;
+    src_subst = "pkgs.sources.leb128";
+  };
 
   ic-ref = localHaskellSrc2nixWithDoc "ic-ref" "impl" "--no-check -frelease";
 
@@ -61,6 +66,7 @@ let
     mkdir -p $out
     cp ${winter}/default.nix $out/winter.nix
     cp ${ic-ref}/default.nix $out/ic-ref.nix
+    cp ${leb128}/default.nix $out/leb128.nix
   '';
 in
 allGenerated

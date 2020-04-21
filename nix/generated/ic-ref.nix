@@ -3,7 +3,7 @@
 
 { mkDerivation, pkgs, aeson, base, binary, bytestring, cborg, containers
 , crc, cryptonite, data-default-class, directory, ed25519, filepath
-, hex-text, http-client, http-types, memory, mtl
+, hex-text, http-client, http-types, leb128, memory, mtl
 , optparse-applicative, primitive, process-extras, random, stdenv
 , tasty, tasty-html, tasty-hunit, text, transformers
 , unordered-containers, utf8-string, vector, wai, warp, winter
@@ -18,9 +18,10 @@ mkDerivation {
   executableHaskellDepends = [
     aeson base binary bytestring cborg containers crc cryptonite
     data-default-class directory ed25519 filepath hex-text http-client
-    http-types memory mtl optparse-applicative primitive process-extras
-    random tasty tasty-html tasty-hunit text transformers
-    unordered-containers utf8-string vector wai warp winter
+    http-types leb128 memory mtl optparse-applicative primitive
+    process-extras random tasty tasty-html tasty-hunit text
+    transformers unordered-containers utf8-string vector wai warp
+    winter
   ];
   doCheck = false;
   license = "unknown";

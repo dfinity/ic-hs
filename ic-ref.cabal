@@ -76,8 +76,7 @@ common cbor
   build-depends:       cryptonite
   build-depends:       memory
   build-depends:       binary
-  build-depends:       winter
-  -- ^ just for leb128
+  build-depends:       leb128
   build-depends:       ed25519
   build-depends:       cryptonite
   build-depends:       memory

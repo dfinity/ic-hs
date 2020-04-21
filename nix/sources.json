@@ -1,4 +1,17 @@
 {
+    "leb128": {
+        "branch": "master",
+        "builtin": false,
+        "description": "LEB128 encoding for Haskell",
+        "homepage": null,
+        "owner": "nomeata",
+        "repo": "haskell-leb128",
+        "rev": "364283938ed68222a88efd29a2236ac9489b64c1",
+        "sha256": "0vmplyjjkfzxzya1j2l451l14dz1736sy3c9ic3di51yxjwazgaf",
+        "type": "tarball",
+        "url": "https://github.com/nomeata/haskell-leb128/archive/364283938ed68222a88efd29a2236ac9489b64c1.tar.gz",
+        "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
+    },
     "naersk": {
         "branch": "master",
         "builtin": false,
