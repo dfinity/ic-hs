@@ -122,7 +122,7 @@ rec {
       comment_template=$out/nix-support/gh-comment
       cat <<EOF >$comment_template
         {{{! comment:edit-one }}}This PR changes the public spec, you can preview the result at:
-        {{{ host }}}/build/{{{ build }}}/download/1/spec/index.html
+        {{{ host }}}/latest/{{{ project }}}/{{{ jobset }}}/{{{ job }}}/1/index.html
       EOF
       echo "comment manifest $comment_template comment.mustache" >> $out/nix-support/hydra-build-products
 
