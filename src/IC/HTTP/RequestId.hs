@@ -10,7 +10,7 @@ import qualified Data.Text.Encoding as T
 import Data.List (sort)
 import Crypto.Hash (hashlazy, SHA256)
 import Data.ByteArray (convert)
-import Codec.LEB128
+import Data.Serialize.LEB128
 
 type RequestId = BS.ByteString
 

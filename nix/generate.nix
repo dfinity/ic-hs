@@ -54,10 +54,10 @@ let
     src_subst = "pkgs.sources.winter";
     extraCabal2nixOptions = "--no-check";
   };
-  leb128 = haskellSrc2nixWithDoc {
-    name = "leb128";
-    src = pkgs.sources.leb128;
-    src_subst = "pkgs.sources.leb128";
+  leb128-cereal = haskellSrc2nixWithDoc {
+    name = "leb128-cereal";
+    src = pkgs.sources.leb128-cereal;
+    src_subst = "pkgs.sources.leb128-cereal";
   };
 
   ic-ref = localHaskellSrc2nixWithDoc "ic-ref" "impl" "--no-check -frelease";
@@ -66,7 +66,7 @@ let
     mkdir -p $out
     cp ${winter}/default.nix $out/winter.nix
     cp ${ic-ref}/default.nix $out/ic-ref.nix
-    cp ${leb128}/default.nix $out/leb128.nix
+    cp ${leb128-cereal}/default.nix $out/leb128-cereal.nix
   '';
 in
 allGenerated

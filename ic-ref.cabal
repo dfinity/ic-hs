@@ -75,7 +75,7 @@ common cbor
   build-depends:       cborg
   build-depends:       cryptonite
   build-depends:       memory
-  build-depends:       leb128
+  build-depends:       leb128-cereal
   build-depends:       ed25519
   build-depends:       cryptonite
   build-depends:       memory

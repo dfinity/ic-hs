@@ -1,15 +1,15 @@
 {
-    "leb128": {
+    "leb128-cereal": {
         "branch": "master",
         "builtin": false,
         "description": "LEB128 encoding for Haskell",
         "homepage": null,
         "owner": "nomeata",
-        "repo": "haskell-leb128",
-        "rev": "364283938ed68222a88efd29a2236ac9489b64c1",
-        "sha256": "0vmplyjjkfzxzya1j2l451l14dz1736sy3c9ic3di51yxjwazgaf",
+        "repo": "haskell-leb128-cereal",
+        "rev": "f756eb8c86c91f37c0cffd1d3bc4d2009e519fb9",
+        "sha256": "04ljy6cbsl9jzd6v3i5qs7cx3627l7vpkbkjw7j3yzwnrgmdvyw8",
         "type": "tarball",
-        "url": "https://github.com/nomeata/haskell-leb128/archive/364283938ed68222a88efd29a2236ac9489b64c1.tar.gz",
+        "url": "https://github.com/nomeata/haskell-leb128-cereal/archive/f756eb8c86c91f37c0cffd1d3bc4d2009e519fb9.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "naersk": {

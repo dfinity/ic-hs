@@ -5,9 +5,9 @@
 , tasty-hunit, tasty-quickcheck
 }:
 mkDerivation {
-  pname = "leb128";
+  pname = "leb128-cereal";
   version = "1.0";
-  src = pkgs.sources.leb128;
+  src = pkgs.sources.leb128-cereal;
   libraryHaskellDepends = [ base bytestring cereal ];
   testHaskellDepends = [
     base bytestring tasty tasty-hunit tasty-quickcheck
