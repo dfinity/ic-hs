@@ -1,6 +1,6 @@
 cabal-version:       2.2
 name:                ic-ref
-version:             0.2.8
+version:             0.2.9
 author:              Joachim Breitner
 build-type:          Simple
 
