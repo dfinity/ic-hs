@@ -26,11 +26,8 @@ import Control.Concurrent
 import Control.Monad
 import Data.Functor
 import System.FilePath
-import System.IO
 import System.Directory
 import System.Environment
-import System.Exit
-import System.Process.ByteString.Lazy
 import System.Random
 
 import IC.Version
@@ -75,13 +72,17 @@ requestStatusNonExistant = rec
     , "request_id" =: GBlob doesn'tExist
     ]
 
+
+trivialWasmModule :: Blob
+trivialWasmModule = "\0asm\1\0\0\0"
+
 -- Only to test which fields are required
 minimalInstall :: GenR
 minimalInstall = rec
     [ "request_type" =: GText "install_code"
     , "sender" =: GBlob defaultUser
     , "canister_id" =: GBlob doesn'tExist
-    , "module" =: GBlob ""
+    , "module" =: GBlob trivialWasmModule
     , "arg" =: GBlob ""
     ]
 
@@ -167,6 +168,8 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
           , "sender" =: GBlob defaultUser
           , "desired_id" =: GBlob id
           ]
+    , testCase "create_canister necessary" $
+        submitCBOR ep minimalInstall >>= statusReject 3
     ]
 
   , testGroup "install"
@@ -181,14 +184,12 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
           , "sender" =: GBlob defaultUser
           ]
 
-        trivial_wasm <- getTestWat "trivial"
-
         step "Reinstall fails"
         submitCBOR ep >=> statusReject 3 $ rec
           [ "request_type" =: GText "install_code"
           , "sender" =: GBlob defaultUser
           , "canister_id" =: GBlob can_id
-          , "module" =: GBlob trivial_wasm
+          , "module" =: GBlob trivialWasmModule
           , "arg" =: GBlob ""
           , "mode" =: GText "reinstall"
           ]
@@ -199,7 +200,7 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
           [ "request_type" =: GText "install_code"
           , "sender" =: GBlob defaultUser
           , "canister_id" =: GBlob can_id
-          , "module" =: GBlob trivial_wasm
+          , "module" =: GBlob trivialWasmModule
           , "arg" =: GBlob ""
           ]
 
@@ -208,7 +209,7 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
           [ "request_type" =: GText "install_code"
           , "sender" =: GBlob defaultUser
           , "canister_id" =: GBlob can_id
-          , "module" =: GBlob trivial_wasm
+          , "module" =: GBlob trivialWasmModule
           , "arg" =: GBlob ""
           , "mode" =: GText "install" -- NB: This is the default
           ]
@@ -218,7 +219,7 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
           [ "request_type" =: GText "install_code"
           , "sender" =: GBlob defaultUser
           , "canister_id" =: GBlob can_id
-          , "module" =: GBlob trivial_wasm
+          , "module" =: GBlob trivialWasmModule
           , "arg" =: GBlob ""
           , "mode" =: GText "reinstall"
           ]
@@ -228,7 +229,7 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
           [ "request_type" =: GText "install_code"
           , "sender" =: GBlob defaultUser
           , "canister_id" =: GBlob can_id
-          , "module" =: GBlob trivial_wasm
+          , "module" =: GBlob trivialWasmModule
           , "arg" =: GBlob ""
           , "mode" =: GText "upgrade"
           ]
@@ -247,12 +248,13 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
           [ "request_type" =: GText "create_canister"
           , "sender" =: GBlob defaultUser
           ]
-        trivial_wasm <- getTestWasm "universal_canister"
+
+        universal_wasm <- getTestWasm "universal_canister"
         gr <- submitCBOR ep $ rec
           [ "request_type" =: GText "install_code"
           , "sender" =: GBlob defaultUser
           , "canister_id" =: GBlob cid
-          , "module" =: GBlob trivial_wasm
+          , "module" =: GBlob universal_wasm
           , "arg" =: GBlob (run prog)
           ]
         return (cid, gr)
@@ -553,12 +555,12 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
       , testGroup "upgrades" $
         let upgrade :: HasCallStack => Blob -> Prog -> IO GenR
             upgrade cid prog = do
-              trivial_wasm <- getTestWasm "universal_canister"
+              universal_wasm <- getTestWasm "universal_canister"
               submitCBOR ep $ rec
                 [ "request_type" =: GText "install_code"
                 , "sender" =: GBlob defaultUser
                 , "canister_id" =: GBlob cid
-                , "module" =: GBlob trivial_wasm
+                , "module" =: GBlob universal_wasm
                 , "arg" =: GBlob (run prog)
                 , "mode" =: GText "upgrade"
                 ]
@@ -915,9 +917,10 @@ statusReject code = record $ do
   s <- field text "status"
   lift $ s @?= "rejected"
   n <- field nat "reject_code"
-  lift $ n @?= code
-  _ <- field text "reject_message"
-  return ()
+  msg <- field text "reject_message"
+  lift $ assertBool
+    ("Reject code " ++ show n ++ " is not " ++ show code ++ "\n" ++ T.unpack msg)
+    (n == code)
 
 statusReply :: HasCallStack => GenR -> IO GenR
 statusReply = record $ do
@@ -987,16 +990,6 @@ getTestFile file =
       True -> return (d </> file)
       False -> try ds
     try [] = error $ "getTestDir: Could not read " ++ file ++ " from test-data/. Please consult impl/README.md"
-
-getTestWat :: FilePath -> IO BS.ByteString
-getTestWat wat = do
-  fp <- getTestFile $ wat <.> "wat"
-  (code, out, err) <- readProcessWithExitCode "wat2wasm"
-    [ fp , "-o", "/dev/stdout" ] ""
-  BS.hPutStr stderr err
-  if code /= ExitSuccess
-  then error "getTestWat failed"
-  else return out
 
 getTestWasm :: FilePath -> IO BS.ByteString
 getTestWasm base = do

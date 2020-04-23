@@ -46,7 +46,7 @@ rec {
   inherit universal-canister;
 
   ic-ref-test = nixpkgs.runCommandNoCC "ic-ref-test" {
-      nativeBuildInputs = [ ic-ref nixpkgs.wabt ];
+      nativeBuildInputs = [ ic-ref ];
     } ''
       function kill_ic_ref () { kill %1; }
       ic-ref --pick-port --write-port-to port &
@@ -61,7 +61,7 @@ rec {
     '';
 
   coverage = nixpkgs.runCommandNoCC "ic-ref-test" {
-      nativeBuildInputs = [ haskellPackages.ghc ic-ref-coverage nixpkgs.wabt ];
+      nativeBuildInputs = [ haskellPackages.ghc ic-ref-coverage ];
     } ''
       function kill_ic_ref () { kill  %1; }
       ic-ref --pick-port --write-port-to port &
