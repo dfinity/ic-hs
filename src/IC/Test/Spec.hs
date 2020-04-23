@@ -259,14 +259,20 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
         emptyReply gr
         return cid
 
-      call' :: HasCallStack => Blob -> Prog -> IO GenR
-      call' cid prog = submitCBOR ep $ rec
+      callRequest :: Blob -> Prog -> GenR
+      callRequest cid prog =  rec
           [ "request_type" =: GText "call"
           , "sender" =: GBlob defaultUser
           , "canister_id" =: GBlob cid
           , "method_name" =: GText "update"
           , "arg" =: GBlob (run prog)
           ]
+
+      call' :: HasCallStack => Blob -> Prog -> IO GenR
+      call' cid prog = submitCBOR ep (callRequest cid prog)
+
+      callTwice' :: HasCallStack => Blob -> Prog -> IO GenR
+      callTwice' cid prog = submitCBORTwice ep (callRequest cid prog)
 
       call :: HasCallStack => Blob -> Prog -> IO Blob
       call cid prog = call' cid prog >>= callReply
@@ -353,6 +359,32 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
           r <- query cid $ replyData caller
           r @?= defaultUser
       ]
+
+      , testGroup "state"
+        [ simpleTestCase "set/get" $ \cid -> do
+          r <- call cid $ setGlobal "FOO" >>> reply
+          r @?= ""
+          r <- query cid $ replyData getGlobal
+          r @?= "FOO"
+
+        , simpleTestCase "set/set/get" $ \cid -> do
+          r <- call cid $ setGlobal "FOO" >>> reply
+          r @?= ""
+          r <- call cid $ setGlobal "BAR" >>> reply
+          r @?= ""
+          r <- query cid $ replyData getGlobal
+          r @?= "BAR"
+
+        , simpleTestCase "resubmission" $ \cid -> do
+          -- Submits the same request (same nonce) twice, checks that
+          -- the IC does not act twice.
+          -- (Using growing stable memory as non-idempotent action)
+          r <- callTwice' cid >=> callReply $ ignore (stableGrow (int 1)) >>> reply
+          r @?= ""
+          r <- query cid $ replyData (i2b stableSize)
+          r @?= "\1\0\0\0"
+
+        ]
 
       , simpleTestCase "self" $ \cid -> do
         r <- query cid $ replyData self
@@ -821,6 +853,17 @@ readCBOR ep req = postCBOR ep "/api/v1/read" (envelope defaultSK req) >>= okCBOR
 submitCBOR :: Endpoint -> GenR -> IO GenR
 submitCBOR ep req = do
   req <- addNonce req
+  res <- postCBOR ep "/api/v1/submit" (envelope defaultSK req)
+  code202 res
+  assertBool "Response body not empty" (BS.null (responseBody res))
+  awaitStatus ep (requestId req)
+
+-- | Submits twice
+submitCBORTwice :: Endpoint -> GenR -> IO GenR
+submitCBORTwice ep req = do
+  req <- addNonce req
+  res <- postCBOR ep "/api/v1/submit" (envelope defaultSK req)
+  code202 res
   res <- postCBOR ep "/api/v1/submit" (envelope defaultSK req)
   code202 res
   assertBool "Response body not empty" (BS.null (responseBody res))
