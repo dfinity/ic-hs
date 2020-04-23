@@ -446,6 +446,54 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
               otherSide
           r @?= ("Hello " <> cid <> " this is " <> cid)
 
+        , simpleTestCase "update commits" $ \cid -> do
+          r <- call cid $
+            setGlobal "FOO" >>>
+            call_simple
+              (bytes cid)
+              "update"
+              (callback replyArgData)
+              (callback replyRejectData)
+              (callback $ setGlobal "BAR" >>> reply)
+          r @?= ""
+
+          r <- query cid $ replyData getGlobal
+          r @?= "BAR"
+
+        , simpleTestCase "query does not commit" $ \cid -> do
+          r <- call cid $
+            setGlobal "FOO" >>>
+            call_simple
+              (bytes cid)
+              "query"
+              (callback replyArgData)
+              (callback replyRejectData)
+              (callback $ setGlobal "BAR" >>> reply)
+          r @?= ""
+
+          r <- query cid $ replyData getGlobal
+          r @?= "FOO"
+
+        , simpleTestCase "query no reply" $ \cid -> do
+          r <- call cid $
+            call_simple
+              (bytes cid)
+              "query"
+              (callback replyArgData)
+              (callback replyRejectData)
+              (callback noop)
+          BS.take 4 r @?= "\5\0\0\0"
+
+        , simpleTestCase "query double reply" $ \cid -> do
+          r <- call cid $
+            call_simple
+              (bytes cid)
+              "query"
+              (callback replyArgData)
+              (callback replyRejectData)
+              (callback $ reply >>> reply)
+          BS.take 4 r @?= "\5\0\0\0"
+
         , simpleTestCase "Reject code is 0 in reply" $ \cid -> do
           r <- call cid $
             call_simple
