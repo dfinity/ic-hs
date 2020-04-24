@@ -715,6 +715,65 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
           checkNoUpgrade cid
         ]
 
+      , testGroup "reinstall" $
+        let reinstall :: HasCallStack => Blob -> Prog -> IO GenR
+            reinstall cid prog = do
+              universal_wasm <- getTestWasm "universal_canister"
+              submitCBOR ep $ rec
+                [ "request_type" =: GText "install_code"
+                , "sender" =: GBlob defaultUser
+                , "canister_id" =: GBlob cid
+                , "module" =: GBlob universal_wasm
+                , "arg" =: GBlob (run prog)
+                , "mode" =: GText "reinstall"
+                ]
+        in
+        [ testCase "succeeding" $ do
+          cid <- install $
+                setGlobal "FOO" >>>
+                ignore (stableGrow (int 1)) >>>
+                stableWrite (int 0) "FOO______"
+          r <- query cid $ replyData getGlobal
+          r @?= "FOO"
+          r <- query cid $ replyData (stableRead (int 0) (int 9))
+          r @?= "FOO______"
+          r <- query cid $ replyData (i2b stableSize)
+          r @?= "\1\0\0\0"
+
+          reinstall cid >=> emptyReply $
+                setGlobal "BAR" >>>
+                ignore (stableGrow (int 2)) >>>
+                stableWrite (int 0) "BAR______"
+
+          r <- query cid $ replyData getGlobal
+          r @?= "BAR"
+          r <- query cid $ replyData (stableRead (int 0) (int 9))
+          r @?= "BAR______"
+          r <- query cid $ replyData (i2b stableSize)
+          r @?= "\2\0\0\0"
+
+        , testCase "trapping" $ do
+          cid <- install $
+                setGlobal "FOO" >>>
+                ignore (stableGrow (int 1)) >>>
+                stableWrite (int 0) "FOO______"
+          r <- query cid $ replyData getGlobal
+          r @?= "FOO"
+          r <- query cid $ replyData (stableRead (int 0) (int 9))
+          r @?= "FOO______"
+          r <- query cid $ replyData (i2b stableSize)
+          r @?= "\1\0\0\0"
+
+          reinstall cid >=> statusReject 5 $ trap "Trapping the reinstallation"
+
+          r <- query cid $ replyData getGlobal
+          r @?= "FOO"
+          r <- query cid $ replyData (stableRead (int 0) (int 9))
+          r @?= "FOO______"
+          r <- query cid $ replyData (i2b stableSize)
+          r @?= "\1\0\0\0"
+        ]
+
       , testGroup "debug facilities"
         [ simpleTestCase "Using debug_print" $ \cid -> do
           r <- call cid $ debugPrint "ic-ref-test print" >>> reply
