@@ -580,7 +580,7 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
             r @?= "good"
 
 
-          , simpleTestCase "two callbacks: trap after reply" $ \cid -> do
+          , simpleTestCase "trap after reply" $ \cid -> do
             r <- call cid $
               call_simple
                 (bytes cid)
@@ -596,7 +596,7 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
                 (callback (reject "rejecting!"))
             r @?= "good"
 
-          , simpleTestCase "two callbacks: both trap" $ \cid ->
+          , simpleTestCase "both trap" $ \cid ->
             call' cid >=> statusReject 5 $
               call_simple
                 (bytes cid)
