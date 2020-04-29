@@ -72,8 +72,6 @@ handle stateVar req respond = case (requestMethod req, pathInfo req) of
     withHistory :: ([IC] -> IO a) -> IO a
     withHistory a = readMVar stateVar >>= a . reverse
 
-    empty status = respond $ responseBuilder status [ ] mempty
-
     cbor status gr = respond $ responseBuilder
         status
         [ (hContentType, "application/cbor") ]
@@ -84,12 +82,20 @@ handle stateVar req respond = case (requestMethod req, pathInfo req) of
         [ (hContentType, "application/json") ]
         (JSON.fromEncoding $ JSON.toEncoding x)
 
+    plain status x = respond $ responseBuilder
+        status
+        [ (hContentType, "text/plain") ]
+        x
+
+    empty status = plain status mempty
+
     invalidRequest msg = do
         when False $ print (T.unpack msg)
         -- ^ When testing against dfx, and until it prints error messages
         -- this can be enabled
-        respond $ responseBuilder status400 [] (T.encodeUtf8Builder msg)
-    notFound = respond $ responseLBS status404 [] "Not found\n"
+        plain status400 (T.encodeUtf8Builder msg)
+    notFound = plain status404 "Not found\n"
+
 
     withCBOR k = case lookup hContentType (requestHeaders req) of
         Just "application/cbor" -> do
