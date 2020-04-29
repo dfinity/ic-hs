@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 import Options.Applicative
 import Data.Foldable
 import Control.Concurrent
@@ -15,17 +16,19 @@ work :: Bool -> Maybe FilePath -> IO ()
 work pickPort writePortTo = do
     putStrLn "Starting ic-ref..."
     if pickPort
-    then withApplication IC.HTTP.startApp $ \port -> do
+    then withApplicationSettings settings IC.HTTP.startApp $ \port -> do
         greet port
         forever (threadDelay maxBound)
     else do
         app <- IC.HTTP.startApp
         greet defaultPort
-        run defaultPort app
+        runSettings settings app
   where
     greet port = do
-       putStrLn $ "Running at http://0.0.0.0:" ++ show port ++ "/"
+       putStrLn $ "Running at http://127.0.0.1:" ++ show port ++ "/"
        for_ writePortTo $ \fn -> writeFile fn (show port)
+
+    settings = setPort defaultPort $ setHost "127.0.0.1" defaultSettings
 
 main :: IO ()
 main = join . customExecParser (prefs showHelpOnError) $

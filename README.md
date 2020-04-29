@@ -146,12 +146,12 @@ Developing on ic-ref
 ---------------------
 
 Running `nix-shell` in the `ic-ref/impl` directory gives you an environment
-that allows you to build the project using `cabal new-build`. You can also run
-`cabal new-run ic-ref` etc. to run it directly from source.
+that allows you to build the project using `cabal build`. You can also run
+`cabal run ic-ref` etc. to run it directly from source.
 
 One possible workflow is to run
 
-    ghcid -c 'cabal new-repl ic-ref' -rMain.main
+    ghcid -c 'cabal repl ic-ref' -rMain.main
 
 which will run `ic-ref` and restart upon file changes.
 
@@ -167,11 +167,11 @@ build output produced by
 
 now you can run the test suite with
 
-    cabal new-build ic-ref-test
+    cabal build ic-ref-test
 
 The `-p` flag, i.e.
 
-    cabal new-build ic-ref-test -- -p upgrade
+    cabal build ic-ref-test -- -p upgrade
 
 allows you can run tests selectively (i.e. only those whose name include
 “upgrade”).
