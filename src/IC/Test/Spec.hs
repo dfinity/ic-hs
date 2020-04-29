@@ -562,6 +562,56 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
           r <- query cid $ replyData getGlobal
           r @?= "FOO"
 
+        , testGroup "two callbacks"
+          [ simpleTestCase "reply after trap" $ \cid -> do
+            r <- call cid $
+              call_simple
+                (bytes cid)
+                "query"
+                (callback reply)
+                (callback (trap "first callback traps"))
+                (callback (reject "rejecting!")) >>>
+              call_simple
+                (bytes cid)
+                "query"
+                (callback reply)
+                (callback (replyData "good")) -- second callback succeeds
+                (callback (reject "rejecting!"))
+            r @?= "good"
+
+
+          , simpleTestCase "two callbacks: trap after reply" $ \cid -> do
+            r <- call cid $
+              call_simple
+                (bytes cid)
+                "query"
+                (callback reply)
+                (callback (replyData "good")) -- first callback succeeds
+                (callback (reject "rejecting!")) >>>
+              call_simple
+                (bytes cid)
+                "query"
+                (callback reply)
+                (callback (trap "second callback traps"))
+                (callback (reject "rejecting!"))
+            r @?= "good"
+
+          , simpleTestCase "two callbacks: both trap" $ \cid ->
+            call' cid >=> statusReject 5 $
+              call_simple
+                (bytes cid)
+                "query"
+                (callback reply)
+                (callback (trap "first callback traps"))
+                (callback (reject "rejecting!")) >>>
+              call_simple
+                (bytes cid)
+                "query"
+                (callback reply)
+                (callback (trap "second callback traps"))
+                (callback (reject "rejecting!"))
+          ]
+
         , simpleTestCase "Call to other canister (to update)" $ \cid -> do
           cid2 <- install noop
           r <- call cid $
