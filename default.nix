@@ -151,17 +151,14 @@ rec {
   };
 
   # include shell in default.nix so that the nix cache will have pre-built versions
-  # of all the dependencies that are only dependent on by nix-shell.
-  shell =
+  # of all the dependencies that are only depended on by nix-shell.
+  ic-ref-shell =
     let extra-pkgs = [
       nixpkgs.cabal-install
       nixpkgs.ghcid
-    ] ++
-    # and to build the rust stuff
-    universal-canister.nativeBuildInputs; in
+    ]; in
 
     haskellPackages.ic-ref.env.overrideAttrs (old: {
       nativeBuildInputs = (old.nativeBuildInputs or []) ++ extra-pkgs ;
-      CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_LINKER = "${nixpkgs.llvmPackages_9.lld}/bin/lld";
     });
 }
