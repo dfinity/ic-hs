@@ -562,6 +562,17 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
           r <- query cid $ replyData getGlobal
           r @?= "FOO"
 
+        , simpleTestCase "partial reply" $ \cid -> do
+          r <- call cid $
+            replyDataAppend "FOO" >>>
+            call_simple
+              (bytes cid)
+              "query"
+              (callback (replyDataAppend "BAR" >>> reply))
+              (callback replyRejectData)
+              (callback reply)
+          r @?= "BAR" -- check that the FOO is silently dropped
+
         , testGroup "two callbacks"
           [ simpleTestCase "reply after trap" $ \cid -> do
             r <- call cid $
