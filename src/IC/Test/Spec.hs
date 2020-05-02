@@ -390,71 +390,30 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
         r <- query cid $ replyData self
         r @?= cid
 
-      , testGroup "inter-canister calls" $
-        let otherSide = callback $
-              replyDataAppend "Hello " >>>
-              replyDataAppend caller  >>>
-              replyDataAppend " this is " >>>
-              replyDataAppend self  >>>
-              reply in
+      , testGroup "inter-canister calls"
         [ simpleTestCase "to nonexistant canister" $ \cid -> do
-          r <- call cid $
-            call_simple
-              "foo"
-              "bar"
-              (callback noop)
-              (callback replyRejectData)
-              (callback noop)
+          r <- call cid $ inter_call "foo" "bar" defArgs
           BS.take 4 r @?= "\x03\x0\x0\x0"
 
         , simpleTestCase "to nonexistant method" $ \cid -> do
-          r <- call cid $
-            call_simple
-              (bytes cid)
-              "bar"
-              (callback noop)
-              (callback replyRejectData)
-              (callback noop)
+          r <- call cid $ inter_call cid "bar" defArgs
           BS.take 4 r @?= "\x03\x0\x0\x0"
 
-        , simpleTestCase "Call from query traps" $ \cid -> do
-          query' cid >=> statusReject 5 $
-            call_simple
-              (bytes cid)
-              "update"
-              (callback replyArgData)
-              (callback replyRejectData)
-              otherSide
+        , simpleTestCase "Call from query traps" $ \cid ->
+          query' cid >=> statusReject 5 $ inter_update cid defArgs
 
         , simpleTestCase "Self-call (to update)" $ \cid -> do
-          r <- call cid $
-            call_simple
-              (bytes cid)
-              "update"
-              (callback replyArgData)
-              (callback replyRejectData)
-              otherSide
+          r <- call cid $ inter_update cid defArgs
           r @?= ("Hello " <> cid <> " this is " <> cid)
 
         , simpleTestCase "Self-call (to query)" $ \cid -> do
-          r <- call cid $
-            call_simple
-              (bytes cid)
-              "query"
-              (callback replyArgData)
-              (callback replyRejectData)
-              otherSide
+          r <- call cid $ inter_query cid defArgs
           r @?= ("Hello " <> cid <> " this is " <> cid)
 
         , simpleTestCase "update commits" $ \cid -> do
           r <- call cid $
             setGlobal "FOO" >>>
-            call_simple
-              (bytes cid)
-              "update"
-              (callback replyArgData)
-              (callback replyRejectData)
-              (callback $ setGlobal "BAR" >>> reply)
+            inter_update cid defArgs{ other_side = setGlobal "BAR" >>> reply }
           r @?= ""
 
           r <- query cid $ replyData getGlobal
@@ -463,96 +422,54 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
         , simpleTestCase "query does not commit" $ \cid -> do
           r <- call cid $
             setGlobal "FOO" >>>
-            call_simple
-              (bytes cid)
-              "query"
-              (callback replyArgData)
-              (callback replyRejectData)
-              (callback $ setGlobal "BAR" >>> reply)
+            inter_query cid defArgs{ other_side = setGlobal "BAR" >>> reply }
           r @?= ""
 
           r <- query cid $ replyData getGlobal
           r @?= "FOO"
 
         , simpleTestCase "query no reply" $ \cid -> do
-          r <- call cid $
-            call_simple
-              (bytes cid)
-              "query"
-              (callback replyArgData)
-              (callback replyRejectData)
-              (callback noop)
+          r <- call cid $ inter_query cid defArgs{ other_side = noop }
           BS.take 4 r @?= "\5\0\0\0"
 
         , simpleTestCase "query double reply" $ \cid -> do
-          r <- call cid $
-            call_simple
-              (bytes cid)
-              "query"
-              (callback replyArgData)
-              (callback replyRejectData)
-              (callback $ reply >>> reply)
+          r <- call cid $ inter_query cid defArgs{ other_side = reply >>> reply }
           BS.take 4 r @?= "\5\0\0\0"
 
         , simpleTestCase "Reject code is 0 in reply" $ \cid -> do
-          r <- call cid $
-            call_simple
-              (bytes cid)
-              "query"
-              (callback (replyData (i2b reject_code)))
-              (callback replyRejectData)
-              otherSide
+          r <- call cid $ inter_query cid defArgs{ on_reply = replyData (i2b reject_code) }
           r @?= "\x0\x0\x0\x0"
 
         , simpleTestCase "traps in reply: getting reject message" $ \cid ->
           call' cid >=> statusReject 5 $
-            call_simple
-              (bytes cid)
-              "query"
-              (callback replyRejectData)
-              (callback replyRejectData)
-              otherSide
+            inter_query cid defArgs{ on_reply = replyRejectData }
 
         , simpleTestCase "traps in reply: getting caller" $ \cid ->
           call' cid >=> statusReject 5 $
-            call_simple
-              (bytes cid)
-              "query"
-              (callback (replyData caller))
-              (callback replyRejectData)
-              otherSide
+            inter_query cid defArgs{ on_reply = replyData caller }
 
         , simpleTestCase "traps in reject: getting argument" $ \cid ->
           call' cid >=> statusReject 5 $
-            call_simple
-              (bytes cid)
-              "query"
-              (callback replyArgData)
-              (callback replyArgData)
-              (callback (reject "rejecting!"))
+            inter_query cid defArgs{
+              on_reject = replyArgData,
+              other_side = reject "rejecting"
+            }
 
         , simpleTestCase "traps in reject: getting caller" $ \cid ->
           call' cid >=> statusReject 5 $
-            call_simple
-              (bytes cid)
-              "query"
-              (callback replyArgData)
-              (callback (replyData caller))
-              (callback (reject "rejecting!"))
+            inter_query cid defArgs{
+              on_reject = replyData caller,
+              other_side = reject "rejecting"
+            }
 
         , simpleTestCase "Second reply in callback" $ \cid -> do
           r <- call cid $
             setGlobal "FOO" >>>
             replyData "First reply" >>>
-            call_simple
-              (bytes cid)
-              "query"
-              (callback (
-                setGlobal "BAR" >>>
-                replyData "Second reply"
-              ))
-              (callback (setGlobal "BAZ" >>> replyRejectData))
-              otherSide
+            inter_query cid defArgs{
+              on_reply = setGlobal "BAR" >>> replyData "Second reply",
+              on_reject = setGlobal "BAZ" >>> replyRejectData
+            }
           r @?= "First reply"
 
           -- now check that the callback trapped and did not actual change the global
@@ -565,84 +482,37 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
         , simpleTestCase "partial reply" $ \cid -> do
           r <- call cid $
             replyDataAppend "FOO" >>>
-            call_simple
-              (bytes cid)
-              "query"
-              (callback (replyDataAppend "BAR" >>> reply))
-              (callback replyRejectData)
-              (callback reply)
+            inter_query cid defArgs{ on_reply = replyDataAppend "BAR" >>> reply }
           r @?= "BAR" -- check that the FOO is silently dropped
 
         , testGroup "two callbacks"
           [ simpleTestCase "reply after trap" $ \cid -> do
             r <- call cid $
-              call_simple
-                (bytes cid)
-                "query"
-                (callback reply)
-                (callback (trap "first callback traps"))
-                (callback (reject "rejecting!")) >>>
-              call_simple
-                (bytes cid)
-                "query"
-                (callback reply)
-                (callback (replyData "good")) -- second callback succeeds
-                (callback (reject "rejecting!"))
+              inter_query cid defArgs{ on_reply = trap "first callback traps" } >>>
+              inter_query cid defArgs{ on_reply = replyData "good" }
             r @?= "good"
 
 
           , simpleTestCase "trap after reply" $ \cid -> do
             r <- call cid $
-              call_simple
-                (bytes cid)
-                "query"
-                (callback reply)
-                (callback (replyData "good")) -- first callback succeeds
-                (callback (reject "rejecting!")) >>>
-              call_simple
-                (bytes cid)
-                "query"
-                (callback reply)
-                (callback (trap "second callback traps"))
-                (callback (reject "rejecting!"))
+              inter_query cid defArgs{ on_reply = replyData "good" } >>>
+              inter_query cid defArgs{ on_reply = trap "second callback traps" }
             r @?= "good"
 
           , simpleTestCase "both trap" $ \cid ->
             call' cid >=> statusReject 5 $
-              call_simple
-                (bytes cid)
-                "query"
-                (callback reply)
-                (callback (trap "first callback traps"))
-                (callback (reject "rejecting!")) >>>
-              call_simple
-                (bytes cid)
-                "query"
-                (callback reply)
-                (callback (trap "second callback traps"))
-                (callback (reject "rejecting!"))
+              inter_query cid defArgs{ on_reply = trap "first callback traps" } >>>
+              inter_query cid defArgs{ on_reply = trap "second callback traps" }
           ]
 
         , simpleTestCase "Call to other canister (to update)" $ \cid -> do
           cid2 <- install noop
-          r <- call cid $
-            call_simple
-              (bytes cid2)
-              "update"
-              (callback replyArgData)
-              (callback replyRejectData)
-              otherSide
+          r <- call cid $ inter_update cid2 defArgs
           r @?= ("Hello " <> cid <> " this is " <> cid2)
 
         , simpleTestCase "Call to other canister (to query)" $ \cid -> do
           cid2 <- install noop
-          r <- call cid $
-            call_simple
-              (bytes cid2)
-              "query"
-              (callback replyArgData)
-              (callback replyRejectData)
-              otherSide
+          r <- call cid $ inter_query cid2 defArgs
           r @?= ("Hello " <> cid <> " this is " <> cid2)
         ]
 
