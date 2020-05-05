@@ -46,7 +46,7 @@ rec {
   inherit universal-canister;
 
   ic-ref-test = nixpkgs.runCommandNoCC "ic-ref-test" {
-      nativeBuildInputs = [ ic-ref nixpkgs.wabt ];
+      nativeBuildInputs = [ ic-ref ];
     } ''
       function kill_ic_ref () { kill %1; }
       ic-ref --pick-port --write-port-to port &
@@ -61,7 +61,7 @@ rec {
     '';
 
   coverage = nixpkgs.runCommandNoCC "ic-ref-test" {
-      nativeBuildInputs = [ haskellPackages.ghc ic-ref-coverage nixpkgs.wabt ];
+      nativeBuildInputs = [ haskellPackages.ghc ic-ref-coverage ];
     } ''
       function kill_ic_ref () { kill  %1; }
       ic-ref --pick-port --write-port-to port &
@@ -159,17 +159,14 @@ rec {
   };
 
   # include shell in default.nix so that the nix cache will have pre-built versions
-  # of all the dependencies that are only dependent on by nix-shell.
-  shell =
+  # of all the dependencies that are only depended on by nix-shell.
+  ic-ref-shell =
     let extra-pkgs = [
       nixpkgs.cabal-install
       nixpkgs.ghcid
-    ] ++
-    # and to build the rust stuff
-    universal-canister.nativeBuildInputs; in
+    ]; in
 
     haskellPackages.ic-ref.env.overrideAttrs (old: {
       nativeBuildInputs = (old.nativeBuildInputs or []) ++ extra-pkgs ;
-      CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_LINKER = "${nixpkgs.llvmPackages_9.lld}/bin/lld";
     });
 }

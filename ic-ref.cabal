@@ -39,7 +39,7 @@ common logic
   other-modules:       IC.Wasm.WinterMemory
   other-modules:       IC.Wasm.Winter.Persist
   other-modules:       IC.Wasm.Imports
-  build-depends:       base >=4.13 && <5
+  build-depends:       base >=4.12 && <5
   build-depends:       filepath
   build-depends:       hex-text
   build-depends:       crc
@@ -47,9 +47,9 @@ common logic
   build-depends:       bytestring
   build-depends:       containers
   build-depends:       winter
+  build-depends:       binary
   build-depends:       mtl
   build-depends:       transformers
-  build-depends:       binary
   build-depends:       data-default-class
   build-depends:       vector
   build-depends:       primitive
@@ -66,7 +66,7 @@ common cbor
   other-modules:       IC.HTTP.RequestId
   other-modules:       IC.Id.Forms
   other-modules:       IC.Crypto
-  build-depends:       base >=4.13 && <5
+  build-depends:       base >=4.12 && <5
   build-depends:       text
   build-depends:       bytestring
   build-depends:       containers
@@ -75,9 +75,7 @@ common cbor
   build-depends:       cborg
   build-depends:       cryptonite
   build-depends:       memory
-  build-depends:       binary
-  build-depends:       winter
-  -- ^ just for leb128
+  build-depends:       leb128-cereal
   build-depends:       ed25519
   build-depends:       cryptonite
   build-depends:       memory
@@ -130,7 +128,6 @@ executable ic-ref-test
   build-depends:       optparse-applicative
   build-depends:       http-client
   build-depends:       http-types
-  build-depends:       process-extras
   build-depends:       random
   build-depends:       filepath
   build-depends:       directory

@@ -111,10 +111,9 @@ To achieve these goals, the following design decisions are made:
 Installation
 ------------
 
-To install it into your normal environment, run from the top-level repository
-directory.
+To install it into your normal environment, run from the `impl/` directory
 
-    nix-env -i -f . -A ic-ref
+    nix-env -if .
 
 This installs the all binaries (`ic-ref`, `ic-ref-test`, `ic-ref-run`) in your
 the PATH.
@@ -146,12 +145,12 @@ Developing on ic-ref
 ---------------------
 
 Running `nix-shell` in the `ic-ref/impl` directory gives you an environment
-that allows you to build the project using `cabal new-build`. You can also run
-`cabal new-run ic-ref` etc. to run it directly from source.
+that allows you to build the project using `cabal build`. You can also run
+`cabal run ic-ref` etc. to run it directly from source.
 
 One possible workflow is to run
 
-    ghcid -c 'cabal new-repl ic-ref' -rMain.main
+    ghcid -c 'cabal repl ic-ref' -rMain.main
 
 which will run `ic-ref` and restart upon file changes.
 
@@ -163,15 +162,16 @@ The symbolic link in `impl/test-data/universal_canister.wasm` points to the
 build output produced by
 
     cd ../universal_canister
+    nix-shell
     cargo build --target wasm32-unknown-unknown --release
 
-now you can run the test suite with
+now you can run the test suite from the `impl/` directory with
 
-    cabal new-build ic-ref-test
+    cabal run ic-ref-test
 
 The `-p` flag, i.e.
 
-    cabal new-build ic-ref-test -- -p upgrade
+    cabal run ic-ref-test -- -p upgrade
 
 allows you can run tests selectively (i.e. only those whose name include
 “upgrade”).

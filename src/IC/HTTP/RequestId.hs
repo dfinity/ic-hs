@@ -10,8 +10,7 @@ import qualified Data.Text.Encoding as T
 import Data.List (sort)
 import Crypto.Hash (hashlazy, SHA256)
 import Data.ByteArray (convert)
-import Wasm.Binary.LEB128
-import Data.Binary.Put (runPut)
+import Data.Serialize.LEB128
 
 type RequestId = BS.ByteString
 
@@ -32,7 +31,7 @@ encodeText :: T.Text -> BS.ByteString
 encodeText = BS.fromStrict . T.encodeUtf8
 
 encodeNat :: Natural -> BS.ByteString
-encodeNat = runPut . putSLEB128
+encodeNat = BS.fromStrict . toLEB128
 
 h :: BS.ByteString -> BS.ByteString
 h = BS.fromStrict . convert . hashlazy @SHA256
