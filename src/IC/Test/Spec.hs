@@ -718,18 +718,21 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
     [ ("with bad signature", badEnvelope)
     , ("with wrong key", envelope otherSK)
     ] <&> \(name, env) -> testGroup name
-      [ testCase "in query" $ do
-        cid <- create
+      [ simpleTestCase "in query" $ \cid -> do
         let query = rec
               [ "request_type" =: GText "query"
               , "sender" =: GBlob defaultUser
               , "canister_id" =: GBlob cid
-              , "method_name" =: GText "foo"
-              , "arg" =: GBlob "nothing to see here"
+              , "method_name" =: GText "query"
+              , "arg" =: GBlob (run reply)
               ]
+        r <- readCBOR query >>= callReply
+        r @?= ""
         postCBOR "/api/v1/read" (env query) >>= code4xx
+
       , testCase "in unknown request status" $
-          postCBOR "/api/v1/read/" (env requestStatusNonExistant) >>= code4xx
+          postCBOR "/api/v1/read" (env requestStatusNonExistant) >>= code4xx
+
       , testCase "in request status" $ do
           req <- addNonce $ rec
                 [ "request_type" =: GText "create_canister"
@@ -740,14 +743,15 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
                 [ "request_type" =: GText "request_status"
                 , "request_id" =: GBlob (requestId req)
                 ]
-          postCBOR "/api/v1/read/" (env status_req) >>= code4xx
+          postCBOR "/api/v1/read" (envelope defaultSK status_req) >>= code2xx
+          postCBOR "/api/v1/read" (env status_req) >>= code4xx
       , testCase "in install" $ do
           cid <- create
           req <- addNonce $ rec
                 [ "request_type" =: GText "install_code"
                 , "sender" =: GBlob defaultUser
                 , "canister_id" =: GBlob cid
-                , "module" =: GBlob ""
+                , "module" =: GBlob trivialWasmModule
                 , "arg" =: GBlob ""
                 ]
           postCBOR "/api/v1/submit" (env req) >>= code202_or_4xx
@@ -758,16 +762,15 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
                 [ "request_type" =: GText "request_status"
                 , "request_id" =: GBlob (requestId req)
                 ]
-          postCBOR "/api/v1/read/" (envelope defaultSK status_req) >>= code4xx
+          postCBOR "/api/v1/read" (envelope defaultSK status_req) >>= code4xx_or_unknown
 
-      , testCase "in call" $ do
-          cid <- create
+      , simpleTestCase "in call" $ \cid -> do
           req <- addNonce $ rec
                 [ "request_type" =: GText "call"
                 , "sender" =: GBlob defaultUser
                 , "canister_id" =: GBlob cid
-                , "method_name" =: GText "foo"
-                , "arg" =: GBlob "nothing to see here"
+                , "method_name" =: GText "query"
+                , "arg" =: GBlob (run reply)
                 ]
           postCBOR "/api/v1/submit" (env req) >>= code202_or_4xx
 
@@ -777,7 +780,11 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
                 [ "request_type" =: GText "request_status"
                 , "request_id" =: GBlob (requestId req)
                 ]
-          postCBOR "/api/v1/read/" (envelope defaultSK status_req) >>= code4xx
+          postCBOR "/api/v1/read" (envelope defaultSK status_req) >>= code4xx_or_unknown
+
+          -- check that with a valid signature, this would have worked
+          r <- submitCBOR req >>= callReply
+          r @?= ""
       ]
   ]
 
@@ -887,7 +894,7 @@ pollDelay = threadDelay $ 10 * 1000 -- 10 milliseonds
 -- How long to wait before checking if a request that should _not_ show up on
 -- the system indeed did not show up
 ingressDelay :: IO ()
-ingressDelay = threadDelay $ 100 * 1000 -- 100 milliseonds
+ingressDelay = threadDelay $ 2 * 1000 * 1000 -- 2 seconds
 
 
 -- * HTTP Response predicates
@@ -920,8 +927,8 @@ emptyRec = \case
   GRec hm | HM.null hm -> return ()
   _ -> assertFailure "Not an empty record"
 
-_statusUnknown :: HasCallStack => GenR -> IO ()
-_statusUnknown = record $ do
+statusUnknown :: HasCallStack => GenR -> IO ()
+statusUnknown = record $ do
     s <- field text "status"
     lift $ s @?= "unknown"
 
@@ -964,6 +971,16 @@ statusResonse = record $ do
     _ <- optionalField text "impl_revision"
     swallowAllFields -- More fields are explicitly allowed
     return v
+
+code4xx_or_unknown :: HasCallStack => Response Blob -> IO ()
+code4xx_or_unknown response
+  | 200 == c = okCBOR response >>= statusUnknown
+  | 400 <= c && c < 500 = return ()
+  | otherwise = assertFailure $
+      "Status " ++ show c ++ " is not 4xx or status unknown\n" ++ msg
+ where
+  c = statusCode (responseStatus response)
+  msg = T.unpack (T.decodeUtf8With T.lenientDecode (BS.toStrict (BS.take 200 (responseBody response))))
 
 -- * Interacting with the universal canister
 
