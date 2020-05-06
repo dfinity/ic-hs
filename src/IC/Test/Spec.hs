@@ -179,7 +179,7 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
 
     , testCaseSteps "trivial wasm module" $ \step -> do
         step "Create"
-        can_id <- lenientCreate ep
+        can_id <- create ep
 
         step "Reinstall fails"
         submitCBOR ep >=> statusReject 3 $ rec
@@ -241,7 +241,7 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
 
       install' :: HasCallStack => Prog -> IO (Blob, GenR)
       install' prog = do
-        cid <- lenientCreate ep
+        cid <- create ep
         universal_wasm <- getTestWasm "universal_canister"
         gr <- submitCBOR ep $ rec
           [ "request_type" =: GText "install_code"
@@ -781,7 +781,7 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
     , ("with wrong key", envelope otherSK)
     ] <&> \(name, env) -> testGroup name
       [ testCase "in query" $ do
-        cid <- lenientCreate ep
+        cid <- create ep
         let query = rec
               [ "request_type" =: GText "query"
               , "sender" =: GBlob defaultUser
@@ -804,7 +804,7 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
                 ]
           postCBOR ep "/api/v1/read/" (env status_req) >>= code4xx
       , testCase "in install" $ do
-          cid <- lenientCreate ep
+          cid <- create ep
           req <- addNonce $ rec
                 [ "request_type" =: GText "install_code"
                 , "sender" =: GBlob defaultUser
@@ -823,7 +823,7 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
           postCBOR ep "/api/v1/read/" (envelope defaultSK status_req) >>= code4xx
 
       , testCase "in call" $ do
-          cid <- lenientCreate ep
+          cid <- create ep
           req <- addNonce $ rec
                 [ "request_type" =: GText "call"
                 , "sender" =: GBlob defaultUser
@@ -907,27 +907,11 @@ submitCBORTwice ep req = do
   assertBool "Response body not empty" (BS.null (responseBody res))
   awaitStatus ep (requestId req)
 
--- | A special variant of create canister that, if the server
--- returns error code 422, comes up with a canister id.
--- This allows more test cases to proceed (and show other problems)
--- even if no create_canister request is understood.
-lenientCreate :: Endpoint -> IO Blob
-lenientCreate ep = do
-  req <- addNonce req
-  res <- postCBOR ep "/api/v1/submit" (envelope defaultSK req)
-  if statusCode (responseStatus res) == 422
-  then
-    -- Just come up with a canister id
-    (<> BS.singleton 1) <$> getRand8Bytes
-  else do
-      code202 res
-      assertBool "Response body not empty" (BS.null (responseBody res))
-      awaitStatus ep (requestId req) >>= createReply
-  where
-    req = rec
-      [ "request_type" =: GText "create_canister"
-      , "sender" =: GBlob defaultUser
-      ]
+create :: Endpoint -> IO Blob
+create ep = submitCBOR ep >=> createReply $ rec
+  [ "request_type" =: GText "create_canister"
+  , "sender" =: GBlob defaultUser
+  ]
 
 awaitStatus :: Endpoint -> Blob -> IO GenR
 awaitStatus ep rid = loop $ do
