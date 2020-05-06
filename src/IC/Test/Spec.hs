@@ -4,8 +4,11 @@ This module contains a test suite for the Internet Computer
 
 -}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ImplicitParams #-}
+{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE RankNTypes #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 module IC.Test.Spec (icTests) where
 
@@ -110,15 +113,15 @@ badEnvelope content = rec
 -- * The actual test suite (see below for helper functions)
 
 icTests :: IO () -> TestTree
-icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance tests"
+icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
   [ testCase "status endpoint" $ do
-      api_version <- getLBS ep "/api/v1/status" >>= okCBOR >>= statusResonse
+      api_version <- getLBS "/api/v1/status" >>= okCBOR >>= statusResonse
       unless (api_version == specVersion || api_version == "unversioned") $
         assertFailure $ "ic_api_version should be " ++ show specVersion ++
                         " or \"unversioned\", not " ++ show api_version
 
   , testCase "spec compliance claimed" $ do
-      api_version <- getLBS ep "/api/v1/status" >>= okCBOR >>= statusResonse
+      api_version <- getLBS "/api/v1/status" >>= okCBOR >>= statusResonse
 
       unless (api_version == specVersion) $
         assertFailure $ "ic_api_version is not " ++ show specVersion ++ ", so no spec compliance assumed"
@@ -129,7 +132,7 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
 
   , testGroup "create_canister"
     [ testCase "no id given" $ do
-        cid <- submitCBOR ep >=> createReply $ rec
+        cid <- submitCBOR >=> createReply $ rec
           [ "request_type" =: GText "create_canister"
           , "sender" =: GBlob defaultUser
           ]
@@ -138,7 +141,7 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
         step "Creating"
         bytes <- getRand8Bytes
         let id = mkDerivedId defaultUser bytes
-        id' <- submitCBOR ep >=> createReply $ rec
+        id' <- submitCBOR >=> createReply $ rec
           [ "request_type" =: GText "create_canister"
           , "sender" =: GBlob defaultUser
           , "desired_id" =: GBlob id
@@ -146,7 +149,7 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
         id' @?= id
 
         step "Creating again"
-        submitCBOR ep >=> statusReject 3 $ rec
+        submitCBOR >=> statusReject 3 $ rec
           [ "request_type" =: GText "create_canister"
           , "sender" =: GBlob defaultUser
           , "desired_id" =: GBlob id
@@ -154,7 +157,7 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
 
     , testCase "desired id (wrong class)" $ do
         id <- mkOpaqueId <$> getRand8Bytes
-        submitCBOR ep >=> statusReject 3 $ rec
+        submitCBOR >=> statusReject 3 $ rec
           [ "request_type" =: GText "create_canister"
           , "sender" =: GBlob defaultUser
           , "desired_id" =: GBlob id
@@ -163,26 +166,26 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
     , testCase "desired id (wrong user)" $ do
         bytes <- getRand8Bytes
         let id = mkDerivedId otherUser bytes
-        submitCBOR ep >=> statusReject 3 $ rec
+        submitCBOR >=> statusReject 3 $ rec
           [ "request_type" =: GText "create_canister"
           , "sender" =: GBlob defaultUser
           , "desired_id" =: GBlob id
           ]
     , testCase "create_canister necessary" $
-        submitCBOR ep minimalInstall >>= statusReject 3
+        submitCBOR minimalInstall >>= statusReject 3
     ]
 
   , testGroup "install"
     [ testGroup "required fields" $
         omitFields (envelope defaultSK minimalInstall) $ \req ->
-          postCBOR ep "/api/v1/submit" req >>= code4xx
+          postCBOR "/api/v1/submit" req >>= code4xx
 
     , testCaseSteps "trivial wasm module" $ \step -> do
         step "Create"
-        can_id <- create ep
+        can_id <- create
 
         step "Reinstall fails"
-        submitCBOR ep >=> statusReject 3 $ rec
+        submitCBOR >=> statusReject 3 $ rec
           [ "request_type" =: GText "install_code"
           , "sender" =: GBlob defaultUser
           , "canister_id" =: GBlob can_id
@@ -193,7 +196,7 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
 
 
         step "Install"
-        submitCBOR ep >=> emptyReply $ rec
+        submitCBOR >=> emptyReply $ rec
           [ "request_type" =: GText "install_code"
           , "sender" =: GBlob defaultUser
           , "canister_id" =: GBlob can_id
@@ -202,7 +205,7 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
           ]
 
         step "Install again fails"
-        submitCBOR ep >=> statusReject 3 $ rec
+        submitCBOR >=> statusReject 3 $ rec
           [ "request_type" =: GText "install_code"
           , "sender" =: GBlob defaultUser
           , "canister_id" =: GBlob can_id
@@ -212,7 +215,7 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
           ]
 
         step "Reinstall"
-        submitCBOR ep >=> statusReply >=> emptyRec $ rec
+        submitCBOR >=> statusReply >=> emptyRec $ rec
           [ "request_type" =: GText "install_code"
           , "sender" =: GBlob defaultUser
           , "canister_id" =: GBlob can_id
@@ -222,7 +225,7 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
           ]
 
         step "Upgrade"
-        submitCBOR ep >=> emptyReply $ rec
+        submitCBOR >=> emptyReply $ rec
           [ "request_type" =: GText "install_code"
           , "sender" =: GBlob defaultUser
           , "canister_id" =: GBlob can_id
@@ -241,9 +244,9 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
 
       install' :: HasCallStack => Prog -> IO (Blob, GenR)
       install' prog = do
-        cid <- create ep
+        cid <- create
         universal_wasm <- getTestWasm "universal_canister"
-        gr <- submitCBOR ep $ rec
+        gr <- submitCBOR $ rec
           [ "request_type" =: GText "install_code"
           , "sender" =: GBlob defaultUser
           , "canister_id" =: GBlob cid
@@ -269,17 +272,17 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
           ]
 
       call' :: HasCallStack => Blob -> Prog -> IO GenR
-      call' cid prog = submitCBOR ep (callRequest cid prog)
+      call' cid prog = submitCBOR (callRequest cid prog)
 
       callTwice' :: HasCallStack => Blob -> Prog -> IO GenR
-      callTwice' cid prog = submitCBORTwice ep (callRequest cid prog)
+      callTwice' cid prog = submitCBORTwice (callRequest cid prog)
 
       call :: HasCallStack => Blob -> Prog -> IO Blob
       call cid prog = call' cid prog >>= callReply
 
       query' :: HasCallStack => Blob -> Prog -> IO GenR
       query' cid prog =
-        readCBOR ep $ rec
+        readCBOR $ rec
           [ "request_type" =: GText "query"
           , "sender" =: GBlob defaultUser
           , "canister_id" =: GBlob cid
@@ -310,7 +313,7 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
           r @?= "ABCD"
 
         , simpleTestCase "Call no non-existant update method" $ \cid ->
-          submitCBOR ep >=> statusReject 3 $ rec
+          submitCBOR >=> statusReject 3 $ rec
               [ "request_type" =: GText "call"
               , "sender" =: GBlob defaultUser
               , "canister_id" =: GBlob cid
@@ -319,7 +322,7 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
               ]
 
         , simpleTestCase "Call no non-existant query method" $ \cid ->
-          readCBOR ep >=> statusReject 3 $ rec
+          readCBOR >=> statusReject 3 $ rec
               [ "request_type" =: GText "query"
               , "sender" =: GBlob defaultUser
               , "canister_id" =: GBlob cid
@@ -560,7 +563,7 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
         let upgrade :: HasCallStack => Blob -> Prog -> IO GenR
             upgrade cid prog = do
               universal_wasm <- getTestWasm "universal_canister"
-              submitCBOR ep $ rec
+              submitCBOR $ rec
                 [ "request_type" =: GText "install_code"
                 , "sender" =: GBlob defaultUser
                 , "canister_id" =: GBlob cid
@@ -650,7 +653,7 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
         let reinstall :: HasCallStack => Blob -> Prog -> IO GenR
             reinstall cid prog = do
               universal_wasm <- getTestWasm "universal_canister"
-              submitCBOR ep $ rec
+              submitCBOR $ rec
                 [ "request_type" =: GText "install_code"
                 , "sender" =: GBlob defaultUser
                 , "canister_id" =: GBlob cid
@@ -763,17 +766,17 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
     , testGroup "query"
       [ testGroup "required fields" $
           omitFields (envelope defaultSK queryToNonExistant) $ \req ->
-            postCBOR ep "/api/v1/read" req >>= code4xx
+            postCBOR "/api/v1/read" req >>= code4xx
 
       , testCase "non-existing canister" $
-          postCBOR ep "/api/v1/read" (envelope defaultSK queryToNonExistant)
+          postCBOR "/api/v1/read" (envelope defaultSK queryToNonExistant)
             >>= okCBOR >>= statusReject 3
       ]
 
   , testGroup "request_status"
     [ testGroup "required fields" $
         omitFields (envelope defaultSK requestStatusNonExistant) $ \req ->
-          postCBOR ep "/api/v1/read" req >>= code4xx
+          postCBOR "/api/v1/read" req >>= code4xx
     ]
 
   , testGroup "signature checking" $
@@ -781,7 +784,7 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
     , ("with wrong key", envelope otherSK)
     ] <&> \(name, env) -> testGroup name
       [ testCase "in query" $ do
-        cid <- create ep
+        cid <- create
         let query = rec
               [ "request_type" =: GText "query"
               , "sender" =: GBlob defaultUser
@@ -789,22 +792,22 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
               , "method_name" =: GText "foo"
               , "arg" =: GBlob "nothing to see here"
               ]
-        postCBOR ep "/api/v1/read" (env query) >>= code4xx
+        postCBOR "/api/v1/read" (env query) >>= code4xx
       , testCase "in unknown request status" $
-          postCBOR ep "/api/v1/read/" (env requestStatusNonExistant) >>= code4xx
+          postCBOR "/api/v1/read/" (env requestStatusNonExistant) >>= code4xx
       , testCase "in request status" $ do
           req <- addNonce $ rec
                 [ "request_type" =: GText "create_canister"
                 , "sender" =: GBlob defaultUser
                 ]
-          _cid <- submitCBOR ep req >>= createReply
+          _cid <- submitCBOR req >>= createReply
           let status_req = rec
                 [ "request_type" =: GText "request_status"
                 , "request_id" =: GBlob (requestId req)
                 ]
-          postCBOR ep "/api/v1/read/" (env status_req) >>= code4xx
+          postCBOR "/api/v1/read/" (env status_req) >>= code4xx
       , testCase "in install" $ do
-          cid <- create ep
+          cid <- create
           req <- addNonce $ rec
                 [ "request_type" =: GText "install_code"
                 , "sender" =: GBlob defaultUser
@@ -812,7 +815,7 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
                 , "module" =: GBlob ""
                 , "arg" =: GBlob ""
                 ]
-          postCBOR ep "/api/v1/submit" (env req) >>= code202_or_4xx
+          postCBOR "/api/v1/submit" (env req) >>= code202_or_4xx
 
           -- Also check that the request was not created
           ingressDelay
@@ -820,10 +823,10 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
                 [ "request_type" =: GText "request_status"
                 , "request_id" =: GBlob (requestId req)
                 ]
-          postCBOR ep "/api/v1/read/" (envelope defaultSK status_req) >>= code4xx
+          postCBOR "/api/v1/read/" (envelope defaultSK status_req) >>= code4xx
 
       , testCase "in call" $ do
-          cid <- create ep
+          cid <- create
           req <- addNonce $ rec
                 [ "request_type" =: GText "call"
                 , "sender" =: GBlob defaultUser
@@ -831,7 +834,7 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
                 , "method_name" =: GText "foo"
                 , "arg" =: GBlob "nothing to see here"
                 ]
-          postCBOR ep "/api/v1/submit" (env req) >>= code202_or_4xx
+          postCBOR "/api/v1/submit" (env req) >>= code202_or_4xx
 
           -- Also check that the request was not created
           ingressDelay
@@ -839,7 +842,7 @@ icTests primeTestSuite = askOption $ \ep -> testGroup "Public Spec acceptance te
                 [ "request_type" =: GText "request_status"
                 , "request_id" =: GBlob (requestId req)
                 ]
-          postCBOR ep "/api/v1/read/" (envelope defaultSK status_req) >>= code4xx
+          postCBOR "/api/v1/read/" (envelope defaultSK status_req) >>= code4xx
       ]
   ]
 
@@ -862,61 +865,65 @@ asRight (Right gr) = return gr
 -- about performance, this could revisited, the benefit would be connection
 -- re-use.
 
-getLBS :: HasCallStack => Endpoint -> String -> IO (Response BS.ByteString)
-getLBS (Endpoint endpoint) path = do
-  manager <- newManager defaultManagerSettings
-  request <- parseRequest $ endpoint ++ path
-  httpLbs request manager
+getLBS :: (HasCallStack, HasEndpoint) => String -> IO (Response BS.ByteString)
+getLBS path = do
+    manager <- newManager defaultManagerSettings
+    request <- parseRequest $ ep ++ path
+    httpLbs request manager
+  where
+    Endpoint ep = endPoint
 
 -- | Posting a CBOR request, returning a raw bytestring
-postCBOR :: HasCallStack => Endpoint -> String -> GenR -> IO (Response BS.ByteString)
-postCBOR (Endpoint endpoint) path gr = do
-  -- this uses a fresh manger for each request. If we care about performance,
-  -- this could revisited (to share connections)
-  manager <- newManager defaultManagerSettings
-  request <- parseRequest $ endpoint ++ path
-  request <- return $ request
-    { method = "POST"
-    , requestBody = RequestBodyLBS $ BS.toLazyByteString $ encode gr
-    , requestHeaders = [(hContentType, "application/cbor")]
-    }
-  httpLbs request manager
+postCBOR :: (HasCallStack, HasEndpoint) => String -> GenR -> IO (Response BS.ByteString)
+postCBOR path gr = do
+    -- this uses a fresh manger for each request. If we care about performance,
+    -- this could revisited (to share connections)
+    manager <- newManager defaultManagerSettings
+    request <- parseRequest $ ep ++ path
+    request <- return $ request
+      { method = "POST"
+      , requestBody = RequestBodyLBS $ BS.toLazyByteString $ encode gr
+      , requestHeaders = [(hContentType, "application/cbor")]
+      }
+    httpLbs request manager
+  where
+    Endpoint ep = endPoint
 
 -- | Add envelope to CBOR request, post to "read", return decoded CBOR
-readCBOR :: Endpoint -> GenR -> IO GenR
-readCBOR ep req = postCBOR ep "/api/v1/read" (envelope defaultSK req) >>= okCBOR
+readCBOR :: HasEndpoint => GenR -> IO GenR
+readCBOR req = postCBOR "/api/v1/read" (envelope defaultSK req) >>= okCBOR
 
 -- | Add envelope to CBOR, and a nonce if not there, post to "submit", poll for
 -- the request response, and return decoded CBOR
-submitCBOR :: Endpoint -> GenR -> IO GenR
-submitCBOR ep req = do
+submitCBOR :: HasEndpoint => GenR -> IO GenR
+submitCBOR req = do
   req <- addNonce req
-  res <- postCBOR ep "/api/v1/submit" (envelope defaultSK req)
+  res <- postCBOR "/api/v1/submit" (envelope defaultSK req)
   code202 res
   assertBool "Response body not empty" (BS.null (responseBody res))
-  awaitStatus ep (requestId req)
+  awaitStatus (requestId req)
 
 -- | Submits twice
-submitCBORTwice :: Endpoint -> GenR -> IO GenR
-submitCBORTwice ep req = do
+submitCBORTwice :: HasEndpoint => GenR -> IO GenR
+submitCBORTwice req = do
   req <- addNonce req
-  res <- postCBOR ep "/api/v1/submit" (envelope defaultSK req)
+  res <- postCBOR "/api/v1/submit" (envelope defaultSK req)
   code202 res
-  res <- postCBOR ep "/api/v1/submit" (envelope defaultSK req)
+  res <- postCBOR "/api/v1/submit" (envelope defaultSK req)
   code202 res
   assertBool "Response body not empty" (BS.null (responseBody res))
-  awaitStatus ep (requestId req)
+  awaitStatus (requestId req)
 
-create :: Endpoint -> IO Blob
-create ep = submitCBOR ep >=> createReply $ rec
+create :: HasEndpoint => IO Blob
+create = submitCBOR >=> createReply $ rec
   [ "request_type" =: GText "create_canister"
   , "sender" =: GBlob defaultUser
   ]
 
-awaitStatus :: Endpoint -> Blob -> IO GenR
-awaitStatus ep rid = loop $ do
+awaitStatus :: HasEndpoint => Blob -> IO GenR
+awaitStatus rid = loop $ do
     pollDelay
-    res <- postCBOR ep "/api/v1/read" $ envelope defaultSK $ rec
+    res <- postCBOR "/api/v1/read" $ envelope defaultSK $ rec
       [ "request_type" =: GText "request_status"
       , "request_id" =: GBlob rid
       ]
@@ -1043,6 +1050,18 @@ omitFields _ _ = error "omitFields needs a GRec"
 
 getRand8Bytes :: IO BS.ByteString
 getRand8Bytes = BS.pack <$> replicateM 8 randomIO
+
+-- * Endpoint handling
+
+-- Yes, implicit arguments are frowned upon. But they are also very useful.
+
+type HasEndpoint = (?endPoint :: Endpoint)
+
+withEndPoint :: (forall. HasEndpoint => TestTree) -> TestTree
+withEndPoint act = askOption $ \ep -> let ?endPoint = (ep :: Endpoint) in act
+
+endPoint :: HasEndpoint => Endpoint
+endPoint = ?endPoint
 
 -- * Test data access
 
