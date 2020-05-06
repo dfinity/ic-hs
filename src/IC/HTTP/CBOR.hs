@@ -41,12 +41,15 @@ decode s =
     go (TInteger n) = return $ GNat (fromIntegral n)
     go (TBytes b) = return $ GBlob $ BS.fromStrict b
     go (TString t) = return $ GText t
-    go (TMap kv) = do
+    go (TMap kv) = goMap kv
+    go (TMapI kv) = goMap kv
+    go t = Left $ "Unexpected term: " <> T.pack (show t)
+
+    goMap kv = do
         tv <- mapM keyVal kv
         let hm = HM.fromList tv
         when (HM.size hm < length tv) $ Left "Duplicate keys in CBOR map"
         return (GRec hm)
-    go t = Left $ "Unexpected term: " <> T.pack (show t)
 
     keyVal (TString k,v) = (k,) <$> go v
     keyVal _ = Left "Non-string key in CBOR map"
