@@ -22,6 +22,10 @@ mkDerivation {
     random tasty tasty-html tasty-hunit text transformers
     unordered-containers utf8-string vector wai warp winter
   ];
+  testHaskellDepends = [
+    base bytestring cborg containers cryptonite ed25519 leb128-cereal
+    memory mtl tasty tasty-hunit text unordered-containers
+  ];
   doCheck = false;
   license = "unknown";
   hydraPlatforms = stdenv.lib.platforms.none;

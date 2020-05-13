@@ -13,11 +13,10 @@ import System.Exit
 
 import IC.Test.Options
 import IC.Test.Spec
-import IC.Test.Id
 
 main :: IO ()
 main = withTestSuitePrimer $ \primeTestSuite ->
-    defaultMainWithIngredients ingredients (tests primeTestSuite)
+    defaultMainWithIngredients ingredients (icTests primeTestSuite)
   where
     ingredients =
       [ listingTests
@@ -36,11 +35,3 @@ withTestSuitePrimer main = do
         (\(e :: ExitCode) -> readIORef specCompliant >>= \case
             False -> throwIO ExitSuccess
             True -> throwIO e)
-
-
-tests :: IO () -> TestTree
-tests primeTestSuite = testGroup "Tests"
-    [ icTests primeTestSuite
-    , idTests
-    ]
-
