@@ -1,10 +1,5 @@
-{- |
-
-This module contains test for the request id calculation in ic-ref-test
-
--}
 {-# LANGUAGE OverloadedStrings #-}
-module IC.Test.Id (idTests) where
+module Main (main) where
 
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -12,8 +7,11 @@ import Test.Tasty.HUnit
 import IC.HTTP.GenR
 import IC.HTTP.RequestId
 
-idTests :: TestTree
-idTests = testGroup "Reference request id calculation"
+main :: IO ()
+main = defaultMain tests
+
+tests :: TestTree
+tests = testGroup "Reference request id calculation"
   [ testCase "example from public spec" $
      let gr = GRec $ mconcat
           [ "request_type" =: GText "call"

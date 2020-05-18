@@ -28,16 +28,22 @@ let haskellPackages = nixpkgs.haskellPackages.override {
   overrides = import nix/haskell-packages.nix nixpkgs subpath;
 }; in
 
-let ic-ref = haskellPackages.ic-ref.overrideAttrs (old: {
-  installPhase = (old.installPhase or "") + ''
-    cp -rv test-data $out/test-data
-    # replace symlink with actually built
-    rm -f $out/test-data/universal_canister.wasm
-    cp ${universal-canister}/universal_canister.wasm $out/test-data
-  '';
-}); in
+let
+  ic-ref = nixpkgs.haskell.lib.dontCheck (
+    haskellPackages.ic-ref.overrideAttrs (old: {
+      installPhase = (old.installPhase or "") + ''
+        cp -rv test-data $out/test-data
+        # replace symlink with actually built
+        rm -f $out/test-data/universal_canister.wasm
+        cp ${universal-canister}/universal_canister.wasm $out/test-data
+      '';
+    })
+  );
 
-let ic-ref-coverage = nixpkgs.haskell.lib.doCoverage ic-ref; in
+  # We run the unit test suite only as part of coverage checking (saves time)
+  ic-ref-coverage = nixpkgs.haskell.lib.doCheck (nixpkgs.haskell.lib.doCoverage ic-ref);
+in
+
 
 
 rec {

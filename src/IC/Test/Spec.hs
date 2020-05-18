@@ -235,9 +235,8 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
           ]
     ]
 
-  , testCase "create and install" $ do
-    cid <- install noop
-    assertBool "opaque id expected" $ isOpaqueId cid
+  , simpleTestCase "create and install" $ \cid ->
+      assertBool "opaque id expected" $ isOpaqueId cid
 
   , testGroup "simple calls"
     [ simpleTestCase "Call" $ \cid -> do
@@ -496,19 +495,7 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
     r @?= "FOO"
 
   , testGroup "upgrades" $
-    let upgrade :: HasCallStack => Blob -> Prog -> IO GenR
-        upgrade cid prog = do
-          universal_wasm <- getTestWasm "universal_canister"
-          submitCBOR $ rec
-            [ "request_type" =: GText "install_code"
-            , "sender" =: GBlob defaultUser
-            , "canister_id" =: GBlob cid
-            , "module" =: GBlob universal_wasm
-            , "arg" =: GBlob (run prog)
-            , "mode" =: GText "upgrade"
-            ]
-
-        installForUpgrade on_pre_upgrade = install $
+    let installForUpgrade on_pre_upgrade = install $
             setGlobal "FOO" >>>
             ignore (stableGrow (int 1)) >>>
             stableWrite (int 0) "BAR______" >>>
@@ -525,7 +512,7 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
       cid <- installForUpgrade $ stableWrite (int 3) getGlobal
       checkNoUpgrade cid
 
-      upgrade cid >=> emptyReply $ stableWrite (int 6) (stableRead (int 0) (int 3))
+      upgrade' cid >=> emptyReply $ stableWrite (int 6) (stableRead (int 0) (int 3))
 
       r <- query cid $ replyData getGlobal
       r @?= ""
@@ -536,7 +523,7 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
       cid <- installForUpgrade $ trap "trap in pre-upgrade"
       checkNoUpgrade cid
 
-      upgrade cid >=> statusReject 5 $ noop
+      upgrade' cid >=> statusReject 5 $ noop
       checkNoUpgrade cid
 
     , testCase "trapping in pre-upgrade (by calling)" $ do
@@ -554,28 +541,28 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
       r @?= ""
       checkNoUpgrade cid
 
-      upgrade cid >=> statusReject 5 $ noop
+      upgrade' cid >=> statusReject 5 $ noop
       checkNoUpgrade cid
 
     , testCase "trapping in pre-upgrade (by accessing arg)" $ do
       cid <- installForUpgrade $ ignore argData
       checkNoUpgrade cid
 
-      upgrade cid >=> statusReject 5 $ noop
+      upgrade' cid >=> statusReject 5 $ noop
       checkNoUpgrade cid
 
     , testCase "trapping in post-upgrade" $ do
       cid <- installForUpgrade $ stableWrite (int 3) getGlobal
       checkNoUpgrade cid
 
-      upgrade cid >=> statusReject 5 $ trap "trap in post-upgrade"
+      upgrade' cid >=> statusReject 5 $ trap "trap in post-upgrade"
       checkNoUpgrade cid
 
     , testCase "trapping in post-upgrade (by calling)" $ do
       cid <- installForUpgrade $ stableWrite (int 3) getGlobal
       checkNoUpgrade cid
 
-      upgrade cid >=> statusReject 5 $
+      upgrade' cid >=> statusReject 5 $
         call_simple
             (bytes cid)
             "query"
@@ -677,9 +664,8 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
   , testGroup "trapping in init" $
     let
       failInInit pgm = do
-        (cid, gr) <- install' pgm
-        statusReject 5 gr
-
+        cid <- create
+        install' cid pgm >>= statusReject 5
         -- canister does not exist
         query' cid >=> statusReject 3 $ noop
     in
@@ -989,25 +975,35 @@ code4xx_or_unknown response
 -- e.g. to check for error conditions.
 -- The unprimed variant expect a reply.
 
-install' :: (HasCallStack, HasEndpoint) => Prog -> IO (Blob, GenR)
-install' prog = do
-  cid <- create
+install' :: (HasCallStack, HasEndpoint) => Blob -> Prog -> IO GenR
+install' cid prog = do
   universal_wasm <- getTestWasm "universal_canister"
-  gr <- submitCBOR $ rec
+  submitCBOR $ rec
     [ "request_type" =: GText "install_code"
     , "sender" =: GBlob defaultUser
     , "canister_id" =: GBlob cid
     , "module" =: GBlob universal_wasm
     , "arg" =: GBlob (run prog)
     ]
-  return (cid, gr)
 
-
+-- Also calls create
 install :: (HasCallStack, HasEndpoint) => Prog -> IO Blob
 install prog = do
-  (cid, gr) <- install' prog
-  emptyReply gr
-  return cid
+    cid <- create
+    install' cid prog >>= emptyReply
+    return cid
+
+upgrade' :: (HasCallStack, HasEndpoint) => Blob -> Prog -> IO GenR
+upgrade' cid prog = do
+  universal_wasm <- getTestWasm "universal_canister"
+  submitCBOR $ rec
+    [ "request_type" =: GText "install_code"
+    , "sender" =: GBlob defaultUser
+    , "canister_id" =: GBlob cid
+    , "module" =: GBlob universal_wasm
+    , "arg" =: GBlob (run prog)
+    , "mode" =: GText "upgrade"
+    ]
 
 callRequest :: HasEndpoint => Blob -> Prog -> GenR
 callRequest cid prog =  rec
