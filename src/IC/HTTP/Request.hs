@@ -24,7 +24,7 @@ stripEnvelope = record $ do
     pk <- field blob "sender_pubkey"
     sig <- field blob "sender_sig"
     content <- field anyType "content"
-    lift $ verify pk (requestId content) sig
+    lift $ verify "\x0Aic-request" pk (requestId content) sig
     return (pk, content)
 
 -- Parsing requests to /submit

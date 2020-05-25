@@ -110,7 +110,7 @@ addNonce r = return r
 envelope :: SecretKey -> GenR -> GenR
 envelope sk content = rec
     [ "sender_pubkey" =: GBlob (toPublicKey sk)
-    , "sender_sig" =: GBlob (sign sk (requestId content))
+    , "sender_sig" =: GBlob (sign "\x0Aic-request" sk (requestId content))
     , "content" =: content
     ]
 
@@ -129,6 +129,13 @@ badEnvelope :: GenR -> GenR
 badEnvelope content = rec
     [ "sender_pubkey" =: GBlob (toPublicKey defaultSK)
     , "sender_sig" =: GBlob (BS.replicate 64 0x42)
+    , "content" =: content
+    ]
+
+noDomainSepEnv :: SecretKey -> GenR -> GenR
+noDomainSepEnv sk content = rec
+    [ "sender_pubkey" =: GBlob (toPublicKey sk)
+    , "sender_sig" =: GBlob (sign "" sk (requestId content))
     , "content" =: content
     ]
 
@@ -947,6 +954,7 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
   , testGroup "signature checking" $
     [ ("with bad signature", badEnvelope)
     , ("with wrong key", envelope otherSK)
+    , ("with no domain separator", noDomainSepEnv defaultSK)
     ] <&> \(name, env) -> testGroup name
       [ simpleTestCase "in query" $ \cid -> do
         let query = rec
