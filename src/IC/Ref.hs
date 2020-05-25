@@ -72,6 +72,7 @@ data AsyncRequest
     | InstallRequest CanisterId UserId Blob Blob Bool
     | UpgradeRequest CanisterId UserId Blob Blob
     | UpdateRequest CanisterId UserId MethodName Blob
+    | SetControllerRequest CanisterId UserId EntityId
   deriving (Eq, Ord, Show)
 
 data SyncRequest
@@ -96,7 +97,7 @@ data CompletionValue -- ^ we need to be more typed than the public spec here
 
 -- IC state
 
--- Canisters have a module (static) and state (dynamic)
+-- Non-empty canisters have a module (static) and state (dynamic)
 data CanState = CanState
   { wasm_state :: WasmState
   , can_mod :: CanisterModule
@@ -140,6 +141,7 @@ data Message
 
 data IC = IC
   { canisters :: CanisterId ↦ Maybe CanState
+  , controllers :: CanisterId ↦ EntityId
   , requests :: RequestID ↦ (AsyncRequest, RequestStatus)
   , messages :: Seq Message
   , call_contexts :: CallId ↦ CallContext
@@ -151,7 +153,7 @@ data IC = IC
 type ICM m = (MonadState IC m, Logger m)
 
 initialIC :: IC
-initialIC = IC mempty mempty mempty mempty
+initialIC = IC mempty mempty mempty mempty mempty
 
 -- Request handling
 
@@ -168,6 +170,7 @@ callerOfAsync = \case
     InstallRequest _ user_id _ _ _ -> user_id
     UpgradeRequest _ user_id _ _ -> user_id
     UpdateRequest _ user_id _ _ -> user_id
+    SetControllerRequest _ user_id _ -> user_id
 
 callerOfRequest :: ICM m => RequestID -> m EntityId
 callerOfRequest rid = gets (M.lookup rid . requests) >>= \case
@@ -177,9 +180,11 @@ callerOfRequest rid = gets (M.lookup rid . requests) >>= \case
 
 -- Canister handling
 
-createEmptyCanister :: ICM m => CanisterId -> m ()
-createEmptyCanister cid = modify $ \ic ->
-  ic { canisters = M.insert cid Nothing (canisters ic) }
+createEmptyCanister :: ICM m => CanisterId -> EntityId -> m ()
+createEmptyCanister cid controller = modify $ \ic -> ic
+  { canisters = M.insert cid Nothing (canisters ic)
+  , controllers = M.insert cid controller (controllers ic)
+  }
 
 insertCanister :: ICM m => CanisterId -> CanisterModule -> WasmState -> m ()
 insertCanister cid can_mod wasm_state = modify $ \ic ->
@@ -188,6 +193,15 @@ insertCanister cid can_mod wasm_state = modify $ \ic ->
 setCanisterState :: ICM m => CanisterId -> WasmState -> m ()
 setCanisterState cid wasm_state = modify $ \ic ->
   ic { canisters = M.adjust (fmap (\cs -> cs { wasm_state })) cid (canisters ic) }
+
+getController :: (CanReject m, ICM m) => CanisterId -> m EntityId
+getController cid =
+  gets (M.lookup cid . controllers)
+    `orElse` reject RC_DESTINATION_INVALID ("canister does not exist: " ++ prettyID cid)
+
+setController :: (CanReject m, ICM m) => CanisterId -> EntityId -> m ()
+setController cid controller = modify $ \ic ->
+  ic { controllers = M.insert cid controller (controllers ic) }
 
 getCanisterState :: (CanReject m, ICM m) => CanisterId -> m (Maybe CanState)
 getCanisterState cid =
@@ -268,12 +282,13 @@ processRequest rid req = (setReqStatus rid =<<) $ onReject (return . Rejected) $
     exists <- gets (M.member new_id . canisters)
     when exists $
       reject RC_DESTINATION_INVALID "Desired canister id already exists"
-    createEmptyCanister new_id
+    createEmptyCanister new_id user_id
     return $ Completed (CompleteCanisterId new_id)
 
   InstallRequest canister_id user_id can_mod_data dat reinstall -> do
     can_mod <- return (parseCanister can_mod_data)
       `onErr` (\err -> reject RC_SYS_FATAL $ "Parsing failed: " ++ err)
+    checkController canister_id user_id
     was_empty <- isNothing <$> getCanisterState canister_id
     when (not reinstall && not was_empty) $
       reject RC_DESTINATION_INVALID "canister is not empty during installation"
@@ -287,6 +302,7 @@ processRequest rid req = (setReqStatus rid =<<) $ onReject (return . Rejected) $
   UpgradeRequest canister_id user_id new_can_mod_data dat -> do
     new_can_mod <- return (parseCanister new_can_mod_data)
       `onErr` (\err -> reject RC_SYS_FATAL $ "Parsing failed: " ++ err)
+    checkController canister_id user_id
     CanState old_wasm_state old_can_mod <- getNonemptyCanisterState canister_id
     mem <- return (pre_upgrade_method old_can_mod old_wasm_state user_id)
       `onTrap` (\msg -> reject RC_CANISTER_ERROR $ "Pre-upgrade trapped: " ++ msg)
@@ -307,6 +323,12 @@ processRequest rid req = (setReqStatus rid =<<) $ onReject (return . Rejected) $
       , entry = Public method arg
       }
     return Processing
+
+  SetControllerRequest canister_id user_id new_controller -> do
+    checkController canister_id user_id
+    setController canister_id new_controller
+    return $ Completed CompleteUnit
+
 
 -- Call context handling
 
@@ -426,14 +448,14 @@ icCreateCanister caller r = do
     exists <- gets (M.member new_id . canisters)
     when exists $
       reject RC_DESTINATION_INVALID "Desired canister id already exists"
-    createEmptyCanister new_id
+    createEmptyCanister new_id caller
     return (#canister_id .== new_id)
 
 icInstallCode :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "install_code"
 icInstallCode caller r = do
     new_can_mod <- return (parseCanister (r .! #wasm_module))
       `onErr` (\err -> reject RC_SYS_FATAL $ "Parsing failed: " ++ err)
-
+    checkController (r .! #canister_id) caller
     was_empty <- isNothing <$> getCanisterState (r .! #canister_id)
     case r .! #mode of
       Install -> do
@@ -457,7 +479,17 @@ icInstallCode caller r = do
         insertCanister (r .! #canister_id) new_can_mod new_wasm_state
 
 icSetController :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "set_controller"
-icSetController _caller _new_controller = error "TODO"
+icSetController caller r = do
+    checkController (r .! #canister_id) caller
+    setController (r .! #canister_id) (r .! #new_controller)
+
+checkController :: (ICM m, CanReject m) => CanisterId -> EntityId -> m ()
+checkController canister_id user_id = do
+    controller <- getController canister_id
+    unless (controller == user_id) $
+      reject RC_SYS_FATAL $
+        prettyID user_id <> " is not authorized to manage canister " <>
+        prettyID canister_id <> ", only " <> prettyID controller <> " is"
 
 invokeEntry :: ICM m =>
     CallId -> CanState -> EntryPoint ->

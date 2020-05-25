@@ -48,8 +48,6 @@ type ICManagement m =
          "compute_allocation" .== Maybe Natural)
     -> m ())
   .+ "set_controller" .==
-    (Rec ("canister_id" .== EntityId .+
-         "wasm_module" .== WasmModule .+ "arg" .== BS.ByteString .+
-         "compute_allocation" .== Maybe Natural)
+    (Rec ("canister_id" .== EntityId .+ "new_controller" .== EntityId)
     -> m ())
   )

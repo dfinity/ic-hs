@@ -114,6 +114,17 @@ envelope sk content = rec
     , "content" =: content
     ]
 
+-- a little bit of smartness in our combinators
+chooseKey :: GenR -> SecretKey
+chooseKey (GRec hm)
+  | Just (GBlob id) <- HM.lookup "sender" hm
+  , id == defaultUser
+  = defaultSK
+  | Just (GBlob id) <- HM.lookup "sender" hm
+  , id == otherUser
+  = otherSK
+chooseKey _ = defaultSK
+
 badEnvelope :: GenR -> GenR
 badEnvelope content = rec
     [ "sender_pubkey" =: GBlob (toPublicKey defaultSK)
@@ -234,6 +245,16 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
         , "mode" =: GText "reinstall"
         ]
 
+      step "Reinstall as wrong user"
+      submitCBOR >=> statusReject 1 $ rec
+        [ "request_type" =: GText "install_code"
+        , "sender" =: GBlob otherUser
+        , "canister_id" =: GBlob can_id
+        , "module" =: GBlob trivialWasmModule
+        , "arg" =: GBlob ""
+        , "mode" =: GText "reinstall"
+        ]
+
       step "Upgrade"
       submitCBOR >=> emptyReply $ rec
         [ "request_type" =: GText "install_code"
@@ -242,6 +263,32 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
         , "module" =: GBlob trivialWasmModule
         , "arg" =: GBlob ""
         , "mode" =: GText "upgrade"
+        ]
+
+      step "Change controller"
+      submitCBOR >=> emptyReply $ rec
+        [ "request_type" =: GText "set_controller"
+        , "sender" =: GBlob defaultUser
+        , "canister_id" =: GBlob can_id
+        , "controller" =: GBlob otherUser
+        ]
+
+      step "Change controller (with wrong controller)"
+      submitCBOR >=> statusReject 1 $ rec
+        [ "request_type" =: GText "set_controller"
+        , "sender" =: GBlob defaultUser
+        , "canister_id" =: GBlob can_id
+        , "controller" =: GBlob otherUser
+        ]
+
+      step "Reinstall as new controller"
+      submitCBOR >=> emptyReply $ rec
+        [ "request_type" =: GText "install_code"
+        , "sender" =: GBlob otherUser
+        , "canister_id" =: GBlob can_id
+        , "module" =: GBlob trivialWasmModule
+        , "arg" =: GBlob ""
+        , "mode" =: GText "reinstall"
         ]
 
   , testCaseSteps "ic:00 (via HTTP)" $ \step -> do
@@ -259,14 +306,14 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
 
       onErr err = assertFailure err
 
-      create :: Maybe Blob -> IO Blob
-      create mbBlob = do
+      ic_create :: Maybe Blob -> IO Blob
+      ic_create mbBlob = do
         r <- managementService .! #create_canister $ empty
             .+ #desired_id .== (EntityId <$> mbBlob)
         return (rawEntityId (r .! #canister_id))
 
-      install :: InstallMode -> CanisterId -> WasmModule -> Blob -> IO ()
-      install mode canister_id wasm_module arg = do
+      ic_install :: InstallMode -> CanisterId -> WasmModule -> Blob -> IO ()
+      ic_install mode canister_id wasm_module arg = do
         managementService .! #install_code $ empty
           .+ #mode .== mode
           .+ #canister_id .== canister_id
@@ -288,13 +335,13 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
           , "arg" =: GBlob (BS.fromStrict (Candid.encode x))
           ]
 
-      _create_ :: Maybe Blob -> IO GenR
-      _create_ mbBlob =
+      _ic_create_ :: Maybe Blob -> IO GenR
+      _ic_create_ mbBlob =
         callIC_ #create_canister $ empty
           .+ #desired_id .== (EntityId <$> mbBlob)
 
-      install_ :: InstallMode -> CanisterId -> WasmModule -> Blob -> IO GenR
-      install_ mode canister_id wasm_module arg =
+      ic_install_ :: InstallMode -> CanisterId -> WasmModule -> Blob -> IO GenR
+      ic_install_ mode canister_id wasm_module arg =
         callIC_ #install_code $ empty
           .+ #mode .== mode
           .+ #canister_id .== canister_id
@@ -303,32 +350,29 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
           .+ #compute_allocation .== Nothing
 
     step "Create"
-    can_id <- create Nothing
+    can_id <- ic_create Nothing
 
     step "Reinstall fails"
-    install_ Reinstall (EntityId can_id) trivialWasmModule ""
+    ic_install_ Reinstall (EntityId can_id) trivialWasmModule ""
       >>= statusReject 3
 
     step "Install"
-    install Install (EntityId can_id) trivialWasmModule ""
+    ic_install Install (EntityId can_id) trivialWasmModule ""
 
     step "Install again fails"
-    install_ Install (EntityId can_id) trivialWasmModule ""
+    ic_install_ Install (EntityId can_id) trivialWasmModule ""
       >>= statusReject 3
 
     step "Reinstall"
-    install Reinstall (EntityId can_id) trivialWasmModule ""
+    ic_install Reinstall (EntityId can_id) trivialWasmModule ""
 
     step "Upgrade"
-    install Upgrade (EntityId can_id) trivialWasmModule ""
+    ic_install Upgrade (EntityId can_id) trivialWasmModule ""
 
   , testCaseSteps "ic:00 (inter-canister)" $ \step -> do
-    -- install one universal canister to proxy the requests
-    cid <- install noop
-
     let
-      managementService :: Rec (ICManagement IO)
-      managementService = Candid.toCandidService onErr $ \method_name arg ->
+      managementService :: Blob -> Rec (ICManagement IO)
+      managementService cid = Candid.toCandidService onErr $ \method_name arg ->
         BS.toStrict <$> call cid (
           call_simple
               (bytes "") -- ic:00
@@ -340,28 +384,34 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
 
       onErr err = assertFailure err
 
-      create :: Maybe Blob -> IO Blob
-      create mbBlob = do
-        r <- managementService .! #create_canister $ empty
+      ic_create :: Blob ->  Maybe Blob -> IO Blob
+      ic_create cid mbBlob = do
+        r <- managementService cid .! #create_canister $ empty
             .+ #desired_id .== (EntityId <$> mbBlob)
         return (rawEntityId (r .! #canister_id))
 
-      install :: InstallMode -> CanisterId -> WasmModule -> Blob -> IO ()
-      install mode canister_id wasm_module arg = do
-        managementService .! #install_code $ empty
+      ic_install :: Blob -> InstallMode -> CanisterId -> WasmModule -> Blob -> IO ()
+      ic_install cid mode canister_id wasm_module arg = do
+        managementService cid .! #install_code $ empty
           .+ #mode .== mode
           .+ #canister_id .== canister_id
           .+ #wasm_module .== wasm_module
           .+ #arg .== arg
           .+ #compute_allocation .== Nothing
 
+      ic_set_controller :: Blob -> CanisterId -> Blob -> IO ()
+      ic_set_controller cid canister_id new_controller = do
+        managementService cid .! #set_controller $ empty
+          .+ #canister_id .== canister_id
+          .+ #new_controller .== EntityId new_controller
+
       -- For the underscore variants, there is less convenience available
 
       callIC_ :: forall s a. KnownSymbol s =>
         a ~ Candid.MethArg (ICManagement IO .! s) =>
         Candid.CandidArg a =>
-        Label s -> a -> IO GenR
-      callIC_ l x = do
+        Blob -> Label s -> a -> IO GenR
+      callIC_ cid l x = do
         let method_name = T.pack (symbolVal l)
         let arg = Candid.encode x
         call' cid $
@@ -372,39 +422,64 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
               (callback replyRejectData)
               (bytes (BS.fromStrict arg))
 
-      _create_ :: Maybe Blob -> IO GenR
-      _create_ mbBlob =
-        callIC_ #create_canister $ empty
+      _ic_create_ :: Blob -> Maybe Blob -> IO GenR
+      _ic_create_ cid mbBlob =
+        callIC_ cid #create_canister $ empty
           .+ #desired_id .== (EntityId <$> mbBlob)
 
-      install_ :: InstallMode -> CanisterId -> WasmModule -> Blob -> IO GenR
-      install_ mode canister_id wasm_module arg =
-        callIC_ #install_code $ empty
+      ic_install_ :: Blob -> InstallMode -> CanisterId -> WasmModule -> Blob -> IO GenR
+      ic_install_ cid mode canister_id wasm_module arg =
+        callIC_ cid #install_code $ empty
           .+ #mode .== mode
           .+ #canister_id .== canister_id
           .+ #wasm_module .== wasm_module
           .+ #arg .== arg
           .+ #compute_allocation .== Nothing
 
+      ic_set_controller_ :: Blob -> CanisterId -> Blob -> IO GenR
+      ic_set_controller_ cid canister_id new_controller =
+        callIC_ cid #set_controller $ empty
+          .+ #canister_id .== canister_id
+          .+ #new_controller .== EntityId new_controller
+
+    -- install universal canisters to proxy the requests
+    cid <- install noop
+    cid2 <- install noop
+
     step "Create"
-    can_id <- create Nothing
+    can_id <- ic_create cid Nothing
 
     step "Reinstall fails"
-    install_ Reinstall (EntityId can_id) trivialWasmModule ""
+    ic_install_ cid Reinstall (EntityId can_id) trivialWasmModule ""
       >>= statusRelayReject 3
 
     step "Install"
-    install Install (EntityId can_id) trivialWasmModule ""
+    ic_install cid Install (EntityId can_id) trivialWasmModule ""
 
     step "Install again fails"
-    install_ Install (EntityId can_id) trivialWasmModule ""
+    ic_install_ cid Install (EntityId can_id) trivialWasmModule ""
       >>= statusRelayReject 3
 
     step "Reinstall"
-    install Reinstall (EntityId can_id) trivialWasmModule ""
+    ic_install cid Reinstall (EntityId can_id) trivialWasmModule ""
+
+    step "Reinstall as wrong user"
+    ic_install_ cid2 Reinstall (EntityId can_id) trivialWasmModule ""
+      >>= statusRelayReject 1
 
     step "Upgrade"
-    install Upgrade (EntityId can_id) trivialWasmModule ""
+    ic_install cid Upgrade (EntityId can_id) trivialWasmModule ""
+
+    step "Change controller"
+    ic_set_controller cid (EntityId can_id) cid2
+
+    step "Change controller (with wrong controller)"
+    ic_set_controller_ cid (EntityId can_id) cid2
+      >>= statusRelayReject 1
+
+    step "Reinstall as new controller"
+    ic_install cid2 Reinstall (EntityId can_id) trivialWasmModule ""
+
 
   , simpleTestCase "create and install" $ \cid ->
       assertBool "opaque id expected" $ isOpaqueId cid
@@ -988,28 +1063,30 @@ postCBOR path gr = do
 
 -- | Add envelope to CBOR request, post to "read", return decoded CBOR
 readCBOR :: HasEndpoint => GenR -> IO GenR
-readCBOR req = postCBOR "/api/v1/read" (envelope defaultSK req) >>= okCBOR
+readCBOR req = postCBOR "/api/v1/read" (envelope (chooseKey req) req) >>= okCBOR
 
 -- | Add envelope to CBOR, and a nonce if not there, post to "submit", poll for
 -- the request response, and return decoded CBOR
 submitCBOR :: HasEndpoint => GenR -> IO GenR
 submitCBOR req = do
+  let key = chooseKey req
   req <- addNonce req
-  res <- postCBOR "/api/v1/submit" (envelope defaultSK req)
+  res <- postCBOR "/api/v1/submit" (envelope key req)
   code202 res
   assertBool "Response body not empty" (BS.null (responseBody res))
-  awaitStatus (requestId req)
+  awaitStatus key (requestId req)
 
 -- | Submits twice
 submitCBORTwice :: HasEndpoint => GenR -> IO GenR
 submitCBORTwice req = do
+  let key = chooseKey req
   req <- addNonce req
-  res <- postCBOR "/api/v1/submit" (envelope defaultSK req)
+  res <- postCBOR "/api/v1/submit" (envelope key req)
   code202 res
-  res <- postCBOR "/api/v1/submit" (envelope defaultSK req)
+  res <- postCBOR "/api/v1/submit" (envelope key req)
   code202 res
   assertBool "Response body not empty" (BS.null (responseBody res))
-  awaitStatus (requestId req)
+  awaitStatus key (requestId req)
 
 create :: HasEndpoint => IO Blob
 create = submitCBOR >=> createReply $ rec
@@ -1017,10 +1094,10 @@ create = submitCBOR >=> createReply $ rec
   , "sender" =: GBlob defaultUser
   ]
 
-awaitStatus :: HasEndpoint => Blob -> IO GenR
-awaitStatus rid = loop $ do
+awaitStatus :: HasEndpoint => SecretKey -> Blob -> IO GenR
+awaitStatus key rid = loop $ do
     pollDelay
-    res <- postCBOR "/api/v1/read" $ envelope defaultSK $ rec
+    res <- postCBOR "/api/v1/read" $ envelope key $ rec
       [ "request_type" =: GText "request_status"
       , "request_id" =: GBlob rid
       ]
