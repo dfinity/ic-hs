@@ -120,6 +120,7 @@ rec {
         -R $PWD -D $out/$doc_path/ index.adoc
       find . -type f -name '*.png' | cpio -pdm $out/$doc_path/
       cp requests.cddl $out/$doc_path
+      cp ic.did $out/$doc_path
 
 
       mkdir -p $out/nix-support

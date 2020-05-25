@@ -38,6 +38,8 @@ printAsyncRequest UpgradeRequest{} =
     printf "→ upgrade\n"
 printAsyncRequest (UpdateRequest _ _ method arg) =
     printf "→ update %s(%s)\n" method (prettyBlob arg)
+printAsyncRequest SetControllerRequest{} =
+    error "not in ic-ref-run"
 
 printSyncRequest :: SyncRequest -> IO ()
 printSyncRequest (StatusRequest rid) =

@@ -1,25 +1,26 @@
 # THIS IS AN AUTOMATICALLY GENERATED FILE. DO NOT EDIT MANUALLY!
 # See ./nix/generate.nix for instructions.
 
-{ mkDerivation, pkgs, aeson, base, binary, bytestring, cborg, containers
-, crc, cryptonite, data-default-class, directory, ed25519, filepath
-, hex-text, http-client, http-types, leb128-cereal, memory, mtl
-, optparse-applicative, primitive, random, stdenv, tasty
-, tasty-html, tasty-hunit, text, transformers, unordered-containers
-, utf8-string, vector, wai, warp, winter
+{ mkDerivation, pkgs, aeson, base, binary, bytestring, candid, cborg
+, containers, crc, cryptonite, data-default-class, directory
+, ed25519, filepath, hex-text, http-client, http-types
+, leb128-cereal, memory, mtl, optparse-applicative, primitive
+, random, row-types, stdenv, tasty, tasty-html, tasty-hunit, text
+, transformers, unordered-containers, utf8-string, vector, wai
+, warp, winter
 }:
 mkDerivation {
   pname = "ic-ref";
-  version = "0.3.1";
+  version = "0.5.1";
   src = import ../gitSource.nix "impl";
   configureFlags = [ "-frelease" ];
   isLibrary = false;
   isExecutable = true;
   executableHaskellDepends = [
-    aeson base binary bytestring cborg containers crc cryptonite
+    aeson base binary bytestring candid cborg containers crc cryptonite
     data-default-class directory ed25519 filepath hex-text http-client
     http-types leb128-cereal memory mtl optparse-applicative primitive
-    random tasty tasty-html tasty-hunit text transformers
+    random row-types tasty tasty-html tasty-hunit text transformers
     unordered-containers utf8-string vector wai warp winter
   ];
   testHaskellDepends = [

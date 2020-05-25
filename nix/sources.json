@@ -1,4 +1,17 @@
 {
+    "haskell-candid": {
+        "branch": "master",
+        "builtin": false,
+        "description": "A candid library for Haskell",
+        "homepage": null,
+        "owner": "nomeata",
+        "repo": "haskell-candid",
+        "rev": "669102842083e1474b54d4fd47c0fc2506604fb8",
+        "sha256": "0xf1p6lhz1a1w211225mmjsz78drz9rj57gbvxsd4wnnbgxjy476",
+        "type": "tarball",
+        "url": "https://github.com/nomeata/haskell-candid/archive/669102842083e1474b54d4fd47c0fc2506604fb8.tar.gz",
+        "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
+    },
     "leb128-cereal": {
         "branch": "master",
         "builtin": false,

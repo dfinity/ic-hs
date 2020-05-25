@@ -24,7 +24,7 @@ stripEnvelope = record $ do
     pk <- field blob "sender_pubkey"
     sig <- field blob "sender_sig"
     content <- field anyType "content"
-    lift $ verify pk (requestId content) sig
+    lift $ verify "\x0Aic-request" pk (requestId content) sig
     return (pk, content)
 
 -- Parsing requests to /submit
@@ -56,6 +56,11 @@ asyncRequest = record $ do
             method_name <- field text "method_name"
             arg <- field blob "arg"
             return $ UpdateRequest cid sender (T.unpack method_name) arg
+        "set_controller" -> do
+            cid <- EntityId <$> field blob "canister_id"
+            sender <- EntityId <$> field blob "sender"
+            new_controller <- EntityId <$> field blob "controller"
+            return $ SetControllerRequest cid sender new_controller
         _ -> throwError $ "Unknown request type \"" <> t <> "\""
 
 -- Parsing requests to /response
