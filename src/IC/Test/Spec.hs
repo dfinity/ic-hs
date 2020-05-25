@@ -354,14 +354,14 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
 
     step "Reinstall fails"
     ic_install_ Reinstall (EntityId can_id) trivialWasmModule ""
-      >>= statusReject 3
+      >>= statusReject 5
 
     step "Install"
     ic_install Install (EntityId can_id) trivialWasmModule ""
 
     step "Install again fails"
     ic_install_ Install (EntityId can_id) trivialWasmModule ""
-      >>= statusReject 3
+      >>= statusReject 5
 
     step "Reinstall"
     ic_install Reinstall (EntityId can_id) trivialWasmModule ""
@@ -451,21 +451,21 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
 
     step "Reinstall fails"
     ic_install_ cid Reinstall (EntityId can_id) trivialWasmModule ""
-      >>= statusRelayReject 3
+      >>= statusRelayReject 5
 
     step "Install"
     ic_install cid Install (EntityId can_id) trivialWasmModule ""
 
     step "Install again fails"
     ic_install_ cid Install (EntityId can_id) trivialWasmModule ""
-      >>= statusRelayReject 3
+      >>= statusRelayReject 5
 
     step "Reinstall"
     ic_install cid Reinstall (EntityId can_id) trivialWasmModule ""
 
     step "Reinstall as wrong user"
     ic_install_ cid2 Reinstall (EntityId can_id) trivialWasmModule ""
-      >>= statusRelayReject 1
+      >>= statusRelayReject 5
 
     step "Upgrade"
     ic_install cid Upgrade (EntityId can_id) trivialWasmModule ""
@@ -475,7 +475,7 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
 
     step "Change controller (with wrong controller)"
     ic_set_controller_ cid (EntityId can_id) cid2
-      >>= statusRelayReject 1
+      >>= statusRelayReject 5
 
     step "Reinstall as new controller"
     ic_install cid2 Reinstall (EntityId can_id) trivialWasmModule ""

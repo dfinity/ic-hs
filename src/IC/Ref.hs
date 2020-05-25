@@ -424,7 +424,8 @@ managementCanisterId = EntityId mempty
 
 invokeManagementCanister :: (CanReject m, ICM m) => EntityId -> EntryPoint -> m Blob
 invokeManagementCanister caller = \case
-    Public method_name arg -> BS.fromStrict <$> raw_service (T.pack method_name) (BS.toStrict arg)
+    Public method_name arg ->
+        BS.fromStrict <$> raw_service (T.pack method_name) (BS.toStrict arg)
     Closure{} -> error "closure invoked on management function "
   where
     raw_service = fromCandidService not_found err (managementCanister caller)
@@ -433,9 +434,9 @@ invokeManagementCanister caller = \case
 
 managementCanister :: (CanReject m, ICM m) => EntityId -> Rec (ICManagement m)
 managementCanister caller = empty
-    .+ #create_canister .== icCreateCanister caller
-    .+ #install_code .== icInstallCode caller
-    .+ #set_controller .== icSetController caller
+    .+ #create_canister .== rejectAsCanister . icCreateCanister caller
+    .+ #install_code .== rejectAsCanister . icInstallCode caller
+    .+ #set_controller .== rejectAsCanister . icSetController caller
 
 icCreateCanister :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "create_canister"
 icCreateCanister caller r = do
@@ -573,6 +574,11 @@ runToCompletion = repeatWhileTrue runStep
 type CanReject = MonadError (RejectCode, String)
 reject :: CanReject m => RejectCode -> String -> m a2
 reject code msg = throwError (code, msg)
+
+-- To maintain the abstraction that the management canister is a canister,
+-- all its errors are turned into canister errors
+rejectAsCanister :: CanReject m => m a -> m a
+rejectAsCanister act = catchError act (\(_c,msg) -> reject RC_CANISTER_ERROR msg)
 
 onReject :: ICM m =>
   ((RejectCode, String) -> m b) ->
