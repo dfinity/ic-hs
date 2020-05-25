@@ -35,6 +35,7 @@ common logic
   other-modules:       IC.Canister.Interface
   other-modules:       IC.Canister.Pure
   other-modules:       IC.Canister.Persisted
+  other-modules:       IC.Management
   other-modules:       IC.Wasm.Winter
   other-modules:       IC.Wasm.WinterMemory
   other-modules:       IC.Wasm.Winter.Persist
@@ -57,6 +58,8 @@ common logic
   build-depends:       hex-text
   build-depends:       cryptonite
   build-depends:       memory
+  build-depends:       row-types
+  build-depends:       candid
 
 common cbor
   hs-source-dirs:      src
@@ -121,6 +124,8 @@ executable ic-ref-test
   other-modules:       IC.Test.Spec
   other-modules:       IC.Test.Options
   other-modules:       IC.Test.Universal
+  other-modules:       IC.Management
+  other-modules:       IC.Types
   build-depends:       tasty
   build-depends:       tasty-hunit
   build-depends:       tasty-html
@@ -130,6 +135,11 @@ executable ic-ref-test
   build-depends:       random
   build-depends:       filepath
   build-depends:       directory
+  build-depends:       row-types
+  build-depends:       candid
+  build-depends:       hex-text
+  build-depends:       crc
+  build-depends:       transformers
 
 test-suite unit-test
   import: cbor, ghc-flags

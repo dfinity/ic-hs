@@ -4,11 +4,17 @@ This module contains a test suite for the Internet Computer
 
 -}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE ImplicitParams #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE OverloadedLabels #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE TypeFamilies #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 module IC.Test.Spec (icTests) where
 
@@ -27,17 +33,22 @@ import Test.Tasty.HUnit
 import Control.Monad.Trans
 import Control.Concurrent
 import Control.Monad
+import Data.Word
 import Data.Functor
+import GHC.TypeLits
 import System.FilePath
 import System.Directory
 import System.Environment
 import System.Random
+import qualified Codec.Candid as Candid
+import Data.Row
 
 import IC.Version
 import IC.HTTP.GenR
 import IC.HTTP.GenR.Parse
 import IC.HTTP.CBOR (decode, encode)
 import IC.HTTP.RequestId
+import IC.Management
 import IC.Crypto
 import IC.Id.Forms hiding (Blob)
 import IC.Test.Options
@@ -175,65 +186,225 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
         submitCBOR minimalInstall >>= statusReject 3
     ]
 
-  , testGroup "install"
-    [ testGroup "required fields" $
-        omitFields (envelope defaultSK minimalInstall) $ \req ->
-          postCBOR "/api/v1/submit" req >>= code4xx
+  , testGroup "install: required fields" $
+      omitFields (envelope defaultSK minimalInstall) $ \req ->
+        postCBOR "/api/v1/submit" req >>= code4xx
 
-    , testCaseSteps "trivial wasm module" $ \step -> do
-        step "Create"
-        can_id <- create
+  , testCaseSteps "management requests" $ \step -> do
+      step "Create"
+      can_id <- create
 
-        step "Reinstall fails"
-        submitCBOR >=> statusReject 3 $ rec
-          [ "request_type" =: GText "install_code"
+      step "Reinstall fails"
+      submitCBOR >=> statusReject 3 $ rec
+        [ "request_type" =: GText "install_code"
+        , "sender" =: GBlob defaultUser
+        , "canister_id" =: GBlob can_id
+        , "module" =: GBlob trivialWasmModule
+        , "arg" =: GBlob ""
+        , "mode" =: GText "reinstall"
+        ]
+
+
+      step "Install"
+      submitCBOR >=> emptyReply $ rec
+        [ "request_type" =: GText "install_code"
+        , "sender" =: GBlob defaultUser
+        , "canister_id" =: GBlob can_id
+        , "module" =: GBlob trivialWasmModule
+        , "arg" =: GBlob ""
+        ]
+
+      step "Install again fails"
+      submitCBOR >=> statusReject 3 $ rec
+        [ "request_type" =: GText "install_code"
+        , "sender" =: GBlob defaultUser
+        , "canister_id" =: GBlob can_id
+        , "module" =: GBlob trivialWasmModule
+        , "arg" =: GBlob ""
+        , "mode" =: GText "install" -- NB: This is the default
+        ]
+
+      step "Reinstall"
+      submitCBOR >=> statusReply >=> emptyRec $ rec
+        [ "request_type" =: GText "install_code"
+        , "sender" =: GBlob defaultUser
+        , "canister_id" =: GBlob can_id
+        , "module" =: GBlob trivialWasmModule
+        , "arg" =: GBlob ""
+        , "mode" =: GText "reinstall"
+        ]
+
+      step "Upgrade"
+      submitCBOR >=> emptyReply $ rec
+        [ "request_type" =: GText "install_code"
+        , "sender" =: GBlob defaultUser
+        , "canister_id" =: GBlob can_id
+        , "module" =: GBlob trivialWasmModule
+        , "arg" =: GBlob ""
+        , "mode" =: GText "upgrade"
+        ]
+
+  , testCaseSteps "ic:00 (via HTTP)" $ \step -> do
+    let
+      managementService :: Rec (ICManagement IO)
+      managementService = Candid.toCandidService onErr $ \method_name arg -> do
+        r <- submitCBOR $ rec
+          [ "request_type" =: GText "call"
           , "sender" =: GBlob defaultUser
-          , "canister_id" =: GBlob can_id
-          , "module" =: GBlob trivialWasmModule
-          , "arg" =: GBlob ""
-          , "mode" =: GText "reinstall"
+          , "canister_id" =: GBlob ""
+          , "method_name" =: GText method_name
+          , "arg" =: GBlob (BS.fromStrict arg)
+          ]
+        BS.toStrict <$> callReply r
+
+      onErr err = assertFailure err
+
+      create :: Maybe Blob -> IO Blob
+      create mbBlob = do
+        r <- managementService .! #create_canister $ empty
+            .+ #desired_id .== (EntityId <$> mbBlob)
+        return (rawEntityId (r .! #canister_id))
+
+      install :: InstallMode -> CanisterId -> WasmModule -> Blob -> IO ()
+      install mode canister_id wasm_module arg = do
+        managementService .! #install_code $ empty
+          .+ #mode .== mode
+          .+ #canister_id .== canister_id
+          .+ #wasm_module .== wasm_module
+          .+ #arg .== arg
+          .+ #compute_allocation .== Nothing
+
+      -- For the underscore varitants, there is less convenience available
+
+      callIC_ :: forall s a. KnownSymbol s =>
+        a ~ Candid.MethArg (ICManagement IO .! s) =>
+        Candid.CandidArg a =>
+        Label s -> a -> IO GenR
+      callIC_ l x = submitCBOR $ rec
+          [ "request_type" =: GText "call"
+          , "sender" =: GBlob defaultUser
+          , "canister_id" =: GBlob ""
+          , "method_name" =: GText (T.pack (symbolVal l))
+          , "arg" =: GBlob (BS.fromStrict (Candid.encode x))
           ]
 
+      _create_ :: Maybe Blob -> IO GenR
+      _create_ mbBlob =
+        callIC_ #create_canister $ empty
+          .+ #desired_id .== (EntityId <$> mbBlob)
 
-        step "Install"
-        submitCBOR >=> emptyReply $ rec
-          [ "request_type" =: GText "install_code"
-          , "sender" =: GBlob defaultUser
-          , "canister_id" =: GBlob can_id
-          , "module" =: GBlob trivialWasmModule
-          , "arg" =: GBlob ""
-          ]
+      install_ :: InstallMode -> CanisterId -> WasmModule -> Blob -> IO GenR
+      install_ mode canister_id wasm_module arg =
+        callIC_ #install_code $ empty
+          .+ #mode .== mode
+          .+ #canister_id .== canister_id
+          .+ #wasm_module .== wasm_module
+          .+ #arg .== arg
+          .+ #compute_allocation .== Nothing
 
-        step "Install again fails"
-        submitCBOR >=> statusReject 3 $ rec
-          [ "request_type" =: GText "install_code"
-          , "sender" =: GBlob defaultUser
-          , "canister_id" =: GBlob can_id
-          , "module" =: GBlob trivialWasmModule
-          , "arg" =: GBlob ""
-          , "mode" =: GText "install" -- NB: This is the default
-          ]
+    step "Create"
+    can_id <- create Nothing
 
-        step "Reinstall"
-        submitCBOR >=> statusReply >=> emptyRec $ rec
-          [ "request_type" =: GText "install_code"
-          , "sender" =: GBlob defaultUser
-          , "canister_id" =: GBlob can_id
-          , "module" =: GBlob trivialWasmModule
-          , "arg" =: GBlob ""
-          , "mode" =: GText "reinstall"
-          ]
+    step "Reinstall fails"
+    install_ Reinstall (EntityId can_id) trivialWasmModule ""
+      >>= statusReject 3
 
-        step "Upgrade"
-        submitCBOR >=> emptyReply $ rec
-          [ "request_type" =: GText "install_code"
-          , "sender" =: GBlob defaultUser
-          , "canister_id" =: GBlob can_id
-          , "module" =: GBlob trivialWasmModule
-          , "arg" =: GBlob ""
-          , "mode" =: GText "upgrade"
-          ]
-    ]
+    step "Install"
+    install Install (EntityId can_id) trivialWasmModule ""
+
+    step "Install again fails"
+    install_ Install (EntityId can_id) trivialWasmModule ""
+      >>= statusReject 3
+
+    step "Reinstall"
+    install Reinstall (EntityId can_id) trivialWasmModule ""
+
+    step "Upgrade"
+    install Upgrade (EntityId can_id) trivialWasmModule ""
+
+  , testCaseSteps "ic:00 (inter-canister)" $ \step -> do
+    -- install one universal canister to proxy the requests
+    cid <- install noop
+
+    let
+      managementService :: Rec (ICManagement IO)
+      managementService = Candid.toCandidService onErr $ \method_name arg ->
+        BS.toStrict <$> call cid (
+          call_simple
+              (bytes "") -- ic:00
+              (bytes (BS.fromStrict (T.encodeUtf8 method_name)))
+              (callback replyArgData)
+              (callback replyRejectData)
+              (bytes (BS.fromStrict arg))
+        )
+
+      onErr err = assertFailure err
+
+      create :: Maybe Blob -> IO Blob
+      create mbBlob = do
+        r <- managementService .! #create_canister $ empty
+            .+ #desired_id .== (EntityId <$> mbBlob)
+        return (rawEntityId (r .! #canister_id))
+
+      install :: InstallMode -> CanisterId -> WasmModule -> Blob -> IO ()
+      install mode canister_id wasm_module arg = do
+        managementService .! #install_code $ empty
+          .+ #mode .== mode
+          .+ #canister_id .== canister_id
+          .+ #wasm_module .== wasm_module
+          .+ #arg .== arg
+          .+ #compute_allocation .== Nothing
+
+      -- For the underscore variants, there is less convenience available
+
+      callIC_ :: forall s a. KnownSymbol s =>
+        a ~ Candid.MethArg (ICManagement IO .! s) =>
+        Candid.CandidArg a =>
+        Label s -> a -> IO GenR
+      callIC_ l x = do
+        let method_name = T.pack (symbolVal l)
+        let arg = Candid.encode x
+        call' cid $
+          call_simple
+              (bytes "") -- ic:00
+              (bytes (BS.fromStrict (T.encodeUtf8 method_name)))
+              (callback replyArgData)
+              (callback replyRejectData)
+              (bytes (BS.fromStrict arg))
+
+      _create_ :: Maybe Blob -> IO GenR
+      _create_ mbBlob =
+        callIC_ #create_canister $ empty
+          .+ #desired_id .== (EntityId <$> mbBlob)
+
+      install_ :: InstallMode -> CanisterId -> WasmModule -> Blob -> IO GenR
+      install_ mode canister_id wasm_module arg =
+        callIC_ #install_code $ empty
+          .+ #mode .== mode
+          .+ #canister_id .== canister_id
+          .+ #wasm_module .== wasm_module
+          .+ #arg .== arg
+          .+ #compute_allocation .== Nothing
+
+    step "Create"
+    can_id <- create Nothing
+
+    step "Reinstall fails"
+    install_ Reinstall (EntityId can_id) trivialWasmModule ""
+      >>= statusRelayReject 3
+
+    step "Install"
+    install Install (EntityId can_id) trivialWasmModule ""
+
+    step "Install again fails"
+    install_ Install (EntityId can_id) trivialWasmModule ""
+      >>= statusRelayReject 3
+
+    step "Reinstall"
+    install Reinstall (EntityId can_id) trivialWasmModule ""
+
+    step "Upgrade"
+    install Upgrade (EntityId can_id) trivialWasmModule ""
 
   , simpleTestCase "create and install" $ \cid ->
       assertBool "opaque id expected" $ isOpaqueId cid
@@ -329,13 +500,11 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
     r @?= cid
 
   , testGroup "inter-canister calls"
-    [ simpleTestCase "to nonexistant canister" $ \cid -> do
-      r <- call cid $ inter_call "foo" "bar" defArgs
-      BS.take 4 r @?= "\x03\x0\x0\x0"
+    [ simpleTestCase "to nonexistant canister" $ \cid ->
+      call' cid >=> statusRelayReject 3 $ inter_call "foo" "bar" defArgs
 
     , simpleTestCase "to nonexistant method" $ \cid -> do
-      r <- call cid $ inter_call cid "bar" defArgs
-      BS.take 4 r @?= "\x03\x0\x0\x0"
+      call' cid >=> statusRelayReject 3 $ inter_call cid "bar" defArgs
 
     , simpleTestCase "Call from query traps" $ \cid ->
       query' cid >=> statusReject 5 $ inter_update cid defArgs
@@ -366,17 +535,17 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
       r <- query cid $ replyData getGlobal
       r @?= "FOO"
 
-    , simpleTestCase "query no reply" $ \cid -> do
-      r <- call cid $ inter_query cid defArgs{ other_side = noop }
-      BS.take 4 r @?= "\5\0\0\0"
+    , simpleTestCase "query no reply" $ \cid ->
+      call' cid >=> statusRelayReject 5 $
+        inter_query cid defArgs{ other_side = noop }
 
-    , simpleTestCase "query double reply" $ \cid -> do
-      r <- call cid $ inter_query cid defArgs{ other_side = reply >>> reply }
-      BS.take 4 r @?= "\5\0\0\0"
+    , simpleTestCase "query double reply" $ \cid ->
+      call' cid >=> statusRelayReject 5 $
+        inter_query cid defArgs{ other_side = reply >>> reply }
 
     , simpleTestCase "Reject code is 0 in reply" $ \cid -> do
-      r <- call cid $ inter_query cid defArgs{ on_reply = replyData (i2b reject_code) }
-      r @?= "\x0\x0\x0\x0"
+      call' cid >=> statusRelayReject 0 $
+        inter_query cid defArgs{ on_reply = replyData (i2b reject_code) }
 
     , simpleTestCase "traps in reply: getting reject message" $ \cid ->
       call' cid >=> statusReject 5 $
@@ -939,6 +1108,12 @@ statusReply = record $ do
         then ("\n" ++) . T.unpack <$> field text "reject_message"
         else return ""
       lift $ assertFailure $ "expected status == \"replied\" but got " ++ show s ++ extra
+
+-- A reject forwarded by replyRejectData
+statusRelayReject :: HasCallStack => Word32 -> GenR -> IO ()
+statusRelayReject code r = do
+  b <- callReply r
+  BS.take 4 b @?= BS.toLazyByteString (BS.word32LE code)
 
 emptyReply :: HasCallStack => GenR -> IO ()
 emptyReply = statusReply >=> emptyRec

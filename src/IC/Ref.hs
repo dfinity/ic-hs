@@ -6,6 +6,8 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE OverloadedLabels #-}
+{-# LANGUAGE DataKinds #-}
 
 {-|
 This module implements the main abstract logic of the Internet Computer. It
@@ -39,18 +41,23 @@ module IC.Ref
 where
 
 import qualified Data.Map as M
+import qualified Data.Text as T
+import qualified Data.ByteString.Lazy as BS
 import Data.Maybe
 import Control.Monad.State.Class
 import Control.Monad.Except
 import Data.Sequence (Seq(..))
 import Data.Foldable (toList)
-import IC.Id.Forms hiding (Blob)
+import Codec.Candid hiding (Seq)
+import Data.Row (empty, Rec, (.==), (.+), (.!), type (.!))
 
+import IC.Id.Forms hiding (Blob)
 import IC.Types
 import IC.Canister
 import IC.Id.Fresh
 import IC.Utils
 import IC.Logger
+import IC.Management
 
 -- Abstract HTTP Interface
 
@@ -247,7 +254,6 @@ submitRequest rid r = modify $ \ic ->
 
 -- | Eventually, they are processed
 
-
 processRequest :: ICM m => RequestID -> AsyncRequest -> m ()
 
 processRequest rid req = (setReqStatus rid =<<) $ onReject (return . Rejected) $ case req of
@@ -322,6 +328,10 @@ respondCallContext ctxt_id response = do
   modifyCallContext ctxt_id $ \ctxt -> ctxt { responded = Responded True }
   enqueueMessage $ ResponseMessage { call_context = ctxt_id, response }
 
+replyCallContext :: ICM m => CallId -> Blob -> m ()
+replyCallContext ctxt_id =
+  respondCallContext ctxt_id . Reply
+
 rejectCallContext :: ICM m => CallId -> (RejectCode, String) -> m ()
 rejectCallContext ctxt_id =
   respondCallContext ctxt_id . Reject
@@ -359,15 +369,20 @@ processMessage :: ICM m => Message -> m ()
 processMessage m = case m of
   CallMessage ctxt_id entry -> onReject (rejectCallContext ctxt_id) $ do
     callee <- calleeOfCallID ctxt_id
-    cs <- getNonemptyCanisterState callee
-    invokeEntry ctxt_id cs entry >>= \case
-      Trap msg -> do
-        logTrap msg
-        rememberTrap ctxt_id msg
-      Return (new_state, (new_calls, mb_response)) -> do
-        setCanisterState callee new_state
-        mapM_ (newCall ctxt_id) new_calls
-        mapM_ (respondCallContext ctxt_id) mb_response
+    if callee == managementCanisterId
+    then do
+      caller <- callerOfCallID ctxt_id
+      invokeManagementCanister caller entry >>= replyCallContext ctxt_id
+    else do
+      cs <- getNonemptyCanisterState callee
+      invokeEntry ctxt_id cs entry >>= \case
+        Trap msg -> do
+          logTrap msg
+          rememberTrap ctxt_id msg
+        Return (new_state, (new_calls, mb_response)) -> do
+          setCanisterState callee new_state
+          mapM_ (newCall ctxt_id) new_calls
+          mapM_ (respondCallContext ctxt_id) mb_response
 
   ResponseMessage ctxt_id response -> do
     ctxt <- getCallContext ctxt_id
@@ -381,6 +396,68 @@ processMessage m = case m of
           { call_context = other_ctxt_id
           , entry = Closure callback response
           }
+
+managementCanisterId :: EntityId
+managementCanisterId = EntityId mempty
+
+invokeManagementCanister :: (CanReject m, ICM m) => EntityId -> EntryPoint -> m Blob
+invokeManagementCanister caller = \case
+    Public method_name arg -> BS.fromStrict <$> raw_service (T.pack method_name) (BS.toStrict arg)
+    Closure{} -> error "closure invoked on management function "
+  where
+    raw_service = fromCandidService not_found err (managementCanister caller)
+    not_found f =  reject RC_DESTINATION_INVALID $ "Unsupported management function " ++ T.unpack f
+    err msg = reject RC_CANISTER_ERROR $ "Candid failed to decode: " ++ msg
+
+managementCanister :: (CanReject m, ICM m) => EntityId -> Rec (ICManagement m)
+managementCanister caller = empty
+    .+ #create_canister .== icCreateCanister caller
+    .+ #install_code .== icInstallCode caller
+    .+ #set_controller .== icSetController caller
+
+icCreateCanister :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "create_canister"
+icCreateCanister caller r = do
+    new_id <- case r .! #desired_id of
+      Nothing -> gets (freshId . M.keys . canisters)
+      Just id -> do
+        unless (isDerivedId (rawEntityId caller) (rawEntityId id)) $
+          reject RC_DESTINATION_INVALID "Desired canister id not derived from sender id"
+        return id
+    exists <- gets (M.member new_id . canisters)
+    when exists $
+      reject RC_DESTINATION_INVALID "Desired canister id already exists"
+    createEmptyCanister new_id
+    return (#canister_id .== new_id)
+
+icInstallCode :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "install_code"
+icInstallCode caller r = do
+    new_can_mod <- return (parseCanister (r .! #wasm_module))
+      `onErr` (\err -> reject RC_SYS_FATAL $ "Parsing failed: " ++ err)
+
+    was_empty <- isNothing <$> getCanisterState (r .! #canister_id)
+    case r .! #mode of
+      Install -> do
+        unless was_empty $
+          reject RC_DESTINATION_INVALID "canister is not empty during installation"
+        wasm_state <- return (init_method new_can_mod (r .! #canister_id) caller (r .! #arg))
+          `onTrap` (\msg -> reject RC_CANISTER_ERROR $ "Initialization trapped: " ++ msg)
+        insertCanister (r .! #canister_id) new_can_mod wasm_state
+      Reinstall -> do
+        when was_empty $
+          reject RC_DESTINATION_INVALID "canister is empty during reinstallation"
+        wasm_state <- return (init_method new_can_mod (r .! #canister_id) caller (r .! #arg))
+          `onTrap` (\msg -> reject RC_CANISTER_ERROR $ "Initialization trapped: " ++ msg)
+        insertCanister (r .! #canister_id) new_can_mod wasm_state
+      Upgrade -> do
+        CanState old_wasm_state old_can_mod <- getNonemptyCanisterState (r .! #canister_id)
+        mem <- return (pre_upgrade_method old_can_mod old_wasm_state caller)
+          `onTrap` (\msg -> reject RC_CANISTER_ERROR $ "Pre-upgrade trapped: " ++ msg)
+        new_wasm_state <- return (post_upgrade_method new_can_mod (r .! #canister_id) caller mem (r .! #arg))
+          `onTrap` (\msg -> reject RC_CANISTER_ERROR $ "Post-upgrade trapped: " ++ msg)
+        insertCanister (r .! #canister_id) new_can_mod new_wasm_state
+
+icSetController :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "set_controller"
+icSetController _caller _new_controller = error "TODO"
 
 invokeEntry :: ICM m =>
     CallId -> CanState -> EntryPoint ->

@@ -59,6 +59,11 @@ let
     src = pkgs.sources.leb128-cereal;
     src_subst = "pkgs.sources.leb128-cereal";
   };
+  candid = haskellSrc2nixWithDoc {
+    name = "candid";
+    src = pkgs.sources.haskell-candid;
+    src_subst = "pkgs.sources.haskell-candid";
+  };
 
   ic-ref = localHaskellSrc2nixWithDoc "ic-ref" "impl" "--no-check -frelease";
 
@@ -67,6 +72,7 @@ let
     cp ${winter}/default.nix $out/winter.nix
     cp ${ic-ref}/default.nix $out/ic-ref.nix
     cp ${leb128-cereal}/default.nix $out/leb128-cereal.nix
+    cp ${candid}/default.nix $out/candid.nix
   '';
 in
 allGenerated
