@@ -40,8 +40,10 @@ import System.FilePath
 import System.Directory
 import System.Environment
 import System.Random
+import Codec.Candid (Principal(..))
 import qualified Codec.Candid as Candid
 import Data.Row
+import qualified Data.Row.Variants as V
 
 import IC.Version
 import IC.HTTP.GenR
@@ -316,16 +318,16 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
       ic_create :: Maybe Blob -> IO Blob
       ic_create mbBlob = do
         r <- managementService .! #create_canister $ empty
-            .+ #desired_id .== (EntityId <$> mbBlob)
-        return (rawEntityId (r .! #canister_id))
+            .+ #desired_id .== (Principal . BS.toStrict <$> mbBlob)
+        return (BS.fromStrict (rawPrincipal (r .! #canister_id)))
 
-      ic_install :: InstallMode -> CanisterId -> WasmModule -> Blob -> IO ()
+      ic_install :: InstallMode -> Blob -> Blob -> Blob -> IO ()
       ic_install mode canister_id wasm_module arg = do
         managementService .! #install_code $ empty
           .+ #mode .== mode
-          .+ #canister_id .== canister_id
-          .+ #wasm_module .== wasm_module
-          .+ #arg .== arg
+          .+ #canister_id .== Principal (BS.toStrict canister_id)
+          .+ #wasm_module .== BS.toStrict wasm_module
+          .+ #arg .== BS.toStrict arg
           .+ #compute_allocation .== Nothing
 
       -- For the underscore varitants, there is less convenience available
@@ -345,36 +347,36 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
       _ic_create_ :: Maybe Blob -> IO GenR
       _ic_create_ mbBlob =
         callIC_ #create_canister $ empty
-          .+ #desired_id .== (EntityId <$> mbBlob)
+          .+ #desired_id .== (Principal . BS.toStrict <$> mbBlob)
 
-      ic_install_ :: InstallMode -> CanisterId -> WasmModule -> Blob -> IO GenR
+      ic_install_ :: InstallMode -> Blob -> Blob -> Blob -> IO GenR
       ic_install_ mode canister_id wasm_module arg =
         callIC_ #install_code $ empty
           .+ #mode .== mode
-          .+ #canister_id .== canister_id
-          .+ #wasm_module .== wasm_module
-          .+ #arg .== arg
+          .+ #canister_id .== Principal (BS.toStrict canister_id)
+          .+ #wasm_module .== BS.toStrict wasm_module
+          .+ #arg .== BS.toStrict arg
           .+ #compute_allocation .== Nothing
 
     step "Create"
     can_id <- ic_create Nothing
 
     step "Reinstall fails"
-    ic_install_ Reinstall (EntityId can_id) trivialWasmModule ""
+    ic_install_ (V.IsJust #reinstall ()) can_id trivialWasmModule ""
       >>= statusReject 5
 
     step "Install"
-    ic_install Install (EntityId can_id) trivialWasmModule ""
+    ic_install (V.IsJust #install ()) can_id trivialWasmModule ""
 
     step "Install again fails"
-    ic_install_ Install (EntityId can_id) trivialWasmModule ""
+    ic_install_ (V.IsJust #install ()) can_id trivialWasmModule ""
       >>= statusReject 5
 
     step "Reinstall"
-    ic_install Reinstall (EntityId can_id) trivialWasmModule ""
+    ic_install (V.IsJust #reinstall ()) can_id trivialWasmModule ""
 
     step "Upgrade"
-    ic_install Upgrade (EntityId can_id) trivialWasmModule ""
+    ic_install (V.IsJust #upgrade ()) can_id trivialWasmModule ""
 
   , testCaseSteps "ic:00 (inter-canister)" $ \step -> do
     let
@@ -394,23 +396,23 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
       ic_create :: Blob ->  Maybe Blob -> IO Blob
       ic_create cid mbBlob = do
         r <- managementService cid .! #create_canister $ empty
-            .+ #desired_id .== (EntityId <$> mbBlob)
-        return (rawEntityId (r .! #canister_id))
+            .+ #desired_id .== (Principal . BS.toStrict <$> mbBlob)
+        return (BS.fromStrict (rawPrincipal (r .! #canister_id)))
 
-      ic_install :: Blob -> InstallMode -> CanisterId -> WasmModule -> Blob -> IO ()
+      ic_install :: Blob -> InstallMode -> Blob -> Blob -> Blob -> IO ()
       ic_install cid mode canister_id wasm_module arg = do
         managementService cid .! #install_code $ empty
           .+ #mode .== mode
-          .+ #canister_id .== canister_id
-          .+ #wasm_module .== wasm_module
-          .+ #arg .== arg
+          .+ #canister_id .== Principal (BS.toStrict canister_id)
+          .+ #wasm_module .== BS.toStrict wasm_module
+          .+ #arg .== BS.toStrict arg
           .+ #compute_allocation .== Nothing
 
-      ic_set_controller :: Blob -> CanisterId -> Blob -> IO ()
+      ic_set_controller :: Blob -> Blob -> Blob -> IO ()
       ic_set_controller cid canister_id new_controller = do
         managementService cid .! #set_controller $ empty
-          .+ #canister_id .== canister_id
-          .+ #new_controller .== EntityId new_controller
+          .+ #canister_id .== Principal (BS.toStrict canister_id)
+          .+ #new_controller .== Principal (BS.toStrict new_controller)
 
       -- For the underscore variants, there is less convenience available
 
@@ -432,22 +434,22 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
       _ic_create_ :: Blob -> Maybe Blob -> IO GenR
       _ic_create_ cid mbBlob =
         callIC_ cid #create_canister $ empty
-          .+ #desired_id .== (EntityId <$> mbBlob)
+          .+ #desired_id .== (Principal . BS.toStrict <$> mbBlob)
 
-      ic_install_ :: Blob -> InstallMode -> CanisterId -> WasmModule -> Blob -> IO GenR
+      ic_install_ :: Blob -> InstallMode -> Blob -> Blob -> Blob -> IO GenR
       ic_install_ cid mode canister_id wasm_module arg =
         callIC_ cid #install_code $ empty
           .+ #mode .== mode
-          .+ #canister_id .== canister_id
-          .+ #wasm_module .== wasm_module
-          .+ #arg .== arg
+          .+ #canister_id .== Principal (BS.toStrict canister_id)
+          .+ #wasm_module .== BS.toStrict wasm_module
+          .+ #arg .== BS.toStrict arg
           .+ #compute_allocation .== Nothing
 
-      ic_set_controller_ :: Blob -> CanisterId -> Blob -> IO GenR
+      ic_set_controller_ :: Blob -> Blob -> Blob -> IO GenR
       ic_set_controller_ cid canister_id new_controller =
         callIC_ cid #set_controller $ empty
-          .+ #canister_id .== canister_id
-          .+ #new_controller .== EntityId new_controller
+          .+ #canister_id .== Principal (BS.toStrict canister_id)
+          .+ #new_controller .== Principal (BS.toStrict new_controller)
 
     -- install universal canisters to proxy the requests
     cid <- install noop
@@ -457,35 +459,35 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
     can_id <- ic_create cid Nothing
 
     step "Reinstall fails"
-    ic_install_ cid Reinstall (EntityId can_id) trivialWasmModule ""
+    ic_install_ cid (V.IsJust #reinstall ()) can_id trivialWasmModule ""
       >>= statusRelayReject 5
 
     step "Install"
-    ic_install cid Install (EntityId can_id) trivialWasmModule ""
+    ic_install cid (V.IsJust #install ()) can_id trivialWasmModule ""
 
     step "Install again fails"
-    ic_install_ cid Install (EntityId can_id) trivialWasmModule ""
+    ic_install_ cid (V.IsJust #install ()) can_id trivialWasmModule ""
       >>= statusRelayReject 5
 
     step "Reinstall"
-    ic_install cid Reinstall (EntityId can_id) trivialWasmModule ""
+    ic_install cid (V.IsJust #reinstall ()) can_id trivialWasmModule ""
 
     step "Reinstall as wrong user"
-    ic_install_ cid2 Reinstall (EntityId can_id) trivialWasmModule ""
+    ic_install_ cid2 (V.IsJust #reinstall ()) can_id trivialWasmModule ""
       >>= statusRelayReject 5
 
     step "Upgrade"
-    ic_install cid Upgrade (EntityId can_id) trivialWasmModule ""
+    ic_install cid (V.IsJust #upgrade ()) can_id trivialWasmModule ""
 
     step "Change controller"
-    ic_set_controller cid (EntityId can_id) cid2
+    ic_set_controller cid can_id cid2
 
     step "Change controller (with wrong controller)"
-    ic_set_controller_ cid (EntityId can_id) cid2
+    ic_set_controller_ cid can_id cid2
       >>= statusRelayReject 5
 
     step "Reinstall as new controller"
-    ic_install cid2 Reinstall (EntityId can_id) trivialWasmModule ""
+    ic_install cid2 (V.IsJust #reinstall ()) can_id trivialWasmModule ""
 
 
   , simpleTestCase "create and install" $ \cid ->
