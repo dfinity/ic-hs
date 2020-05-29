@@ -590,8 +590,16 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
     , simpleTestCase "to nonexistant method" $ \cid -> do
       call' cid >=> statusRelayReject 3 $ inter_call cid "bar" defArgs
 
-    , simpleTestCase "Call from query traps" $ \cid ->
+    , simpleTestCase "Call from query traps (in update)" $ \cid ->
+      callToQuery' cid >=> statusReject 5 $ inter_update cid defArgs
+
+    , simpleTestCase "Call from query traps (in query)" $ \cid ->
       query' cid >=> statusReject 5 $ inter_update cid defArgs
+
+    , simpleTestCase "Call from query traps (in inter-canister-call)" $ \cid ->
+      call' cid >=> statusRelayReject 5 $ inter_call cid "query" defArgs {
+        other_side = inter_query cid defArgs
+      }
 
     , simpleTestCase "Self-call (to update)" $ \cid -> do
       r <- call cid $ inter_update cid defArgs
@@ -1268,11 +1276,20 @@ upgrade' cid prog = do
     ]
 
 callRequest :: HasEndpoint => Blob -> Prog -> GenR
-callRequest cid prog =  rec
+callRequest cid prog = rec
     [ "request_type" =: GText "call"
     , "sender" =: GBlob defaultUser
     , "canister_id" =: GBlob cid
     , "method_name" =: GText "update"
+    , "arg" =: GBlob (run prog)
+    ]
+
+callToQuery' :: (HasCallStack, HasEndpoint) => Blob -> Prog -> IO GenR
+callToQuery' cid prog = submitCBOR $ rec
+    [ "request_type" =: GText "call"
+    , "sender" =: GBlob defaultUser
+    , "canister_id" =: GBlob cid
+    , "method_name" =: GText "query"
     , "arg" =: GBlob (run prog)
     ]
 

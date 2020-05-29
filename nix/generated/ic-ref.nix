@@ -11,7 +11,7 @@
 }:
 mkDerivation {
   pname = "ic-ref";
-  version = "0.4.0";
+  version = "0.4.1";
   src = import ../gitSource.nix "impl";
   configureFlags = [ "-frelease" ];
   isLibrary = false;
