@@ -12,14 +12,13 @@ module IC.Management where
 
 import Codec.Candid
 import IC.Types
-import qualified Data.ByteString.Lazy as BS
 
 -- This needs cleaning up
 principalToEntityId :: Principal -> EntityId
-principalToEntityId = EntityId . BS.fromStrict . rawPrincipal
+principalToEntityId = EntityId . rawPrincipal
 
 entityIdToPrincipal :: EntityId -> Principal
-entityIdToPrincipal = Principal . BS.toStrict . rawEntityId
+entityIdToPrincipal = Principal . rawEntityId
 
 type InstallMode = [candidType|
     variant {install : null; reinstall : null; upgrade : null}

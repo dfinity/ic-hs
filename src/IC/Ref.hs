@@ -43,13 +43,12 @@ where
 import qualified Data.Map as M
 import qualified Data.Row as R
 import qualified Data.Text as T
-import qualified Data.ByteString.Lazy as BS
 import Data.Maybe
 import Control.Monad.State.Class
 import Control.Monad.Except
 import Data.Sequence (Seq(..))
 import Data.Foldable (toList)
-import Codec.Candid hiding (Seq)
+import Codec.Candid
 import Data.Row (empty, Rec, (.==), (.+), (.!), type (.!))
 
 import IC.Id.Forms hiding (Blob)
@@ -425,8 +424,7 @@ managementCanisterId = EntityId mempty
 
 invokeManagementCanister :: (CanReject m, ICM m) => EntityId -> EntryPoint -> m Blob
 invokeManagementCanister caller = \case
-    Public method_name arg ->
-        BS.fromStrict <$> raw_service (T.pack method_name) (BS.toStrict arg)
+    Public method_name arg -> raw_service (T.pack method_name) arg
     Closure{} -> error "closure invoked on management function "
   where
     raw_service = fromCandidService not_found err (managementCanister caller)
@@ -457,8 +455,8 @@ icCreateCanister caller r = do
 icInstallCode :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "install_code"
 icInstallCode caller r = do
     let canister_id = principalToEntityId (r .! #canister_id)
-    let arg = BS.fromStrict (r .! #arg)
-    new_can_mod <- return (parseCanister (BS.fromStrict (r .! #wasm_module)))
+    let arg = r .! #arg
+    new_can_mod <- return (parseCanister (r .! #wasm_module))
       `onErr` (\err -> reject RC_SYS_FATAL $ "Parsing failed: " ++ err)
     checkController canister_id caller
     was_empty <- isNothing <$> getCanisterState canister_id

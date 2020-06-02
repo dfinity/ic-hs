@@ -303,37 +303,37 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
   , testCaseSteps "ic:00 (via HTTP)" $ \step -> do
     let
       managementService :: Rec (ICManagement IO)
-      managementService = Candid.toCandidService onErr $ \method_name arg -> do
-        r <- submitCBOR $ rec
+      managementService = Candid.toCandidService onErr $ \method_name arg ->
+        submitCBOR >=> callReply $ rec
           [ "request_type" =: GText "call"
           , "sender" =: GBlob defaultUser
           , "canister_id" =: GBlob ""
           , "method_name" =: GText method_name
-          , "arg" =: GBlob (BS.fromStrict arg)
+          , "arg" =: GBlob arg
           ]
-        BS.toStrict <$> callReply r
 
       onErr err = assertFailure err
 
       ic_create :: Maybe Blob -> IO Blob
       ic_create mbBlob = do
         r <- managementService .! #create_canister $ empty
-            .+ #desired_id .== (Principal . BS.toStrict <$> mbBlob)
-        return (BS.fromStrict (rawPrincipal (r .! #canister_id)))
+            .+ #desired_id .== (Principal <$> mbBlob)
+        return (rawPrincipal (r .! #canister_id))
 
       ic_install :: InstallMode -> Blob -> Blob -> Blob -> IO ()
       ic_install mode canister_id wasm_module arg = do
         managementService .! #install_code $ empty
           .+ #mode .== mode
-          .+ #canister_id .== Principal (BS.toStrict canister_id)
-          .+ #wasm_module .== BS.toStrict wasm_module
-          .+ #arg .== BS.toStrict arg
+          .+ #canister_id .== Principal canister_id
+          .+ #wasm_module .== wasm_module
+          .+ #arg .== arg
           .+ #compute_allocation .== Nothing
 
       -- For the underscore varitants, there is less convenience available
 
-      callIC_ :: forall s a. KnownSymbol s =>
-        a ~ Candid.MethArg (ICManagement IO .! s) =>
+      callIC_ :: forall s a b.
+        KnownSymbol s =>
+        (a -> IO b) ~ (ICManagement IO .! s) =>
         Candid.CandidArg a =>
         Label s -> a -> IO GenR
       callIC_ l x = submitCBOR $ rec
@@ -341,21 +341,21 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
           , "sender" =: GBlob defaultUser
           , "canister_id" =: GBlob ""
           , "method_name" =: GText (T.pack (symbolVal l))
-          , "arg" =: GBlob (BS.fromStrict (Candid.encode x))
+          , "arg" =: GBlob (Candid.encode x)
           ]
 
       _ic_create_ :: Maybe Blob -> IO GenR
       _ic_create_ mbBlob =
         callIC_ #create_canister $ empty
-          .+ #desired_id .== (Principal . BS.toStrict <$> mbBlob)
+          .+ #desired_id .== (Principal <$> mbBlob)
 
       ic_install_ :: InstallMode -> Blob -> Blob -> Blob -> IO GenR
       ic_install_ mode canister_id wasm_module arg =
         callIC_ #install_code $ empty
           .+ #mode .== mode
-          .+ #canister_id .== Principal (BS.toStrict canister_id)
-          .+ #wasm_module .== BS.toStrict wasm_module
-          .+ #arg .== BS.toStrict arg
+          .+ #canister_id .== Principal canister_id
+          .+ #wasm_module .== wasm_module
+          .+ #arg .== arg
           .+ #compute_allocation .== Nothing
 
     step "Create"
@@ -382,13 +382,13 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
     let
       managementService :: Blob -> Rec (ICManagement IO)
       managementService cid = Candid.toCandidService onErr $ \method_name arg ->
-        BS.toStrict <$> call cid (
+        call cid (
           call_simple
               (bytes "") -- ic:00
               (bytes (BS.fromStrict (T.encodeUtf8 method_name)))
               (callback replyArgData)
               (callback replyRejectData)
-              (bytes (BS.fromStrict arg))
+              (bytes arg)
         )
 
       onErr err = assertFailure err
@@ -396,28 +396,28 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
       ic_create :: Blob ->  Maybe Blob -> IO Blob
       ic_create cid mbBlob = do
         r <- managementService cid .! #create_canister $ empty
-            .+ #desired_id .== (Principal . BS.toStrict <$> mbBlob)
-        return (BS.fromStrict (rawPrincipal (r .! #canister_id)))
+            .+ #desired_id .== (Principal <$> mbBlob)
+        return (rawPrincipal (r .! #canister_id))
 
       ic_install :: Blob -> InstallMode -> Blob -> Blob -> Blob -> IO ()
       ic_install cid mode canister_id wasm_module arg = do
         managementService cid .! #install_code $ empty
           .+ #mode .== mode
-          .+ #canister_id .== Principal (BS.toStrict canister_id)
-          .+ #wasm_module .== BS.toStrict wasm_module
-          .+ #arg .== BS.toStrict arg
+          .+ #canister_id .== Principal canister_id
+          .+ #wasm_module .== wasm_module
+          .+ #arg .== arg
           .+ #compute_allocation .== Nothing
 
       ic_set_controller :: Blob -> Blob -> Blob -> IO ()
       ic_set_controller cid canister_id new_controller = do
         managementService cid .! #set_controller $ empty
-          .+ #canister_id .== Principal (BS.toStrict canister_id)
-          .+ #new_controller .== Principal (BS.toStrict new_controller)
+          .+ #canister_id .== Principal canister_id
+          .+ #new_controller .== Principal new_controller
 
       -- For the underscore variants, there is less convenience available
 
-      callIC_ :: forall s a. KnownSymbol s =>
-        a ~ Candid.MethArg (ICManagement IO .! s) =>
+      callIC_ :: forall s a b. KnownSymbol s =>
+        (a -> IO b) ~ (ICManagement IO .! s) =>
         Candid.CandidArg a =>
         Blob -> Label s -> a -> IO GenR
       callIC_ cid l x = do
@@ -429,27 +429,27 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
               (bytes (BS.fromStrict (T.encodeUtf8 method_name)))
               (callback replyArgData)
               (callback replyRejectData)
-              (bytes (BS.fromStrict arg))
+              (bytes arg)
 
       _ic_create_ :: Blob -> Maybe Blob -> IO GenR
       _ic_create_ cid mbBlob =
         callIC_ cid #create_canister $ empty
-          .+ #desired_id .== (Principal . BS.toStrict <$> mbBlob)
+          .+ #desired_id .== (Principal <$> mbBlob)
 
       ic_install_ :: Blob -> InstallMode -> Blob -> Blob -> Blob -> IO GenR
       ic_install_ cid mode canister_id wasm_module arg =
         callIC_ cid #install_code $ empty
           .+ #mode .== mode
-          .+ #canister_id .== Principal (BS.toStrict canister_id)
-          .+ #wasm_module .== BS.toStrict wasm_module
-          .+ #arg .== BS.toStrict arg
+          .+ #canister_id .== Principal canister_id
+          .+ #wasm_module .== wasm_module
+          .+ #arg .== arg
           .+ #compute_allocation .== Nothing
 
       ic_set_controller_ :: Blob -> Blob -> Blob -> IO GenR
       ic_set_controller_ cid canister_id new_controller =
         callIC_ cid #set_controller $ empty
-          .+ #canister_id .== Principal (BS.toStrict canister_id)
-          .+ #new_controller .== Principal (BS.toStrict new_controller)
+          .+ #canister_id .== Principal canister_id
+          .+ #new_controller .== Principal new_controller
 
     -- install universal canisters to proxy the requests
     cid <- install noop
