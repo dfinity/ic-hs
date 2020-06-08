@@ -64,15 +64,14 @@ import IC.Management
 data IDChoice
     = SystemPicks
     | ForcedChoice CanisterId -- ^ only for use from ic-ref-run
-    | Desired CanisterId
   deriving (Eq, Ord, Show)
 
+-- Since #76 only used by ic-ref-run; to be refactored
 data AsyncRequest
     = CreateRequest UserId IDChoice
     | InstallRequest CanisterId UserId Blob Blob Bool
     | UpgradeRequest CanisterId UserId Blob Blob
     | UpdateRequest CanisterId UserId MethodName Blob
-    | SetControllerRequest CanisterId UserId EntityId
   deriving (Eq, Ord, Show)
 
 data SyncRequest
@@ -170,7 +169,6 @@ callerOfAsync = \case
     InstallRequest _ user_id _ _ _ -> user_id
     UpgradeRequest _ user_id _ _ -> user_id
     UpdateRequest _ user_id _ _ -> user_id
-    SetControllerRequest _ user_id _ -> user_id
 
 callerOfRequest :: ICM m => RequestID -> m EntityId
 callerOfRequest rid = gets (M.lookup rid . requests) >>= \case
@@ -275,13 +273,9 @@ processRequest rid req = (setReqStatus rid =<<) $ onReject (return . Rejected) $
     new_id <- case id_choice of
       SystemPicks -> gets (freshId . M.keys . canisters)
       ForcedChoice id -> return id
-      Desired id -> do
-        unless (isDerivedId (rawEntityId user_id) (rawEntityId id)) $
-          reject RC_DESTINATION_INVALID "Desired canister id not derived from sender id"
-        return id
     exists <- gets (M.member new_id . canisters)
     when exists $
-      reject RC_DESTINATION_INVALID "Desired canister id already exists"
+      reject RC_DESTINATION_INVALID "New canister id already exists"
     createEmptyCanister new_id user_id
     return $ Completed (CompleteCanisterId new_id)
 
@@ -323,12 +317,6 @@ processRequest rid req = (setReqStatus rid =<<) $ onReject (return . Rejected) $
       , entry = Public method arg
       }
     return Processing
-
-  SetControllerRequest canister_id user_id new_controller -> do
-    checkController canister_id user_id
-    setController canister_id new_controller
-    return $ Completed CompleteUnit
-
 
 -- Call context handling
 
@@ -438,17 +426,8 @@ managementCanister caller = empty
     .+ #set_controller .== rejectAsCanister . icSetController caller
 
 icCreateCanister :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "create_canister"
-icCreateCanister caller r = do
-    new_id <- case r .! #desired_id of
-      Nothing -> gets (freshId . M.keys . canisters)
-      Just id' -> do
-        let id = principalToEntityId id'
-        unless (isDerivedId (rawEntityId caller) (rawEntityId id)) $
-          reject RC_DESTINATION_INVALID "Desired canister id not derived from sender id"
-        return id
-    exists <- gets (M.member new_id . canisters)
-    when exists $
-      reject RC_DESTINATION_INVALID "Desired canister id already exists"
+icCreateCanister caller _r = do
+    new_id <- gets (freshId . M.keys . canisters)
     createEmptyCanister new_id caller
     return (#canister_id .== entityIdToPrincipal new_id)
 

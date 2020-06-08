@@ -27,9 +27,7 @@ type InstallMode = [candidType|
 type ICManagement m =
   [candid|
     service ic : {
-      create_canister : (record {
-        desired_id : opt principal
-      }) -> (record {canister_id : principal});
+      create_canister : () -> (record {canister_id : principal});
       install_code : (record {
         mode : variant {install : null; reinstall : null; upgrade : null};
         canister_id : principal;
