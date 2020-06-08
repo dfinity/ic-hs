@@ -41,14 +41,14 @@ module IC.Ref
 where
 
 import qualified Data.Map as M
+import qualified Data.Row as R
 import qualified Data.Text as T
-import qualified Data.ByteString.Lazy as BS
 import Data.Maybe
 import Control.Monad.State.Class
 import Control.Monad.Except
 import Data.Sequence (Seq(..))
 import Data.Foldable (toList)
-import Codec.Candid hiding (Seq)
+import Codec.Candid
 import Data.Row (empty, Rec, (.==), (.+), (.!), type (.!))
 
 import IC.Id.Forms hiding (Blob)
@@ -64,15 +64,14 @@ import IC.Management
 data IDChoice
     = SystemPicks
     | ForcedChoice CanisterId -- ^ only for use from ic-ref-run
-    | Desired CanisterId
   deriving (Eq, Ord, Show)
 
+-- Since #76 only used by ic-ref-run; to be refactored
 data AsyncRequest
     = CreateRequest UserId IDChoice
     | InstallRequest CanisterId UserId Blob Blob Bool
     | UpgradeRequest CanisterId UserId Blob Blob
     | UpdateRequest CanisterId UserId MethodName Blob
-    | SetControllerRequest CanisterId UserId EntityId
   deriving (Eq, Ord, Show)
 
 data SyncRequest
@@ -170,7 +169,6 @@ callerOfAsync = \case
     InstallRequest _ user_id _ _ _ -> user_id
     UpgradeRequest _ user_id _ _ -> user_id
     UpdateRequest _ user_id _ _ -> user_id
-    SetControllerRequest _ user_id _ -> user_id
 
 callerOfRequest :: ICM m => RequestID -> m EntityId
 callerOfRequest rid = gets (M.lookup rid . requests) >>= \case
@@ -275,13 +273,9 @@ processRequest rid req = (setReqStatus rid =<<) $ onReject (return . Rejected) $
     new_id <- case id_choice of
       SystemPicks -> gets (freshId . M.keys . canisters)
       ForcedChoice id -> return id
-      Desired id -> do
-        unless (isDerivedId (rawEntityId user_id) (rawEntityId id)) $
-          reject RC_DESTINATION_INVALID "Desired canister id not derived from sender id"
-        return id
     exists <- gets (M.member new_id . canisters)
     when exists $
-      reject RC_DESTINATION_INVALID "Desired canister id already exists"
+      reject RC_DESTINATION_INVALID "New canister id already exists"
     createEmptyCanister new_id user_id
     return $ Completed (CompleteCanisterId new_id)
 
@@ -323,12 +317,6 @@ processRequest rid req = (setReqStatus rid =<<) $ onReject (return . Rejected) $
       , entry = Public method arg
       }
     return Processing
-
-  SetControllerRequest canister_id user_id new_controller -> do
-    checkController canister_id user_id
-    setController canister_id new_controller
-    return $ Completed CompleteUnit
-
 
 -- Call context handling
 
@@ -424,8 +412,7 @@ managementCanisterId = EntityId mempty
 
 invokeManagementCanister :: (CanReject m, ICM m) => EntityId -> EntryPoint -> m Blob
 invokeManagementCanister caller = \case
-    Public method_name arg ->
-        BS.fromStrict <$> raw_service (T.pack method_name) (BS.toStrict arg)
+    Public method_name arg -> raw_service (T.pack method_name) arg
     Closure{} -> error "closure invoked on management function "
   where
     raw_service = fromCandidService not_found err (managementCanister caller)
@@ -439,50 +426,47 @@ managementCanister caller = empty
     .+ #set_controller .== rejectAsCanister . icSetController caller
 
 icCreateCanister :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "create_canister"
-icCreateCanister caller r = do
-    new_id <- case r .! #desired_id of
-      Nothing -> gets (freshId . M.keys . canisters)
-      Just id -> do
-        unless (isDerivedId (rawEntityId caller) (rawEntityId id)) $
-          reject RC_DESTINATION_INVALID "Desired canister id not derived from sender id"
-        return id
-    exists <- gets (M.member new_id . canisters)
-    when exists $
-      reject RC_DESTINATION_INVALID "Desired canister id already exists"
+icCreateCanister caller _r = do
+    new_id <- gets (freshId . M.keys . canisters)
     createEmptyCanister new_id caller
-    return (#canister_id .== new_id)
+    return (#canister_id .== entityIdToPrincipal new_id)
 
 icInstallCode :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "install_code"
 icInstallCode caller r = do
+    let canister_id = principalToEntityId (r .! #canister_id)
+    let arg = r .! #arg
     new_can_mod <- return (parseCanister (r .! #wasm_module))
       `onErr` (\err -> reject RC_SYS_FATAL $ "Parsing failed: " ++ err)
-    checkController (r .! #canister_id) caller
-    was_empty <- isNothing <$> getCanisterState (r .! #canister_id)
-    case r .! #mode of
-      Install -> do
+    checkController canister_id caller
+    was_empty <- isNothing <$> getCanisterState canister_id
+    R.switch (r .! #mode) $ R.empty
+      .+ #install .== (\() -> do
         unless was_empty $
           reject RC_DESTINATION_INVALID "canister is not empty during installation"
-        wasm_state <- return (init_method new_can_mod (r .! #canister_id) caller (r .! #arg))
+        wasm_state <- return (init_method new_can_mod canister_id caller arg)
           `onTrap` (\msg -> reject RC_CANISTER_ERROR $ "Initialization trapped: " ++ msg)
-        insertCanister (r .! #canister_id) new_can_mod wasm_state
-      Reinstall -> do
+        insertCanister canister_id new_can_mod wasm_state
+      ) .+ #reinstall .== (\() -> do
         when was_empty $
           reject RC_DESTINATION_INVALID "canister is empty during reinstallation"
-        wasm_state <- return (init_method new_can_mod (r .! #canister_id) caller (r .! #arg))
+        wasm_state <- return (init_method new_can_mod canister_id caller arg)
           `onTrap` (\msg -> reject RC_CANISTER_ERROR $ "Initialization trapped: " ++ msg)
-        insertCanister (r .! #canister_id) new_can_mod wasm_state
-      Upgrade -> do
-        CanState old_wasm_state old_can_mod <- getNonemptyCanisterState (r .! #canister_id)
+        insertCanister canister_id new_can_mod wasm_state
+      ) .+ #upgrade .== (\() -> do
+        CanState old_wasm_state old_can_mod <- getNonemptyCanisterState canister_id
         mem <- return (pre_upgrade_method old_can_mod old_wasm_state caller)
           `onTrap` (\msg -> reject RC_CANISTER_ERROR $ "Pre-upgrade trapped: " ++ msg)
-        new_wasm_state <- return (post_upgrade_method new_can_mod (r .! #canister_id) caller mem (r .! #arg))
+        new_wasm_state <- return (post_upgrade_method new_can_mod canister_id caller mem arg)
           `onTrap` (\msg -> reject RC_CANISTER_ERROR $ "Post-upgrade trapped: " ++ msg)
-        insertCanister (r .! #canister_id) new_can_mod new_wasm_state
+        insertCanister canister_id new_can_mod new_wasm_state
+      )
 
 icSetController :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "set_controller"
 icSetController caller r = do
-    checkController (r .! #canister_id) caller
-    setController (r .! #canister_id) (r .! #new_controller)
+    let canister_id = principalToEntityId (r .! #canister_id)
+    let new_controller = principalToEntityId (r .! #new_controller)
+    checkController canister_id caller
+    setController canister_id new_controller
 
 checkController :: (ICM m, CanReject m) => CanisterId -> EntityId -> m ()
 checkController canister_id user_id = do

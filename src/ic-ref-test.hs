@@ -6,6 +6,7 @@ module Main (main) where
 import Test.Tasty
 import Test.Tasty.Ingredients
 import Test.Tasty.Ingredients.Basic
+import Test.Tasty.Ingredients.Rerun
 import Test.Tasty.Runners.Html
 import Data.IORef
 import Control.Exception
@@ -19,9 +20,11 @@ main = withTestSuitePrimer $ \primeTestSuite ->
     defaultMainWithIngredients ingredients (icTests primeTestSuite)
   where
     ingredients =
-      [ listingTests
-      , includingOptions [endpointOption]
-      , htmlRunner `composeReporters` consoleTestReporter
+      [ rerunningTests
+        [ listingTests
+        , includingOptions [endpointOption]
+        , htmlRunner `composeReporters` consoleTestReporter
+        ]
       ]
 
 -- | This helper function runs the main action, and passes a way to prime the

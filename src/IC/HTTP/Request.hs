@@ -6,11 +6,10 @@ module IC.HTTP.Request where
 import qualified Data.Text as T
 import qualified Data.ByteString.Lazy as BS
 import Control.Monad.Except
-import Data.Maybe
 
 import IC.Types
 import IC.Crypto
-import IC.Ref (IDChoice(..), AsyncRequest(..), SyncRequest(..),
+import IC.Ref (AsyncRequest(..), SyncRequest(..),
   RequestStatus(..), CompletionValue(..))
 import IC.HTTP.RequestId
 import IC.HTTP.GenR
@@ -33,34 +32,12 @@ asyncRequest = record $ do
     t <- field text "request_type"
     _ <- optionalField blob "nonce"
     case t of
-        "create_canister" -> do
-            sender <- EntityId <$> field blob "sender"
-            desired_id <- maybe SystemPicks (Desired . EntityId) <$> optionalField blob "desired_id"
-            return $ CreateRequest sender desired_id
-        "install_code" -> do
-            cid <- EntityId <$> field blob "canister_id"
-            sender <- EntityId <$> field blob "sender"
-            mod <- field blob "module"
-            arg <- field blob "arg"
-            _ <- optionalField percentage "compute_allocation"
-            mode <- fromMaybe "install" <$> optionalField text "mode"
-            _ <- optionalField nat "memory_allocation"
-            case mode of
-                "install" -> return $ InstallRequest cid sender mod arg False
-                "reinstall" -> return $ InstallRequest cid sender mod arg True
-                "upgrade" -> return $ UpgradeRequest cid sender mod arg
-                _ -> throwError $ "mode field should be one of install, reinstall, upgrade, not " <> T.pack (show mode)
         "call" -> do
             cid <- EntityId <$> field blob "canister_id"
             sender <- EntityId <$> field blob "sender"
             method_name <- field text "method_name"
             arg <- field blob "arg"
             return $ UpdateRequest cid sender (T.unpack method_name) arg
-        "set_controller" -> do
-            cid <- EntityId <$> field blob "canister_id"
-            sender <- EntityId <$> field blob "sender"
-            new_controller <- EntityId <$> field blob "controller"
-            return $ SetControllerRequest cid sender new_controller
         _ -> throwError $ "Unknown request type \"" <> t <> "\""
 
 -- Parsing requests to /response

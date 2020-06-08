@@ -1,6 +1,6 @@
 cabal-version:       2.2
 name:                ic-ref
-version:             0.5.1
+version:             0.0.1
 author:              Joachim Breitner
 build-type:          Simple
 
@@ -129,6 +129,7 @@ executable ic-ref-test
   build-depends:       tasty
   build-depends:       tasty-hunit
   build-depends:       tasty-html
+  build-depends:       tasty-rerun
   build-depends:       optparse-applicative
   build-depends:       http-client
   build-depends:       http-types

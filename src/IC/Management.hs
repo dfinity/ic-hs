@@ -3,51 +3,41 @@ Plumbing related to Candid and the management canister.
 -}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE DataKinds #-}
-{-# LANGUAGE EmptyCase #-}
 {-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE QuasiQuotes #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
-module IC.Management (module IC.Management, CanisterId, EntityId(..)) where
+module IC.Management where
 
-import qualified Data.ByteString.Lazy as BS
-import Data.Row
-import Numeric.Natural
 import Codec.Candid
-
 import IC.Types
 
-data InstallMode = Install | Reinstall | Upgrade
-instance Candid InstallMode where
-    type Rep InstallMode = 'VariantT
-        '[ '( 'N "install", 'NullT)
-        ,  '( 'N "reinstall", 'NullT)
-        ,  '( 'N "upgrade", 'NullT)
-        ]
-    toCandid Install = Left ()
-    toCandid Reinstall = Right (Left ())
-    toCandid Upgrade = Right (Right (Left ()))
-    fromCandid (Left ()) = Install
-    fromCandid (Right (Left ())) = Reinstall
-    fromCandid (Right (Right (Left ()))) = Upgrade
-    fromCandid (Right (Right (Right x))) = case x of {}
+-- This needs cleaning up
+principalToEntityId :: Principal -> EntityId
+principalToEntityId = EntityId . rawPrincipal
 
-instance Candid EntityId where
-    type Rep EntityId = 'PrincipalT
-    toCandid = BS.toStrict . rawEntityId
-    fromCandid = EntityId . BS.fromStrict
+entityIdToPrincipal :: EntityId -> Principal
+entityIdToPrincipal = Principal . rawEntityId
 
-type WasmModule = Blob
+type InstallMode = [candidType|
+    variant {install : null; reinstall : null; upgrade : null}
+  |]
 
 type ICManagement m =
-  ( "create_canister" .==
-    (Rec ("desired_id" .== Maybe EntityId) -> m (Rec ("canister_id" .== EntityId)))
-  .+ "install_code" .==
-    (Rec ( "mode" .== InstallMode .+ "canister_id" .== EntityId .+
-         "wasm_module" .== BS.ByteString .+ "arg" .== BS.ByteString .+
-         "compute_allocation" .== Maybe Natural)
-    -> m ())
-  .+ "set_controller" .==
-    (Rec ("canister_id" .== EntityId .+ "new_controller" .== EntityId)
-    -> m ())
-  )
+  [candid|
+    service ic : {
+      create_canister : () -> (record {canister_id : principal});
+      install_code : (record {
+        mode : variant {install : null; reinstall : null; upgrade : null};
+        canister_id : principal;
+        wasm_module : blob;
+        arg : blob;
+        compute_allocation : opt nat;
+      }) -> ();
+      set_controller : (record {
+        canister_id : principal;
+        new_controller : principal;
+      }) -> ();
+    }
+  |]
