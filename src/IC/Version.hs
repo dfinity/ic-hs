@@ -5,4 +5,4 @@ import Data.Text
 
 specVersion, implVersion :: Text
 specVersion = "0.8"
-implVersion = "0.8.0"
+implVersion = "0.8.1"
