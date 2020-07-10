@@ -20,7 +20,11 @@ flag release
 common version
   hs-source-dirs:      src
   other-modules:       IC.Version
+  other-modules:       SourceId
   build-depends:       text
+  build-depends:       template-haskell
+  build-depends:       process
+  build-depends:       split
 
 common logic
   hs-source-dirs:      src
