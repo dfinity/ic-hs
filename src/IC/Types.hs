@@ -1,4 +1,5 @@
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE DeriveFunctor #-}
 module IC.Types where
 
@@ -9,6 +10,7 @@ import qualified Text.Hex as T
 import Data.Digest.CRC
 import Data.Digest.CRC8
 import Data.Int
+import Data.Word
 
 type (↦) = M.Map
 
@@ -35,6 +37,9 @@ prettyID (EntityId blob) =
 
 newtype Responded = Responded Bool
   deriving Show
+
+newtype Timestamp = Timestamp Word64
+  deriving (Show, Num)
 
 data RejectCode
     = RC_SYS_FATAL

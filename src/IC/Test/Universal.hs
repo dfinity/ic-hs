@@ -25,9 +25,9 @@ import Data.ByteString.Builder
 import Data.Word
 import Data.String
 
--- The types of our little language are i32 and blobs
+-- The types of our little language are i32, i64 and blobs
 
-data T = I | B
+data T = I | I64 | B
 
 
 -- We deal with expressions (return a value, thus have a type) and programs (do
@@ -118,6 +118,9 @@ reject_code = op 11
 i2b :: Exp 'I -> Exp 'B
 i2b = op 12
 
+i64tob :: Exp 'I64 -> Exp 'B
+i64tob = op 25
+
 argData :: Exp 'B
 argData = op 13
 
@@ -135,6 +138,9 @@ stableRead = op 17
 
 stableWrite :: Exp 'I -> Exp 'B -> Prog
 stableWrite = op 18
+
+getTime :: Exp 'I64
+getTime = op 26
 
 debugPrint :: Exp 'B -> Prog
 debugPrint = op 19

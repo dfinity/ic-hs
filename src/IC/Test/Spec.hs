@@ -524,6 +524,29 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
     r <- call cid $ replyData (stableRead (int 0) (int 3))
     r @?= "FOO"
 
+  , testGroup "time" $
+    let getTimeTwice = cat (i64tob getTime) (i64tob getTime)
+        isSameTime blob = do
+          assertBool "Time not 8 bytes" (BS.length blob == 2*8)
+          assertBool "Time not constant" (BS.take 8 blob == BS.drop 8 blob)
+    in
+    [ simpleTestCase "in query" $ \cid -> do
+      query cid (replyData getTimeTwice) >>= isSameTime
+    , simpleTestCase "in update" $ \cid -> do
+      query cid (replyData getTimeTwice) >>= isSameTime
+    , testCase "in install" $ do
+      cid <- install $ setGlobal (getTimeTwice)
+      query cid (replyData getGlobal) >>= isSameTime
+    , testCase "in pre_upgrade" $ do
+      cid <- install $
+        ignore (stableGrow (int 1)) >>>
+        onPreUpgrade (callback $ stableWrite (int 0) (getTimeTwice))
+      query cid (replyData (stableRead (int 0) (int (2*8)))) >>= isSameTime
+    , simpleTestCase "in post_upgrade" $ \cid -> do
+      upgrade cid $ setGlobal (getTimeTwice)
+      query cid (replyData getGlobal) >>= isSameTime
+    ]
+
   , testGroup "upgrades" $
     let installForUpgrade on_pre_upgrade = install $
             setGlobal "FOO" >>>

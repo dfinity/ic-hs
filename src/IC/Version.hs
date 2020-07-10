@@ -2,7 +2,8 @@
 module IC.Version where
 
 import Data.Text
+import SourceId
 
 specVersion, implVersion :: Text
-specVersion = "0.9"
-implVersion = "0.9"
+specVersion = "∞"
+implVersion = pack SourceId.id

@@ -4,7 +4,7 @@ mod api;
 
 // A simple dynamically typed stack
 
-enum Val { I32(u32), Blob(Vec<u8>) }
+enum Val { I32(u32), I64(u64), Blob(Vec<u8>) }
 
 struct Stack(Vec<Val>);
 
@@ -21,6 +21,10 @@ impl Stack {
         self.0.push(Val::I32(x));
     }
 
+    fn push_int64(self : &mut Self, x : u64) {
+        self.0.push(Val::I64(x));
+    }
+
     fn push_blob(self : &mut Self, x : Vec<u8>) {
         self.0.push(Val::Blob(x));
     }
@@ -30,6 +34,14 @@ impl Stack {
           i
         } else {
           api::trap_with("did not find I32 on stack")
+        }
+    }
+
+    fn pop_int64(self : &mut Self) -> u64 {
+        if let Some(Val::I64(i)) = self.0.pop() {
+          i
+        } else {
+          api::trap_with("did not find I64 on stack")
         }
     }
 
@@ -174,6 +186,15 @@ fn eval(ops : Ops) {
 
         // the pre-upgrade script
         24 => set_pre_upgrade(stack.pop_blob()),
+
+        // int64 to blob
+        25 => {
+            let i = stack.pop_int64();
+            stack.push_blob(i.to_le_bytes().to_vec())
+        }
+
+        // time
+        26 => stack.push_int64(api::time()),
 
         _ => api::trap_with(&format!("unknown op {}", op)),
       }

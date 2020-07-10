@@ -141,6 +141,7 @@ data Message
 data IC = IC
   { canisters :: CanisterId ↦ Maybe CanState
   , controllers :: CanisterId ↦ EntityId
+  , time :: CanisterId ↦ Timestamp
   , requests :: RequestID ↦ (AsyncRequest, RequestStatus)
   , messages :: Seq Message
   , call_contexts :: CallId ↦ CallContext
@@ -152,7 +153,7 @@ data IC = IC
 type ICM m = (MonadState IC m, Logger m)
 
 initialIC :: IC
-initialIC = IC mempty mempty mempty mempty mempty
+initialIC = IC mempty mempty mempty mempty mempty mempty
 
 -- Request handling
 
@@ -178,10 +179,11 @@ callerOfRequest rid = gets (M.lookup rid . requests) >>= \case
 
 -- Canister handling
 
-createEmptyCanister :: ICM m => CanisterId -> EntityId -> m ()
-createEmptyCanister cid controller = modify $ \ic -> ic
+createEmptyCanister :: ICM m => CanisterId -> EntityId -> Timestamp -> m ()
+createEmptyCanister cid controller time' = modify $ \ic -> ic
   { canisters = M.insert cid Nothing (canisters ic)
   , controllers = M.insert cid controller (controllers ic)
+  , time = M.insert cid time' (time ic)
   }
 
 insertCanister :: ICM m => CanisterId -> CanisterModule -> WasmState -> m ()
@@ -210,6 +212,11 @@ getNonemptyCanisterState :: (CanReject m, ICM m) => CanisterId -> m CanState
 getNonemptyCanisterState cid =
   getCanisterState cid
     `orElse` reject RC_DESTINATION_INVALID ("canister is empty:" ++ prettyID cid)
+
+getTime :: (ICM m) => CanisterId -> m Timestamp
+getTime cid =
+  gets (M.lookup cid . time)
+    `orElse` error "Time of non-existent canister requested"
 
 -- Authentication of requests
 
@@ -248,7 +255,9 @@ readRequest req = onReject (return . Rejected) $ case req of
     f <- return (M.lookup method (query_methods can_mod))
       `orElse` reject RC_DESTINATION_INVALID "query method does not exist"
 
-    case f user_id arg wasm_state of
+    time <- getTime canister_id
+
+    case f user_id time arg wasm_state of
       Trap msg -> reject RC_CANISTER_ERROR $ "canister trapped: " ++ msg
       Return (Reject (rc,rm)) -> reject rc rm
       Return (Reply res) -> return $ Completed (CompleteArg res)
@@ -276,7 +285,8 @@ processRequest rid req = (setReqStatus rid =<<) $ onReject (return . Rejected) $
     exists <- gets (M.member new_id . canisters)
     when exists $
       reject RC_DESTINATION_INVALID "New canister id already exists"
-    createEmptyCanister new_id user_id
+    let currentTime = 0 -- ic-ref lives in the 70ies
+    createEmptyCanister new_id user_id currentTime
     return $ Completed (CompleteCanisterId new_id)
 
   InstallRequest canister_id user_id can_mod_data dat reinstall -> do
@@ -288,7 +298,8 @@ processRequest rid req = (setReqStatus rid =<<) $ onReject (return . Rejected) $
       reject RC_DESTINATION_INVALID "canister is not empty during installation"
     when (reinstall && was_empty) $
       reject RC_DESTINATION_INVALID "canister is empty during reinstallation"
-    wasm_state <- return (init_method can_mod canister_id user_id dat)
+    time <- getTime canister_id
+    wasm_state <- return (init_method can_mod canister_id user_id time dat)
       `onTrap` (\msg -> reject RC_CANISTER_ERROR $ "Initialization trapped: " ++ msg)
     insertCanister canister_id can_mod wasm_state
     return $ Completed CompleteUnit
@@ -298,9 +309,10 @@ processRequest rid req = (setReqStatus rid =<<) $ onReject (return . Rejected) $
       `onErr` (\err -> reject RC_SYS_FATAL $ "Parsing failed: " ++ err)
     checkController canister_id user_id
     CanState old_wasm_state old_can_mod <- getNonemptyCanisterState canister_id
-    mem <- return (pre_upgrade_method old_can_mod old_wasm_state user_id)
+    time <- getTime canister_id
+    mem <- return (pre_upgrade_method old_can_mod old_wasm_state user_id time)
       `onTrap` (\msg -> reject RC_CANISTER_ERROR $ "Pre-upgrade trapped: " ++ msg)
-    new_wasm_state <- return (post_upgrade_method new_can_mod user_id user_id mem dat)
+    new_wasm_state <- return (post_upgrade_method new_can_mod canister_id user_id time mem dat)
       `onTrap` (\msg -> reject RC_CANISTER_ERROR $ "Post-upgrade trapped: " ++ msg)
     insertCanister canister_id new_can_mod new_wasm_state
     return $ Completed CompleteUnit
@@ -385,7 +397,8 @@ processMessage m = case m of
       invokeManagementCanister caller entry >>= replyCallContext ctxt_id
     else do
       cs <- getNonemptyCanisterState callee
-      invokeEntry ctxt_id cs entry >>= \case
+      time <- getTime callee
+      invokeEntry ctxt_id cs time entry >>= \case
         Trap msg -> do
           logTrap msg
           rememberTrap ctxt_id msg
@@ -428,7 +441,8 @@ managementCanister caller = empty
 icCreateCanister :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "create_canister"
 icCreateCanister caller _r = do
     new_id <- gets (freshId . M.keys . canisters)
-    createEmptyCanister new_id caller
+    let currentTime = 0 -- ic-ref lives in the 70ies
+    createEmptyCanister new_id caller currentTime
     return (#canister_id .== entityIdToPrincipal new_id)
 
 icInstallCode :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "install_code"
@@ -439,24 +453,25 @@ icInstallCode caller r = do
       `onErr` (\err -> reject RC_SYS_FATAL $ "Parsing failed: " ++ err)
     checkController canister_id caller
     was_empty <- isNothing <$> getCanisterState canister_id
+    time <- getTime canister_id
     R.switch (r .! #mode) $ R.empty
       .+ #install .== (\() -> do
         unless was_empty $
           reject RC_DESTINATION_INVALID "canister is not empty during installation"
-        wasm_state <- return (init_method new_can_mod canister_id caller arg)
+        wasm_state <- return (init_method new_can_mod canister_id caller time arg)
           `onTrap` (\msg -> reject RC_CANISTER_ERROR $ "Initialization trapped: " ++ msg)
         insertCanister canister_id new_can_mod wasm_state
       ) .+ #reinstall .== (\() -> do
         when was_empty $
           reject RC_DESTINATION_INVALID "canister is empty during reinstallation"
-        wasm_state <- return (init_method new_can_mod canister_id caller arg)
+        wasm_state <- return (init_method new_can_mod canister_id caller time arg)
           `onTrap` (\msg -> reject RC_CANISTER_ERROR $ "Initialization trapped: " ++ msg)
         insertCanister canister_id new_can_mod wasm_state
       ) .+ #upgrade .== (\() -> do
         CanState old_wasm_state old_can_mod <- getNonemptyCanisterState canister_id
-        mem <- return (pre_upgrade_method old_can_mod old_wasm_state caller)
+        mem <- return (pre_upgrade_method old_can_mod old_wasm_state caller time)
           `onTrap` (\msg -> reject RC_CANISTER_ERROR $ "Pre-upgrade trapped: " ++ msg)
-        new_wasm_state <- return (post_upgrade_method new_can_mod canister_id caller mem arg)
+        new_wasm_state <- return (post_upgrade_method new_can_mod canister_id caller time mem arg)
           `onTrap` (\msg -> reject RC_CANISTER_ERROR $ "Post-upgrade trapped: " ++ msg)
         insertCanister canister_id new_can_mod new_wasm_state
       )
@@ -477,23 +492,23 @@ checkController canister_id user_id = do
         prettyID canister_id <> ", only " <> prettyID controller <> " is"
 
 invokeEntry :: ICM m =>
-    CallId -> CanState -> EntryPoint ->
+    CallId -> CanState -> Timestamp -> EntryPoint ->
     m (TrapOr (WasmState, UpdateResult))
-invokeEntry ctxt_id (CanState wasm_state can_mod) entry = do
+invokeEntry ctxt_id (CanState wasm_state can_mod) time entry = do
     responded <- respondedCallID ctxt_id
     case entry of
       Public method dat -> do
         caller <- callerOfCallID ctxt_id
         case M.lookup method (update_methods can_mod) of
-          Just f -> return $ f caller responded dat wasm_state
+          Just f -> return $ f caller time responded dat wasm_state
           Nothing ->
             case M.lookup method (query_methods can_mod) of
-              Just f -> return $ asUpdate f caller responded dat wasm_state
+              Just f -> return $ asUpdate f caller time responded dat wasm_state
               Nothing -> do
                 let reject = Reject (RC_DESTINATION_INVALID, "method does not exist: " ++ method)
                 return $ Return (wasm_state, ([], Just reject))
       Closure cb r ->
-        return $ callbacks can_mod cb responded r wasm_state
+        return $ callbacks can_mod cb time responded r wasm_state
 
 newCall :: ICM m => CallId -> MethodCall -> m ()
 newCall from_ctxt_id call = do
@@ -539,9 +554,16 @@ popMessage = state $ \ic ->
     m :<| ms -> (Just m, ic { messages = ms })
 
 
+-- | Fake time increase
+bumpTime :: ICM m => m ()
+bumpTime = modify $ \ic -> ic { time = M.map (+1) (time ic) }
+
+
+
 -- | Returns true if a step was taken
 runStep :: ICM m => m Bool
-runStep =
+runStep = do
+  bumpTime
   nextReceived >>= \case
     Just (rid,r) -> processRequest rid r >> return True
     Nothing -> popMessage >>= \case
