@@ -37,6 +37,7 @@ mod ic0 {
         pub fn stable_grow(additional_pages: u32) -> u32;
         pub fn stable_read(dst: u32, offset: u32, size: u32) -> ();
         pub fn stable_write(offset: u32, src: u32, size: u32) -> ();
+        pub fn time() -> u64;
     }
 }
 
@@ -151,6 +152,12 @@ pub fn stable_read(offset: u32, size: u32) -> Vec<u8> {
 pub fn stable_write(offset: u32, data : &[u8]) {
     unsafe {
         ic0::stable_write(offset, data.as_ptr() as u32, data.len() as u32);
+    }
+}
+
+pub fn time() -> u64 {
+    unsafe {
+        ic0::time()
     }
 }
 

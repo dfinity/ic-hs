@@ -6,6 +6,7 @@
 module IC.Wasm.Imports where
 
 import Data.Int
+import Data.Word
 import IC.Wasm.Winter
 import Text.Printf
 import Control.Monad.Except
@@ -39,6 +40,13 @@ instance WasmArg Int32 where
   fromValue v = Left $ "expected i32, got " ++ show v
   toValue = I32
 instance WasmArgs Int32 where
+
+instance WasmArg Word64 where
+  valueType = I64Type
+  fromValue (I64 i) = Right (fromIntegral i)
+  fromValue v = Left $ "expected i64, got " ++ show v
+  toValue = I64 . fromIntegral
+instance WasmArgs Word64 where
 
 instance WasmArgs () where
     stackType = []

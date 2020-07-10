@@ -34,12 +34,12 @@ data WasmState = WasmState
     , ws_calls :: [ACall] -- in reverse order
     }
 
-initialize :: Module -> CanisterId -> EntityId -> Blob -> TrapOr WasmState
-initialize wasm_mod cid caller dat = runESST $ \esref ->
+initialize :: Module -> CanisterId -> EntityId -> Timestamp -> Blob -> TrapOr WasmState
+initialize wasm_mod cid caller time dat = runESST $ \esref ->
   rawInitialize esref cid wasm_mod >>= \case
     Trap err -> return $ Trap err
     Return rs -> do
-      let m = CI.Initialize wasm_mod caller dat
+      let m = CI.Initialize wasm_mod caller time dat
       result <- rawInvoke rs m
       let state' = WasmState wasm_mod cid [ACall m]
       case result of

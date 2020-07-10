@@ -54,6 +54,11 @@ instance ToJSON (W.Module f) where
 placeholder :: String -> a -> Value
 placeholder s = const (String (T.pack s))
 
+deriving instance Generic Timestamp
+instance ToJSON Timestamp where
+    toJSON     = genericToJSON customOptions
+    toEncoding = genericToEncoding customOptions
+
 deriving instance Generic Responded
 instance ToJSON Responded where
     toJSON     = genericToJSON customOptions

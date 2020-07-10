@@ -26,17 +26,17 @@ import qualified IC.Canister.Interface as CI
 -- Here we can swap out the persistence implementation
 import IC.Canister.Persisted
 
-type InitFunc = CanisterId -> EntityId -> Blob -> TrapOr WasmState
+type InitFunc = CanisterId -> EntityId -> Timestamp -> Blob -> TrapOr WasmState
 type UpdateFunc = WasmState -> TrapOr (WasmState, UpdateResult)
 type QueryFunc = WasmState -> TrapOr Response
 
 data CanisterModule = CanisterModule
   { init_method :: InitFunc
-  , update_methods :: MethodName ↦ (EntityId -> Responded -> Blob -> UpdateFunc)
-  , query_methods :: MethodName ↦ (EntityId -> Blob -> QueryFunc)
-  , callbacks :: Callback -> Responded -> Response -> UpdateFunc
-  , pre_upgrade_method :: WasmState -> EntityId -> TrapOr Blob
-  , post_upgrade_method :: CanisterId -> EntityId -> Blob -> Blob -> TrapOr WasmState
+  , update_methods :: MethodName ↦ (EntityId -> Timestamp -> Responded -> Blob -> UpdateFunc)
+  , query_methods :: MethodName ↦ (EntityId -> Timestamp -> Blob -> QueryFunc)
+  , callbacks :: Callback -> Timestamp -> Responded -> Response -> UpdateFunc
+  , pre_upgrade_method :: WasmState -> EntityId -> Timestamp -> TrapOr Blob
+  , post_upgrade_method :: CanisterId -> EntityId -> Timestamp -> Blob -> Blob -> TrapOr WasmState
   }
 
 instance Show CanisterModule where
@@ -50,34 +50,34 @@ parseCanister bytes =
 
 concreteToAbstractModule :: Module -> CanisterModule
 concreteToAbstractModule wasm_mod = CanisterModule
-  { init_method = \cid caller dat -> initialize wasm_mod cid caller dat
+  { init_method = \cid caller time dat -> initialize wasm_mod cid caller time dat
   , update_methods = M.fromList
     [ (m,
-      \caller responded dat wasm_state ->
-      invoke wasm_state (CI.Update m caller responded dat))
+      \caller time responded dat wasm_state ->
+      invoke wasm_state (CI.Update m caller time responded dat))
     | n <- exportedFunctions wasm_mod
     , Just m <- return $ stripPrefix "canister_update " n
     ]
   , query_methods = M.fromList
-    [ (m, \caller arg wasm_state ->
-        snd <$> invoke wasm_state (CI.Query m caller arg))
+    [ (m, \caller time arg wasm_state ->
+        snd <$> invoke wasm_state (CI.Query m caller time arg))
     | n <- exportedFunctions wasm_mod
     , Just m <- return $ stripPrefix "canister_query " n
     ]
-  , callbacks = \cb responded res wasm_state ->
-    invoke wasm_state (CI.Callback cb responded res)
-  , pre_upgrade_method = \wasm_state caller ->
-        snd <$> invoke wasm_state (CI.PreUpgrade wasm_mod caller)
-  , post_upgrade_method = \cid caller mem dat ->
-        initializeUpgrade wasm_mod cid caller mem dat
+  , callbacks = \cb time responded res wasm_state ->
+    invoke wasm_state (CI.Callback cb time responded res)
+  , pre_upgrade_method = \wasm_state caller time ->
+        snd <$> invoke wasm_state (CI.PreUpgrade wasm_mod caller time)
+  , post_upgrade_method = \cid caller time mem dat ->
+        initializeUpgrade wasm_mod cid caller time mem dat
   }
 
 -- | Turns a query function into an update function
 asUpdate ::
-  (EntityId -> Blob -> QueryFunc) ->
-  (EntityId -> Responded -> Blob -> UpdateFunc)
-asUpdate f caller (Responded responded) dat wasm_state
+  (EntityId -> Timestamp -> Blob -> QueryFunc) ->
+  (EntityId -> Timestamp -> Responded -> Blob -> UpdateFunc)
+asUpdate f caller time (Responded responded) dat wasm_state
   | responded = error "asUpdate: responded == True"
   | otherwise =
     (\res -> (wasm_state, ([], Just res))) <$>
-    f caller dat wasm_state
+    f caller time dat wasm_state
