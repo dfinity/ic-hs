@@ -5,7 +5,7 @@ Implements the special forms of ids (https://docs.dfinity.systems/public/#id-cla
 module IC.Id.Forms where
 
 import qualified Data.ByteString.Lazy as BS
-import Crypto.Hash (hashlazy, SHA256)
+import Crypto.Hash (hashlazy, SHA224)
 import Data.ByteArray (convert)
 
 type Blob = BS.ByteString
@@ -26,9 +26,8 @@ isSelfAuthenticatingId pubkey id =
     mkSelfAuthenticatingId pubkey == id
 
 mkDerivedId :: Blob -> Blob -> Blob
-mkDerivedId _ bytes | BS.length bytes /= 8 = error "mkDerivedId: Need exactly 8 extra bytes"
 mkDerivedId registering bytes =
-    h registering <> bytes <> BS.singleton 3
+    h (len_prefixed registering <> bytes) <> BS.singleton 3
 
 isDerivedId :: Blob -> Blob -> Bool
 isDerivedId registering blob =
@@ -37,4 +36,7 @@ isDerivedId registering blob =
     BS.take (256`div`8) blob == h registering
 
 h :: BS.ByteString -> BS.ByteString
-h = BS.fromStrict . convert . hashlazy @SHA256
+h = BS.fromStrict . convert . hashlazy @SHA224
+
+len_prefixed :: BS.ByteString -> BS.ByteString
+len_prefixed s = BS.singleton (fromIntegral (BS.length s)) <> s

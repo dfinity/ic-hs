@@ -64,6 +64,7 @@ common logic
   build-depends:       memory
   build-depends:       row-types
   build-depends:       candid
+  build-depends:       base32
 
 common cbor
   hs-source-dirs:      src
@@ -145,6 +146,7 @@ executable ic-ref-test
   build-depends:       hex-text
   build-depends:       crc
   build-depends:       transformers
+  build-depends:       base32
 
 test-suite unit-test
   import: cbor, ghc-flags

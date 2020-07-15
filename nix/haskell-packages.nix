@@ -8,4 +8,7 @@ nix: subpath:
   # Only the test suite of crc is broken
   # https://github.com/MichaelXavier/crc/issues/2
   crc = nix.haskell.lib.markUnbroken (nix.haskell.lib.dontCheck super.crc);
+
+  # no base32 in nixos-20.03
+  base32 = self.callHackage "base32" "0.1.1.2" {};
 }

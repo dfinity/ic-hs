@@ -1,11 +1,10 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 module IC.DRun.Parse where
 
-import qualified Data.ByteString.Lazy as B
+import qualified Data.ByteString.Lazy.Char8 as B
 import qualified Text.Hex as H
 import qualified Data.Text as T
-import Data.Char
-import Data.List
+import Data.ByteString.Base32
 import Control.Exception
 
 type MethodName = String
@@ -38,13 +37,12 @@ parseLine l = case words l of
 
 -- TODO: Implement proper and extract in own module
 parseId :: String -> Id
-parseId s
-    | "ic:" `isPrefixOf` s
-    , Just bs <- B.fromStrict <$> H.decodeHex (T.pack (drop 3 s))
-    , B.length bs > 1
-    = B.init bs
-    | otherwise
-    = error "Invalid canister id"
+parseId s = case B.fromStrict <$> decodeBase32Unpadded (B.toStrict (B.pack (filter (/= '-') s))) of
+    Right bytes ->
+        if B.length bytes >= 4
+        then B.drop 4 bytes
+        else error "Too short id"
+    Left err -> error $ "Invalid canister id: " ++ T.unpack err
 
 parseArg :: String -> Payload
 parseArg ('0':'x':xs)
@@ -57,7 +55,7 @@ parseArg ('"':xs)
     go ('\\':'x':a:b:ys)
         | Just h <- H.decodeHex (T.pack [a,b])
         = B.unpack (B.fromStrict h) ++ go ys
-    go (c:ys) = fromIntegral (ord c) : go ys
+    go (c:ys) = c : go ys
 parseArg x = error $ "Invalid argument " ++ x
 
 
