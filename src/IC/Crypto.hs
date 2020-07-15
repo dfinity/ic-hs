@@ -28,14 +28,15 @@ createSecretKey seed = sk
 
 
 toPublicKey :: SecretKey -> BS.ByteString
-toPublicKey =  BS.fromStrict . Ed25519.unPublicKey . Ed25519.toPublicKey
+toPublicKey = BS.fromStrict . Ed25519.unPublicKey . Ed25519.toPublicKey
 
-sign :: SecretKey -> BS.ByteString -> BS.ByteString
-sign sk payload = BS.fromStrict $ Ed25519.unSignature $ Ed25519.dsign sk $ BS.toStrict payload
+sign :: BS.ByteString -> SecretKey -> BS.ByteString -> BS.ByteString
+sign domain_sep sk payload =
+    BS.fromStrict $ Ed25519.unSignature $ Ed25519.dsign sk $ BS.toStrict (domain_sep <> payload)
 
 
-verify :: BS.ByteString -> BS.ByteString -> BS.ByteString -> Either T.Text ()
-verify pk payload sig = do
+verify :: BS.ByteString -> BS.ByteString -> BS.ByteString -> BS.ByteString -> Either T.Text ()
+verify domain_sep pk payload sig = do
     unless (BS.length pk == 32) $
         throwError $ "public key has wrong length " <> T.pack (show (BS.length pk)) <> ", expected 32"
     let pk' = Ed25519.PublicKey (BS.toStrict pk)
@@ -44,7 +45,10 @@ verify pk payload sig = do
         throwError $ "signature has wrong length " <> T.pack (show (BS.length pk)) <> ", expected 64"
     let sig' = Ed25519.Signature (BS.toStrict sig)
 
-    unless (Ed25519.dverify pk' (BS.toStrict payload) sig') $
+    when (Ed25519.dverify pk' (BS.toStrict payload) sig') $
+        throwError $ "domain separator " <> T.pack (show domain_sep) <> " missing"
+
+    unless (Ed25519.dverify pk' (BS.toStrict (domain_sep <> payload)) sig') $
         throwError "signature verification failed"
 
 
