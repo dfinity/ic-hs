@@ -44,6 +44,7 @@ asyncRequest = record $ do
 syncRequest :: GenR -> Either T.Text SyncRequest
 syncRequest = record $ do
     t <- field text "request_type"
+    _ <- optionalField blob "nonce"
     case t of
         "request_status" -> do
             rid <- field blob "request_id"

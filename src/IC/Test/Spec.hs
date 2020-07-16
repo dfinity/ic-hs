@@ -747,16 +747,16 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
     , ("with no domain separator", noDomainSepEnv defaultSK)
     ] <&> \(name, env) -> testGroup name
       [ simpleTestCase "in query" $ \cid -> do
-        let query = rec
+        req <- addNonce $ rec
               [ "request_type" =: GText "query"
               , "sender" =: GBlob defaultUser
               , "canister_id" =: GBlob cid
               , "method_name" =: GText "query"
               , "arg" =: GBlob (run reply)
               ]
-        r <- readCBOR query >>= callReply
+        r <- readCBOR req >>= callReply
         r @?= ""
-        postCBOR "/api/v1/read" (env query) >>= code4xx
+        postCBOR "/api/v1/read" (env req) >>= code4xx
 
       , testCase "in unknown request status" $
           postCBOR "/api/v1/read" (env requestStatusNonExistant) >>= code4xx
@@ -845,9 +845,12 @@ postCBOR path gr = do
   where
     Endpoint ep = endPoint
 
--- | Add envelope to CBOR request, post to "read", return decoded CBOR
+-- | Add envelope to CBOR request, add a nonce if it is not there,
+-- post to "read", return decoded CBOR
 readCBOR :: HasEndpoint => GenR -> IO GenR
-readCBOR req = postCBOR "/api/v1/read" (envelope (chooseKey req) req) >>= okCBOR
+readCBOR req = do
+  req <- addNonce req
+  postCBOR "/api/v1/read" (envelope (chooseKey req) req) >>= okCBOR
 
 -- | Add envelope to CBOR, and a nonce if not there, post to "submit", poll for
 -- the request response, and return decoded CBOR

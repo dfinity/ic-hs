@@ -3,14 +3,18 @@
 {-# LANGUAGE DeriveFunctor #-}
 module IC.Types where
 
-import qualified Data.ByteString.Lazy as BS
+import qualified Data.ByteString.Lazy.Char8 as BS
+import qualified Data.ByteString.Builder as BS
 import qualified Data.Map as M
 import qualified Data.Text as T
 import qualified Text.Hex as T
 import Data.Digest.CRC
-import Data.Digest.CRC8
+import Data.Digest.CRC32
+import Data.ByteString.Base32
 import Data.Int
 import Data.Word
+import Data.List
+import Data.List.Split (chunksOf)
 
 type (↦) = M.Map
 
@@ -31,9 +35,13 @@ prettyBlob b = "0x" ++ T.unpack (T.encodeHex (BS.toStrict b))
 
 prettyID :: EntityId -> String
 prettyID (EntityId blob) =
-    "ic:" <> T.unpack (T.encodeHex (BS.toStrict (blob <> BS.singleton checksum)))
+    intercalate "-" (chunksOf 5 (base32 (checkbytes <> blob)))
   where
-    CRC8 checksum = digest (BS.toStrict blob)
+    CRC32 checksum = digest (BS.toStrict blob)
+    checkbytes = BS.toLazyByteString (BS.word32BE checksum)
+
+    base32 = filter (/='=') . T.unpack . T.toLower . encodeBase32 . BS.toStrict
+
 
 newtype Responded = Responded Bool
   deriving Show
