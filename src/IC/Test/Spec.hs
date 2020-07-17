@@ -170,10 +170,6 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
       step "Create"
       can_id <- ic_create ic00
 
-      step "Reinstall fails"
-      ic_install' ic00 (V.IsJust #reinstall ()) can_id trivialWasmModule ""
-        >>= statusReject [3,5]
-
       step "Install"
       ic_install ic00 (V.IsJust #install ()) can_id trivialWasmModule ""
 
@@ -201,6 +197,13 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
       step "Reinstall as new controller"
       ic_install (ic00as otherUser) (V.IsJust #reinstall ()) can_id trivialWasmModule ""
 
+  , testCaseSteps "reinstall on empty" $ \step -> do
+      step "Create"
+      can_id <- ic_create ic00
+
+      step "Reinstall over empty canister"
+      ic_install ic00 (V.IsJust #reinstall ()) can_id trivialWasmModule ""
+
   , testCaseSteps "ic:00 (inter-canister)" $ \step -> do
     let
       ic00via :: Blob -> IC00
@@ -219,10 +222,6 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
 
     step "Create"
     can_id <- ic_create (ic00via cid)
-
-    step "Reinstall fails"
-    ic_install' (ic00via cid) (V.IsJust #reinstall ()) can_id trivialWasmModule ""
-      >>= statusRelayReject [3,5]
 
     step "Install"
     ic_install (ic00via cid) (V.IsJust #install ()) can_id trivialWasmModule ""
@@ -251,6 +250,11 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
     step "Reinstall as new controller"
     ic_install (ic00via cid2) (V.IsJust #reinstall ()) can_id trivialWasmModule ""
 
+    step "Create"
+    can_id2 <- ic_create (ic00via cid)
+
+    step "Reinstall on empty"
+    ic_install (ic00via cid) (V.IsJust #reinstall ()) can_id2 trivialWasmModule ""
 
   , simpleTestCase "create and install" $ \_ ->
       return ()
