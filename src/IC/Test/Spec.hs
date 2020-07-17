@@ -208,13 +208,13 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
       step "Reinstall as new controller"
       ic_install (ic00as otherUser) (V.IsJust #reinstall ()) can_id trivialWasmModule ""
 
-  , testCaseSteps "ic:00 (inter-canister)" $ \step -> do
+  , testCaseSteps "aaaaa-aa (inter-canister)" $ \step -> do
     let
       ic00via :: Blob -> IC00
       ic00via cid method_name arg =
         call' cid $
           call_simple
-              (bytes "") -- ic:00
+              (bytes "") -- aaaaa-aa
               (bytes (BS.fromStrict (T.encodeUtf8 method_name)))
               (callback replyArgData)
               (callback replyRejectData)
@@ -992,7 +992,7 @@ code4xx_or_unknown response
   c = statusCode (responseStatus response)
   msg = T.unpack (T.decodeUtf8With T.lenientDecode (BS.toStrict (BS.take 200 (responseBody response))))
 
--- * Interacting with ic:00 (via HTTP)
+-- * Interacting with aaaaa-aa (via HTTP)
 
 -- how to reach the management canister
 type IC00 = T.Text -> Blob -> IO GenR
