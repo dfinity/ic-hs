@@ -296,8 +296,6 @@ processRequest rid req = (setReqStatus rid =<<) $ onReject (return . Rejected) $
     was_empty <- isNothing <$> getCanisterState canister_id
     when (not reinstall && not was_empty) $
       reject RC_DESTINATION_INVALID "canister is not empty during installation"
-    when (reinstall && was_empty) $
-      reject RC_DESTINATION_INVALID "canister is empty during reinstallation"
     time <- getTime canister_id
     wasm_state <- return (init_method can_mod canister_id user_id time dat)
       `onTrap` (\msg -> reject RC_CANISTER_ERROR $ "Initialization trapped: " ++ msg)
@@ -462,8 +460,6 @@ icInstallCode caller r = do
           `onTrap` (\msg -> reject RC_CANISTER_ERROR $ "Initialization trapped: " ++ msg)
         insertCanister canister_id new_can_mod wasm_state
       ) .+ #reinstall .== (\() -> do
-        when was_empty $
-          reject RC_DESTINATION_INVALID "canister is empty during reinstallation"
         wasm_state <- return (init_method new_can_mod canister_id caller time arg)
           `onTrap` (\msg -> reject RC_CANISTER_ERROR $ "Initialization trapped: " ++ msg)
         insertCanister canister_id new_can_mod wasm_state
