@@ -107,6 +107,7 @@ rec {
     FONTCONFIG_FILE = nixpkgs.makeFontsConf { fontDirectories = []; };
     asciidoctor_args = [
       "-r asciidoctor-diagram"
+      "-a sectanchors"
       "-a plantuml-format=svg"
       "-a ditaa-format=svg"
       "-a graphviz-format=svg"
