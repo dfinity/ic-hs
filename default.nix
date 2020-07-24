@@ -29,7 +29,7 @@ let haskellPackages = nixpkgs.haskellPackages.override {
 }; in
 
 let
-  ic-ref = nixpkgs.haskell.lib.dontCheck (
+  ic-ref = nixpkgs.haskell.lib.dontCheck (nixpkgs.haskell.lib.justStaticExecutables (
     haskellPackages.ic-ref.overrideAttrs (old: {
       installPhase = (old.installPhase or "") + ''
         cp -rv test-data $out/test-data
@@ -38,7 +38,7 @@ let
         cp ${universal-canister}/universal_canister.wasm $out/test-data
       '';
     })
-  );
+  ));
 
   # We run the unit test suite only as part of coverage checking (saves time)
   ic-ref-coverage = nixpkgs.haskell.lib.doCheck (nixpkgs.haskell.lib.doCoverage ic-ref);
