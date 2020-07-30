@@ -6,10 +6,10 @@
         "homepage": null,
         "owner": "nomeata",
         "repo": "haskell-candid",
-        "rev": "79e368f049043b6ed438ef498a6640ef6ee7eef4",
-        "sha256": "0w1hqwf15npq4xgzqf5wf7mw1dg67h0l7q4l5ffdvk7g0cr32laa",
+        "rev": "1a0959c0eb66beada6db9ccbcbdbf466da175e8f",
+        "sha256": "0zjdpny9dlxvjhap7jarwjzwz5g03gwndl0i9xhh0p28a4zlhsyz",
         "type": "tarball",
-        "url": "https://github.com/nomeata/haskell-candid/archive/79e368f049043b6ed438ef498a6640ef6ee7eef4.tar.gz",
+        "url": "https://github.com/nomeata/haskell-candid/archive/1a0959c0eb66beada6db9ccbcbdbf466da175e8f.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "leb128-cereal": {
@@ -55,13 +55,13 @@
         "branch": "master",
         "builtin": false,
         "description": "Haskell port of the WebAssembly OCaml reference interpreter",
-        "homepage": "https://github.com/WebAssembly/spec/tree/master/interpreter",
+        "homepage": "https://github.com/dfinity-side-projects/winter",
         "owner": "dfinity-side-projects",
         "repo": "winter",
-        "rev": "451e375b27917f30e15ba11d48ec62eb2bb46dc7",
-        "sha256": "1km1l6w8fqn4gazm4w7h3h4aawkpisdw0x9fzc753v3qzwl75gqq",
+        "rev": "0020c2fbe8ef01538bb7b1add43714f0ddba545e",
+        "sha256": "1p2m6jgwrm97lq8zzl6wqdif4k01ja9wb70nzv1pnz5b11nflc36",
         "type": "tarball",
-        "url": "https://github.com/dfinity-side-projects/winter/archive/451e375b27917f30e15ba11d48ec62eb2bb46dc7.tar.gz",
+        "url": "https://github.com/dfinity-side-projects/winter/archive/0020c2fbe8ef01538bb7b1add43714f0ddba545e.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     }
 }
