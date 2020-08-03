@@ -17,7 +17,6 @@ CBOR-level processing has already happened.
 -}
 module IC.Ref
   ( IC(..)
-  , IDChoice(..)
   , AsyncRequest(..)
   , callerOfAsync
   , SyncRequest(..)
@@ -61,17 +60,8 @@ import IC.Management
 
 -- Abstract HTTP Interface
 
-data IDChoice
-    = SystemPicks
-    | ForcedChoice CanisterId -- ^ only for use from ic-ref-run
-  deriving (Eq, Ord, Show)
-
--- Since #76 only used by ic-ref-run; to be refactored
 data AsyncRequest
-    = CreateRequest UserId IDChoice
-    | InstallRequest CanisterId UserId Blob Blob Bool
-    | UpgradeRequest CanisterId UserId Blob Blob
-    | UpdateRequest CanisterId UserId MethodName Blob
+    = UpdateRequest CanisterId UserId MethodName Blob
   deriving (Eq, Ord, Show)
 
 data SyncRequest
@@ -167,9 +157,6 @@ setReqStatus rid s = modify $ \ic ->
 
 callerOfAsync :: AsyncRequest -> EntityId
 callerOfAsync = \case
-    CreateRequest user_id _ -> user_id
-    InstallRequest _ user_id _ _ _ -> user_id
-    UpgradeRequest _ user_id _ _ -> user_id
     UpdateRequest _ user_id _ _ -> user_id
 
 callerOfRequest :: ICM m => RequestID -> m EntityId
@@ -292,49 +279,6 @@ submitRequest rid r = modify $ \ic ->
 processRequest :: ICM m => RequestID -> AsyncRequest -> m ()
 
 processRequest rid req = (setReqStatus rid =<<) $ onReject (return . Rejected) $ case req of
-  CreateRequest user_id id_choice -> do
-    new_id <- case id_choice of
-      SystemPicks -> gets (freshId . M.keys . canisters)
-      ForcedChoice id -> return id
-    exists <- gets (M.member new_id . canisters)
-    when exists $
-      reject RC_DESTINATION_INVALID "New canister id already exists"
-    let currentTime = 0 -- ic-ref lives in the 70ies
-    createEmptyCanister new_id user_id currentTime
-    return $ Completed (CompleteCanisterId new_id)
-
-  InstallRequest canister_id user_id can_mod_data dat reinstall -> do
-    can_mod <- return (parseCanister can_mod_data)
-      `onErr` (\err -> reject RC_SYS_FATAL $ "Parsing failed: " ++ err)
-    checkController canister_id user_id
-    was_empty <- isCanisterEmpty canister_id
-    when (not reinstall && not was_empty) $
-      reject RC_DESTINATION_INVALID "canister is not empty during installation"
-    time <- getCanisterTime canister_id
-    wasm_state <- return (init_method can_mod canister_id user_id time dat)
-      `onTrap` (\msg -> reject RC_CANISTER_ERROR $ "Initialization trapped: " ++ msg)
-    setCanisterModule canister_id can_mod
-    setCanisterState canister_id wasm_state
-    return $ Completed CompleteUnit
-
-  UpgradeRequest canister_id user_id new_can_mod_data dat -> do
-    new_can_mod <- return (parseCanister new_can_mod_data)
-      `onErr` (\err -> reject RC_SYS_FATAL $ "Parsing failed: " ++ err)
-    checkController canister_id user_id
-    was_empty <- isCanisterEmpty canister_id
-    when was_empty $
-      reject RC_DESTINATION_INVALID "canister is empty during upgrade"
-    old_wasm_state <- getCanisterState canister_id
-    old_can_mod <- getCanisterMod canister_id
-    time <- getCanisterTime canister_id
-    mem <- return (pre_upgrade_method old_can_mod old_wasm_state user_id time)
-      `onTrap` (\msg -> reject RC_CANISTER_ERROR $ "Pre-upgrade trapped: " ++ msg)
-    new_wasm_state <- return (post_upgrade_method new_can_mod canister_id user_id time mem dat)
-      `onTrap` (\msg -> reject RC_CANISTER_ERROR $ "Post-upgrade trapped: " ++ msg)
-    setCanisterModule canister_id new_can_mod
-    setCanisterState canister_id new_wasm_state
-    return $ Completed CompleteUnit
-
   UpdateRequest canister_id _user_id method arg -> do
     ctxt_id <- newCallContext $ CallContext
       { canister = canister_id
