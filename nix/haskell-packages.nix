@@ -4,6 +4,8 @@ nix: subpath:
   ic-ref = super.callPackage generated/ic-ref.nix {};
   leb128-cereal = super.callPackage generated/leb128-cereal.nix {};
   candid = super.callPackage generated/candid.nix {};
+  base32 = super.callPackage generated/base32.nix {};
+  megaparsec = super.callPackage generated/megaparsec.nix {};
 
   # Only the test suite of crc is broken
   # https://github.com/MichaelXavier/crc/issues/2
