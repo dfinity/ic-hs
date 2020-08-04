@@ -140,6 +140,14 @@ work msg_file = do
           .+ #wasm_module .== wasm
           .+ #arg .== arg
           .+ #compute_allocation .== Nothing
+      Reinstall cid filename arg -> do
+        wasm <- liftIO $ B.readFile filename
+        callManagement getRid user_id #install_code $ empty
+          .+ #mode .== V.IsJust #reinstall ()
+          .+ #canister_id .== Candid.Principal cid
+          .+ #wasm_module .== wasm
+          .+ #arg .== arg
+          .+ #compute_allocation .== Nothing
       Upgrade cid filename arg -> do
         wasm <- liftIO $ B.readFile filename
         callManagement getRid user_id #install_code $ empty
