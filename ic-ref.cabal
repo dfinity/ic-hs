@@ -101,6 +101,7 @@ executable ic-ref-run
   hs-source-dirs:      src
   other-modules:       IC.DRun.Parse
   build-depends:       optparse-applicative
+  build-depends:       prettyprinter
 
 executable ic-ref
   import: version, logic, cbor, ghc-flags
