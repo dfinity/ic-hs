@@ -48,13 +48,13 @@ dummyRequestId = B.fromStrict . T.encodeUtf8 . T.pack . show
 
 printAsyncRequest :: AsyncRequest -> IO ()
 printAsyncRequest (UpdateRequest _ _ method arg) =
-    printf "→ update %s(%s)\n" method (shorten (candidOrPretty arg))
+    printf "→ update %s%s\n" method (shorten (candidOrPretty arg))
 
 printSyncRequest :: SyncRequest -> IO ()
 printSyncRequest (StatusRequest rid) =
     printf "→ status? %s\n" (candidOrPretty rid)
 printSyncRequest (QueryRequest _ _ method arg) =
-    printf "→ query %s(%s)\n" method (shorten (candidOrPretty arg))
+    printf "→ query %s%s\n" method (shorten (candidOrPretty arg))
 
 printReqStatus :: RequestStatus -> IO ()
 printReqStatus Unknown =
@@ -78,7 +78,7 @@ candidOrPretty b
   , Right vs <- Candid.decodeVals b
   = show (pretty vs)
   | otherwise
-  = prettyBlob b
+  = "(" ++ prettyBlob b ++ ")"
 
 
 shorten :: String -> String
