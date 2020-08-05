@@ -30,7 +30,7 @@ module IC.Ref
   , readRequest
   , runStep
   , runToCompletion
-  -- $ Exported merely for introspection
+  -- $ Exported merely for debug introspection
   , CallContext(..)
   , Message(..)
   , CanState(..)
@@ -43,6 +43,7 @@ import qualified Data.Map as M
 import qualified Data.Row as R
 import qualified Data.Text as T
 import Data.Maybe
+import Control.Monad.Trans.Maybe
 import Control.Monad.State.Class
 import Control.Monad.Except
 import Data.Sequence (Seq(..))
@@ -178,41 +179,52 @@ createEmptyCanister cid controller time = modify $ \ic ->
       , time = time
       }
 
-getCanister :: (CanReject m, ICM m) => CanisterId -> m CanState
-getCanister cid =
-  gets (M.lookup cid . canisters)
-    `orElse` reject RC_DESTINATION_INVALID ("canister does not exist: " ++ prettyID cid)
-
-modCanister :: (CanReject m, ICM m) => CanisterId -> (CanState -> CanState) -> m ()
-modCanister cid f = do
-    void $ getCanister cid
-    modify $ \ic -> ic { canisters = M.adjust f cid (canisters ic) }
-
-setCanisterModule :: (CanReject m, ICM m) => CanisterId -> CanisterModule -> m ()
-setCanisterModule cid can_mod = modCanister cid $
-    \cs -> cs { can_mod = Just can_mod }
-
-setCanisterState :: (CanReject m, ICM m) => CanisterId -> WasmState -> m ()
-setCanisterState cid wasm_state = modCanister cid $
-    \cs -> cs { wasm_state = Just wasm_state }
-
-getController :: (CanReject m, ICM m) => CanisterId -> m EntityId
-getController cid = controller <$> getCanister cid
-
-setController :: (CanReject m, ICM m) => CanisterId -> EntityId -> m ()
-setController cid controller = modCanister cid $
-    \cs -> cs { controller = controller }
+canisterMustExist :: (CanReject m, ICM m) => CanisterId -> m ()
+canisterMustExist cid =
+  gets (M.lookup cid . canisters) >>= \case
+    Nothing ->
+      reject RC_DESTINATION_INVALID ("canister does not exist: " ++ prettyID cid)
+    _ -> return ()
 
 isCanisterEmpty :: (CanReject m, ICM m) => CanisterId -> m Bool
 isCanisterEmpty cid = isNothing . wasm_state <$> getCanister cid
 
-getCanisterState :: (CanReject m, ICM m) => CanisterId -> m WasmState
+
+-- the following functions assume the canister does exist;
+-- it would be an internal error if they dont
+
+getCanister :: ICM m => CanisterId -> m CanState
+getCanister cid =
+  gets (M.lookup cid . canisters)
+    `orElse` error "canister does not exist"
+
+modCanister :: ICM m => CanisterId -> (CanState -> CanState) -> m ()
+modCanister cid f = do
+    void $ getCanister cid
+    modify $ \ic -> ic { canisters = M.adjust f cid (canisters ic) }
+
+setCanisterModule :: ICM m => CanisterId -> CanisterModule -> m ()
+setCanisterModule cid can_mod = modCanister cid $
+    \cs -> cs { can_mod = Just can_mod }
+
+setCanisterState :: ICM m => CanisterId -> WasmState -> m ()
+setCanisterState cid wasm_state = modCanister cid $
+    \cs -> cs { wasm_state = Just wasm_state }
+
+getController :: ICM m => CanisterId -> m EntityId
+getController cid = controller <$> getCanister cid
+
+setController :: ICM m => CanisterId -> EntityId -> m ()
+setController cid controller = modCanister cid $
+    \cs -> cs { controller = controller }
+
+getCanisterState :: ICM m => CanisterId -> m WasmState
 getCanisterState cid = fromJust . wasm_state <$> getCanister cid
 
-getCanisterMod :: (CanReject m, ICM m) => CanisterId -> m CanisterModule
+getCanisterMod :: ICM m => CanisterId -> m CanisterModule
 getCanisterMod cid = fromJust . can_mod <$> getCanister cid
 
-getCanisterTime :: (CanReject m, ICM m) => CanisterId -> m Timestamp
+getCanisterTime :: ICM m => CanisterId -> m Timestamp
 getCanisterTime cid = time <$> getCanister cid
 
 -- Authentication of requests
@@ -248,6 +260,7 @@ readRequest req = onReject (return . Rejected) $ case req of
       Nothing -> return Unknown
 
   QueryRequest canister_id user_id method arg -> do
+    canisterMustExist canister_id
     empty <- isCanisterEmpty canister_id
     when empty $ reject RC_DESTINATION_INVALID "canister is empty"
     wasm_state <- getCanisterState canister_id
@@ -276,9 +289,8 @@ submitRequest rid r = modify $ \ic ->
 
 -- | Eventually, they are processed
 
-processRequest :: ICM m => RequestID -> AsyncRequest -> m ()
-
-processRequest rid req = (setReqStatus rid =<<) $ onReject (return . Rejected) $ case req of
+processRequest :: ICM m => (RequestID, AsyncRequest) -> m ()
+processRequest (rid, req) = onReject (setReqStatus rid . Rejected) $ case req of
   UpdateRequest canister_id _user_id method arg -> do
     ctxt_id <- newCallContext $ CallContext
       { canister = canister_id
@@ -290,7 +302,7 @@ processRequest rid req = (setReqStatus rid =<<) $ onReject (return . Rejected) $
       { call_context = ctxt_id
       , entry = Public method arg
       }
-    return Processing
+    setReqStatus rid Processing
 
 -- Call context handling
 
@@ -356,8 +368,12 @@ processMessage m = case m of
     if callee == managementCanisterId
     then do
       caller <- callerOfCallID ctxt_id
-      invokeManagementCanister caller entry >>= replyCallContext ctxt_id
+      rejectAsCanister $ do
+        -- using MaybeT to signal that no resonse is to be sent yet
+        r <- runMaybeT $ invokeManagementCanister caller ctxt_id entry
+        forM_ r $ replyCallContext ctxt_id
     else do
+      canisterMustExist callee
       empty <- isCanisterEmpty callee
       when empty $ reject RC_DESTINATION_INVALID "canister is empty"
       wasm_state <- getCanisterState callee
@@ -388,20 +404,20 @@ processMessage m = case m of
 managementCanisterId :: EntityId
 managementCanisterId = EntityId mempty
 
-invokeManagementCanister :: (CanReject m, ICM m) => EntityId -> EntryPoint -> m Blob
-invokeManagementCanister caller = \case
+invokeManagementCanister :: (CanReject m, ICM m) => EntityId -> CallId -> EntryPoint -> MaybeT m Blob
+invokeManagementCanister caller cid = \case
     Public method_name arg -> raw_service (T.pack method_name) arg
     Closure{} -> error "closure invoked on management function "
   where
-    raw_service = fromCandidService not_found err (managementCanister caller)
-    not_found f =  reject RC_DESTINATION_INVALID $ "Unsupported management function " ++ T.unpack f
+    raw_service = fromCandidService not_found err (managementCanister caller cid)
+    not_found f = reject RC_DESTINATION_INVALID $ "Unsupported management function " ++ T.unpack f
     err msg = reject RC_CANISTER_ERROR $ "Candid failed to decode: " ++ msg
 
-managementCanister :: (CanReject m, ICM m) => EntityId -> Rec (ICManagement m)
-managementCanister caller = empty
-    .+ #create_canister .== rejectAsCanister . icCreateCanister caller
-    .+ #install_code .== rejectAsCanister . icInstallCode caller
-    .+ #set_controller .== rejectAsCanister . icSetController caller
+managementCanister :: (CanReject m, ICM m) => EntityId -> CallId -> Rec (ICManagement (MaybeT m))
+managementCanister caller _ctxt_id = empty
+    .+ #create_canister .== icCreateCanister caller
+    .+ #install_code    .== icInstallCode caller
+    .+ #set_controller  .== icSetController caller
 
 icCreateCanister :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "create_canister"
 icCreateCanister caller _r = do
@@ -416,6 +432,7 @@ icInstallCode caller r = do
     let arg = r .! #arg
     new_can_mod <- return (parseCanister (r .! #wasm_module))
       `onErr` (\err -> reject RC_SYS_FATAL $ "Parsing failed: " ++ err)
+    canisterMustExist canister_id
     checkController canister_id caller
     was_empty <- isCanisterEmpty canister_id
     time <- getCanisterTime canister_id
@@ -453,6 +470,7 @@ icSetController :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "set_co
 icSetController caller r = do
     let canister_id = principalToEntityId (r .! #canister_id)
     let new_controller = principalToEntityId (r .! #new_controller)
+    canisterMustExist canister_id
     checkController canister_id caller
     setController canister_id new_controller
 
@@ -503,20 +521,25 @@ nextReceived :: ICM m => m (Maybe (RequestID, AsyncRequest))
 nextReceived = gets $ \ic -> listToMaybe
   [ (rid,r) | (rid, (r, Received)) <- M.toList (requests ic) ]
 
+-- A call context is still waiting for a response if…
+willReceiveResponse :: IC -> CallId -> Bool
+willReceiveResponse ic c = c `elem`
+  -- there is another call context promising to respond to this
+  [ c'
+  | CallContext { responded = Responded False, origin = FromCanister c' _}
+      <- M.elems (call_contexts ic)
+  ] ++
+  -- there is an in-flight call or response message:
+  [ call_context m | m <- toList (messages ic) ]
+  -- NB: this could be implemented more efficient if kepts a counter of
+  -- outstanding calls in each call context
+
 -- | Find a starved call context
 nextStarved :: ICM m => m (Maybe CallId)
 nextStarved = gets $ \ic -> listToMaybe
   [ c
-  | (c, ctxt) <- M.toList (call_contexts ic)
-  , Responded False <- return $ responded ctxt
-  , null [ ()
-      | ResponseMessage { call_context = c' } <- toList (messages ic)
-      , c' == c ]
-  , null [ ()
-      | CallContext { responded = Responded False, origin = FromCanister c' _}
-          <- M.elems (call_contexts ic)
-      , c' == c
-      ]
+  | (c, CallContext { responded = Responded False } ) <- M.toList (call_contexts ic)
+  , not $ willReceiveResponse ic c
   ]
 
 -- | Pick (and remove) next message from queue
@@ -537,13 +560,14 @@ bumpTime = modify $
 runStep :: ICM m => m Bool
 runStep = do
   bumpTime
-  nextReceived >>= \case
-    Just (rid,r) -> processRequest rid r >> return True
-    Nothing -> popMessage >>= \case
-      Just m  -> processMessage m >> return True
-      Nothing -> nextStarved >>= \case
-        Just c  -> starveCallContext c >> return True
-        Nothing -> return False
+  try
+    [ with nextReceived processRequest
+    , with popMessage processMessage
+    , with nextStarved starveCallContext
+    ]
+  where
+    try = foldr (\g r -> g >>= \case True -> return True; False -> r) (return False)
+    with sel act = sel >>= maybe (return False) (\x -> act x >> return True)
 
 runToCompletion :: ICM m => m ()
 runToCompletion = repeatWhileTrue runStep
