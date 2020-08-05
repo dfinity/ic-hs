@@ -1,11 +1,19 @@
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE OverloadedLabels #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeOperators #-}
+
 module Main where
 
-import Options.Applicative
-import Control.Monad (join, forM_)
+import Options.Applicative hiding (empty)
+import Control.Monad
 import qualified Data.ByteString.Lazy as B
+import qualified Data.ByteString.Lazy.Char8 as BC
 import qualified Data.ByteString.Builder as B
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
@@ -13,11 +21,20 @@ import Control.Monad.Trans
 import Control.Monad.Trans.State
 import Text.Printf
 import Data.IORef
+import Data.Text.Prettyprint.Doc (pretty)
+
+import GHC.TypeLits (KnownSymbol, symbolVal)
+import Data.Row (empty, (.==), (.+), type (.!), Label)
+import qualified Codec.Candid as Candid
+import qualified Data.Row.Variants as V
+
 
 import IC.Version
 import IC.Types
 import IC.Ref
 import IC.DRun.Parse (Ingress(..), parseFile)
+import IC.Management
+
 
 type DRun = StateT IC IO
 
@@ -30,20 +47,14 @@ dummyRequestId :: AsyncRequest -> RequestID
 dummyRequestId = B.fromStrict . T.encodeUtf8 . T.pack . show
 
 printAsyncRequest :: AsyncRequest -> IO ()
-printAsyncRequest CreateRequest{} =
-    printf "→ create\n"
-printAsyncRequest InstallRequest{} =
-    printf "→ install\n"
-printAsyncRequest UpgradeRequest{} =
-    printf "→ upgrade\n"
 printAsyncRequest (UpdateRequest _ _ method arg) =
-    printf "→ update %s(%s)\n" method (prettyBlob arg)
+    printf "→ update %s%s\n" method (shorten (candidOrPretty arg))
 
 printSyncRequest :: SyncRequest -> IO ()
 printSyncRequest (StatusRequest rid) =
-    printf "→ status? %s\n" (prettyBlob rid)
+    printf "→ status? %s\n" (candidOrPretty rid)
 printSyncRequest (QueryRequest _ _ method arg) =
-    printf "→ query %s(%s)\n" method (prettyBlob arg)
+    printf "→ query %s%s\n" method (shorten (candidOrPretty arg))
 
 printReqStatus :: RequestStatus -> IO ()
 printReqStatus Unknown =
@@ -59,8 +70,20 @@ printReqStatus (Completed CompleteUnit) =
 printReqStatus (Completed (CompleteCanisterId id)) =
     printf "← completed: canister-id = %s\n" (prettyID id)
 printReqStatus (Completed (CompleteArg blob)) =
-    printf "← completed: %s\n" (prettyBlob blob)
+    printf "← completed: %s\n" (shorten (candidOrPretty blob))
 
+candidOrPretty :: Blob -> String
+candidOrPretty b
+  | BC.pack "DIDL" `B.isPrefixOf` b
+  , Right vs <- Candid.decodeVals b
+  = show (pretty vs)
+  | otherwise
+  = "(" ++ prettyBlob b ++ ")"
+
+
+shorten :: String -> String
+shorten s = a ++ (if null b then "" else "…")
+  where (a,b) = splitAt 100 s
 
 
 submitAndRun :: IO RequestID -> AsyncRequest -> DRun ReqResponse
@@ -88,6 +111,16 @@ newRequestIdProvider = do
     i <- readIORef ref
     return $ B.toLazyByteString $ B.word64BE i
 
+callManagement :: forall s a b.
+  KnownSymbol s =>
+  (a -> IO b) ~ (ICManagement IO .! s) =>
+  Candid.CandidArg a =>
+  IO RequestID -> EntityId -> Label s -> a -> StateT IC IO ()
+callManagement getRid user_id l x =
+  void $ submitAndRun getRid $
+    UpdateRequest (EntityId mempty) user_id (symbolVal l) (Candid.encode x)
+
+
 work :: FilePath -> IO ()
 work msg_file = do
   msgs <- parseFile msg_file
@@ -97,15 +130,36 @@ work msg_file = do
 
   flip evalStateT initialIC $
     forM_ msgs $ \case
+      Create ->
+        callManagement getRid user_id #create_canister ()
       Install cid filename arg -> do
         wasm <- liftIO $ B.readFile filename
-        _ <- submitAndRun getRid (CreateRequest user_id (ForcedChoice (EntityId cid)))
-        submitAndRun getRid (InstallRequest (EntityId cid) user_id wasm arg False)
+        callManagement getRid user_id #install_code $ empty
+          .+ #mode .== V.IsJust #install ()
+          .+ #canister_id .== Candid.Principal cid
+          .+ #wasm_module .== wasm
+          .+ #arg .== arg
+          .+ #compute_allocation .== Nothing
+      Reinstall cid filename arg -> do
+        wasm <- liftIO $ B.readFile filename
+        callManagement getRid user_id #install_code $ empty
+          .+ #mode .== V.IsJust #reinstall ()
+          .+ #canister_id .== Candid.Principal cid
+          .+ #wasm_module .== wasm
+          .+ #arg .== arg
+          .+ #compute_allocation .== Nothing
       Upgrade cid filename arg -> do
         wasm <- liftIO $ B.readFile filename
-        submitAndRun getRid (UpgradeRequest (EntityId cid) user_id wasm arg)
-      Query  cid method arg -> submitRead  (QueryRequest (EntityId cid) user_id method arg)
-      Update cid method arg -> submitAndRun getRid (UpdateRequest (EntityId cid) user_id method arg)
+        callManagement getRid user_id #install_code $ empty
+          .+ #mode .== V.IsJust #upgrade ()
+          .+ #canister_id .== Candid.Principal cid
+          .+ #wasm_module .== wasm
+          .+ #arg .== arg
+          .+ #compute_allocation .== Nothing
+      Query  cid method arg ->
+        void $ submitRead  (QueryRequest (EntityId cid) user_id method arg)
+      Update cid method arg ->
+        void $ submitAndRun getRid (UpdateRequest (EntityId cid) user_id method arg)
 
 main :: IO ()
 main = join . customExecParser (prefs showHelpOnError) $

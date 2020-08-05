@@ -92,16 +92,6 @@ requestStatusNonExistant = rec
 trivialWasmModule :: Blob
 trivialWasmModule = "\0asm\1\0\0\0"
 
--- Only to test which fields are required
-minimalInstall :: GenR
-minimalInstall = rec
-    [ "request_type" =: GText "install_code"
-    , "sender" =: GBlob defaultUser
-    , "canister_id" =: GBlob doesn'tExist
-    , "module" =: GBlob trivialWasmModule
-    , "arg" =: GBlob ""
-    ]
-
 addNonce :: GenR -> IO GenR
 addNonce (GRec hm) | "nonce" `HM.member` hm = return (GRec hm)
 addNonce (GRec hm) = do
@@ -161,38 +151,33 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
       -- So lets make sure the error code of ic-ref-test reflects reality
       primeTestSuite
 
-  , testGroup "create_canister"
-    [ testCase "no id given" $
-       void $ ic_create ic00
-    , testCase "create_canister necessary" $
-        ic_install' ic00 (V.IsJust #install ()) doesn'tExist trivialWasmModule ""
-            >>= statusReject [3,5]
-    ]
+  , simpleTestCase "create and install" $ \_ ->
+      return ()
 
-  , testGroup "install: required fields" $
-      omitFields (envelope defaultSK minimalInstall) $ \req ->
-        postCBOR "/api/v1/submit" req >>= code4xx
+  , testCase "create_canister necessary" $
+      ic_install' ic00 (enum #install) doesn'tExist trivialWasmModule ""
+          >>= statusReject [3,5]
 
   , testCaseSteps "management requests" $ \step -> do
       step "Create"
       can_id <- ic_create ic00
 
       step "Install"
-      ic_install ic00 (V.IsJust #install ()) can_id trivialWasmModule ""
+      ic_install ic00 (enum #install) can_id trivialWasmModule ""
 
       step "Install again fails"
-      ic_install' ic00 (V.IsJust #install ()) can_id trivialWasmModule ""
+      ic_install' ic00 (enum #install) can_id trivialWasmModule ""
         >>= statusReject [3,5]
 
       step "Reinstall"
-      ic_install ic00 (V.IsJust #reinstall ()) can_id trivialWasmModule ""
+      ic_install ic00 (enum #reinstall) can_id trivialWasmModule ""
 
       step "Reinstall as wrong user"
-      ic_install' (ic00as otherUser) (V.IsJust #reinstall ()) can_id trivialWasmModule ""
+      ic_install' (ic00as otherUser) (enum #reinstall) can_id trivialWasmModule ""
         >>= statusReject [3,5]
 
       step "Upgrade"
-      ic_install ic00 (V.IsJust #upgrade ()) can_id trivialWasmModule ""
+      ic_install ic00 (enum #upgrade) can_id trivialWasmModule ""
 
       step "Change controller"
       ic_set_controller ic00 can_id otherUser
@@ -202,14 +187,97 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
         >>= statusReject [3,5]
 
       step "Reinstall as new controller"
-      ic_install (ic00as otherUser) (V.IsJust #reinstall ()) can_id trivialWasmModule ""
+      ic_install (ic00as otherUser) (enum #reinstall) can_id trivialWasmModule ""
 
   , testCaseSteps "reinstall on empty" $ \step -> do
       step "Create"
       can_id <- ic_create ic00
 
       step "Reinstall over empty canister"
-      ic_install ic00 (V.IsJust #reinstall ()) can_id trivialWasmModule ""
+      ic_install ic00 (enum #reinstall) can_id trivialWasmModule ""
+
+  , testCaseSteps "canister lifecycle" $ \step -> do
+      cid <- install noop
+
+      step "Is running?"
+      sv <- ic_canister_status ic00 cid
+      V.view #running sv @?= Just ()
+
+      step "Stop"
+      ic_stop_canister ic00 cid
+
+      step "Is stopped?"
+      sv <- ic_canister_status ic00 cid
+      V.view #stopped sv @?= Just ()
+
+      step "Stop is noop"
+      ic_stop_canister ic00 cid
+
+      step "Cannot call (update)?"
+      call' cid >=> statusReject [5] $ reply
+
+      step "Cannot call (query)?"
+      query' cid >=> statusReject [5] $ reply
+
+      step "Start canister"
+      ic_start_canister ic00 cid
+
+      step "Is running?"
+      sv <- ic_canister_status ic00 cid
+      V.view #running sv @?= Just ()
+
+      step "Can call (update)?"
+      r <- call cid $ reply
+      r @?= ""
+
+      step "Can call (query)?"
+      r <- query cid $ reply
+      r @?= ""
+
+      step "Start is noop"
+      ic_start_canister ic00 cid
+
+  , testCaseSteps "canister deletion" $ \step -> do
+      cid <- install noop
+
+      step "Deletion fails"
+      ic_delete_canister' ic00 cid >>= statusReject [5]
+
+      step "Stop"
+      ic_stop_canister ic00 cid
+
+      step "Is stopped?"
+      sv <- ic_canister_status ic00 cid
+      V.view #stopped sv @?= Just ()
+
+      step "Deletion succeeds"
+      ic_delete_canister ic00 cid
+
+      step "Cannot call (update)?"
+      call' cid >=> statusReject [3] $ reply
+
+      step "Cannot call (query)?"
+      query' cid >=> statusReject [3] $ reply
+
+      step "Cannot query canister status"
+      ic_canister_status' ic00 cid >>= statusReject [3,5]
+
+      step "Deletion fails"
+      ic_delete_canister' ic00 cid >>= statusReject [3,5]
+
+
+  , testCaseSteps "canister lifecycle (wrong controller)" $ \step -> do
+      cid <- install noop
+
+      step "Start as wrong user"
+      ic_start_canister' (ic00as otherUser) cid >>= statusReject [3,5]
+      step "Stop as wrong user"
+      ic_stop_canister' (ic00as otherUser) cid >>= statusReject [3,5]
+      step "Canister Status as wrong user"
+      ic_canister_status' (ic00as otherUser) cid >>= statusReject [3,5]
+      step "Delete as wrong user"
+      ic_delete_canister' (ic00as otherUser) cid >>= statusReject [3,5]
+
 
   , testCaseSteps "aaaaa-aa (inter-canister)" $ \step -> do
     let
@@ -231,21 +299,21 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
     can_id <- ic_create (ic00via cid)
 
     step "Install"
-    ic_install (ic00via cid) (V.IsJust #install ()) can_id trivialWasmModule ""
+    ic_install (ic00via cid) (enum #install) can_id trivialWasmModule ""
 
     step "Install again fails"
-    ic_install' (ic00via cid) (V.IsJust #install ()) can_id trivialWasmModule ""
+    ic_install' (ic00via cid) (enum #install) can_id trivialWasmModule ""
       >>= statusRelayReject [3,5]
 
     step "Reinstall"
-    ic_install (ic00via cid) (V.IsJust #reinstall ()) can_id trivialWasmModule ""
+    ic_install (ic00via cid) (enum #reinstall) can_id trivialWasmModule ""
 
     step "Reinstall as wrong user"
-    ic_install' (ic00via cid2) (V.IsJust #reinstall ()) can_id trivialWasmModule ""
+    ic_install' (ic00via cid2) (enum #reinstall) can_id trivialWasmModule ""
       >>= statusRelayReject [3,5]
 
     step "Upgrade"
-    ic_install (ic00via cid) (V.IsJust #upgrade ()) can_id trivialWasmModule ""
+    ic_install (ic00via cid) (enum #upgrade) can_id trivialWasmModule ""
 
     step "Change controller"
     ic_set_controller (ic00via cid) can_id cid2
@@ -255,16 +323,13 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
       >>= statusRelayReject [3,5]
 
     step "Reinstall as new controller"
-    ic_install (ic00via cid2) (V.IsJust #reinstall ()) can_id trivialWasmModule ""
+    ic_install (ic00via cid2) (enum #reinstall) can_id trivialWasmModule ""
 
     step "Create"
     can_id2 <- ic_create (ic00via cid)
 
     step "Reinstall on empty"
-    ic_install (ic00via cid) (V.IsJust #reinstall ()) can_id2 trivialWasmModule ""
-
-  , simpleTestCase "create and install" $ \_ ->
-      return ()
+    ic_install (ic00via cid) (enum #reinstall) can_id2 trivialWasmModule ""
 
   , testGroup "simple calls"
     [ simpleTestCase "Call" $ \cid -> do
@@ -951,20 +1016,19 @@ statusReject codes = record $ do
   n <- field nat "reject_code"
   msg <- field text "reject_message"
   lift $ assertBool
-    ("Reject code " ++ show n ++ " not in" ++ show codes ++ "\n" ++ T.unpack msg)
+    ("Reject code " ++ show n ++ " not in " ++ show codes ++ "\n" ++ T.unpack msg)
     (n `elem` codes)
 
 statusReply :: HasCallStack => GenR -> IO GenR
 statusReply = record $ do
     s <- field text "status"
-    if s == "replied"
-    then field anyType "reply"
-    else do
-      extra <-
-        if s == "rejected"
-        then ("\n" ++) . T.unpack <$> field text "reject_message"
-        else return ""
-      lift $ assertFailure $ "expected status == \"replied\" but got " ++ show s ++ extra
+    case s of
+      "replied" -> field anyType "reply"
+      "rejected" -> do
+        msg <- field text "reject_message"
+        code <- field nat "reject_code"
+        lift $ assertFailure $ "expected status == \"replied\" but got reject (code " ++ show code ++ "):\n" ++ T.unpack msg
+      s -> lift $ assertFailure $ "expected status == \"replied\" but got " ++ show s
 
 -- A reject forwarded by replyRejectData
 statusRelayReject :: HasCallStack => [Word32] -> GenR -> IO ()
@@ -1021,8 +1085,10 @@ ic00as user method_name arg = submitCBOR $ rec
 
 managementService :: HasEndpoint => IC00 -> Rec (ICManagement IO)
 managementService ic00 =
-  Candid.toCandidService assertFailure $ \method_name arg ->
+  Candid.toCandidService err $ \method_name arg ->
     ic00 method_name arg >>= callReply
+  where
+    err s = assertFailure $ "Candid decoding error: " ++ s
 
 ic_create :: HasEndpoint => IC00 -> IO Blob
 ic_create ic00 = do
@@ -1043,6 +1109,27 @@ ic_set_controller ic00 canister_id new_controller = do
   managementService ic00 .! #set_controller $ empty
     .+ #canister_id .== Principal canister_id
     .+ #new_controller .== Principal new_controller
+
+ic_start_canister :: HasEndpoint => IC00 -> Blob -> IO ()
+ic_start_canister ic00 canister_id = do
+  managementService ic00 .! #start_canister $ empty
+    .+ #canister_id .== Principal canister_id
+
+ic_stop_canister :: HasEndpoint => IC00 -> Blob -> IO ()
+ic_stop_canister ic00 canister_id = do
+  managementService ic00 .! #stop_canister $ empty
+    .+ #canister_id .== Principal canister_id
+
+ic_canister_status :: HasEndpoint => IC00 -> Blob -> IO RunState
+ic_canister_status ic00 canister_id = do
+  r <- managementService ic00 .! #canister_status $ empty
+    .+ #canister_id .== Principal canister_id
+  return (r .! #status)
+
+ic_delete_canister :: HasEndpoint => IC00 -> Blob -> IO ()
+ic_delete_canister ic00 canister_id = do
+  managementService ic00 .! #delete_canister $ empty
+    .+ #canister_id .== Principal canister_id
 
 
 -- Primed variants return the request
@@ -1069,6 +1156,26 @@ ic_set_controller' ic00 canister_id new_controller = do
     .+ #canister_id .== Principal canister_id
     .+ #new_controller .== Principal new_controller
 
+ic_start_canister' :: HasEndpoint => IC00 -> Blob -> IO GenR
+ic_start_canister' ic00 canister_id = do
+  callIC' ic00 #start_canister $ empty
+    .+ #canister_id .== Principal canister_id
+
+ic_stop_canister' :: HasEndpoint => IC00 -> Blob -> IO GenR
+ic_stop_canister' ic00 canister_id = do
+  callIC' ic00 #stop_canister $ empty
+    .+ #canister_id .== Principal canister_id
+
+ic_canister_status' :: HasEndpoint => IC00 -> Blob -> IO GenR
+ic_canister_status' ic00 canister_id = do
+  callIC' ic00 #canister_status $ empty
+    .+ #canister_id .== Principal canister_id
+
+ic_delete_canister' :: HasEndpoint => IC00 -> Blob -> IO GenR
+ic_delete_canister' ic00 canister_id = do
+  callIC' ic00 #delete_canister $ empty
+    .+ #canister_id .== Principal canister_id
+
 
 -- * Interacting with the universal canister
 
@@ -1080,35 +1187,35 @@ ic_set_controller' ic00 canister_id new_controller = do
 install' :: (HasCallStack, HasEndpoint) => Blob -> Prog -> IO GenR
 install' cid prog = do
   universal_wasm <- getTestWasm "universal_canister"
-  ic_install' ic00 (V.IsJust #install ()) cid universal_wasm (run prog)
+  ic_install' ic00 (enum #install) cid universal_wasm (run prog)
 
 -- Also calls create, used default 'ic00'
 install :: (HasCallStack, HasEndpoint) => Prog -> IO Blob
 install prog = do
     cid <- ic_create ic00
     universal_wasm <- getTestWasm "universal_canister"
-    ic_install ic00 (V.IsJust #install ()) cid universal_wasm (run prog)
+    ic_install ic00 (enum #install) cid universal_wasm (run prog)
     return cid
 
 upgrade' :: (HasCallStack, HasEndpoint) => Blob -> Prog -> IO GenR
 upgrade' cid prog = do
   universal_wasm <- getTestWasm "universal_canister"
-  ic_install' ic00 (V.IsJust #upgrade ()) cid universal_wasm (run prog)
+  ic_install' ic00 (enum #upgrade) cid universal_wasm (run prog)
 
 upgrade :: (HasCallStack, HasEndpoint) => Blob -> Prog -> IO ()
 upgrade cid prog = do
   universal_wasm <- getTestWasm "universal_canister"
-  ic_install ic00 (V.IsJust #upgrade ()) cid universal_wasm (run prog)
+  ic_install ic00 (enum #upgrade) cid universal_wasm (run prog)
 
 reinstall' :: (HasCallStack, HasEndpoint) => Blob -> Prog -> IO GenR
 reinstall' cid prog = do
   universal_wasm <- getTestWasm "universal_canister"
-  ic_install' ic00 (V.IsJust #reinstall ()) cid universal_wasm (run prog)
+  ic_install' ic00 (enum #reinstall) cid universal_wasm (run prog)
 
 reinstall :: (HasCallStack, HasEndpoint) => Blob -> Prog -> IO ()
 reinstall cid prog = do
   universal_wasm <- getTestWasm "universal_canister"
-  ic_install ic00 (V.IsJust #reinstall ()) cid universal_wasm (run prog)
+  ic_install ic00 (enum #reinstall) cid universal_wasm (run prog)
 
 callRequest :: HasEndpoint => Blob -> Prog -> GenR
 callRequest cid prog = rec
@@ -1210,3 +1317,9 @@ getTestWasm :: FilePath -> IO BS.ByteString
 getTestWasm base = do
   fp <- getTestFile $ base <.> "wasm"
   BS.readFile fp
+
+
+-- Convenience around Data.Row.Variants used as enums
+
+enum :: (AllUniqueLabels r, KnownSymbol l, (r .! l) ~ ()) => Label l -> Var r
+enum l = V.IsJust l ()

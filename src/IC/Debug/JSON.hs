@@ -129,13 +129,13 @@ instance ToJSON RequestStatus where
     toJSON     = genericToJSON customOptions
     toEncoding = genericToEncoding customOptions
 
-deriving instance Generic IDChoice
-instance ToJSON IDChoice where
+deriving instance Generic AsyncRequest
+instance ToJSON AsyncRequest where
     toJSON     = genericToJSON customOptions
     toEncoding = genericToEncoding customOptions
 
-deriving instance Generic AsyncRequest
-instance ToJSON AsyncRequest where
+deriving instance Generic RunStatus
+instance ToJSON RunStatus where
     toJSON     = genericToJSON customOptions
     toEncoding = genericToEncoding customOptions
 

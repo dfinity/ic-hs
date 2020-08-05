@@ -66,8 +66,8 @@ let
   };
 
   ic-ref = localHaskellSrc2nixWithDoc "ic-ref" "impl" "--no-check -frelease";
-
   base32 = pkgs.haskellPackages.hackage2nix "base32" "0.1.1.2";
+  megaparsec = pkgs.haskellPackages.hackage2nix "megaparsec" "8.0.0";
 
   allGenerated = pkgs.runCommandNoCC "generated" {} ''
     mkdir -p $out
@@ -76,6 +76,7 @@ let
     cp ${leb128-cereal}/default.nix $out/leb128-cereal.nix
     cp ${candid}/default.nix $out/candid.nix
     cp ${base32}/default.nix $out/base32.nix
+    cp ${megaparsec}/default.nix $out/megaparsec.nix
   '';
 in
 allGenerated

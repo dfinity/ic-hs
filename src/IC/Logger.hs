@@ -2,6 +2,7 @@ module IC.Logger where
 
 import Control.Monad.State
 import Control.Monad.Cont
+import Control.Monad.Trans.Maybe
 import Control.Monad.Except
 
 class Logger m where
@@ -11,6 +12,9 @@ instance (Monad m, Logger m) => Logger (StateT s m) where
     logTrap x = lift $ logTrap x
 
 instance (Monad m, Logger m) => Logger (ContT s m) where
+    logTrap x = lift $ logTrap x
+
+instance (Monad m, Logger m) => Logger (MaybeT m) where
     logTrap x = lift $ logTrap x
 
 instance (Monad m, Logger m) => Logger (ExceptT s m) where
