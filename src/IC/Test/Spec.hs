@@ -933,20 +933,19 @@ statusReject codes = record $ do
   n <- field nat "reject_code"
   msg <- field text "reject_message"
   lift $ assertBool
-    ("Reject code " ++ show n ++ " not in" ++ show codes ++ "\n" ++ T.unpack msg)
+    ("Reject code " ++ show n ++ " not in " ++ show codes ++ "\n" ++ T.unpack msg)
     (n `elem` codes)
 
 statusReply :: HasCallStack => GenR -> IO GenR
 statusReply = record $ do
     s <- field text "status"
-    if s == "replied"
-    then field anyType "reply"
-    else do
-      extra <-
-        if s == "rejected"
-        then ("\n" ++) . T.unpack <$> field text "reject_message"
-        else return ""
-      lift $ assertFailure $ "expected status == \"replied\" but got " ++ show s ++ extra
+    case s of
+      "replied" -> field anyType "reply"
+      "rejected" -> do
+        msg <- field text "reject_message"
+        code <- field nat "reject_code"
+        lift $ assertFailure $ "expected status == \"replied\" but got reject (code " ++ show code ++ "):\n" ++ T.unpack msg
+      s -> lift $ assertFailure $ "expected status == \"replied\" but got " ++ show s
 
 -- A reject forwarded by replyRejectData
 statusRelayReject :: HasCallStack => [Word32] -> GenR -> IO ()
@@ -1003,8 +1002,10 @@ ic00as user method_name arg = submitCBOR $ rec
 
 managementService :: HasEndpoint => IC00 -> Rec (ICManagement IO)
 managementService ic00 =
-  Candid.toCandidService assertFailure $ \method_name arg ->
+  Candid.toCandidService err $ \method_name arg ->
     ic00 method_name arg >>= callReply
+  where
+    err s = assertFailure $ "Candid decoding error: " ++ s
 
 ic_create :: HasEndpoint => IC00 -> IO Blob
 ic_create ic00 = do
