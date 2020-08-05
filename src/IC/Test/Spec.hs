@@ -92,16 +92,6 @@ requestStatusNonExistant = rec
 trivialWasmModule :: Blob
 trivialWasmModule = "\0asm\1\0\0\0"
 
--- Only to test which fields are required
-minimalInstall :: GenR
-minimalInstall = rec
-    [ "request_type" =: GText "install_code"
-    , "sender" =: GBlob defaultUser
-    , "canister_id" =: GBlob doesn'tExist
-    , "module" =: GBlob trivialWasmModule
-    , "arg" =: GBlob ""
-    ]
-
 addNonce :: GenR -> IO GenR
 addNonce (GRec hm) | "nonce" `HM.member` hm = return (GRec hm)
 addNonce (GRec hm) = do
@@ -161,38 +151,33 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
       -- So lets make sure the error code of ic-ref-test reflects reality
       primeTestSuite
 
-  , testGroup "create_canister"
-    [ testCase "no id given" $
-       void $ ic_create ic00
-    , testCase "create_canister necessary" $
-        ic_install' ic00 (V.IsJust #install ()) doesn'tExist trivialWasmModule ""
-            >>= statusReject [3,5]
-    ]
+  , simpleTestCase "create and install" $ \_ ->
+      return ()
 
-  , testGroup "install: required fields" $
-      omitFields (envelope defaultSK minimalInstall) $ \req ->
-        postCBOR "/api/v1/submit" req >>= code4xx
+  , testCase "create_canister necessary" $
+      ic_install' ic00 (enum #install) doesn'tExist trivialWasmModule ""
+          >>= statusReject [3,5]
 
   , testCaseSteps "management requests" $ \step -> do
       step "Create"
       can_id <- ic_create ic00
 
       step "Install"
-      ic_install ic00 (V.IsJust #install ()) can_id trivialWasmModule ""
+      ic_install ic00 (enum #install) can_id trivialWasmModule ""
 
       step "Install again fails"
-      ic_install' ic00 (V.IsJust #install ()) can_id trivialWasmModule ""
+      ic_install' ic00 (enum #install) can_id trivialWasmModule ""
         >>= statusReject [3,5]
 
       step "Reinstall"
-      ic_install ic00 (V.IsJust #reinstall ()) can_id trivialWasmModule ""
+      ic_install ic00 (enum #reinstall) can_id trivialWasmModule ""
 
       step "Reinstall as wrong user"
-      ic_install' (ic00as otherUser) (V.IsJust #reinstall ()) can_id trivialWasmModule ""
+      ic_install' (ic00as otherUser) (enum #reinstall) can_id trivialWasmModule ""
         >>= statusReject [3,5]
 
       step "Upgrade"
-      ic_install ic00 (V.IsJust #upgrade ()) can_id trivialWasmModule ""
+      ic_install ic00 (enum #upgrade) can_id trivialWasmModule ""
 
       step "Change controller"
       ic_set_controller ic00 can_id otherUser
@@ -202,14 +187,14 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
         >>= statusReject [3,5]
 
       step "Reinstall as new controller"
-      ic_install (ic00as otherUser) (V.IsJust #reinstall ()) can_id trivialWasmModule ""
+      ic_install (ic00as otherUser) (enum #reinstall) can_id trivialWasmModule ""
 
   , testCaseSteps "reinstall on empty" $ \step -> do
       step "Create"
       can_id <- ic_create ic00
 
       step "Reinstall over empty canister"
-      ic_install ic00 (V.IsJust #reinstall ()) can_id trivialWasmModule ""
+      ic_install ic00 (enum #reinstall) can_id trivialWasmModule ""
 
   , testCaseSteps "aaaaa-aa (inter-canister)" $ \step -> do
     let
@@ -231,21 +216,21 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
     can_id <- ic_create (ic00via cid)
 
     step "Install"
-    ic_install (ic00via cid) (V.IsJust #install ()) can_id trivialWasmModule ""
+    ic_install (ic00via cid) (enum #install) can_id trivialWasmModule ""
 
     step "Install again fails"
-    ic_install' (ic00via cid) (V.IsJust #install ()) can_id trivialWasmModule ""
+    ic_install' (ic00via cid) (enum #install) can_id trivialWasmModule ""
       >>= statusRelayReject [3,5]
 
     step "Reinstall"
-    ic_install (ic00via cid) (V.IsJust #reinstall ()) can_id trivialWasmModule ""
+    ic_install (ic00via cid) (enum #reinstall) can_id trivialWasmModule ""
 
     step "Reinstall as wrong user"
-    ic_install' (ic00via cid2) (V.IsJust #reinstall ()) can_id trivialWasmModule ""
+    ic_install' (ic00via cid2) (enum #reinstall) can_id trivialWasmModule ""
       >>= statusRelayReject [3,5]
 
     step "Upgrade"
-    ic_install (ic00via cid) (V.IsJust #upgrade ()) can_id trivialWasmModule ""
+    ic_install (ic00via cid) (enum #upgrade) can_id trivialWasmModule ""
 
     step "Change controller"
     ic_set_controller (ic00via cid) can_id cid2
@@ -255,16 +240,13 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
       >>= statusRelayReject [3,5]
 
     step "Reinstall as new controller"
-    ic_install (ic00via cid2) (V.IsJust #reinstall ()) can_id trivialWasmModule ""
+    ic_install (ic00via cid2) (enum #reinstall) can_id trivialWasmModule ""
 
     step "Create"
     can_id2 <- ic_create (ic00via cid)
 
     step "Reinstall on empty"
-    ic_install (ic00via cid) (V.IsJust #reinstall ()) can_id2 trivialWasmModule ""
-
-  , simpleTestCase "create and install" $ \_ ->
-      return ()
+    ic_install (ic00via cid) (enum #reinstall) can_id2 trivialWasmModule ""
 
   , testGroup "simple calls"
     [ simpleTestCase "Call" $ \cid -> do
@@ -1080,35 +1062,35 @@ ic_set_controller' ic00 canister_id new_controller = do
 install' :: (HasCallStack, HasEndpoint) => Blob -> Prog -> IO GenR
 install' cid prog = do
   universal_wasm <- getTestWasm "universal_canister"
-  ic_install' ic00 (V.IsJust #install ()) cid universal_wasm (run prog)
+  ic_install' ic00 (enum #install) cid universal_wasm (run prog)
 
 -- Also calls create, used default 'ic00'
 install :: (HasCallStack, HasEndpoint) => Prog -> IO Blob
 install prog = do
     cid <- ic_create ic00
     universal_wasm <- getTestWasm "universal_canister"
-    ic_install ic00 (V.IsJust #install ()) cid universal_wasm (run prog)
+    ic_install ic00 (enum #install) cid universal_wasm (run prog)
     return cid
 
 upgrade' :: (HasCallStack, HasEndpoint) => Blob -> Prog -> IO GenR
 upgrade' cid prog = do
   universal_wasm <- getTestWasm "universal_canister"
-  ic_install' ic00 (V.IsJust #upgrade ()) cid universal_wasm (run prog)
+  ic_install' ic00 (enum #upgrade) cid universal_wasm (run prog)
 
 upgrade :: (HasCallStack, HasEndpoint) => Blob -> Prog -> IO ()
 upgrade cid prog = do
   universal_wasm <- getTestWasm "universal_canister"
-  ic_install ic00 (V.IsJust #upgrade ()) cid universal_wasm (run prog)
+  ic_install ic00 (enum #upgrade) cid universal_wasm (run prog)
 
 reinstall' :: (HasCallStack, HasEndpoint) => Blob -> Prog -> IO GenR
 reinstall' cid prog = do
   universal_wasm <- getTestWasm "universal_canister"
-  ic_install' ic00 (V.IsJust #reinstall ()) cid universal_wasm (run prog)
+  ic_install' ic00 (enum #reinstall) cid universal_wasm (run prog)
 
 reinstall :: (HasCallStack, HasEndpoint) => Blob -> Prog -> IO ()
 reinstall cid prog = do
   universal_wasm <- getTestWasm "universal_canister"
-  ic_install ic00 (V.IsJust #reinstall ()) cid universal_wasm (run prog)
+  ic_install ic00 (enum #reinstall) cid universal_wasm (run prog)
 
 callRequest :: HasEndpoint => Blob -> Prog -> GenR
 callRequest cid prog = rec
@@ -1210,3 +1192,9 @@ getTestWasm :: FilePath -> IO BS.ByteString
 getTestWasm base = do
   fp <- getTestFile $ base <.> "wasm"
   BS.readFile fp
+
+
+-- Convenience around Data.Row.Variants used as enums
+
+enum :: (AllUniqueLabels r, KnownSymbol l, (r .! l) ~ ()) => Label l -> Var r
+enum l = V.IsJust l ()
