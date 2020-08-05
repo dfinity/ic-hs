@@ -6,10 +6,10 @@
         "homepage": null,
         "owner": "nomeata",
         "repo": "haskell-candid",
-        "rev": "3c48764ea6ed044d9309a12f16da49725c88a09c",
-        "sha256": "04c7x4b7amhfw5c76azq51w2rg340avz7jdf8d12pgjhcdzmhg8k",
+        "rev": "e0d054596e325b690a685cdf2a0014a9b40a0236",
+        "sha256": "1my01pqm06l87dbyrzi3rb1qhbvwnq03fjzwyy3xbi4396s98qq3",
         "type": "tarball",
-        "url": "https://github.com/nomeata/haskell-candid/archive/3c48764ea6ed044d9309a12f16da49725c88a09c.tar.gz",
+        "url": "https://github.com/nomeata/haskell-candid/archive/e0d054596e325b690a685cdf2a0014a9b40a0236.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "leb128-cereal": {
