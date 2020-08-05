@@ -24,6 +24,10 @@ type InstallMode = [candidType|
     variant {install : null; reinstall : null; upgrade : null}
   |]
 
+type RunState = [candidType|
+    variant { running; stopping; stopped }
+  |]
+
 type ICManagement m =
   [candid|
     service ic : {
@@ -38,6 +42,20 @@ type ICManagement m =
       set_controller : (record {
         canister_id : principal;
         new_controller : principal;
+      }) -> ();
+      start_canister : (record {
+        canister_id : principal;
+      }) -> ();
+      stop_canister : (record {
+        canister_id : principal;
+      }) -> ();
+      canister_status : (record {
+        canister_id : principal;
+      }) -> (record {
+        status : variant { running; stopping; stopped }
+      });
+      delete_canister : (record {
+        canister_id : principal;
       }) -> ();
     }
   |]

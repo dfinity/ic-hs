@@ -196,6 +196,89 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
       step "Reinstall over empty canister"
       ic_install ic00 (enum #reinstall) can_id trivialWasmModule ""
 
+  , testCaseSteps "canister lifecycle" $ \step -> do
+      cid <- install noop
+
+      step "Is running?"
+      sv <- ic_canister_status ic00 cid
+      V.view #running sv @?= Just ()
+
+      step "Stop"
+      ic_stop_canister ic00 cid
+
+      step "Is stopped?"
+      sv <- ic_canister_status ic00 cid
+      V.view #stopped sv @?= Just ()
+
+      step "Stop is noop"
+      ic_stop_canister ic00 cid
+
+      step "Cannot call (update)?"
+      call' cid >=> statusReject [5] $ reply
+
+      step "Cannot call (query)?"
+      query' cid >=> statusReject [5] $ reply
+
+      step "Start canister"
+      ic_start_canister ic00 cid
+
+      step "Is running?"
+      sv <- ic_canister_status ic00 cid
+      V.view #running sv @?= Just ()
+
+      step "Can call (update)?"
+      r <- call cid $ reply
+      r @?= ""
+
+      step "Can call (query)?"
+      r <- query cid $ reply
+      r @?= ""
+
+      step "Start is noop"
+      ic_start_canister ic00 cid
+
+  , testCaseSteps "canister deletion" $ \step -> do
+      cid <- install noop
+
+      step "Deletion fails"
+      ic_delete_canister' ic00 cid >>= statusReject [5]
+
+      step "Stop"
+      ic_stop_canister ic00 cid
+
+      step "Is stopped?"
+      sv <- ic_canister_status ic00 cid
+      V.view #stopped sv @?= Just ()
+
+      step "Deletion succeeds"
+      ic_delete_canister ic00 cid
+
+      step "Cannot call (update)?"
+      call' cid >=> statusReject [3] $ reply
+
+      step "Cannot call (query)?"
+      query' cid >=> statusReject [3] $ reply
+
+      step "Cannot query canister status"
+      ic_canister_status' ic00 cid >>= statusReject [3,5]
+
+      step "Deletion fails"
+      ic_delete_canister' ic00 cid >>= statusReject [3,5]
+
+
+  , testCaseSteps "canister lifecycle (wrong controller)" $ \step -> do
+      cid <- install noop
+
+      step "Start as wrong user"
+      ic_start_canister' (ic00as otherUser) cid >>= statusReject [3,5]
+      step "Stop as wrong user"
+      ic_stop_canister' (ic00as otherUser) cid >>= statusReject [3,5]
+      step "Canister Status as wrong user"
+      ic_canister_status' (ic00as otherUser) cid >>= statusReject [3,5]
+      step "Delete as wrong user"
+      ic_delete_canister' (ic00as otherUser) cid >>= statusReject [3,5]
+
+
   , testCaseSteps "aaaaa-aa (inter-canister)" $ \step -> do
     let
       ic00via :: Blob -> IC00
@@ -1027,6 +1110,27 @@ ic_set_controller ic00 canister_id new_controller = do
     .+ #canister_id .== Principal canister_id
     .+ #new_controller .== Principal new_controller
 
+ic_start_canister :: HasEndpoint => IC00 -> Blob -> IO ()
+ic_start_canister ic00 canister_id = do
+  managementService ic00 .! #start_canister $ empty
+    .+ #canister_id .== Principal canister_id
+
+ic_stop_canister :: HasEndpoint => IC00 -> Blob -> IO ()
+ic_stop_canister ic00 canister_id = do
+  managementService ic00 .! #stop_canister $ empty
+    .+ #canister_id .== Principal canister_id
+
+ic_canister_status :: HasEndpoint => IC00 -> Blob -> IO RunState
+ic_canister_status ic00 canister_id = do
+  r <- managementService ic00 .! #canister_status $ empty
+    .+ #canister_id .== Principal canister_id
+  return (r .! #status)
+
+ic_delete_canister :: HasEndpoint => IC00 -> Blob -> IO ()
+ic_delete_canister ic00 canister_id = do
+  managementService ic00 .! #delete_canister $ empty
+    .+ #canister_id .== Principal canister_id
+
 
 -- Primed variants return the request
 callIC' :: forall s a b.
@@ -1051,6 +1155,26 @@ ic_set_controller' ic00 canister_id new_controller = do
   callIC' ic00 #set_controller $ empty
     .+ #canister_id .== Principal canister_id
     .+ #new_controller .== Principal new_controller
+
+ic_start_canister' :: HasEndpoint => IC00 -> Blob -> IO GenR
+ic_start_canister' ic00 canister_id = do
+  callIC' ic00 #start_canister $ empty
+    .+ #canister_id .== Principal canister_id
+
+ic_stop_canister' :: HasEndpoint => IC00 -> Blob -> IO GenR
+ic_stop_canister' ic00 canister_id = do
+  callIC' ic00 #stop_canister $ empty
+    .+ #canister_id .== Principal canister_id
+
+ic_canister_status' :: HasEndpoint => IC00 -> Blob -> IO GenR
+ic_canister_status' ic00 canister_id = do
+  callIC' ic00 #canister_status $ empty
+    .+ #canister_id .== Principal canister_id
+
+ic_delete_canister' :: HasEndpoint => IC00 -> Blob -> IO GenR
+ic_delete_canister' ic00 canister_id = do
+  callIC' ic00 #delete_canister $ empty
+    .+ #canister_id .== Principal canister_id
 
 
 -- * Interacting with the universal canister

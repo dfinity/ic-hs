@@ -134,6 +134,11 @@ instance ToJSON AsyncRequest where
     toJSON     = genericToJSON customOptions
     toEncoding = genericToEncoding customOptions
 
+deriving instance Generic RunStatus
+instance ToJSON RunStatus where
+    toJSON     = genericToJSON customOptions
+    toEncoding = genericToEncoding customOptions
+
 deriving instance Generic CanState
 instance ToJSON CanState where
     toJSON     = genericToJSON customOptions

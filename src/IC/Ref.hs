@@ -36,11 +36,13 @@ module IC.Ref
   , CanState(..)
   , CallOrigin(..)
   , EntryPoint(..)
+  , RunStatus(..)
   )
 where
 
 import qualified Data.Map as M
 import qualified Data.Row as R
+import qualified Data.Row.Variants as V
 import qualified Data.Text as T
 import Data.Maybe
 import Control.Monad.Trans.Maybe
@@ -89,9 +91,17 @@ data CompletionValue -- ^ we need to be more typed than the public spec here
 
 -- The canister state
 
+data RunStatus
+  = IsRunning
+  | IsStopping [CallId]
+  | IsStopped
+  | IsDeleted -- not actually a run state, but convenient in this code
+  deriving (Show)
+
 data CanState = CanState
   { wasm_state :: Maybe WasmState -- absent when empty
   , can_mod :: Maybe CanisterModule -- absent when empty
+  , run_status :: RunStatus
   , controller :: EntityId
   , time :: Timestamp
   }
@@ -175,6 +185,7 @@ createEmptyCanister cid controller time = modify $ \ic ->
     can = CanState
       { wasm_state = Nothing
       , can_mod = Nothing
+      , run_status = IsRunning
       , controller = controller
       , time = time
       }
@@ -184,6 +195,8 @@ canisterMustExist cid =
   gets (M.lookup cid . canisters) >>= \case
     Nothing ->
       reject RC_DESTINATION_INVALID ("canister does not exist: " ++ prettyID cid)
+    Just CanState{ run_status = IsDeleted } ->
+      reject RC_DESTINATION_INVALID ("canister no longer exists: " ++ prettyID cid)
     _ -> return ()
 
 isCanisterEmpty :: (CanReject m, ICM m) => CanisterId -> m Bool
@@ -217,6 +230,13 @@ getController cid = controller <$> getCanister cid
 setController :: ICM m => CanisterId -> EntityId -> m ()
 setController cid controller = modCanister cid $
     \cs -> cs { controller = controller }
+
+getRunStatus :: ICM m => CanisterId -> m RunStatus
+getRunStatus cid = run_status <$> getCanister cid
+
+setRunStatus :: ICM m => CanisterId -> RunStatus -> m ()
+setRunStatus cid run_status = modCanister cid $
+    \cs -> cs { run_status = run_status }
 
 getCanisterState :: ICM m => CanisterId -> m WasmState
 getCanisterState cid = fromJust . wasm_state <$> getCanister cid
@@ -261,6 +281,9 @@ readRequest req = onReject (return . Rejected) $ case req of
 
   QueryRequest canister_id user_id method arg -> do
     canisterMustExist canister_id
+    getRunStatus canister_id >>= \case
+       IsRunning -> return ()
+       _ -> reject RC_CANISTER_ERROR "canister is stopped"
     empty <- isCanisterEmpty canister_id
     when empty $ reject RC_DESTINATION_INVALID "canister is empty"
     wasm_state <- getCanisterState canister_id
@@ -374,6 +397,9 @@ processMessage m = case m of
         forM_ r $ replyCallContext ctxt_id
     else do
       canisterMustExist callee
+      getRunStatus callee >>= \case
+          IsRunning -> return ()
+          _ -> reject RC_CANISTER_ERROR "canister is stopped"
       empty <- isCanisterEmpty callee
       when empty $ reject RC_DESTINATION_INVALID "canister is empty"
       wasm_state <- getCanisterState callee
@@ -414,10 +440,14 @@ invokeManagementCanister caller cid = \case
     err msg = reject RC_CANISTER_ERROR $ "Candid failed to decode: " ++ msg
 
 managementCanister :: (CanReject m, ICM m) => EntityId -> CallId -> Rec (ICManagement (MaybeT m))
-managementCanister caller _ctxt_id = empty
+managementCanister caller ctxt_id = empty
     .+ #create_canister .== icCreateCanister caller
     .+ #install_code    .== icInstallCode caller
     .+ #set_controller  .== icSetController caller
+    .+ #start_canister  .== icStartCanister caller
+    .+ #stop_canister   .== icStopCanister caller ctxt_id
+    .+ #canister_status .== icCanisterStatus caller
+    .+ #delete_canister .== icDeleteCanister caller
 
 icCreateCanister :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "create_canister"
 icCreateCanister caller _r = do
@@ -482,6 +512,68 @@ checkController canister_id user_id = do
         prettyID user_id <> " is not authorized to manage canister " <>
         prettyID canister_id <> ", only " <> prettyID controller <> " is"
 
+icStartCanister :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "start_canister"
+icStartCanister caller r = do
+    let canister_id = principalToEntityId (r .! #canister_id)
+    canisterMustExist canister_id
+    checkController canister_id caller
+    getRunStatus canister_id >>= \case
+        IsRunning -> return ()
+        IsStopping pending -> forM_ pending $ \ctxt_id ->
+            rejectCallContext ctxt_id (RC_CANISTER_ERROR, "Canister has been restarted")
+        IsStopped -> setRunStatus canister_id IsRunning
+        IsDeleted -> error "deleted canister encountered"
+
+icStopCanister :: (ICM m, CanReject m) => EntityId -> CallId -> ICManagement (MaybeT m) .! "stop_canister"
+icStopCanister caller ctxt_id r = do
+    let canister_id = principalToEntityId (r .! #canister_id)
+    canisterMustExist canister_id
+    checkController canister_id caller
+    getRunStatus canister_id >>= \case
+        IsRunning -> do
+            setRunStatus canister_id (IsStopping [ctxt_id])
+            MaybeT (return Nothing)
+        IsStopping pending -> do
+            setRunStatus canister_id (IsStopping (pending ++ [ctxt_id]))
+            MaybeT (return Nothing)
+        IsStopped -> return ()
+        IsDeleted -> error "deleted canister encountered"
+
+actuallyStopCanister :: ICM m => CanisterId -> m ()
+actuallyStopCanister canister_id =
+    getRunStatus canister_id >>= \case
+        IsStopping pending -> do
+            setRunStatus canister_id IsStopped
+            forM_ pending $ \ctxt_id ->
+              replyCallContext ctxt_id (Codec.Candid.encode ())
+        IsRunning -> error "unexpected canister status"
+        IsStopped -> error "unexpected canister status"
+        IsDeleted -> error "deleted canister encountered"
+
+icCanisterStatus :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "canister_status"
+icCanisterStatus caller r = do
+    let canister_id = principalToEntityId (r .! #canister_id)
+    canisterMustExist canister_id
+    checkController canister_id caller
+    s <- getRunStatus canister_id >>= \case
+        IsRunning -> return (V.IsJust #running ())
+        IsStopping _pending -> return (V.IsJust #stopping ())
+        IsStopped -> return (V.IsJust #stopped ())
+        IsDeleted -> error "deleted canister encountered"
+    return $ #status .== s
+
+icDeleteCanister :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "delete_canister"
+icDeleteCanister caller r = do
+    let canister_id = principalToEntityId (r .! #canister_id)
+    canisterMustExist canister_id
+    checkController canister_id caller
+    getRunStatus canister_id >>= \case
+        IsRunning -> reject RC_SYS_FATAL "Cannot delete running canister"
+        IsStopping _pending -> reject RC_SYS_FATAL "Cannot delete stopping canister"
+        IsStopped -> return ()
+        IsDeleted -> error "deleted canister encountered"
+    setRunStatus canister_id IsDeleted
+
 invokeEntry :: ICM m =>
     CallId -> WasmState -> CanisterModule -> Timestamp -> EntryPoint ->
     m (TrapOr (WasmState, UpdateResult))
@@ -530,7 +622,12 @@ willReceiveResponse ic c = c `elem`
       <- M.elems (call_contexts ic)
   ] ++
   -- there is an in-flight call or response message:
-  [ call_context m | m <- toList (messages ic) ]
+  [ call_context m | m <- toList (messages ic) ] ++
+  -- there this canister is waiting for some canister to stop
+  [ c'
+  | CanState { run_status = IsStopping pending } <- M.elems (canisters ic)
+  , c' <- pending
+  ]
   -- NB: this could be implemented more efficient if kepts a counter of
   -- outstanding calls in each call context
 
@@ -541,6 +638,20 @@ nextStarved = gets $ \ic -> listToMaybe
   | (c, CallContext { responded = Responded False } ) <- M.toList (call_contexts ic)
   , not $ willReceiveResponse ic c
   ]
+
+-- | Find a canister in stopping state that is, well, stopped
+nextStoppedCanister :: ICM m => m (Maybe CanisterId)
+nextStoppedCanister = gets $ \ic -> listToMaybe
+  [ cid
+  | (cid, CanState { run_status = IsStopping _ }) <- M.toList (canisters ic)
+  -- no open call context
+  , null [ ()
+    | (c, ctxt) <- M.toList (call_contexts ic)
+    , canister ctxt == cid
+    , willReceiveResponse ic c
+    ]
+  ]
+
 
 -- | Pick (and remove) next message from queue
 popMessage :: ICM m => m (Maybe Message)
@@ -564,6 +675,7 @@ runStep = do
     [ with nextReceived processRequest
     , with popMessage processMessage
     , with nextStarved starveCallContext
+    , with nextStoppedCanister actuallyStopCanister
     ]
   where
     try = foldr (\g r -> g >>= \case True -> return True; False -> r) (return False)
