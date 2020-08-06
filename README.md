@@ -180,11 +180,12 @@ Updating Haskell Packages
 -------------------------
 
 When the `.cabal` file of a Haskell package is changed you need to make sure the
-corresponding `default.nix` file (stored in `nix/generated/`) is kept in sync
-with it.
+corresponding nix files `nix/generated/` are kept in sync with it. These are
+automatically generate, run
 
-As mentioned in the `nix/generate.nix` files, these files are automatically
-generated. See `nix/generate.nix` for the command to update them.
+    nix-shell nix/generate.nix
+
+to update.
 
 Don't worry if you forget to update the `default.nix` file, the CI job
 `check-generated` checks if these files are in sync and fails with a diff if
