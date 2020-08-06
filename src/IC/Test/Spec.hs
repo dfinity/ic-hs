@@ -998,6 +998,7 @@ awaitStatus key rid = loop $ do
     gr <- okCBOR res
     flip record gr $ do
         s <- field text "status"
+        _ <- field nat "time"
         case s of
           "unknown" -> return Nothing
           "processing" -> return Nothing
@@ -1051,11 +1052,13 @@ okCBOR response = do
 statusUnknown :: HasCallStack => GenR -> IO ()
 statusUnknown = record $ do
     s <- field text "status"
+    _ <- field nat "time"
     lift $ s @?= "unknown"
 
 statusReject :: HasCallStack => [Natural] -> GenR -> IO ()
 statusReject codes = record $ do
   s <- field text "status"
+  _ <- field nat "time"
   lift $ s @?= "rejected"
   n <- field nat "reject_code"
   msg <- field text "reject_message"
@@ -1066,6 +1069,7 @@ statusReject codes = record $ do
 statusReply :: HasCallStack => GenR -> IO GenR
 statusReply = record $ do
     s <- field text "status"
+    _ <- field nat "time"
     case s of
       "replied" -> field anyType "reply"
       "rejected" -> do

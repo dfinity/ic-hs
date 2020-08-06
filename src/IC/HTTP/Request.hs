@@ -29,17 +29,21 @@ stripEnvelope = record $ do
     lift $ verify "\x0Aic-request" pk (requestId content) sig
     return (pk, content)
 
+getTimestamp :: IO Timestamp
+getTimestamp = do
+    t <- getPOSIXTime
+    return $ Timestamp $ round (t * 1000_000_000)
+
 checkExpiry :: GenR -> IO (Either T.Text ())
 checkExpiry (GRec hm)
     | Just (GNat expiry) <- HM.lookup "ingress_expiry" hm = runExceptT $ do
         -- Here we check that the expiry field is not in the past and not
         -- too far in the future
-        t <- lift getPOSIXTime
-        let t_ns = round (t * 1000_000_000)
-        unless (expiry > t_ns) $
-            throwError $ "Expiry is " <> T.pack (show ((t_ns - expiry)`div`1000_000_000)) <> " seconds in the past"
-        unless (expiry < t_ns + max_future) $
-            throwError $ "Expiry is " <> T.pack (show ((expiry - t_ns)`div`1000_000_000)) <> " seconds in the future"
+        Timestamp t <- lift getTimestamp
+        unless (expiry > t) $
+            throwError $ "Expiry is " <> T.pack (show ((t - expiry)`div`1000_000_000)) <> " seconds in the past"
+        unless (expiry < t + max_future) $
+            throwError $ "Expiry is " <> T.pack (show ((expiry - t)`div`1000_000_000)) <> " seconds in the future"
   where
     -- max expiry time is 5 minutes
     max_future = 5*60*1000_000_000
@@ -50,7 +54,7 @@ asyncRequest :: GenR -> Either T.Text AsyncRequest
 asyncRequest = record $ do
     t <- field text "request_type"
     _ <- optionalField blob "nonce"
-    e <- field nat "ingress_expiry"
+    e <- Timestamp <$> field nat "ingress_expiry"
     case t of
         "call" -> do
             cid <- EntityId <$> field blob "canister_id"
@@ -65,7 +69,7 @@ syncRequest :: GenR -> Either T.Text SyncRequest
 syncRequest = record $ do
     t <- field text "request_type"
     _ <- optionalField blob "nonce"
-    e <- field nat "ingress_expiry"
+    e <- Timestamp <$> field nat "ingress_expiry"
     case t of
         "request_status" -> do
             rid <- field blob "request_id"
@@ -79,19 +83,17 @@ syncRequest = record $ do
         _ -> throwError $ "Unknown request type \"" <> t <> "\""
 
 -- Printing responses
-response :: RequestStatus -> GenR
-response = \case
-    Unknown -> rec ["status" =: GText "unknown"]
-    Received -> rec ["status" =: GText "received"]
-    Processing -> rec ["status" =: GText "processing"]
-    Rejected (c, s) -> rec
-        [ "status" =: GText "rejected"
-        , "reject_code" =: GNat (fromIntegral (rejectCode c))
+response :: Timestamp -> RequestStatus -> GenR
+response (Timestamp t) = \case
+    Unknown -> statusRec "unknown" []
+    Received -> statusRec "received" []
+    Processing -> statusRec "processing" []
+    Rejected (c, s) -> statusRec "rejected"
+        [ "reject_code" =: GNat (fromIntegral (rejectCode c))
         , "reject_message" =: GText (T.pack s)
         ]
-    Completed r -> rec
-        [ "status" =: GText "replied"
-        , "reply" =: case r of
+    Completed r -> statusRec "replied"
+        [ "reply" =: case r of
             CompleteUnit ->
                 rec []
             CompleteCanisterId id ->
@@ -99,3 +101,5 @@ response = \case
             CompleteArg blob ->
                 rec [ "arg" =: GBlob blob ]
         ]
+  where
+    statusRec s fs = rec $ [ "status" =: GText s, "time" =: GNat t ] <> fs

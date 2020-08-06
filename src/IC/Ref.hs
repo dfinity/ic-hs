@@ -52,7 +52,6 @@ import Data.Sequence (Seq(..))
 import Data.Foldable (toList)
 import Codec.Candid
 import Data.Row (empty, Rec, (.==), (.+), (.!), type (.!))
-import Numeric.Natural
 
 import IC.Id.Forms hiding (Blob)
 import IC.Types
@@ -72,7 +71,7 @@ data SyncRequest
     = QueryRequest Expiry CanisterId UserId MethodName Blob
     | StatusRequest Expiry Blob
 
-type Expiry = Natural
+type Expiry = Timestamp
 
 data RequestStatus
   = Unknown -- never used inside the IC, only as ReqResponse

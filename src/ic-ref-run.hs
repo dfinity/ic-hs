@@ -22,7 +22,6 @@ import Control.Monad.Trans.State
 import Text.Printf
 import Data.IORef
 import Data.Text.Prettyprint.Doc (pretty)
-import Numeric.Natural
 
 import GHC.TypeLits (KnownSymbol, symbolVal)
 import Data.Row (empty, (.==), (.+), type (.!), Label)
@@ -39,8 +38,8 @@ import IC.Management
 
 type DRun = StateT IC IO
 
-dummyExpiry :: Natural
-dummyExpiry = 0
+dummyExpiry :: Timestamp
+dummyExpiry = Timestamp 0
 
 dummyUserId :: CanisterId
 dummyUserId = EntityId $ B.pack [0xCA, 0xFF, 0xEE]
