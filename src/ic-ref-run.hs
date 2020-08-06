@@ -140,6 +140,7 @@ work msg_file = do
           .+ #wasm_module .== wasm
           .+ #arg .== arg
           .+ #compute_allocation .== Nothing
+          .+ #memory_allocation .== Nothing
       Reinstall cid filename arg -> do
         wasm <- liftIO $ B.readFile filename
         callManagement getRid user_id #install_code $ empty
@@ -148,6 +149,7 @@ work msg_file = do
           .+ #wasm_module .== wasm
           .+ #arg .== arg
           .+ #compute_allocation .== Nothing
+          .+ #memory_allocation .== Nothing
       Upgrade cid filename arg -> do
         wasm <- liftIO $ B.readFile filename
         callManagement getRid user_id #install_code $ empty
@@ -156,6 +158,7 @@ work msg_file = do
           .+ #wasm_module .== wasm
           .+ #arg .== arg
           .+ #compute_allocation .== Nothing
+          .+ #memory_allocation .== Nothing
       Query  cid method arg ->
         void $ submitRead  (QueryRequest (EntityId cid) user_id method arg)
       Update cid method arg ->

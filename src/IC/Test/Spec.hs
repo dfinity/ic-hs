@@ -1103,6 +1103,7 @@ ic_install ic00 mode canister_id wasm_module arg = do
     .+ #wasm_module .== wasm_module
     .+ #arg .== arg
     .+ #compute_allocation .== Nothing
+    .+ #memory_allocation .== Nothing
 
 ic_set_controller :: HasEndpoint => IC00 -> Blob -> Blob -> IO ()
 ic_set_controller ic00 canister_id new_controller = do
@@ -1149,6 +1150,7 @@ ic_install' ic00 mode canister_id wasm_module arg =
     .+ #wasm_module .== wasm_module
     .+ #arg .== arg
     .+ #compute_allocation .== Nothing
+    .+ #memory_allocation .== Nothing
 
 ic_set_controller' :: HasEndpoint => IC00 -> Blob -> Blob -> IO GenR
 ic_set_controller' ic00 canister_id new_controller = do

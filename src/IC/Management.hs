@@ -38,6 +38,7 @@ type ICManagement m =
         wasm_module : blob;
         arg : blob;
         compute_allocation : opt nat;
+        memory_allocation : opt nat;
       }) -> ();
       set_controller : (record {
         canister_id : principal;
