@@ -107,5 +107,7 @@ handle stateVar req respond = case (requestMethod req, pathInfo req) of
 
     withSignedCBOR k = withCBOR $ \gr -> case stripEnvelope gr of
         Left err -> invalidRequest err
-        Right content -> k content
-
+        Right (pubkey, content) ->
+            checkExpiry content >>= \case
+                Left err -> invalidRequest err
+                Right () -> k (pubkey, content)

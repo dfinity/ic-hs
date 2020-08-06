@@ -15,6 +15,7 @@ This module contains a test suite for the Internet Computer
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE NumericUnderscores #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 module IC.Test.Spec (icTests) where
 
@@ -40,6 +41,7 @@ import System.FilePath
 import System.Directory
 import System.Environment
 import System.Random
+import Data.Time.Clock.POSIX
 import Codec.Candid (Principal(..))
 import qualified Codec.Candid as Candid
 import Data.Row
@@ -92,12 +94,33 @@ requestStatusNonExistant = rec
 trivialWasmModule :: Blob
 trivialWasmModule = "\0asm\1\0\0\0"
 
+addIfNotThere :: Monad m => T.Text -> m GenR -> GenR -> m GenR
+addIfNotThere f _ (GRec hm)| f `HM.member` hm = return (GRec hm)
+addIfNotThere f a (GRec hm) = do
+  x <- a
+  return $ GRec $ HM.insert f x hm
+addIfNotThere _ _ _ = error "addIfNotThere: not a record"
+
+deleteField :: T.Text -> GenR -> GenR
+deleteField f (GRec hm) = GRec $ HM.delete f hm
+deleteField _ _ = error "deleteField: not a record"
+
+modNatField :: T.Text -> (Natural -> Natural) -> GenR -> GenR
+modNatField f g (GRec hm) = GRec $ HM.adjust underNat f hm
+  where underNat :: GenR -> GenR
+        underNat (GNat n) = GNat (g n)
+        underNat _ = error "modNatField: not a nat field"
+modNatField _ _ _ = error "modNatField: not a record"
+
 addNonce :: GenR -> IO GenR
-addNonce (GRec hm) | "nonce" `HM.member` hm = return (GRec hm)
-addNonce (GRec hm) = do
-  nonce <- getRand8Bytes
-  return $ GRec $ HM.insert "nonce" (GBlob nonce) hm
-addNonce r = return r
+addNonce = addIfNotThere "nonce" $
+    GBlob <$> getRand8Bytes
+
+-- Adds expiry 1 minute
+addExpiry :: GenR -> IO GenR
+addExpiry = addIfNotThere "ingress_expiry" $ do
+    t <- getPOSIXTime
+    return $ GNat $ round ((t + 60) * 1000_000_000)
 
 envelope :: SecretKey -> GenR -> GenR
 envelope sk content = rec
@@ -130,6 +153,12 @@ noDomainSepEnv sk content = rec
     , "sender_sig" =: GBlob (sign "" sk (requestId content))
     , "content" =: content
     ]
+
+noExpiryEnv, pastExpiryEnv, futureExpiryEnv :: GenR -> GenR
+noExpiryEnv = deleteField "ingress_expiry"
+pastExpiryEnv = modNatField "ingress_expiry" (subtract 3600_000_000_000)
+futureExpiryEnv = modNatField "ingress_expiry" (+ 3600_000_000_000)
+
 
 -- * The actual test suite (see below for helper functions)
 
@@ -796,11 +825,13 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
 
   , testGroup "query"
     [ testGroup "required fields" $
-        omitFields (envelope defaultSK queryToNonExistant) $ \req ->
+        omitFields (envelope defaultSK queryToNonExistant) $ \req -> do
+          req <- addExpiry req
           postCBOR "/api/v1/read" req >>= code4xx
 
-    , testCase "non-existing canister" $
-        postCBOR "/api/v1/read" (envelope defaultSK queryToNonExistant)
+    , testCase "non-existing canister" $ do
+        req <- addExpiry queryToNonExistant
+        postCBOR "/api/v1/read" (envelope defaultSK req)
           >>= okCBOR >>= statusReject [3]
     ]
 
@@ -811,33 +842,39 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
     ]
 
   , testGroup "signature checking" $
-    [ ("with bad signature", badEnvelope)
-    , ("with wrong key", envelope otherSK)
-    , ("with no domain separator", noDomainSepEnv defaultSK)
-    ] <&> \(name, env) -> testGroup name
+    [ ("with bad signature", badEnvelope, id)
+    , ("with wrong key", envelope otherSK, id)
+    , ("with no domain separator", noDomainSepEnv defaultSK, id)
+    , ("with no expiry", envelope defaultSK, noExpiryEnv)
+    , ("with expiry in the past", envelope defaultSK, pastExpiryEnv)
+    , ("with expiry in the future", envelope defaultSK, futureExpiryEnv)
+    ] <&> \(name, env, mod_req) -> testGroup name
       [ simpleTestCase "in query" $ \cid -> do
-        req <- addNonce $ rec
+        good_req <- addNonce >=> addExpiry $ rec
               [ "request_type" =: GText "query"
               , "sender" =: GBlob defaultUser
               , "canister_id" =: GBlob cid
               , "method_name" =: GText "query"
               , "arg" =: GBlob (run reply)
               ]
-        r <- readCBOR req >>= callReply
+        r <- readCBOR good_req >>= callReply
         r @?= ""
+
+        let req = mod_req good_req
         postCBOR "/api/v1/read" (env req) >>= code4xx
 
       , testCase "in unknown request status" $
-          postCBOR "/api/v1/read" (env requestStatusNonExistant) >>= code4xx
+          postCBOR "/api/v1/read" (env (mod_req requestStatusNonExistant)) >>= code4xx
 
       , simpleTestCase "in call" $ \cid -> do
-          req <- addNonce $ rec
+          good_req <- addNonce >=> addExpiry $ rec
                 [ "request_type" =: GText "call"
                 , "sender" =: GBlob defaultUser
                 , "canister_id" =: GBlob cid
                 , "method_name" =: GText "query"
                 , "arg" =: GBlob (run reply)
                 ]
+          let req = mod_req good_req
           postCBOR "/api/v1/submit" (env req) >>= code202_or_4xx
 
           -- Also check that the request was not created
@@ -846,14 +883,15 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
                 [ "request_type" =: GText "request_status"
                 , "request_id" =: GBlob (requestId req)
                 ]
+          status_req <- addExpiry status_req
           postCBOR "/api/v1/read" (envelope defaultSK status_req) >>= code4xx_or_unknown
 
           -- check that with a valid signature, this would have worked
-          r <- submitCBOR req >>= callReply
+          r <- submitCBOR good_req >>= callReply
           r @?= ""
 
       , testCase "in request status" $ do
-          req <- addNonce $ rec
+          req <- addNonce >=> addExpiry $ rec
                 [ "request_type" =: GText "call"
                 , "sender" =: GBlob defaultUser
                 , "canister_id" =: GBlob ""
@@ -865,8 +903,9 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
                 [ "request_type" =: GText "request_status"
                 , "request_id" =: GBlob (requestId req)
                 ]
+          status_req <- addExpiry status_req
           postCBOR "/api/v1/read" (envelope defaultSK status_req) >>= code2xx
-          postCBOR "/api/v1/read" (env status_req) >>= code4xx
+          postCBOR "/api/v1/read" (env (mod_req status_req)) >>= code4xx
 
       ]
   ]
@@ -914,19 +953,21 @@ postCBOR path gr = do
   where
     Endpoint ep = endPoint
 
--- | Add envelope to CBOR request, add a nonce if it is not there,
+-- | Add envelope to CBOR request, add a nonce and expiry if it is not there,
 -- post to "read", return decoded CBOR
-readCBOR :: HasEndpoint => GenR -> IO GenR
+readCBOR :: (HasCallStack, HasEndpoint) => GenR -> IO GenR
 readCBOR req = do
   req <- addNonce req
+  req <- addExpiry req
   postCBOR "/api/v1/read" (envelope (chooseKey req) req) >>= okCBOR
 
--- | Add envelope to CBOR, and a nonce if not there, post to "submit", poll for
--- the request response, and return decoded CBOR
+-- | Add envelope to CBOR, and a nonce and expiry if not there, post to
+-- "submit", poll for the request response, and return decoded CBOR
 submitCBOR :: (HasCallStack, HasEndpoint) => GenR -> IO GenR
 submitCBOR req = do
   let key = chooseKey req
   req <- addNonce req
+  req <- addExpiry req
   res <- postCBOR "/api/v1/submit" (envelope key req)
   code202 res
   assertBool "Response body not empty" (BS.null (responseBody res))
@@ -937,6 +978,7 @@ submitCBORTwice :: HasEndpoint => GenR -> IO GenR
 submitCBORTwice req = do
   let key = chooseKey req
   req <- addNonce req
+  req <- addExpiry req
   res <- postCBOR "/api/v1/submit" (envelope key req)
   code202 res
   res <- postCBOR "/api/v1/submit" (envelope key req)
@@ -947,10 +989,12 @@ submitCBORTwice req = do
 awaitStatus :: HasEndpoint => SecretKey -> Blob -> IO GenR
 awaitStatus key rid = loop $ do
     pollDelay
-    res <- postCBOR "/api/v1/read" $ envelope key $ rec
-      [ "request_type" =: GText "request_status"
-      , "request_id" =: GBlob rid
-      ]
+    let req = rec
+          [ "request_type" =: GText "request_status"
+          , "request_id" =: GBlob rid
+          ]
+    req <- addExpiry req
+    res <- postCBOR "/api/v1/read" $ envelope key req
     gr <- okCBOR res
     flip record gr $ do
         s <- field text "status"
