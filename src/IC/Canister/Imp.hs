@@ -316,7 +316,7 @@ systemAPI esref =
     get_time :: () -> HostM s Word64
     get_time () = do
         Timestamp ns <- gets time
-        return ns
+        return (fromIntegral ns)
 
     debug_print :: (Int32, Int32) -> HostM s ()
     debug_print (src, size) = do

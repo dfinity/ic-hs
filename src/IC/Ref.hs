@@ -64,12 +64,14 @@ import IC.Management
 -- Abstract HTTP Interface
 
 data AsyncRequest
-    = UpdateRequest CanisterId UserId MethodName Blob
+    = UpdateRequest Expiry CanisterId UserId MethodName Blob
   deriving (Eq, Ord, Show)
 
 data SyncRequest
-    = QueryRequest CanisterId UserId MethodName Blob
-    | StatusRequest Blob
+    = QueryRequest Expiry CanisterId UserId MethodName Blob
+    | StatusRequest Expiry Blob
+
+type Expiry = Timestamp
 
 data RequestStatus
   = Unknown -- never used inside the IC, only as ReqResponse
@@ -166,9 +168,18 @@ setReqStatus :: ICM m => RequestID -> RequestStatus -> m ()
 setReqStatus rid s = modify $ \ic ->
   ic { requests = M.adjust (\(r,_) -> (r,s)) rid (requests ic) }
 
+_expiryOfAsync :: AsyncRequest -> Expiry
+_expiryOfAsync = \case
+    UpdateRequest expiry _ _ _ _ -> expiry
+
+_expiryOfSync :: SyncRequest -> Expiry
+_expiryOfSync = \case
+    QueryRequest expiry _ _ _ _ -> expiry
+    StatusRequest expiry _ -> expiry
+
 callerOfAsync :: AsyncRequest -> EntityId
 callerOfAsync = \case
-    UpdateRequest _ user_id _ _ -> user_id
+    UpdateRequest _ _ user_id _ _ -> user_id
 
 callerOfRequest :: ICM m => RequestID -> m EntityId
 callerOfRequest rid = gets (M.lookup rid . requests) >>= \case
@@ -262,11 +273,11 @@ authAsyncRequest pk ar = authUser pk (callerOfAsync ar)
 
 authSyncRequest :: ICM m => PublicKey -> SyncRequest -> m Bool
 authSyncRequest pk = \case
-  StatusRequest rid ->
+  StatusRequest _ rid ->
     gets (findRequest rid) >>= \case
       Just (ar,_) -> authUser pk (callerOfAsync ar)
       Nothing -> return False
-  QueryRequest _ user_id _ _ ->
+  QueryRequest _ _ user_id _ _ ->
     authUser pk user_id
 
 -- Synchronous requests
@@ -274,12 +285,12 @@ authSyncRequest pk = \case
 readRequest :: ICM m => SyncRequest -> m ReqResponse
 readRequest req = onReject (return . Rejected) $ case req of
 
-  StatusRequest rid ->
+  StatusRequest _ rid ->
     gets (findRequest rid) >>= \case
       Just (_r,status) -> return status
       Nothing -> return Unknown
 
-  QueryRequest canister_id user_id method arg -> do
+  QueryRequest _ canister_id user_id method arg -> do
     canisterMustExist canister_id
     getRunStatus canister_id >>= \case
        IsRunning -> return ()
@@ -314,7 +325,7 @@ submitRequest rid r = modify $ \ic ->
 
 processRequest :: ICM m => (RequestID, AsyncRequest) -> m ()
 processRequest (rid, req) = onReject (setReqStatus rid . Rejected) $ case req of
-  UpdateRequest canister_id _user_id method arg -> do
+  UpdateRequest _expiry canister_id _user_id method arg -> do
     ctxt_id <- newCallContext $ CallContext
       { canister = canister_id
       , origin = FromUser rid

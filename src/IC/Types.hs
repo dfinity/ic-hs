@@ -12,9 +12,9 @@ import Data.Digest.CRC
 import Data.Digest.CRC32
 import Data.ByteString.Base32
 import Data.Int
-import Data.Word
 import Data.List
 import Data.List.Split (chunksOf)
+import Numeric.Natural
 
 type (↦) = M.Map
 
@@ -46,8 +46,8 @@ prettyID (EntityId blob) =
 newtype Responded = Responded Bool
   deriving Show
 
-newtype Timestamp = Timestamp Word64
-  deriving (Show, Num)
+newtype Timestamp = Timestamp Natural
+  deriving (Show, Num, Ord, Eq)
 
 data RejectCode
     = RC_SYS_FATAL

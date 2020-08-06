@@ -38,7 +38,8 @@ import IC.Management
 
 type DRun = StateT IC IO
 
--- Pretty printing
+dummyExpiry :: Timestamp
+dummyExpiry = Timestamp 0
 
 dummyUserId :: CanisterId
 dummyUserId = EntityId $ B.pack [0xCA, 0xFF, 0xEE]
@@ -46,14 +47,16 @@ dummyUserId = EntityId $ B.pack [0xCA, 0xFF, 0xEE]
 dummyRequestId :: AsyncRequest -> RequestID
 dummyRequestId = B.fromStrict . T.encodeUtf8 . T.pack . show
 
+-- Pretty printing
+
 printAsyncRequest :: AsyncRequest -> IO ()
-printAsyncRequest (UpdateRequest _ _ method arg) =
+printAsyncRequest (UpdateRequest _ _ _ method arg) =
     printf "→ update %s%s\n" method (shorten (candidOrPretty arg))
 
 printSyncRequest :: SyncRequest -> IO ()
-printSyncRequest (StatusRequest rid) =
+printSyncRequest (StatusRequest _ rid) =
     printf "→ status? %s\n" (candidOrPretty rid)
-printSyncRequest (QueryRequest _ _ method arg) =
+printSyncRequest (QueryRequest _ _ _ method arg) =
     printf "→ query %s%s\n" method (shorten (candidOrPretty arg))
 
 printReqStatus :: RequestStatus -> IO ()
@@ -92,7 +95,7 @@ submitAndRun mkRid r = do
     rid <- lift mkRid
     submitRequest rid r
     runToCompletion
-    r <- readRequest (StatusRequest rid)
+    r <- readRequest (StatusRequest dummyExpiry rid)
     lift $ printReqStatus r
     return r
 
@@ -118,7 +121,7 @@ callManagement :: forall s a b.
   IO RequestID -> EntityId -> Label s -> a -> StateT IC IO ()
 callManagement getRid user_id l x =
   void $ submitAndRun getRid $
-    UpdateRequest (EntityId mempty) user_id (symbolVal l) (Candid.encode x)
+    UpdateRequest dummyExpiry (EntityId mempty) user_id (symbolVal l) (Candid.encode x)
 
 
 work :: FilePath -> IO ()
@@ -140,6 +143,7 @@ work msg_file = do
           .+ #wasm_module .== wasm
           .+ #arg .== arg
           .+ #compute_allocation .== Nothing
+          .+ #memory_allocation .== Nothing
       Reinstall cid filename arg -> do
         wasm <- liftIO $ B.readFile filename
         callManagement getRid user_id #install_code $ empty
@@ -148,6 +152,7 @@ work msg_file = do
           .+ #wasm_module .== wasm
           .+ #arg .== arg
           .+ #compute_allocation .== Nothing
+          .+ #memory_allocation .== Nothing
       Upgrade cid filename arg -> do
         wasm <- liftIO $ B.readFile filename
         callManagement getRid user_id #install_code $ empty
@@ -156,10 +161,11 @@ work msg_file = do
           .+ #wasm_module .== wasm
           .+ #arg .== arg
           .+ #compute_allocation .== Nothing
+          .+ #memory_allocation .== Nothing
       Query  cid method arg ->
-        void $ submitRead  (QueryRequest (EntityId cid) user_id method arg)
+        void $ submitRead  (QueryRequest dummyExpiry (EntityId cid) user_id method arg)
       Update cid method arg ->
-        void $ submitAndRun getRid (UpdateRequest (EntityId cid) user_id method arg)
+        void $ submitAndRun getRid (UpdateRequest dummyExpiry (EntityId cid) user_id method arg)
 
 main :: IO ()
 main = join . customExecParser (prefs showHelpOnError) $

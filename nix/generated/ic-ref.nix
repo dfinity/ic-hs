@@ -7,8 +7,8 @@
 , leb128-cereal, memory, mtl, optparse-applicative, prettyprinter
 , primitive, process, random, row-types, split, stdenv, tasty
 , tasty-html, tasty-hunit, tasty-rerun, template-haskell, text
-, transformers, unordered-containers, utf8-string, vector, wai
-, warp, winter
+, time, transformers, unordered-containers, utf8-string, vector
+, wai, warp, winter
 }:
 mkDerivation {
   pname = "ic-ref";
@@ -23,8 +23,8 @@ mkDerivation {
     http-client http-types leb128-cereal memory mtl
     optparse-applicative prettyprinter primitive process random
     row-types split tasty tasty-html tasty-hunit tasty-rerun
-    template-haskell text transformers unordered-containers utf8-string
-    vector wai warp winter
+    template-haskell text time transformers unordered-containers
+    utf8-string vector wai warp winter
   ];
   testHaskellDepends = [
     base bytestring cborg containers cryptonite ed25519 leb128-cereal
