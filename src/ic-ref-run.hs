@@ -48,13 +48,13 @@ dummyRequestId = B.fromStrict . T.encodeUtf8 . T.pack . show
 
 printAsyncRequest :: AsyncRequest -> IO ()
 printAsyncRequest (UpdateRequest _ _ method arg) =
-    printf "→ update %s%s\n" method (shorten (candidOrPretty arg))
+    printf "→ update %s%s\n" method (shorten 60 (candidOrPretty arg))
 
 printSyncRequest :: SyncRequest -> IO ()
 printSyncRequest (StatusRequest rid) =
     printf "→ status? %s\n" (candidOrPretty rid)
 printSyncRequest (QueryRequest _ _ method arg) =
-    printf "→ query %s%s\n" method (shorten (candidOrPretty arg))
+    printf "→ query %s%s\n" method (shorten 60 (candidOrPretty arg))
 
 printReqStatus :: RequestStatus -> IO ()
 printReqStatus Unknown =
@@ -70,7 +70,7 @@ printReqStatus (Completed CompleteUnit) =
 printReqStatus (Completed (CompleteCanisterId id)) =
     printf "← completed: canister-id = %s\n" (prettyID id)
 printReqStatus (Completed (CompleteArg blob)) =
-    printf "← completed: %s\n" (shorten (candidOrPretty blob))
+    printf "← completed: %s\n" (shorten 100 (candidOrPretty blob))
 
 candidOrPretty :: Blob -> String
 candidOrPretty b
@@ -81,9 +81,9 @@ candidOrPretty b
   = "(" ++ prettyBlob b ++ ")"
 
 
-shorten :: String -> String
-shorten s = a ++ (if null b then "" else "…")
-  where (a,b) = splitAt 60 s
+shorten :: Int -> String -> String
+shorten n s = a ++ (if null b then "" else "…")
+  where (a,b) = splitAt n s
 
 
 submitAndRun :: IO RequestID -> AsyncRequest -> DRun ReqResponse
