@@ -83,7 +83,7 @@ candidOrPretty b
 
 shorten :: String -> String
 shorten s = a ++ (if null b then "" else "…")
-  where (a,b) = splitAt 100 s
+  where (a,b) = splitAt 60 s
 
 
 submitAndRun :: IO RequestID -> AsyncRequest -> DRun ReqResponse
