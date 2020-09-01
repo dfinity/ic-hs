@@ -309,17 +309,6 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
 
 
   , testCaseSteps "aaaaa-aa (inter-canister)" $ \step -> do
-    let
-      ic00via :: Blob -> IC00
-      ic00via cid method_name arg =
-        call' cid $
-          call_simple
-              (bytes "") -- aaaaa-aa
-              (bytes (BS.fromStrict (T.encodeUtf8 method_name)))
-              (callback replyArgData)
-              (callback replyRejectData)
-              (bytes arg)
-
     -- install universal canisters to proxy the requests
     cid <- install noop
     cid2 <- install noop
@@ -359,6 +348,17 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
 
     step "Reinstall on empty"
     ic_install (ic00via cid) (enum #reinstall) can_id2 trivialWasmModule ""
+
+  , simpleTestCase "randomness" $ \cid -> do
+    r1 <- ic_raw_rand ic00
+    r2 <- ic_raw_rand ic00
+    r3 <- ic_raw_rand (ic00via cid)
+    BS.length r1 @?= 32
+    BS.length r2 @?= 32
+    BS.length r3 @?= 32
+    assertBool "random blobs are different" $ r1 /= r2
+    assertBool "random blobs are different" $ r1 /= r3
+    assertBool "random blobs are different" $ r2 /= r3
 
   , testGroup "simple calls"
     [ simpleTestCase "Call" $ \cid -> do
@@ -1131,6 +1131,16 @@ ic00as user method_name arg = submitCBOR $ rec
       , "arg" =: GBlob arg
       ]
 
+ic00via :: HasEndpoint => Blob -> IC00
+ic00via cid method_name arg =
+  call' cid $
+    call_simple
+        (bytes "") -- aaaaa-aa
+        (bytes (BS.fromStrict (T.encodeUtf8 method_name)))
+        (callback replyArgData)
+        (callback replyRejectData)
+        (bytes arg)
+
 managementService :: HasEndpoint => IC00 -> Rec (ICManagement IO)
 managementService ic00 =
   Candid.toCandidService err $ \method_name arg ->
@@ -1180,6 +1190,8 @@ ic_delete_canister ic00 canister_id = do
   managementService ic00 .! #delete_canister $ empty
     .+ #canister_id .== Principal canister_id
 
+ic_raw_rand :: HasEndpoint => IC00 -> IO Blob
+ic_raw_rand ic00 = managementService ic00 .! #raw_rand $ ()
 
 -- Primed variants return the request
 callIC' :: forall s a b.

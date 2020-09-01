@@ -22,6 +22,7 @@
 , http-types
 , leb128-cereal
 , memory
+, MonadRandom
 , mtl
 , optparse-applicative
 , prettyprinter
@@ -73,6 +74,7 @@ mkDerivation {
     http-types
     leb128-cereal
     memory
+    MonadRandom
     mtl
     optparse-applicative
     prettyprinter

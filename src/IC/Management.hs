@@ -58,5 +58,6 @@ type ICManagement m =
       delete_canister : (record {
         canister_id : principal;
       }) -> ();
+      raw_rand : () -> (blob);
     }
   |]
