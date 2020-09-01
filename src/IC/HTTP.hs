@@ -19,7 +19,8 @@ import IC.Debug.JSON ()
 
 startApp :: IO Application
 startApp = do
-    stateVar <- newMVar [initialIC]
+    ic <- initialIC
+    stateVar <- newMVar [ic]
     return $ handle stateVar
 
 handle :: MVar [IC] -> Application

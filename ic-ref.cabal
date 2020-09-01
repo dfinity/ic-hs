@@ -66,6 +66,7 @@ common logic
   build-depends:       candid
   build-depends:       base32
   build-depends:       time
+  build-depends:       MonadRandom
 
 common cbor
   hs-source-dirs:      src

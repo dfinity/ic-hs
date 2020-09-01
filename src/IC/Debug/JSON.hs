@@ -26,6 +26,7 @@ import qualified Wasm.Syntax.Values as W
 import qualified Wasm.Syntax.AST as W
 import qualified Text.Hex as H
 import qualified Data.Text as T
+import Control.Monad.Random.Lazy
 
 import IC.Types
 import IC.Wasm.Winter.Persist
@@ -168,3 +169,6 @@ instance ToJSON EntityId where
 
 instance ToJSONKey EntityId where
   toJSONKey = contramapToJSONKeyFunction prettyID toJSONKey
+
+instance ToJSON StdGen where
+  toJSON = toJSON . show

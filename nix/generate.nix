@@ -1,6 +1,6 @@
 # This file generates the contents of nix/generated/. Use
 #
-#  ( set -e; cp -fv $(nix-build generate.nix --no-link)/* generated/)
+#  nix-shell generate.nix
 #
 # to update
 
@@ -48,39 +48,62 @@ let
       src_subst = "import ../gitSource.nix \"${path}\"";
     };
 
-  winter = haskellSrc2nixWithDoc {
-    name = "winter";
-    src = pkgs.sources.winter;
-    src_subst = "pkgs.sources.winter";
-    extraCabal2nixOptions = "--no-check";
-  };
-  leb128-cereal = haskellSrc2nixWithDoc {
-    name = "leb128-cereal";
-    src = pkgs.sources.leb128-cereal;
-    src_subst = "pkgs.sources.leb128-cereal";
-  };
-  candid = haskellSrc2nixWithDoc {
-    name = "candid";
-    src = pkgs.sources.haskell-candid;
-    src_subst = "pkgs.sources.haskell-candid";
+  packages = {
+    winter = haskellSrc2nixWithDoc {
+      name = "winter";
+      src = pkgs.sources.winter;
+      src_subst = "pkgs.sources.winter";
+      extraCabal2nixOptions = "--no-check";
+    };
+    leb128-cereal = haskellSrc2nixWithDoc {
+      name = "leb128-cereal";
+      src = pkgs.sources.leb128-cereal;
+      src_subst = "pkgs.sources.leb128-cereal";
+    };
+    candid = haskellSrc2nixWithDoc {
+      name = "candid";
+      src = pkgs.sources.haskell-candid;
+      src_subst = "pkgs.sources.haskell-candid";
+    };
+
+    ic-ref = localHaskellSrc2nixWithDoc "ic-ref" "impl" "--no-check -frelease";
+    base32 = pkgs.haskellPackages.hackage2nix "base32" "0.1.1.2";
+    megaparsec = pkgs.haskellPackages.hackage2nix "megaparsec" "8.0.0";
   };
 
-  ic-ref = localHaskellSrc2nixWithDoc "ic-ref" "impl" "--no-check -frelease";
-  base32 = pkgs.haskellPackages.hackage2nix "base32" "0.1.1.2";
-  megaparsec = pkgs.haskellPackages.hackage2nix "megaparsec" "8.0.0";
-
-  allGenerated = pkgs.runCommandNoCC "generated" {} ''
+  allGenerated = pkgs.runCommandNoCC "generated" {
+    buildInputs = [ pkgs.nixpkgs-fmt ];
+  } (
+    ''
     mkdir -p $out
-    cp ${winter}/default.nix $out/winter.nix
-    cp ${ic-ref}/default.nix $out/ic-ref.nix
-    cp ${leb128-cereal}/default.nix $out/leb128-cereal.nix
-    cp ${candid}/default.nix $out/candid.nix
-    cp ${base32}/default.nix $out/base32.nix
-    cp ${megaparsec}/default.nix $out/megaparsec.nix
-  '';
+    '' + builtins.concatStringsSep "" (
+      pkgs.lib.flip pkgs.lib.mapAttrsToList packages (
+        n: pkg: ''
+          cp ${pkg}/default.nix $out/${n}.nix
+        ''
+      )
+    ) + ''
+      chmod u+w $out/*.nix
+      nixpkgs-fmt $out/*.nix
+      echo <<__END__ > $out/README.md
+      The contents of this directory are automatically generated.
+      To update, please run nix-shell generate.nix
+      __END__
+    ''
+  );
 in
-allGenerated
+allGenerated.overrideAttrs (
+  old: {
+    shellHook = if pkgs.lib.inNixShell then
+      ''
+        dest=${toString ./generated}
 
+        rm -f $dest/*.nix $dest/README.md
+        cp -v -t $dest/ ${allGenerated}/*
+        chmod u-w -R $dest/*
 
-
+        exit 0
+      '' else null;
+  }
+)
 

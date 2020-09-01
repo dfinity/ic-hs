@@ -51,13 +51,13 @@ dummyRequestId = B.fromStrict . T.encodeUtf8 . T.pack . show
 
 printAsyncRequest :: AsyncRequest -> IO ()
 printAsyncRequest (UpdateRequest _ _ _ method arg) =
-    printf "→ update %s%s\n" method (shorten (candidOrPretty arg))
+    printf "→ update %s%s\n" method (shorten 60 (candidOrPretty arg))
 
 printSyncRequest :: SyncRequest -> IO ()
 printSyncRequest (StatusRequest _ rid) =
     printf "→ status? %s\n" (candidOrPretty rid)
 printSyncRequest (QueryRequest _ _ _ method arg) =
-    printf "→ query %s%s\n" method (shorten (candidOrPretty arg))
+    printf "→ query %s%s\n" method (shorten 60 (candidOrPretty arg))
 
 printReqStatus :: RequestStatus -> IO ()
 printReqStatus Unknown =
@@ -73,7 +73,7 @@ printReqStatus (Completed CompleteUnit) =
 printReqStatus (Completed (CompleteCanisterId id)) =
     printf "← completed: canister-id = %s\n" (prettyID id)
 printReqStatus (Completed (CompleteArg blob)) =
-    printf "← completed: %s\n" (shorten (candidOrPretty blob))
+    printf "← completed: %s\n" (shorten 100 (candidOrPretty blob))
 
 candidOrPretty :: Blob -> String
 candidOrPretty b
@@ -84,9 +84,9 @@ candidOrPretty b
   = "(" ++ prettyBlob b ++ ")"
 
 
-shorten :: String -> String
-shorten s = a ++ (if null b then "" else "…")
-  where (a,b) = splitAt 100 s
+shorten :: Int -> String -> String
+shorten n s = a ++ (if null b then "" else "…")
+  where (a,b) = splitAt n s
 
 
 submitAndRun :: IO RequestID -> AsyncRequest -> DRun ReqResponse
@@ -130,8 +130,8 @@ work msg_file = do
 
   let user_id = dummyUserId
   getRid <- newRequestIdProvider
-
-  flip evalStateT initialIC $
+  ic <- initialIC
+  flip evalStateT ic $
     forM_ msgs $ \case
       Create ->
         callManagement getRid user_id #create_canister ()
