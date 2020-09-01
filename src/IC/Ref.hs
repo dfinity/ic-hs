@@ -44,10 +44,12 @@ import qualified Data.Map as M
 import qualified Data.Row as R
 import qualified Data.Row.Variants as V
 import qualified Data.Text as T
+import qualified Data.ByteString.Lazy as BS
 import Data.Maybe
 import Control.Monad.Trans.Maybe
 import Control.Monad.State.Class
 import Control.Monad.Except
+import Control.Monad.Random.Lazy
 import Data.Sequence (Seq(..))
 import Data.Foldable (toList)
 import Codec.Candid
@@ -147,6 +149,7 @@ data IC = IC
   , requests :: RequestID ↦ (AsyncRequest, RequestStatus)
   , messages :: Seq Message
   , call_contexts :: CallId ↦ CallContext
+  , rng :: StdGen
   }
   deriving (Show)
 
@@ -154,8 +157,8 @@ data IC = IC
 -- able to log message (used for `ic0.debug_print`).
 type ICM m = (MonadState IC m, Logger m)
 
-initialIC :: IC
-initialIC = IC mempty mempty mempty mempty
+initialIC :: IO IC
+initialIC = IC mempty mempty mempty mempty <$> newStdGen
 
 -- Request handling
 
@@ -448,6 +451,7 @@ managementCanister caller ctxt_id = empty
     .+ #stop_canister   .== icStopCanister caller ctxt_id
     .+ #canister_status .== icCanisterStatus caller
     .+ #delete_canister .== icDeleteCanister caller
+    .+ #raw_rand        .== icRawRand
 
 icCreateCanister :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "create_canister"
 icCreateCanister caller _r = do
@@ -573,6 +577,14 @@ icDeleteCanister caller r = do
         IsStopped -> return ()
         IsDeleted -> error "deleted canister encountered"
     setRunStatus canister_id IsDeleted
+
+icRawRand :: ICM m => ICManagement m .! "raw_rand"
+icRawRand _r = runRandIC $ BS.pack <$> replicateM 32 getRandom
+
+runRandIC :: ICM m => Rand StdGen a -> m a
+runRandIC a = state $ \ic ->
+    let (x, g) = runRand a (rng ic)
+    in (x, ic { rng = g })
 
 invokeEntry :: ICM m =>
     CallId -> WasmState -> CanisterModule -> Timestamp -> EntryPoint ->

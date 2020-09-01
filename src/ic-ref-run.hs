@@ -127,8 +127,8 @@ work msg_file = do
 
   let user_id = dummyUserId
   getRid <- newRequestIdProvider
-
-  flip evalStateT initialIC $
+  ic <- initialIC
+  flip evalStateT ic $
     forM_ msgs $ \case
       Create ->
         callManagement getRid user_id #create_canister ()

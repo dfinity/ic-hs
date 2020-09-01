@@ -65,6 +65,7 @@ common logic
   build-depends:       row-types
   build-depends:       candid
   build-depends:       base32
+  build-depends:       MonadRandom
 
 common cbor
   hs-source-dirs:      src
