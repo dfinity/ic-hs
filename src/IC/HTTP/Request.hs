@@ -83,8 +83,8 @@ syncRequest = record $ do
         _ -> throwError $ "Unknown request type \"" <> t <> "\""
 
 -- Printing responses
-response :: Timestamp -> RequestStatus -> GenR
-response (Timestamp t) = \case
+response :: Maybe Timestamp -> RequestStatus -> GenR
+response mt = \case
     Unknown -> statusRec "unknown" []
     Received -> statusRec "received" []
     Processing -> statusRec "processing" []
@@ -102,4 +102,7 @@ response (Timestamp t) = \case
                 rec [ "arg" =: GBlob blob ]
         ]
   where
-    statusRec s fs = rec $ [ "status" =: GText s, "time" =: GNat t ] <> fs
+    statusRec s fs = rec $
+        [ "status" =: GText s ] <>
+        [ "time" =: GNat t | Just (Timestamp t) <- pure mt ] <>
+        fs
