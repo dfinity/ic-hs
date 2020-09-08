@@ -1003,8 +1003,10 @@ awaitStatus key rid = loop $ do
           "unknown" -> return Nothing
           "processing" -> return Nothing
           "received" -> return Nothing
-          "replied" -> swallowAllFields >> return (Just gr)
-          "rejected" -> swallowAllFields >> return (Just gr)
+          "replied" ->
+            swallowAllFields >> return (Just (withoutTime gr))
+          "rejected" ->
+            swallowAllFields >> return (Just (withoutTime gr))
           _ -> lift $ assertFailure $ "Unexpected status " ++ show s
   where
     loop :: HasCallStack => IO (Maybe a) -> IO a
@@ -1014,6 +1016,11 @@ awaitStatus key rid = loop $ do
         go n = act >>= \case
           Just r -> return r
           Nothing -> go (n+1)
+
+-- This way, the resulting GenR looks like the one returned from queries
+withoutTime :: GenR -> GenR
+withoutTime (GRec m) = GRec (HM.delete "time" m)
+withoutTime r = r
 
 pollDelay :: IO ()
 pollDelay = threadDelay $ 10 * 1000 -- 10 milliseonds
@@ -1052,13 +1059,11 @@ okCBOR response = do
 statusUnknown :: HasCallStack => GenR -> IO ()
 statusUnknown = record $ do
     s <- field text "status"
-    _ <- field nat "time"
     lift $ s @?= "unknown"
 
 statusReject :: HasCallStack => [Natural] -> GenR -> IO ()
 statusReject codes = record $ do
   s <- field text "status"
-  _ <- field nat "time"
   lift $ s @?= "rejected"
   n <- field nat "reject_code"
   msg <- field text "reject_message"
@@ -1069,7 +1074,6 @@ statusReject codes = record $ do
 statusReply :: HasCallStack => GenR -> IO GenR
 statusReply = record $ do
     s <- field text "status"
-    _ <- field nat "time"
     case s of
       "replied" -> field anyType "reply"
       "rejected" -> do
@@ -1100,7 +1104,7 @@ statusResonse = record $ do
 
 code4xx_or_unknown :: HasCallStack => Response Blob -> IO ()
 code4xx_or_unknown response
-  | 200 == c = okCBOR response >>= statusUnknown
+  | 200 == c = okCBOR response >>= statusUnknown . withoutTime
   | 400 <= c && c < 500 = return ()
   | otherwise = assertFailure $
       "Status " ++ show c ++ " is not 4xx or status unknown\n" ++ msg

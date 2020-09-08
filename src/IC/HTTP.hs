@@ -45,9 +45,12 @@ handle stateVar req respond = case (requestMethod req, pathInfo req) of
                 authd <- authSyncRequest pk sr
                 if authd
                 then do
-                    r <- readRequest sr
-                    t <- lift getTimestamp
-                    lift $ cbor status200 (IC.HTTP.Request.response t r)
+                    -- not pretty
+                    (wants_time, r) <- readRequest sr
+                    mt <- if wants_time
+                          then Just <$> lift getTimestamp
+                          else return Nothing
+                    lift $ cbor status200 (IC.HTTP.Request.response mt r)
                 else lift $ invalidRequest "Wrong signature"
     _ -> notFound
   where

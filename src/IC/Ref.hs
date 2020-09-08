@@ -8,6 +8,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE TupleSections #-}
 
 {-|
 This module implements the main abstract logic of the Internet Computer. It
@@ -83,7 +84,7 @@ data RequestStatus
   | Completed CompletionValue
   deriving (Show)
 
-type ReqResponse = RequestStatus
+type ReqResponse = (Bool, RequestStatus) -- Bool = True: Include timestamp
 
 data CompletionValue -- ^ we need to be more typed than the public spec here
   = CompleteUnit
@@ -286,14 +287,14 @@ authSyncRequest pk = \case
 -- Synchronous requests
 
 readRequest :: ICM m => SyncRequest -> m ReqResponse
-readRequest req = onReject (return . Rejected) $ case req of
-
-  StatusRequest _ rid ->
+readRequest (StatusRequest _ rid) =
+  fmap (True,) $ onReject (return . Rejected) $
     gets (findRequest rid) >>= \case
       Just (_r,status) -> return status
       Nothing -> return Unknown
 
-  QueryRequest _ canister_id user_id method arg -> do
+readRequest (QueryRequest _ canister_id user_id method arg) =
+  fmap (False,) $ onReject (return . Rejected) $ do
     canisterMustExist canister_id
     getRunStatus canister_id >>= \case
        IsRunning -> return ()

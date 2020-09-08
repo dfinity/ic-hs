@@ -89,22 +89,20 @@ shorten n s = a ++ (if null b then "" else "…")
   where (a,b) = splitAt n s
 
 
-submitAndRun :: IO RequestID -> AsyncRequest -> DRun ReqResponse
+submitAndRun :: IO RequestID -> AsyncRequest -> DRun ()
 submitAndRun mkRid r = do
     lift $ printAsyncRequest r
     rid <- lift mkRid
     submitRequest rid r
     runToCompletion
-    r <- readRequest (StatusRequest dummyExpiry rid)
+    (_wants_time, r) <- readRequest (StatusRequest dummyExpiry rid)
     lift $ printReqStatus r
-    return r
 
-submitRead :: SyncRequest -> DRun ReqResponse
+submitRead :: SyncRequest -> DRun ()
 submitRead r = do
     lift $ printSyncRequest r
-    r <- readRequest r
+    (_wants_time, r) <- readRequest r
     lift $ printReqStatus r
-    return r
 
 newRequestIdProvider :: IO (IO RequestID)
 newRequestIdProvider = do
@@ -120,7 +118,7 @@ callManagement :: forall s a b.
   Candid.CandidArg a =>
   IO RequestID -> EntityId -> Label s -> a -> StateT IC IO ()
 callManagement getRid user_id l x =
-  void $ submitAndRun getRid $
+  submitAndRun getRid $
     UpdateRequest dummyExpiry (EntityId mempty) user_id (symbolVal l) (Candid.encode x)
 
 
@@ -163,9 +161,9 @@ work msg_file = do
           .+ #compute_allocation .== Nothing
           .+ #memory_allocation .== Nothing
       Query  cid method arg ->
-        void $ submitRead  (QueryRequest dummyExpiry (EntityId cid) user_id method arg)
+        submitRead  (QueryRequest dummyExpiry (EntityId cid) user_id method arg)
       Update cid method arg ->
-        void $ submitAndRun getRid (UpdateRequest dummyExpiry (EntityId cid) user_id method arg)
+        submitAndRun getRid (UpdateRequest dummyExpiry (EntityId cid) user_id method arg)
 
 main :: IO ()
 main = join . customExecParser (prefs showHelpOnError) $
