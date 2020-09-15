@@ -130,15 +130,18 @@ envelope sk content = rec
     ]
 
 -- a little bit of smartness in our combinators
+
+senderOf :: GenR -> Blob
+senderOf (GRec hm) | Just (GBlob id) <- HM.lookup "sender" hm = id
+senderOf _ = defaultUser
+
+keyOf :: Blob -> SecretKey
+keyOf u | u == defaultUser = defaultSK
+keyOf u | u == otherUser = otherSK
+keyOf _ = defaultSK
+
 chooseKey :: GenR -> SecretKey
-chooseKey (GRec hm)
-  | Just (GBlob id) <- HM.lookup "sender" hm
-  , id == defaultUser
-  = defaultSK
-  | Just (GBlob id) <- HM.lookup "sender" hm
-  , id == otherUser
-  = otherSK
-chooseKey _ = defaultSK
+chooseKey = keyOf . senderOf
 
 badEnvelope :: GenR -> GenR
 badEnvelope content = rec
@@ -185,7 +188,7 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
 
   , testCase "create_canister necessary" $
       ic_install' ic00 (enum #install) doesn'tExist trivialWasmModule ""
-          >>= statusReject [3,5]
+          >>= isReject [3,5]
 
   , testCaseSteps "management requests" $ \step -> do
       step "Create"
@@ -196,14 +199,14 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
 
       step "Install again fails"
       ic_install' ic00 (enum #install) can_id trivialWasmModule ""
-        >>= statusReject [3,5]
+        >>= isReject [3,5]
 
       step "Reinstall"
       ic_install ic00 (enum #reinstall) can_id trivialWasmModule ""
 
       step "Reinstall as wrong user"
       ic_install' (ic00as otherUser) (enum #reinstall) can_id trivialWasmModule ""
-        >>= statusReject [3,5]
+        >>= isReject [3,5]
 
       step "Upgrade"
       ic_install ic00 (enum #upgrade) can_id trivialWasmModule ""
@@ -213,7 +216,7 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
 
       step "Change controller (with wrong controller)"
       ic_set_controller' ic00 can_id otherUser
-        >>= statusReject [3,5]
+        >>= isReject [3,5]
 
       step "Reinstall as new controller"
       ic_install (ic00as otherUser) (enum #reinstall) can_id trivialWasmModule ""
@@ -243,10 +246,10 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
       ic_stop_canister ic00 cid
 
       step "Cannot call (update)?"
-      call' cid >=> statusReject [5] $ reply
+      call' cid >=> isReject [5] $ reply
 
       step "Cannot call (query)?"
-      query' cid >=> statusReject [5] $ reply
+      query' cid >=> isReject [5] $ reply
 
       step "Start canister"
       ic_start_canister ic00 cid
@@ -270,7 +273,7 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
       cid <- install noop
 
       step "Deletion fails"
-      ic_delete_canister' ic00 cid >>= statusReject [5]
+      ic_delete_canister' ic00 cid >>= isReject [5]
 
       step "Stop"
       ic_stop_canister ic00 cid
@@ -283,29 +286,29 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
       ic_delete_canister ic00 cid
 
       step "Cannot call (update)?"
-      call' cid >=> statusReject [3] $ reply
+      call' cid >=> isReject [3] $ reply
 
       step "Cannot call (query)?"
-      query' cid >=> statusReject [3] $ reply
+      query' cid >=> isReject [3] $ reply
 
       step "Cannot query canister status"
-      ic_canister_status' ic00 cid >>= statusReject [3,5]
+      ic_canister_status' ic00 cid >>= isReject [3,5]
 
       step "Deletion fails"
-      ic_delete_canister' ic00 cid >>= statusReject [3,5]
+      ic_delete_canister' ic00 cid >>= isReject [3,5]
 
 
   , testCaseSteps "canister lifecycle (wrong controller)" $ \step -> do
       cid <- install noop
 
       step "Start as wrong user"
-      ic_start_canister' (ic00as otherUser) cid >>= statusReject [3,5]
+      ic_start_canister' (ic00as otherUser) cid >>= isReject [3,5]
       step "Stop as wrong user"
-      ic_stop_canister' (ic00as otherUser) cid >>= statusReject [3,5]
+      ic_stop_canister' (ic00as otherUser) cid >>= isReject [3,5]
       step "Canister Status as wrong user"
-      ic_canister_status' (ic00as otherUser) cid >>= statusReject [3,5]
+      ic_canister_status' (ic00as otherUser) cid >>= isReject [3,5]
       step "Delete as wrong user"
-      ic_delete_canister' (ic00as otherUser) cid >>= statusReject [3,5]
+      ic_delete_canister' (ic00as otherUser) cid >>= isReject [3,5]
 
 
   , testCaseSteps "aaaaa-aa (inter-canister)" $ \step -> do
@@ -321,14 +324,14 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
 
     step "Install again fails"
     ic_install' (ic00via cid) (enum #install) can_id trivialWasmModule ""
-      >>= statusRelayReject [3,5]
+      >>= isRelayReject [3,5]
 
     step "Reinstall"
     ic_install (ic00via cid) (enum #reinstall) can_id trivialWasmModule ""
 
     step "Reinstall as wrong user"
     ic_install' (ic00via cid2) (enum #reinstall) can_id trivialWasmModule ""
-      >>= statusRelayReject [3,5]
+      >>= isRelayReject [3,5]
 
     step "Upgrade"
     ic_install (ic00via cid) (enum #upgrade) can_id trivialWasmModule ""
@@ -338,7 +341,7 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
 
     step "Change controller (with wrong controller)"
     ic_set_controller' (ic00via cid) can_id cid2
-      >>= statusRelayReject [3,5]
+      >>= isRelayReject [3,5]
 
     step "Reinstall as new controller"
     ic_install (ic00via cid2) (enum #reinstall) can_id trivialWasmModule ""
@@ -370,7 +373,7 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
       r @?= "ABCD"
 
     , simpleTestCase "Call no non-existant update method" $ \cid ->
-      submitCBOR >=> statusReject [3] $ rec
+      submitCBOR >=> isReject [3] $ rec
           [ "request_type" =: GText "call"
           , "sender" =: GBlob defaultUser
           , "canister_id" =: GBlob cid
@@ -379,7 +382,7 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
           ]
 
     , simpleTestCase "Call no non-existant query method" $ \cid ->
-      readCBOR >=> statusReject [3] $ rec
+      readCBOR >=> queryResponse >=> isReject [3] $ rec
           [ "request_type" =: GText "query"
           , "sender" =: GBlob defaultUser
           , "canister_id" =: GBlob cid
@@ -388,28 +391,28 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
           ]
 
     , simpleTestCase "reject" $ \cid ->
-      call' cid >=> statusReject [4] $ reject "ABCD"
+      call' cid >=> isReject [4] $ reject "ABCD"
 
     , simpleTestCase "reject (query)" $ \cid ->
-      query' cid >=> statusReject [4] $ reject "ABCD"
+      query' cid >=> isReject [4] $ reject "ABCD"
 
     , simpleTestCase "No reply" $ \cid ->
-      call' cid >=> statusReject [5] $ noop
+      call' cid >=> isReject [5] $ noop
 
     , simpleTestCase "No reply (query)" $ \cid ->
-      query' cid >=> statusReject [5] $ noop
+      query' cid >=> isReject [5] $ noop
 
     , simpleTestCase "Double reply" $ \cid ->
-      call' cid >=> statusReject [5] $ reply >>> reply
+      call' cid >=> isReject [5] $ reply >>> reply
 
     , simpleTestCase "Double reply (query)" $ \cid ->
-      query' cid >=> statusReject [5] $ reply >>> reply
+      query' cid >=> isReject [5] $ reply >>> reply
 
     , simpleTestCase "Reply data append after reply" $ \cid ->
-      call' cid >=> statusReject [5] $ reply >>> replyDataAppend "foo"
+      call' cid >=> isReject [5] $ reply >>> replyDataAppend "foo"
 
     , simpleTestCase "Reply data append after reject" $ \cid ->
-      call' cid >=> statusReject [5] $ reject "bar" >>> replyDataAppend "foo"
+      call' cid >=> isReject [5] $ reject "bar" >>> replyDataAppend "foo"
 
     , simpleTestCase "Caller" $ \cid -> do
       r <- call cid $ replyData caller
@@ -439,7 +442,7 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
       -- Submits the same request (same nonce) twice, checks that
       -- the IC does not act twice.
       -- (Using growing stable memory as non-idempotent action)
-      r <- callTwice' cid >=> callReply $ ignore (stableGrow (int 1)) >>> reply
+      r <- callTwice' cid >=> isReply $ ignore (stableGrow (int 1)) >>> reply
       r @?= ""
       r <- query cid $ replyData (i2b stableSize)
       r @?= "\1\0\0\0"
@@ -452,19 +455,19 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
 
   , testGroup "inter-canister calls"
     [ simpleTestCase "to nonexistant canister" $ \cid ->
-      call' cid >=> statusRelayReject [3] $ inter_call "foo" "bar" defArgs
+      call' cid >=> isRelayReject [3] $ inter_call "foo" "bar" defArgs
 
     , simpleTestCase "to nonexistant method" $ \cid -> do
-      call' cid >=> statusRelayReject [3] $ inter_call cid "bar" defArgs
+      call' cid >=> isRelayReject [3] $ inter_call cid "bar" defArgs
 
     , simpleTestCase "Call from query traps (in update)" $ \cid ->
-      callToQuery' cid >=> statusReject [5] $ inter_update cid defArgs
+      callToQuery' cid >=> isReject [5] $ inter_update cid defArgs
 
     , simpleTestCase "Call from query traps (in query)" $ \cid ->
-      query' cid >=> statusReject [5] $ inter_update cid defArgs
+      query' cid >=> isReject [5] $ inter_update cid defArgs
 
     , simpleTestCase "Call from query traps (in inter-canister-call)" $ \cid ->
-      call' cid >=> statusRelayReject [5] $ inter_call cid "query" defArgs {
+      call' cid >=> isRelayReject [5] $ inter_call cid "query" defArgs {
         other_side = inter_query cid defArgs
       }
 
@@ -495,34 +498,34 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
       r @?= "FOO"
 
     , simpleTestCase "query no reply" $ \cid ->
-      call' cid >=> statusRelayReject [5] $
+      call' cid >=> isRelayReject [5] $
         inter_query cid defArgs{ other_side = noop }
 
     , simpleTestCase "query double reply" $ \cid ->
-      call' cid >=> statusRelayReject [5] $
+      call' cid >=> isRelayReject [5] $
         inter_query cid defArgs{ other_side = reply >>> reply }
 
     , simpleTestCase "Reject code is 0 in reply" $ \cid -> do
-      call' cid >=> statusRelayReject [0] $
+      call' cid >=> isRelayReject [0] $
         inter_query cid defArgs{ on_reply = replyData (i2b reject_code) }
 
     , simpleTestCase "traps in reply: getting reject message" $ \cid ->
-      call' cid >=> statusReject [5] $
+      call' cid >=> isReject [5] $
         inter_query cid defArgs{ on_reply = replyRejectData }
 
     , simpleTestCase "traps in reply: getting caller" $ \cid ->
-      call' cid >=> statusReject [5] $
+      call' cid >=> isReject [5] $
         inter_query cid defArgs{ on_reply = replyData caller }
 
     , simpleTestCase "traps in reject: getting argument" $ \cid ->
-      call' cid >=> statusReject [5] $
+      call' cid >=> isReject [5] $
         inter_query cid defArgs{
           on_reject = replyArgData,
           other_side = reject "rejecting"
         }
 
     , simpleTestCase "traps in reject: getting caller" $ \cid ->
-      call' cid >=> statusReject [5] $
+      call' cid >=> isReject [5] $
         inter_query cid defArgs{
           on_reject = replyData caller,
           other_side = reject "rejecting"
@@ -566,7 +569,7 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
         r @?= "good"
 
       , simpleTestCase "both trap" $ \cid ->
-        call' cid >=> statusReject [5] $
+        call' cid >=> isReject [5] $
           inter_query cid defArgs{ on_reply = trap "first callback traps" } >>>
           inter_query cid defArgs{ on_reply = trap "second callback traps" }
       ]
@@ -590,9 +593,9 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
     r @?= "\x0\x0\x0\x0"
 
     step "Writing stable memory (failing)"
-    call' cid >=> statusReject [5] $ stableWrite (int 0) "FOO"
+    call' cid >=> isReject [5] $ stableWrite (int 0) "FOO"
     step "Set stable mem (failing, query)"
-    query' cid >=> statusReject [5] $ stableWrite (int 0) "FOO"
+    query' cid >=> isReject [5] $ stableWrite (int 0) "FOO"
 
     step "Growing stable memory"
     r <- call cid $ replyData (i2b (stableGrow (int 1)))
@@ -674,7 +677,7 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
       cid <- installForUpgrade $ trap "trap in pre-upgrade"
       checkNoUpgrade cid
 
-      upgrade' cid >=> statusReject [5] $ noop
+      upgrade' cid >=> isReject [5] $ noop
       checkNoUpgrade cid
 
     , testCase "trapping in pre-upgrade (by calling)" $ do
@@ -692,28 +695,28 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
       r @?= ""
       checkNoUpgrade cid
 
-      upgrade' cid >=> statusReject [5] $ noop
+      upgrade' cid >=> isReject [5] $ noop
       checkNoUpgrade cid
 
     , testCase "trapping in pre-upgrade (by accessing arg)" $ do
       cid <- installForUpgrade $ ignore argData
       checkNoUpgrade cid
 
-      upgrade' cid >=> statusReject [5] $ noop
+      upgrade' cid >=> isReject [5] $ noop
       checkNoUpgrade cid
 
     , testCase "trapping in post-upgrade" $ do
       cid <- installForUpgrade $ stableWrite (int 3) getGlobal
       checkNoUpgrade cid
 
-      upgrade' cid >=> statusReject [5] $ trap "trap in post-upgrade"
+      upgrade' cid >=> isReject [5] $ trap "trap in post-upgrade"
       checkNoUpgrade cid
 
     , testCase "trapping in post-upgrade (by calling)" $ do
       cid <- installForUpgrade $ stableWrite (int 3) getGlobal
       checkNoUpgrade cid
 
-      upgrade' cid >=> statusReject [5] $
+      upgrade' cid >=> isReject [5] $
         call_simple
             (bytes cid)
             "query"
@@ -760,7 +763,7 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
       r <- query cid $ replyData (i2b stableSize)
       r @?= "\1\0\0\0"
 
-      reinstall' cid >=> statusReject [5] $ trap "Trapping the reinstallation"
+      reinstall' cid >=> isReject [5] $ trap "Trapping the reinstallation"
 
       r <- query cid $ replyData getGlobal
       r @?= "FOO"
@@ -784,10 +787,10 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
       r @?= ""
 
     , simpleTestCase "Explicit trap" $ \cid -> do
-      call' cid >=> statusReject [5] $ trap "trapping"
+      call' cid >=> isReject [5] $ trap "trapping"
 
     , simpleTestCase "Explicit trap (query)" $ \cid -> do
-      query' cid >=> statusReject [5] $ trap "trapping"
+      query' cid >=> isReject [5] $ trap "trapping"
     ]
 
   , testCase "caller (in init)" $ do
@@ -804,9 +807,9 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
     let
       failInInit pgm = do
         cid <- ic_create ic00
-        install' cid pgm >>= statusReject [5]
+        install' cid pgm >>= isReject [5]
         -- canister does not exist
-        query' cid >=> statusReject [3] $ noop
+        query' cid >=> isReject [3] $ noop
     in
     [ testCase "explicit trap" $ failInInit $ trap "trapping in install"
     , testCase "call" $ failInInit $ call_simple
@@ -832,7 +835,7 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
     , testCase "non-existing canister" $ do
         req <- addExpiry queryToNonExistant
         postCBOR "/api/v1/read" (envelope defaultSK req)
-          >>= okCBOR >>= statusReject [3]
+          >>= okCBOR >>= queryResponse >>= isReject [3]
     ]
 
   , testGroup "request_status"
@@ -857,11 +860,10 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
               , "method_name" =: GText "query"
               , "arg" =: GBlob (run reply)
               ]
-        r <- readCBOR good_req >>= callReply
+        r <- readCBOR good_req >>= queryResponse >>= isReply
         r @?= ""
 
-        let req = mod_req good_req
-        postCBOR "/api/v1/read" (env req) >>= code4xx
+        postCBOR "/api/v1/read" (env (mod_req good_req)) >>= code4xx
 
       , testCase "in unknown request status" $
           postCBOR "/api/v1/read" (env (mod_req requestStatusNonExistant)) >>= code4xx
@@ -879,15 +881,11 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
 
           -- Also check that the request was not created
           ingressDelay
-          let status_req = rec
-                [ "request_type" =: GText "request_status"
-                , "request_id" =: GBlob (requestId req)
-                ]
-          status_req <- addExpiry status_req
-          postCBOR "/api/v1/read" (envelope defaultSK status_req) >>= code4xx_or_unknown
+          s <- getRequestStatus_or_4xx defaultUser (requestId req)
+          s @?= UnknownStatus
 
           -- check that with a valid signature, this would have worked
-          r <- submitCBOR good_req >>= callReply
+          r <- submitCBOR good_req >>= isReply
           r @?= ""
 
       , testCase "in request status" $ do
@@ -898,7 +896,7 @@ icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
                 , "method_name" =: GText "create_canister"
                 , "arg" =: GBlob "DIDL\0\0"
                 ]
-          _reply <- submitCBOR req >>= callReply
+          _reply <- submitCBOR req >>= isReply
           let status_req = rec
                 [ "request_type" =: GText "request_status"
                 , "request_id" =: GBlob (requestId req)
@@ -963,51 +961,78 @@ readCBOR req = do
 
 -- | Add envelope to CBOR, and a nonce and expiry if not there, post to
 -- "submit", poll for the request response, and return decoded CBOR
-submitCBOR :: (HasCallStack, HasEndpoint) => GenR -> IO GenR
+submitCBOR :: (HasCallStack, HasEndpoint) => GenR -> IO ReqResponse
 submitCBOR req = do
-  let key = chooseKey req
   req <- addNonce req
   req <- addExpiry req
-  res <- postCBOR "/api/v1/submit" (envelope key req)
+  res <- postCBOR "/api/v1/submit" (envelope (chooseKey req) req)
   code202 res
   assertBool "Response body not empty" (BS.null (responseBody res))
-  awaitStatus key (requestId req)
+  awaitStatus (senderOf req) (requestId req)
 
 -- | Submits twice
-submitCBORTwice :: HasEndpoint => GenR -> IO GenR
+submitCBORTwice :: HasEndpoint => GenR -> IO ReqResponse
 submitCBORTwice req = do
-  let key = chooseKey req
   req <- addNonce req
   req <- addExpiry req
-  res <- postCBOR "/api/v1/submit" (envelope key req)
+  res <- postCBOR "/api/v1/submit" (envelope (chooseKey req) req)
   code202 res
-  res <- postCBOR "/api/v1/submit" (envelope key req)
+  res <- postCBOR "/api/v1/submit" (envelope (chooseKey req) req)
   code202 res
   assertBool "Response body not empty" (BS.null (responseBody res))
-  awaitStatus key (requestId req)
+  awaitStatus (senderOf req) (requestId req)
 
-awaitStatus :: HasEndpoint => SecretKey -> Blob -> IO GenR
-awaitStatus key rid = loop $ do
-    pollDelay
-    let req = rec
-          [ "request_type" =: GText "request_status"
-          , "request_id" =: GBlob rid
-          ]
-    req <- addExpiry req
-    res <- postCBOR "/api/v1/read" $ envelope key req
+data ReqResponse = Reply Blob | Reject Natural T.Text
+  deriving (Eq, Show)
+data ReqStatus = Processing | Pending | Responded ReqResponse | UnknownStatus
+  deriving (Eq, Show)
+
+getRequestStatus :: HasEndpoint => Blob -> Blob -> IO ReqStatus
+getRequestStatus sender rid = do
+    req <- addExpiry $ rec
+        [ "request_type" =: GText "request_status"
+        , "request_id" =: GBlob rid
+        ]
+    res <- postCBOR "/api/v1/read" $ envelope (keyOf sender) req
     gr <- okCBOR res
-    flip record gr $ do
+    requestStatusReply gr
+
+-- A hack that goes away when migrating to read_status
+getRequestStatus_or_4xx :: HasEndpoint => Blob -> Blob -> IO ReqStatus
+getRequestStatus_or_4xx sender rid = do
+    req <- addExpiry $ rec
+        [ "request_type" =: GText "request_status"
+        , "request_id" =: GBlob rid
+        ]
+    res <- postCBOR "/api/v1/read" $ envelope (keyOf sender) req
+    let c = statusCode (responseStatus res)
+    if c == 200 then do
+      gr <- okCBOR res
+      requestStatusReply gr
+    else if 400 <= c && c < 500 then return UnknownStatus 
+    else assertFailure $ "Status " ++ show c ++ " is not 4xx or status unknown\n"
+
+requestStatusReply :: GenR -> IO ReqStatus
+requestStatusReply = record $ do
         s <- field text "status"
         _ <- field nat "time"
         case s of
-          "unknown" -> return Nothing
-          "processing" -> return Nothing
-          "received" -> return Nothing
-          "replied" ->
-            swallowAllFields >> return (Just (withoutTime gr))
-          "rejected" ->
-            swallowAllFields >> return (Just (withoutTime gr))
+          "unknown" -> return UnknownStatus
+          "processing" -> return Processing
+          "received" -> return Pending
+          "replied" -> do
+            b <- field (record (field blob "arg")) "reply"
+            return $ Responded (Reply b)
+          "rejected" -> do
+            code <- field nat "reject_code"
+            msg <- field text "reject_message"
+            return $ Responded (Reject code msg)
           _ -> lift $ assertFailure $ "Unexpected status " ++ show s
+
+awaitStatus :: HasEndpoint => Blob -> Blob -> IO ReqResponse
+awaitStatus sender rid = loop $ pollDelay >> getRequestStatus sender rid >>= \case
+    Responded x -> return $ Just x
+    _ -> return Nothing
   where
     loop :: HasCallStack => IO (Maybe a) -> IO a
     loop act = go (0::Int)
@@ -1016,11 +1041,6 @@ awaitStatus key rid = loop $ do
         go n = act >>= \case
           Just r -> return r
           Nothing -> go (n+1)
-
--- This way, the resulting GenR looks like the one returned from queries
-withoutTime :: GenR -> GenR
-withoutTime (GRec m) = GRec (HM.delete "time" m)
-withoutTime r = r
 
 pollDelay :: IO ()
 pollDelay = threadDelay $ 10 * 1000 -- 10 milliseonds
@@ -1056,42 +1076,37 @@ okCBOR response = do
 
 -- * Response predicates and parsers
 
-statusUnknown :: HasCallStack => GenR -> IO ()
-statusUnknown = record $ do
+queryResponse :: GenR -> IO ReqResponse
+queryResponse = record $ do
     s <- field text "status"
-    lift $ s @?= "unknown"
+    case s of
+      "replied" ->
+        Reply <$> field (record (field blob "arg")) "reply"
+      "rejected" -> do
+        code <- field nat "reject_code"
+        msg <- field text "reject_message"
+        return $ Reject code msg
+      _ -> lift $ assertFailure $ "Unexpected status " ++ show s
 
-statusReject :: HasCallStack => [Natural] -> GenR -> IO ()
-statusReject codes = record $ do
-  s <- field text "status"
-  lift $ s @?= "rejected"
-  n <- field nat "reject_code"
-  msg <- field text "reject_message"
-  lift $ assertBool
+isReject :: HasCallStack => [Natural] -> ReqResponse -> IO ()
+isReject _ (Reply _) = assertFailure "Expected reject, got reply"
+isReject codes (Reject n msg) = do
+  assertBool
     ("Reject code " ++ show n ++ " not in " ++ show codes ++ "\n" ++ T.unpack msg)
     (n `elem` codes)
 
-statusReply :: HasCallStack => GenR -> IO GenR
-statusReply = record $ do
-    s <- field text "status"
-    case s of
-      "replied" -> field anyType "reply"
-      "rejected" -> do
-        msg <- field text "reject_message"
-        code <- field nat "reject_code"
-        lift $ assertFailure $ "expected status == \"replied\" but got reject (code " ++ show code ++ "):\n" ++ T.unpack msg
-      s -> lift $ assertFailure $ "expected status == \"replied\" but got " ++ show s
+isReply :: HasCallStack => ReqResponse -> IO Blob
+isReply (Reply b) = return b
+isReply (Reject n msg) =
+  assertFailure $ "Unexpected reject (code " ++ show n ++ "): " ++ T.unpack msg
 
 -- A reject forwarded by replyRejectData
-statusRelayReject :: HasCallStack => [Word32] -> GenR -> IO ()
-statusRelayReject codes r = do
-  b <- callReply r
+isRelayReject :: HasCallStack => [Word32] -> ReqResponse -> IO ()
+isRelayReject codes r = do
+  b <- isReply r
   assertBool
     ("Reject code " ++ show b ++ " not in" ++ show codes ++ "\n")
     (BS.take 4 b `elem` map (BS.toLazyByteString . BS.word32LE) codes)
-
-callReply :: HasCallStack => GenR -> IO Blob
-callReply = statusReply >=> record (field blob "arg")
 
 statusResonse :: HasCallStack => GenR -> IO T.Text
 statusResonse = record $ do
@@ -1102,20 +1117,10 @@ statusResonse = record $ do
     swallowAllFields -- More fields are explicitly allowed
     return v
 
-code4xx_or_unknown :: HasCallStack => Response Blob -> IO ()
-code4xx_or_unknown response
-  | 200 == c = okCBOR response >>= statusUnknown . withoutTime
-  | 400 <= c && c < 500 = return ()
-  | otherwise = assertFailure $
-      "Status " ++ show c ++ " is not 4xx or status unknown\n" ++ msg
- where
-  c = statusCode (responseStatus response)
-  msg = T.unpack (T.decodeUtf8With T.lenientDecode (BS.toStrict (BS.take 200 (responseBody response))))
-
 -- * Interacting with aaaaa-aa (via HTTP)
 
 -- how to reach the management canister
-type IC00 = T.Text -> Blob -> IO GenR
+type IC00 = T.Text -> Blob -> IO ReqResponse
 
 ic00 :: HasEndpoint => IC00
 ic00 method_name arg = submitCBOR $ rec
@@ -1148,7 +1153,7 @@ ic00via cid method_name arg =
 managementService :: HasEndpoint => IC00 -> Rec (ICManagement IO)
 managementService ic00 =
   Candid.toCandidService err $ \method_name arg ->
-    ic00 method_name arg >>= callReply
+    ic00 method_name arg >>= isReply
   where
     err s = assertFailure $ "Candid decoding error: " ++ s
 
@@ -1203,10 +1208,10 @@ callIC' :: forall s a b.
   KnownSymbol s =>
   (a -> IO b) ~ (ICManagement IO .! s) =>
   Candid.CandidArg a =>
-  IC00 -> Label s -> a -> IO GenR
+  IC00 -> Label s -> a -> IO ReqResponse
 callIC' ic00 l x = ic00 (T.pack (symbolVal l)) (Candid.encode x)
 
-ic_install' :: HasEndpoint => IC00 -> InstallMode -> Blob -> Blob -> Blob -> IO GenR
+ic_install' :: HasEndpoint => IC00 -> InstallMode -> Blob -> Blob -> Blob -> IO ReqResponse
 ic_install' ic00 mode canister_id wasm_module arg =
   callIC' ic00 #install_code $ empty
     .+ #mode .== mode
@@ -1216,28 +1221,28 @@ ic_install' ic00 mode canister_id wasm_module arg =
     .+ #compute_allocation .== Nothing
     .+ #memory_allocation .== Nothing
 
-ic_set_controller' :: HasEndpoint => IC00 -> Blob -> Blob -> IO GenR
+ic_set_controller' :: HasEndpoint => IC00 -> Blob -> Blob -> IO ReqResponse
 ic_set_controller' ic00 canister_id new_controller = do
   callIC' ic00 #set_controller $ empty
     .+ #canister_id .== Principal canister_id
     .+ #new_controller .== Principal new_controller
 
-ic_start_canister' :: HasEndpoint => IC00 -> Blob -> IO GenR
+ic_start_canister' :: HasEndpoint => IC00 -> Blob -> IO ReqResponse
 ic_start_canister' ic00 canister_id = do
   callIC' ic00 #start_canister $ empty
     .+ #canister_id .== Principal canister_id
 
-ic_stop_canister' :: HasEndpoint => IC00 -> Blob -> IO GenR
+ic_stop_canister' :: HasEndpoint => IC00 -> Blob -> IO ReqResponse
 ic_stop_canister' ic00 canister_id = do
   callIC' ic00 #stop_canister $ empty
     .+ #canister_id .== Principal canister_id
 
-ic_canister_status' :: HasEndpoint => IC00 -> Blob -> IO GenR
+ic_canister_status' :: HasEndpoint => IC00 -> Blob -> IO ReqResponse
 ic_canister_status' ic00 canister_id = do
   callIC' ic00 #canister_status $ empty
     .+ #canister_id .== Principal canister_id
 
-ic_delete_canister' :: HasEndpoint => IC00 -> Blob -> IO GenR
+ic_delete_canister' :: HasEndpoint => IC00 -> Blob -> IO ReqResponse
 ic_delete_canister' ic00 canister_id = do
   callIC' ic00 #delete_canister $ empty
     .+ #canister_id .== Principal canister_id
@@ -1250,7 +1255,7 @@ ic_delete_canister' ic00 canister_id = do
 -- e.g. to check for error conditions.
 -- The unprimed variant expect a reply.
 
-install' :: (HasCallStack, HasEndpoint) => Blob -> Prog -> IO GenR
+install' :: (HasCallStack, HasEndpoint) => Blob -> Prog -> IO ReqResponse
 install' cid prog = do
   universal_wasm <- getTestWasm "universal_canister"
   ic_install' ic00 (enum #install) cid universal_wasm (run prog)
@@ -1263,7 +1268,7 @@ install prog = do
     ic_install ic00 (enum #install) cid universal_wasm (run prog)
     return cid
 
-upgrade' :: (HasCallStack, HasEndpoint) => Blob -> Prog -> IO GenR
+upgrade' :: (HasCallStack, HasEndpoint) => Blob -> Prog -> IO ReqResponse
 upgrade' cid prog = do
   universal_wasm <- getTestWasm "universal_canister"
   ic_install' ic00 (enum #upgrade) cid universal_wasm (run prog)
@@ -1273,7 +1278,7 @@ upgrade cid prog = do
   universal_wasm <- getTestWasm "universal_canister"
   ic_install ic00 (enum #upgrade) cid universal_wasm (run prog)
 
-reinstall' :: (HasCallStack, HasEndpoint) => Blob -> Prog -> IO GenR
+reinstall' :: (HasCallStack, HasEndpoint) => Blob -> Prog -> IO ReqResponse
 reinstall' cid prog = do
   universal_wasm <- getTestWasm "universal_canister"
   ic_install' ic00 (enum #reinstall) cid universal_wasm (run prog)
@@ -1292,7 +1297,7 @@ callRequest cid prog = rec
     , "arg" =: GBlob (run prog)
     ]
 
-callToQuery' :: (HasCallStack, HasEndpoint) => Blob -> Prog -> IO GenR
+callToQuery' :: (HasCallStack, HasEndpoint) => Blob -> Prog -> IO ReqResponse
 callToQuery' cid prog = submitCBOR $ rec
     [ "request_type" =: GText "call"
     , "sender" =: GBlob defaultUser
@@ -1301,18 +1306,18 @@ callToQuery' cid prog = submitCBOR $ rec
     , "arg" =: GBlob (run prog)
     ]
 
-call' :: (HasCallStack, HasEndpoint) => Blob -> Prog -> IO GenR
+call' :: (HasCallStack, HasEndpoint) => Blob -> Prog -> IO ReqResponse
 call' cid prog = submitCBOR (callRequest cid prog)
 
-callTwice' :: (HasCallStack, HasEndpoint) => Blob -> Prog -> IO GenR
+callTwice' :: (HasCallStack, HasEndpoint) => Blob -> Prog -> IO ReqResponse
 callTwice' cid prog = submitCBORTwice (callRequest cid prog)
 
 call :: (HasCallStack, HasEndpoint) => Blob -> Prog -> IO Blob
-call cid prog = call' cid prog >>= callReply
+call cid prog = call' cid prog >>= isReply
 
-query' :: (HasCallStack, HasEndpoint) => Blob -> Prog -> IO GenR
+query' :: (HasCallStack, HasEndpoint) => Blob -> Prog -> IO ReqResponse
 query' cid prog =
-  readCBOR $ rec
+  readCBOR >=> queryResponse $ rec
     [ "request_type" =: GText "query"
     , "sender" =: GBlob defaultUser
     , "canister_id" =: GBlob cid
@@ -1321,7 +1326,7 @@ query' cid prog =
     ]
 
 query :: (HasCallStack, HasEndpoint) => Blob -> Prog -> IO Blob
-query cid prog = query' cid prog >>= callReply
+query cid prog = query' cid prog >>= isReply
 
 -- Shortcut for test cases that just need one canister
 simpleTestCase :: HasEndpoint => String -> (Blob -> IO ()) -> TestTree
