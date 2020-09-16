@@ -417,8 +417,7 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
       call' cid >=> isReject [5] $ noop
 
     , simpleTestCase "No response does not rollback" $ \cid -> do
-      void $ call cid $ setGlobal "FOO" >>> reply
-      call' cid >=> isReject [5] $ noop
+      call' cid >=> isReject [5] $ setGlobal "FOO"
       r <- query cid $ replyData getGlobal
       r @?= "FOO"
 
