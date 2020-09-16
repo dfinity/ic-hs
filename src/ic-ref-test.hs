@@ -8,7 +8,7 @@ import Test.Tasty.Ingredients
 import Test.Tasty.Ingredients.Basic
 import Test.Tasty.Ingredients.Rerun
 import Test.Tasty.Runners.Html
-import Data.IORef
+import Test.Tasty.Runners
 import Control.Exception
 import System.Exit
 
@@ -16,8 +16,15 @@ import IC.Test.Options
 import IC.Test.Spec
 
 main :: IO ()
-main = withTestSuitePrimer $ \primeTestSuite ->
-    defaultMainWithIngredients ingredients (icTests primeTestSuite)
+main = do
+    os <- parseOptions ingredients (testGroup "dummy" [])
+    tc <- preFlight os
+    defaultMainWithIngredients ingredients (icTests tc)
+      `catch`
+        -- If not primed, always succeed
+        (\(e :: ExitCode) -> if tc_primed tc then throwIO e else do
+            putStrLn "Test suite not primed, returning success despite failures."
+            throwIO ExitSuccess)
   where
     ingredients =
       [ rerunningTests
@@ -26,15 +33,3 @@ main = withTestSuitePrimer $ \primeTestSuite ->
         , htmlRunner `composeReporters` consoleTestReporter
         ]
       ]
-
--- | This helper function runs the main action, and passes a way to prime the
--- test suite. If this primer is _not_ executed, the program will always
--- return success (but still list failing tests)
-withTestSuitePrimer :: (IO () -> IO ()) -> IO ()
-withTestSuitePrimer main = do
-    specCompliant <- newIORef False
-    let primeTestSuite = writeIORef specCompliant True
-    main primeTestSuite `catch`
-        (\(e :: ExitCode) -> readIORef specCompliant >>= \case
-            False -> throwIO ExitSuccess
-            True -> throwIO e)

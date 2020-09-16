@@ -17,7 +17,7 @@ This module contains a test suite for the Internet Computer
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
-module IC.Test.Spec (icTests) where
+module IC.Test.Spec (preFlight, TestConfig(..), icTests) where
 
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
@@ -31,9 +31,11 @@ import Numeric.Natural
 import Data.List
 import Test.Tasty
 import Test.Tasty.HUnit
+import Test.Tasty.Options
 import Control.Monad.Trans
 import Control.Concurrent
 import Control.Monad
+import Control.Exception (catch)
 import Data.Word
 import Data.Functor
 import GHC.TypeLits
@@ -41,6 +43,7 @@ import System.FilePath
 import System.Directory
 import System.Environment
 import System.Random
+import System.Exit
 import Data.Time.Clock.POSIX
 import Codec.Candid (Principal(..))
 import qualified Codec.Candid as Candid
@@ -162,28 +165,42 @@ noExpiryEnv = deleteField "ingress_expiry"
 pastExpiryEnv = modNatField "ingress_expiry" (subtract 3600_000_000_000)
 futureExpiryEnv = modNatField "ingress_expiry" (+ 3600_000_000_000)
 
+-- * Preflight checks: Get the root key, and check if test suite should be primed
+
+data TestConfig = TestConfig
+    { tc_primed :: Bool
+    , tc_manager :: Manager
+    , tc_endPoint :: String
+    }
+
+preFlight :: OptionSet -> IO TestConfig
+preFlight os = do
+    let Endpoint ep = lookupOption os
+    manager <- newManager defaultManagerSettings
+    request <- parseRequest $ ep ++ "/api/v1/status"
+    putStrLn $ "Fetching endpoit status from " ++ show ep ++ "..."
+    s <- (httpLbs request manager >>= okCBOR >>= statusResonse)
+        `catch` (\(HUnitFailure _ r) -> putStrLn r >> exitFailure)
+
+    let primed = status_api_version s == specVersion
+    putStrLn $ "Spec version tested:  " ++ T.unpack specVersion
+    putStrLn $ "Spec version claimed: " ++ T.unpack (status_api_version s)
+    if primed
+    then putStrLn $ "Test suite is primed"
+    else putStrLn $ "Test suite is not primed (failures are informative only)"
+
+    return TestConfig
+        { tc_primed = primed
+        , tc_manager = manager
+        , tc_endPoint = ep
+        }
+
 
 -- * The actual test suite (see below for helper functions)
 
-icTests :: IO () -> TestTree
-icTests primeTestSuite = withEndPoint $ testGroup "Public Spec acceptance tests"
-  [ testCase "status endpoint" $ do
-      api_version <- getLBS "/api/v1/status" >>= okCBOR >>= statusResonse
-      unless (api_version == specVersion || api_version == "unversioned") $
-        assertFailure $ "ic_api_version should be " ++ show specVersion ++
-                        " or \"unversioned\", not " ++ show api_version
-
-  , testCase "spec compliance claimed" $ do
-      api_version <- getLBS "/api/v1/status" >>= okCBOR >>= statusResonse
-
-      unless (api_version == specVersion) $
-        assertFailure $ "ic_api_version is not " ++ show specVersion ++ ", so no spec compliance assumed"
-
-      -- The system claims to be spec-compliant.
-      -- So lets make sure the error code of ic-ref-test reflects reality
-      primeTestSuite
-
-  , simpleTestCase "create and install" $ \_ ->
+icTests :: TestConfig -> TestTree
+icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
+  [ simpleTestCase "create and install" $ \_ ->
       return ()
 
   , testCase "create_canister necessary" $
@@ -921,39 +938,20 @@ asRight (Right gr) = return gr
 
 -- * Requests
 
--- | Simple GET request, returning a raw bytestring
---
--- This and similar functions use a fresh manger for each request. If we care
--- about performance, this could revisited, the benefit would be connection
--- re-use.
-
-getLBS :: (HasCallStack, HasEndpoint) => String -> IO (Response BS.ByteString)
-getLBS path = do
-    manager <- newManager defaultManagerSettings
-    request <- parseRequest $ ep ++ path
-    httpLbs request manager
-  where
-    Endpoint ep = endPoint
-
 -- | Posting a CBOR request, returning a raw bytestring
-postCBOR :: (HasCallStack, HasEndpoint) => String -> GenR -> IO (Response BS.ByteString)
+postCBOR :: (HasCallStack, HasTestConfig) => String -> GenR -> IO (Response BS.ByteString)
 postCBOR path gr = do
-    -- this uses a fresh manger for each request. If we care about performance,
-    -- this could revisited (to share connections)
-    manager <- newManager defaultManagerSettings
-    request <- parseRequest $ ep ++ path
+    request <- parseRequest $ endPoint ++ path
     request <- return $ request
       { method = "POST"
       , requestBody = RequestBodyLBS $ BS.toLazyByteString $ encode gr
       , requestHeaders = [(hContentType, "application/cbor")]
       }
-    httpLbs request manager
-  where
-    Endpoint ep = endPoint
+    httpLbs request testManager
 
 -- | Add envelope to CBOR request, add a nonce and expiry if it is not there,
 -- post to "read", return decoded CBOR
-readCBOR :: (HasCallStack, HasEndpoint) => GenR -> IO GenR
+readCBOR :: (HasCallStack, HasTestConfig) => GenR -> IO GenR
 readCBOR req = do
   req <- addNonce req
   req <- addExpiry req
@@ -961,7 +959,7 @@ readCBOR req = do
 
 -- | Add envelope to CBOR, and a nonce and expiry if not there, post to
 -- "submit", poll for the request response, and return decoded CBOR
-submitCBOR :: (HasCallStack, HasEndpoint) => GenR -> IO ReqResponse
+submitCBOR :: (HasCallStack, HasTestConfig) => GenR -> IO ReqResponse
 submitCBOR req = do
   req <- addNonce req
   req <- addExpiry req
@@ -971,7 +969,7 @@ submitCBOR req = do
   awaitStatus (senderOf req) (requestId req)
 
 -- | Submits twice
-submitCBORTwice :: HasEndpoint => GenR -> IO ReqResponse
+submitCBORTwice :: HasTestConfig => GenR -> IO ReqResponse
 submitCBORTwice req = do
   req <- addNonce req
   req <- addExpiry req
@@ -987,7 +985,7 @@ data ReqResponse = Reply Blob | Reject Natural T.Text
 data ReqStatus = Processing | Pending | Responded ReqResponse | UnknownStatus
   deriving (Eq, Show)
 
-getRequestStatus :: HasEndpoint => Blob -> Blob -> IO ReqStatus
+getRequestStatus :: HasTestConfig => Blob -> Blob -> IO ReqStatus
 getRequestStatus sender rid = do
     req <- addExpiry $ rec
         [ "request_type" =: GText "request_status"
@@ -998,7 +996,7 @@ getRequestStatus sender rid = do
     requestStatusReply gr
 
 -- A hack that goes away when migrating to read_status
-getRequestStatus_or_4xx :: HasEndpoint => Blob -> Blob -> IO ReqStatus
+getRequestStatus_or_4xx :: HasTestConfig => Blob -> Blob -> IO ReqStatus
 getRequestStatus_or_4xx sender rid = do
     req <- addExpiry $ rec
         [ "request_type" =: GText "request_status"
@@ -1029,7 +1027,7 @@ requestStatusReply = record $ do
             return $ Responded (Reject code msg)
           _ -> lift $ assertFailure $ "Unexpected status " ++ show s
 
-awaitStatus :: HasEndpoint => Blob -> Blob -> IO ReqResponse
+awaitStatus :: HasTestConfig => Blob -> Blob -> IO ReqResponse
 awaitStatus sender rid = loop $ pollDelay >> getRequestStatus sender rid >>= \case
     Responded x -> return $ Just x
     _ -> return Nothing
@@ -1108,21 +1106,25 @@ isRelayReject codes r = do
     ("Reject code " ++ show b ++ " not in" ++ show codes ++ "\n")
     (BS.take 4 b `elem` map (BS.toLazyByteString . BS.word32LE) codes)
 
-statusResonse :: HasCallStack => GenR -> IO T.Text
+data StatusResponse = StatusResponse
+    { status_api_version :: T.Text
+    }
+
+statusResonse :: HasCallStack => GenR -> IO StatusResponse
 statusResonse = record $ do
     v <- field text "ic_api_version"
     _ <- optionalField text "impl_source"
     _ <- optionalField text "impl_version"
     _ <- optionalField text "impl_revision"
     swallowAllFields -- More fields are explicitly allowed
-    return v
+    return StatusResponse {status_api_version = v}
 
 -- * Interacting with aaaaa-aa (via HTTP)
 
 -- how to reach the management canister
 type IC00 = T.Text -> Blob -> IO ReqResponse
 
-ic00 :: HasEndpoint => IC00
+ic00 :: HasTestConfig => IC00
 ic00 method_name arg = submitCBOR $ rec
       [ "request_type" =: GText "call"
       , "sender" =: GBlob defaultUser
@@ -1131,7 +1133,7 @@ ic00 method_name arg = submitCBOR $ rec
       , "arg" =: GBlob arg
       ]
 
-ic00as :: HasEndpoint => Blob -> IC00
+ic00as :: HasTestConfig => Blob -> IC00
 ic00as user method_name arg = submitCBOR $ rec
       [ "request_type" =: GText "call"
       , "sender" =: GBlob user
@@ -1140,7 +1142,7 @@ ic00as user method_name arg = submitCBOR $ rec
       , "arg" =: GBlob arg
       ]
 
-ic00via :: HasEndpoint => Blob -> IC00
+ic00via :: HasTestConfig => Blob -> IC00
 ic00via cid method_name arg =
   call' cid $
     call_simple
@@ -1150,19 +1152,19 @@ ic00via cid method_name arg =
         (callback replyRejectData)
         (bytes arg)
 
-managementService :: HasEndpoint => IC00 -> Rec (ICManagement IO)
+managementService :: HasTestConfig => IC00 -> Rec (ICManagement IO)
 managementService ic00 =
   Candid.toCandidService err $ \method_name arg ->
     ic00 method_name arg >>= isReply
   where
     err s = assertFailure $ "Candid decoding error: " ++ s
 
-ic_create :: HasEndpoint => IC00 -> IO Blob
+ic_create :: HasTestConfig => IC00 -> IO Blob
 ic_create ic00 = do
   r <- managementService ic00 .! #create_canister $ ()
   return (rawPrincipal (r .! #canister_id))
 
-ic_install :: HasEndpoint => IC00 -> InstallMode -> Blob -> Blob -> Blob -> IO ()
+ic_install :: HasTestConfig => IC00 -> InstallMode -> Blob -> Blob -> Blob -> IO ()
 ic_install ic00 mode canister_id wasm_module arg = do
   managementService ic00 .! #install_code $ empty
     .+ #mode .== mode
@@ -1172,46 +1174,46 @@ ic_install ic00 mode canister_id wasm_module arg = do
     .+ #compute_allocation .== Nothing
     .+ #memory_allocation .== Nothing
 
-ic_set_controller :: HasEndpoint => IC00 -> Blob -> Blob -> IO ()
+ic_set_controller :: HasTestConfig => IC00 -> Blob -> Blob -> IO ()
 ic_set_controller ic00 canister_id new_controller = do
   managementService ic00 .! #set_controller $ empty
     .+ #canister_id .== Principal canister_id
     .+ #new_controller .== Principal new_controller
 
-ic_start_canister :: HasEndpoint => IC00 -> Blob -> IO ()
+ic_start_canister :: HasTestConfig => IC00 -> Blob -> IO ()
 ic_start_canister ic00 canister_id = do
   managementService ic00 .! #start_canister $ empty
     .+ #canister_id .== Principal canister_id
 
-ic_stop_canister :: HasEndpoint => IC00 -> Blob -> IO ()
+ic_stop_canister :: HasTestConfig => IC00 -> Blob -> IO ()
 ic_stop_canister ic00 canister_id = do
   managementService ic00 .! #stop_canister $ empty
     .+ #canister_id .== Principal canister_id
 
-ic_canister_status :: HasEndpoint => IC00 -> Blob -> IO RunState
+ic_canister_status :: HasTestConfig => IC00 -> Blob -> IO RunState
 ic_canister_status ic00 canister_id = do
   r <- managementService ic00 .! #canister_status $ empty
     .+ #canister_id .== Principal canister_id
   return (r .! #status)
 
-ic_delete_canister :: HasEndpoint => IC00 -> Blob -> IO ()
+ic_delete_canister :: HasTestConfig => IC00 -> Blob -> IO ()
 ic_delete_canister ic00 canister_id = do
   managementService ic00 .! #delete_canister $ empty
     .+ #canister_id .== Principal canister_id
 
-ic_raw_rand :: HasEndpoint => IC00 -> IO Blob
+ic_raw_rand :: HasTestConfig => IC00 -> IO Blob
 ic_raw_rand ic00 = managementService ic00 .! #raw_rand $ ()
 
 -- Primed variants return the request
 callIC' :: forall s a b.
-  HasEndpoint =>
+  HasTestConfig =>
   KnownSymbol s =>
   (a -> IO b) ~ (ICManagement IO .! s) =>
   Candid.CandidArg a =>
   IC00 -> Label s -> a -> IO ReqResponse
 callIC' ic00 l x = ic00 (T.pack (symbolVal l)) (Candid.encode x)
 
-ic_install' :: HasEndpoint => IC00 -> InstallMode -> Blob -> Blob -> Blob -> IO ReqResponse
+ic_install' :: HasTestConfig => IC00 -> InstallMode -> Blob -> Blob -> Blob -> IO ReqResponse
 ic_install' ic00 mode canister_id wasm_module arg =
   callIC' ic00 #install_code $ empty
     .+ #mode .== mode
@@ -1221,28 +1223,28 @@ ic_install' ic00 mode canister_id wasm_module arg =
     .+ #compute_allocation .== Nothing
     .+ #memory_allocation .== Nothing
 
-ic_set_controller' :: HasEndpoint => IC00 -> Blob -> Blob -> IO ReqResponse
+ic_set_controller' :: HasTestConfig => IC00 -> Blob -> Blob -> IO ReqResponse
 ic_set_controller' ic00 canister_id new_controller = do
   callIC' ic00 #set_controller $ empty
     .+ #canister_id .== Principal canister_id
     .+ #new_controller .== Principal new_controller
 
-ic_start_canister' :: HasEndpoint => IC00 -> Blob -> IO ReqResponse
+ic_start_canister' :: HasTestConfig => IC00 -> Blob -> IO ReqResponse
 ic_start_canister' ic00 canister_id = do
   callIC' ic00 #start_canister $ empty
     .+ #canister_id .== Principal canister_id
 
-ic_stop_canister' :: HasEndpoint => IC00 -> Blob -> IO ReqResponse
+ic_stop_canister' :: HasTestConfig => IC00 -> Blob -> IO ReqResponse
 ic_stop_canister' ic00 canister_id = do
   callIC' ic00 #stop_canister $ empty
     .+ #canister_id .== Principal canister_id
 
-ic_canister_status' :: HasEndpoint => IC00 -> Blob -> IO ReqResponse
+ic_canister_status' :: HasTestConfig => IC00 -> Blob -> IO ReqResponse
 ic_canister_status' ic00 canister_id = do
   callIC' ic00 #canister_status $ empty
     .+ #canister_id .== Principal canister_id
 
-ic_delete_canister' :: HasEndpoint => IC00 -> Blob -> IO ReqResponse
+ic_delete_canister' :: HasTestConfig => IC00 -> Blob -> IO ReqResponse
 ic_delete_canister' ic00 canister_id = do
   callIC' ic00 #delete_canister $ empty
     .+ #canister_id .== Principal canister_id
@@ -1255,40 +1257,40 @@ ic_delete_canister' ic00 canister_id = do
 -- e.g. to check for error conditions.
 -- The unprimed variant expect a reply.
 
-install' :: (HasCallStack, HasEndpoint) => Blob -> Prog -> IO ReqResponse
+install' :: (HasCallStack, HasTestConfig) => Blob -> Prog -> IO ReqResponse
 install' cid prog = do
   universal_wasm <- getTestWasm "universal_canister"
   ic_install' ic00 (enum #install) cid universal_wasm (run prog)
 
 -- Also calls create, used default 'ic00'
-install :: (HasCallStack, HasEndpoint) => Prog -> IO Blob
+install :: (HasCallStack, HasTestConfig) => Prog -> IO Blob
 install prog = do
     cid <- ic_create ic00
     universal_wasm <- getTestWasm "universal_canister"
     ic_install ic00 (enum #install) cid universal_wasm (run prog)
     return cid
 
-upgrade' :: (HasCallStack, HasEndpoint) => Blob -> Prog -> IO ReqResponse
+upgrade' :: (HasCallStack, HasTestConfig) => Blob -> Prog -> IO ReqResponse
 upgrade' cid prog = do
   universal_wasm <- getTestWasm "universal_canister"
   ic_install' ic00 (enum #upgrade) cid universal_wasm (run prog)
 
-upgrade :: (HasCallStack, HasEndpoint) => Blob -> Prog -> IO ()
+upgrade :: (HasCallStack, HasTestConfig) => Blob -> Prog -> IO ()
 upgrade cid prog = do
   universal_wasm <- getTestWasm "universal_canister"
   ic_install ic00 (enum #upgrade) cid universal_wasm (run prog)
 
-reinstall' :: (HasCallStack, HasEndpoint) => Blob -> Prog -> IO ReqResponse
+reinstall' :: (HasCallStack, HasTestConfig) => Blob -> Prog -> IO ReqResponse
 reinstall' cid prog = do
   universal_wasm <- getTestWasm "universal_canister"
   ic_install' ic00 (enum #reinstall) cid universal_wasm (run prog)
 
-reinstall :: (HasCallStack, HasEndpoint) => Blob -> Prog -> IO ()
+reinstall :: (HasCallStack, HasTestConfig) => Blob -> Prog -> IO ()
 reinstall cid prog = do
   universal_wasm <- getTestWasm "universal_canister"
   ic_install ic00 (enum #reinstall) cid universal_wasm (run prog)
 
-callRequest :: HasEndpoint => Blob -> Prog -> GenR
+callRequest :: HasTestConfig => Blob -> Prog -> GenR
 callRequest cid prog = rec
     [ "request_type" =: GText "call"
     , "sender" =: GBlob defaultUser
@@ -1297,7 +1299,7 @@ callRequest cid prog = rec
     , "arg" =: GBlob (run prog)
     ]
 
-callToQuery' :: (HasCallStack, HasEndpoint) => Blob -> Prog -> IO ReqResponse
+callToQuery' :: (HasCallStack, HasTestConfig) => Blob -> Prog -> IO ReqResponse
 callToQuery' cid prog = submitCBOR $ rec
     [ "request_type" =: GText "call"
     , "sender" =: GBlob defaultUser
@@ -1306,16 +1308,16 @@ callToQuery' cid prog = submitCBOR $ rec
     , "arg" =: GBlob (run prog)
     ]
 
-call' :: (HasCallStack, HasEndpoint) => Blob -> Prog -> IO ReqResponse
+call' :: (HasCallStack, HasTestConfig) => Blob -> Prog -> IO ReqResponse
 call' cid prog = submitCBOR (callRequest cid prog)
 
-callTwice' :: (HasCallStack, HasEndpoint) => Blob -> Prog -> IO ReqResponse
+callTwice' :: (HasCallStack, HasTestConfig) => Blob -> Prog -> IO ReqResponse
 callTwice' cid prog = submitCBORTwice (callRequest cid prog)
 
-call :: (HasCallStack, HasEndpoint) => Blob -> Prog -> IO Blob
+call :: (HasCallStack, HasTestConfig) => Blob -> Prog -> IO Blob
 call cid prog = call' cid prog >>= isReply
 
-query' :: (HasCallStack, HasEndpoint) => Blob -> Prog -> IO ReqResponse
+query' :: (HasCallStack, HasTestConfig) => Blob -> Prog -> IO ReqResponse
 query' cid prog =
   readCBOR >=> queryResponse $ rec
     [ "request_type" =: GText "query"
@@ -1325,13 +1327,12 @@ query' cid prog =
     , "arg" =: GBlob (run prog)
     ]
 
-query :: (HasCallStack, HasEndpoint) => Blob -> Prog -> IO Blob
+query :: (HasCallStack, HasTestConfig) => Blob -> Prog -> IO Blob
 query cid prog = query' cid prog >>= isReply
 
 -- Shortcut for test cases that just need one canister
-simpleTestCase :: HasEndpoint => String -> (Blob -> IO ()) -> TestTree
+simpleTestCase :: HasTestConfig => String -> (Blob -> IO ()) -> TestTree
 simpleTestCase name act = testCase name $ install noop >>= act
-
 
 -- * Programmatic test generation
 
@@ -1358,13 +1359,19 @@ getRand8Bytes = BS.pack <$> replicateM 8 randomIO
 
 -- Yes, implicit arguments are frowned upon. But they are also very useful.
 
-type HasEndpoint = (?endPoint :: Endpoint)
+type HasTestConfig = (?testConfig :: TestConfig)
 
-withEndPoint :: (forall. HasEndpoint => TestTree) -> TestTree
-withEndPoint act = askOption $ \ep -> let ?endPoint = (ep :: Endpoint) in act
+withTestConfig :: (forall. HasTestConfig => TestTree) -> TestConfig -> TestTree
+withTestConfig act tc = let ?testConfig = tc in act
 
-endPoint :: HasEndpoint => Endpoint
-endPoint = ?endPoint
+testConfig :: HasTestConfig => TestConfig
+testConfig = ?testConfig
+
+endPoint :: HasTestConfig => String
+endPoint = tc_endPoint testConfig
+
+testManager :: HasTestConfig => Manager
+testManager = tc_manager testConfig
 
 -- * Test data access
 
