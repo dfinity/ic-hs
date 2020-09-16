@@ -413,10 +413,16 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
     , simpleTestCase "reject (query)" $ \cid ->
       query' cid >=> isReject [4] $ reject "ABCD"
 
-    , simpleTestCase "No reply" $ \cid ->
+    , simpleTestCase "No response" $ \cid ->
       call' cid >=> isReject [5] $ noop
 
-    , simpleTestCase "No reply (query)" $ \cid ->
+    , simpleTestCase "No response does not rollback" $ \cid -> do
+      void $ call cid $ setGlobal "FOO" >>> reply
+      call' cid >=> isReject [5] $ noop
+      r <- query cid $ replyData getGlobal
+      r @?= "FOO"
+
+    , simpleTestCase "No response (query)" $ \cid ->
       query' cid >=> isReject [5] $ noop
 
     , simpleTestCase "Double reply" $ \cid ->
@@ -514,7 +520,7 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
       r <- query cid $ replyData getGlobal
       r @?= "FOO"
 
-    , simpleTestCase "query no reply" $ \cid ->
+    , simpleTestCase "query no response" $ \cid ->
       call' cid >=> isRelayReject [5] $
         inter_query cid defArgs{ other_side = noop }
 
