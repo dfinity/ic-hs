@@ -159,4 +159,3 @@ test-suite unit-test
   build-depends: base >= 4 && < 5
   build-depends: tasty >= 0.7
   build-depends: tasty-hunit
-

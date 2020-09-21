@@ -9,10 +9,10 @@ Internet Computer, as specified in the [Public Spec].
 Goals
 -----
 
-The goals of the reference implemenation are
+The goals of the reference implementation are
 
- * It evolves in lock-step with the Public Spec. At least versioned released of
-   the Public Spec come with a complete implemenation of `ic-stub`.
+ * It evolves in lock-step with the Public Spec. At least versioned releases of
+   the Public Spec come with a complete implementation of `ic-stub`.
 
  * Supplement the prose and pseudo-code in the Public Spec for additional and
    concrete clarity.
@@ -52,21 +52,21 @@ There are also explicit non-goals to keep in mind:
  * `ic-ref` does not need to support canisters that are large or very
    long-running.
 
- * No persitence across runs of `ic-ref`.
+ * No persistence across runs of `ic-ref`.
 
  * It is explicitly not desirable to share code between reference and
    production implementation, to achieve the multi-version cross-checking
    effect. Not using Rust for `ic-ref` helps with that.
 
- * No guaranteed protection against bad effects from malicous interactions.
+ * No guaranteed protection against bad effects from malicious interactions.
 
  * No duplication of commonly available functionality. In particular, the
    assumption is that the production implementation will use a mature Wasm
    embedder that implements Wasm validation correctly, so `ic-ref` does not
    itself implement validation.
 
-Furthermore there are some stretch goals that would be nice to have, but not if reqiures
-compromising the main goals.
+Furthermore there are some stretch goals that would be nice to have, but not if
+requires compromising the main goals.
 
  * The reference implementation describes _one_ possible execution, but not
    _all_ possible behaviours of the Public Spec. If this can be changed (e.g.
@@ -79,7 +79,7 @@ compromising the main goals.
  * Debugging/logging/trace features that aid understanding the behaviour and/or
    help debug canisters.
 
- * It could serve as a starting point for applying formal verfication to this
+ * It could serve as a starting point for applying formal verification to this
    part of the system, e.g. by converting the (non-plumbing) modules to Coq
    using `hs-to-coq`, or by implementing them in a theorem prover and
    extracting Haskell code from it.
@@ -106,7 +106,7 @@ To achieve these goals, the following design decisions are made:
      Examples: `IC.Wasm.Imports`, `IC.HTTP.CBOR`.
 
    This is an ongoing refinement process, striving for a probably unattainable
-   ideal als the goal.
+   ideal as the goal.
 
 Installation
 ------------
