@@ -21,13 +21,17 @@ import IC.HTTP.GenR.Parse
 dummyUserId :: EntityId
 dummyUserId = EntityId $ BS.pack [0xCA, 0xFF, 0xEE]
 
-stripEnvelope :: GenR -> Either T.Text (PublicKey, GenR)
+stripEnvelope :: GenR -> Either T.Text (Maybe PublicKey, GenR)
 stripEnvelope = record $ do
-    pk <- field blob "sender_pubkey"
-    sig <- field blob "sender_sig"
     content <- field anyType "content"
-    lift $ verify "\x0Aic-request" pk (requestId content) sig
-    return (pk, content)
+    pk <- optionalField blob "sender_pubkey"
+    sig <- optionalField blob "sender_sig"
+    case (pk, sig) of
+        (Just pk, Just sig) -> do
+            lift $ verify "\x0Aic-request" pk (requestId content) sig
+            return (Just pk, content)
+        (Nothing, Nothing) -> return (Nothing, content)
+        _ -> throwError "Need to set either both or none of sender_pubkey and sender_sig"
 
 getTimestamp :: IO Timestamp
 getTimestamp = do
@@ -58,7 +62,7 @@ asyncRequest = record $ do
     case t of
         "call" -> do
             cid <- EntityId <$> field blob "canister_id"
-            sender <- EntityId <$> field blob "sender"
+            sender <- maybe (EntityId "\x04") EntityId <$> optionalField blob "sender"
             method_name <- field text "method_name"
             arg <- field blob "arg"
             return $ UpdateRequest e cid sender (T.unpack method_name) arg
@@ -76,7 +80,7 @@ syncRequest = record $ do
             return $ StatusRequest e rid
         "query" -> do
             cid <- EntityId <$> field blob "canister_id"
-            sender <- EntityId <$> field blob "sender"
+            sender <- maybe (EntityId "\x04") EntityId <$> optionalField blob "sender"
             method_name <- field text "method_name"
             arg <- field blob "arg"
             return $ QueryRequest e cid sender (T.unpack method_name) arg

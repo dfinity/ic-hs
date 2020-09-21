@@ -77,11 +77,12 @@ defaultUser :: Blob
 defaultUser = mkSelfAuthenticatingId $ toPublicKey defaultSK
 otherUser :: Blob
 otherUser = mkSelfAuthenticatingId $ toPublicKey otherSK
+anonymousUser :: Blob
+anonymousUser = "\x04"
 
 queryToNonExistant :: GenR
 queryToNonExistant = rec
     [ "request_type" =: GText "query"
-    , "sender" =: GBlob defaultUser
     , "canister_id" =: GBlob doesn'tExist
     , "method_name" =: GText "foo"
     , "arg" =: GBlob "nothing to see here"
@@ -125,6 +126,16 @@ addExpiry = addIfNotThere "ingress_expiry" $ do
     t <- getPOSIXTime
     return $ GNat $ round ((t + 60) * 1000_000_000)
 
+envelopeFor :: Blob -> GenR -> GenR
+envelopeFor u content | u == anonymousUser = rec [ "content" =: content ]
+envelopeFor u content = envelope key content
+  where
+    key ::  SecretKey
+    key | u == defaultUser = defaultSK
+        | u == otherUser = otherSK
+        | u == anonymousUser = error "No key for the anonymous user"
+        | otherwise = error $ "Don't know key for user " ++ show u
+
 envelope :: SecretKey -> GenR -> GenR
 envelope sk content = rec
     [ "sender_pubkey" =: GBlob (toPublicKey sk)
@@ -136,15 +147,8 @@ envelope sk content = rec
 
 senderOf :: GenR -> Blob
 senderOf (GRec hm) | Just (GBlob id) <- HM.lookup "sender" hm = id
-senderOf _ = defaultUser
+senderOf _ = anonymousUser
 
-keyOf :: Blob -> SecretKey
-keyOf u | u == defaultUser = defaultSK
-keyOf u | u == otherUser = otherSK
-keyOf _ = defaultSK
-
-chooseKey :: GenR -> SecretKey
-chooseKey = keyOf . senderOf
 
 badEnvelope :: GenR -> GenR
 badEnvelope content = rec
@@ -444,6 +448,43 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
       r <- query cid $ replyData caller
       r @?= defaultUser
   ]
+
+  , testGroup "anonymous user"
+    [ simpleTestCase "update, sender absent" $ \cid -> do
+      r <- submitCBOR >=> isReply $ rec
+          [ "request_type" =: GText "call"
+          , "canister_id" =: GBlob cid
+          , "method_name" =: GText "update"
+          , "arg" =: GBlob (run (replyData caller))
+          ]
+      r @?= anonymousUser
+    , simpleTestCase "query, sender absent" $ \cid -> do
+      r <- readCBOR >=> queryResponse >=> isReply $ rec
+          [ "request_type" =: GText "query"
+          , "canister_id" =: GBlob cid
+          , "method_name" =: GText "query"
+          , "arg" =: GBlob (run (replyData caller))
+          ]
+      r @?= anonymousUser
+    , simpleTestCase "update, sender explicit" $ \cid -> do
+      r <- submitCBOR >=> isReply $ rec
+          [ "request_type" =: GText "call"
+          , "canister_id" =: GBlob cid
+          , "sender" =: GBlob anonymousUser
+          , "method_name" =: GText "update"
+          , "arg" =: GBlob (run (replyData caller))
+          ]
+      r @?= anonymousUser
+    , simpleTestCase "query, sender explicit" $ \cid -> do
+      r <- readCBOR >=> queryResponse >=> isReply $ rec
+          [ "request_type" =: GText "query"
+          , "canister_id" =: GBlob cid
+          , "sender" =: GBlob anonymousUser
+          , "method_name" =: GText "query"
+          , "arg" =: GBlob (run (replyData caller))
+          ]
+      r @?= anonymousUser
+    ]
 
   , testGroup "state"
     [ simpleTestCase "set/get" $ \cid -> do
@@ -856,7 +897,7 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
 
     , testCase "non-existing canister" $ do
         req <- addExpiry queryToNonExistant
-        postCBOR "/api/v1/read" (envelope defaultSK req)
+        postCBOR "/api/v1/read" (envelopeFor anonymousUser req)
           >>= okCBOR >>= queryResponse >>= isReject [3]
     ]
 
@@ -960,7 +1001,7 @@ readCBOR :: (HasCallStack, HasTestConfig) => GenR -> IO GenR
 readCBOR req = do
   req <- addNonce req
   req <- addExpiry req
-  postCBOR "/api/v1/read" (envelope (chooseKey req) req) >>= okCBOR
+  postCBOR "/api/v1/read" (envelopeFor (senderOf req) req) >>= okCBOR
 
 -- | Add envelope to CBOR, and a nonce and expiry if not there, post to
 -- "submit", poll for the request response, and return decoded CBOR
@@ -968,7 +1009,7 @@ submitCBOR :: (HasCallStack, HasTestConfig) => GenR -> IO ReqResponse
 submitCBOR req = do
   req <- addNonce req
   req <- addExpiry req
-  res <- postCBOR "/api/v1/submit" (envelope (chooseKey req) req)
+  res <- postCBOR "/api/v1/submit" (envelopeFor (senderOf req) req)
   code202 res
   assertBool "Response body not empty" (BS.null (responseBody res))
   awaitStatus (senderOf req) (requestId req)
@@ -978,9 +1019,9 @@ submitCBORTwice :: HasTestConfig => GenR -> IO ReqResponse
 submitCBORTwice req = do
   req <- addNonce req
   req <- addExpiry req
-  res <- postCBOR "/api/v1/submit" (envelope (chooseKey req) req)
+  res <- postCBOR "/api/v1/submit" (envelopeFor (senderOf req) req)
   code202 res
-  res <- postCBOR "/api/v1/submit" (envelope (chooseKey req) req)
+  res <- postCBOR "/api/v1/submit" (envelopeFor (senderOf req) req)
   code202 res
   assertBool "Response body not empty" (BS.null (responseBody res))
   awaitStatus (senderOf req) (requestId req)
@@ -996,7 +1037,7 @@ getRequestStatus sender rid = do
         [ "request_type" =: GText "request_status"
         , "request_id" =: GBlob rid
         ]
-    res <- postCBOR "/api/v1/read" $ envelope (keyOf sender) req
+    res <- postCBOR "/api/v1/read" $ envelopeFor sender req
     gr <- okCBOR res
     requestStatusReply gr
 
@@ -1007,12 +1048,12 @@ getRequestStatus_or_4xx sender rid = do
         [ "request_type" =: GText "request_status"
         , "request_id" =: GBlob rid
         ]
-    res <- postCBOR "/api/v1/read" $ envelope (keyOf sender) req
+    res <- postCBOR "/api/v1/read" $ envelopeFor sender req
     let c = statusCode (responseStatus res)
     if c == 200 then do
       gr <- okCBOR res
       requestStatusReply gr
-    else if 400 <= c && c < 500 then return UnknownStatus 
+    else if 400 <= c && c < 500 then return UnknownStatus
     else assertFailure $ "Status " ++ show c ++ " is not 4xx or status unknown\n"
 
 requestStatusReply :: GenR -> IO ReqStatus

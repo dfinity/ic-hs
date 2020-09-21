@@ -2,6 +2,7 @@
 Implements the special forms of ids (https://docs.dfinity.systems/public/#id-classes)
 -}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE OverloadedStrings #-}
 module IC.Id.Forms where
 
 import qualified Data.ByteString.Lazy as BS
@@ -34,6 +35,9 @@ isDerivedId registering blob =
     BS.length blob == 256`div`8 + 8 + 1 &&
     BS.last blob == 3 &&
     BS.take (256`div`8) blob == h registering
+
+isAnonymousId :: Blob -> Bool
+isAnonymousId blob = blob == "\x04"
 
 h :: BS.ByteString -> BS.ByteString
 h = BS.fromStrict . convert . hashlazy @SHA224
