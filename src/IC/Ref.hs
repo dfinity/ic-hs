@@ -268,14 +268,15 @@ getCanisterTime cid = time <$> getCanister cid
 -- for request status: Whether the request exists and who owns it
 -- in general: eventually there will be user key management
 
-authUser :: ICM m => PublicKey -> EntityId -> m Bool
-authUser pk id = return $ -- This is monadic to allow for key management
+authUser :: ICM m => Maybe PublicKey -> EntityId -> m Bool
+authUser Nothing id = return $ isAnonymousId (rawEntityId id)
+authUser (Just pk) id = return $ -- This is monadic to allow for key management
     isSelfAuthenticatingId pk (rawEntityId id)
 
-authAsyncRequest :: ICM m => PublicKey -> AsyncRequest -> m Bool
+authAsyncRequest :: ICM m => Maybe PublicKey -> AsyncRequest -> m Bool
 authAsyncRequest pk ar = authUser pk (callerOfAsync ar)
 
-authSyncRequest :: ICM m => PublicKey -> SyncRequest -> m Bool
+authSyncRequest :: ICM m => Maybe PublicKey -> SyncRequest -> m Bool
 authSyncRequest pk = \case
   StatusRequest _ rid ->
     gets (findRequest rid) >>= \case
