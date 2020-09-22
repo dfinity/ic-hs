@@ -60,7 +60,7 @@ rec {
       sleep 1
       test -e port
       mkdir -p $out
-      ic-ref-test --endpoint "http://0.0.0.0:$(cat port)/" --html $out/report.html
+      LANG=C.UTF8 ic-ref-test --endpoint "http://0.0.0.0:$(cat port)/" --html $out/report.html
 
       mkdir -p $out/nix-support
       echo "report test-results $out report.html" >> $out/nix-support/hydra-build-products
@@ -74,7 +74,7 @@ rec {
       trap kill_ic_ref EXIT PIPE
       sleep 1
       test -e port
-      ic-ref-test --endpoint "http://0.0.0.0:$(cat port)/"
+      LANG=C.UTF8 ic-ref-test --endpoint "http://0.0.0.0:$(cat port)/"
       kill -INT %1
       trap - EXIT PIPE
       sleep 5 # wait for ic-ref.tix to be written
