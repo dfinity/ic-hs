@@ -44,6 +44,7 @@ import System.Random
 import System.Exit
 import Data.Time.Clock.POSIX
 import Codec.Candid (Principal(..))
+import qualified Data.Binary.Get as Get
 import qualified Codec.Candid as Candid
 import Data.Row
 import qualified Data.Row.Variants as V
@@ -58,6 +59,7 @@ import IC.Crypto
 import IC.Id.Forms hiding (Blob)
 import IC.Test.Options
 import IC.Test.Universal
+import IC.Funds
 
 -- * Test data, standard requests
 
@@ -500,7 +502,32 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
     query cid (replyData self) >>= is cid
 
   , testGroup "inter-canister calls"
-    [ simpleTestCase "to nonexistant canister" $ \cid ->
+    [ testGroup "builder interface"
+      [ testGroup "traps without call_new"
+        [ simpleTestCase "call_data_append" $ \cid ->
+          call' cid (callDataAppend "Foo" >>> reply) >>= isReject [5]
+        , simpleTestCase "call_funds_add" $ \cid ->
+          call' cid (callFundsAdd "Foo" (int64 0) >>> reply) >>= isReject [5]
+        , simpleTestCase "call_perform" $ \cid ->
+          call' cid (callPerform >>> reply) >>= isReject [5]
+        ]
+      , simpleTestCase "call_new clears pending call" $ \cid -> do
+        do call cid $
+            callNew "foo" "bar" "baz" "quux" >>>
+            callDataAppend "hey" >>>
+            inter_query cid defArgs
+          >>= is ("Hello " <> cid <> " this is " <> cid)
+      , simpleTestCase "call_data_append really appends" $ \cid -> do
+        do call cid $
+            callNew (bytes cid) (bytes "query")
+                    (callback replyArgData) (callback replyRejectData) >>>
+            callDataAppend (bytes (BS.take 3 (run defaultOtherSide))) >>>
+            callDataAppend (bytes (BS.drop 3 (run defaultOtherSide))) >>>
+            callPerform
+         >>= is ("Hello " <> cid <> " this is " <> cid)
+      ]
+
+    , simpleTestCase "to nonexistant canister" $ \cid ->
       call' cid (inter_call "foo" "bar" defArgs) >>= isRelayReject [3]
 
     , simpleTestCase "to nonexistant method" $ \cid ->
@@ -589,9 +616,10 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
         >>= is "First reply"
 
       -- now check that the callback trapped and did not actual change the global
-      -- This check is maybe not as good as we want: There is no guarantee
-      -- that the IC actually tried to process the reply message before we do
-      -- this query.
+      -- to make this test reliabe, stop and start the canister, this will
+      -- ensure all outstanding callbacks are handled
+      barrier [cid]
+
       query cid (replyData getGlobal) >>= is "FOO"
 
     , simpleTestCase "partial reply" $ \cid ->
@@ -664,26 +692,23 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
     call cid (replyData (stableRead (int 0) (int 3))) >>= is "FOO"
 
   , testGroup "time" $
-    let getTimeTwice = cat (i64tob getTime) (i64tob getTime)
-        isSameTime blob = do
-          assertBool "Time not 8 bytes" (BS.length blob == 2*8)
-          assertBool "Time not constant" (BS.take 8 blob == BS.drop 8 blob)
-    in
-    [ simpleTestCase "in query" $ \cid -> do
-      query cid (replyData getTimeTwice) >>= isSameTime
-    , simpleTestCase "in update" $ \cid -> do
-      query cid (replyData getTimeTwice) >>= isSameTime
+    let getTimeTwice = cat (i64tob getTime) (i64tob getTime) in
+    [ simpleTestCase "in query" $ \cid ->
+      query cid (replyData getTimeTwice) >>= as2Word64 >>= bothSame
+    , simpleTestCase "in update" $ \cid ->
+      query cid (replyData getTimeTwice) >>= as2Word64 >>= bothSame
     , testCase "in install" $ do
-      cid <- install $ setGlobal getTimeTwice
-      query cid (replyData getGlobal) >>= isSameTime
+      cid <- install $ setGlobal (getTimeTwice)
+      query cid (replyData getGlobal) >>= as2Word64 >>= bothSame
     , testCase "in pre_upgrade" $ do
       cid <- install $
         ignore (stableGrow (int 1)) >>>
-        onPreUpgrade (callback $ stableWrite (int 0) getTimeTwice)
-      query cid (replyData (stableRead (int 0) (int (2*8)))) >>= isSameTime
+        onPreUpgrade (callback $ stableWrite (int 0) (getTimeTwice))
+      upgrade cid noop
+      query cid (replyData (stableRead (int 0) (int (2*8)))) >>= as2Word64 >>= bothSame
     , simpleTestCase "in post_upgrade" $ \cid -> do
-      upgrade cid $ setGlobal getTimeTwice
-      query cid (replyData getGlobal) >>= isSameTime
+      upgrade cid $ setGlobal (getTimeTwice)
+      query cid (replyData getGlobal) >>= as2Word64 >>= bothSame
     ]
 
   , testGroup "upgrades" $
@@ -719,12 +744,7 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
       call_ cid $
         reply >>>
         onPreUpgrade (callback (
-            call_simple
-                (bytes cid)
-                "query"
-                (callback replyArgData)
-                (callback replyRejectData)
-                (callback noop)
+            inter_query cid defArgs { other_side = noop }
         ))
       checkNoUpgrade cid
 
@@ -749,12 +769,7 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
       cid <- installForUpgrade $ stableWrite (int 3) getGlobal
       checkNoUpgrade cid
 
-      do upgrade' cid $ call_simple
-          (bytes cid)
-          "query"
-          (callback replyArgData)
-          (callback replyRejectData)
-          (callback noop)
+      do upgrade' cid $ inter_query cid defArgs{ other_side = noop }
         >>= isReject [5]
       checkNoUpgrade cid
     ]
@@ -824,16 +839,7 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
         query' cid noop >>= isReject [3]
     in
     [ testCase "explicit trap" $ failInInit $ trap "trapping in install"
-    , testCase "call" $ failInInit $ call_simple
-        "dummy"
-        "query"
-        (callback replyArgData)
-        (callback replyRejectData)
-        (callback (
-          replyDataAppend "Hello " >>>
-          replyDataAppend caller >>>
-          reply
-        ))
+    , testCase "call" $ failInInit $ inter_query "dummy" defArgs
     , testCase "reply" $ failInInit reply
     , testCase "reject" $ failInInit $ reject "rejecting in init"
     ]
@@ -854,6 +860,209 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
     [ testGroup "required fields" $
         omitFields (envelope defaultSK requestStatusNonExistant) $ \req ->
           postCBOR "/api/v1/read" req >>= code4xx
+    ]
+
+  , testGroup "funds" $
+    let getICPTs = replyData (i64tob (getBalance (bytes icpt_unit)))
+        rememberICPTs =
+          ignore (stableGrow (int 1)) >>>
+          stableWrite (int 0) (i64tob (getBalance (bytes icpt_unit)))
+        recallICPTs = replyData (stableRead (int 0) (int 8))
+        acceptAll = acceptFunds (bytes icpt_unit) (getAvailableFunds (bytes icpt_unit))
+        cycles = fromIntegral (maxBound :: Word64)
+        icpts = 64
+        create prog = do
+          cid <- ic_create_with_funds ic00 cycles (fromIntegral icpts)
+          installAt cid prog
+          return cid
+    in
+    [ testGroup "can use balance API" $
+        let getBalanceTwice unit = join cat (i64tob (getBalance (bytes unit)))
+            test n = replyData (getBalanceTwice n)
+        in concat
+        [ [ simpleTestCase ("in query (unit: " ++ show u ++ ")") $ \cid ->
+            query cid (test u) >>= as2Word64 >>= bothSame
+          , simpleTestCase ("in update (unit: " ++ show u ++ ")") $ \cid ->
+            call cid (test u) >>= as2Word64 >>= bothSame
+          , testCase ("in init (unit: " ++ show u ++ ")") $ do
+            cid <- install (setGlobal (getBalanceTwice u))
+            query cid (replyData getGlobal) >>= as2Word64 >>= bothSame
+          , simpleTestCase ("in callback (unit: " ++ show u ++ ")") $ \cid ->
+            call cid (inter_query cid defArgs{ on_reply = test u }) >>= as2Word64 >>= bothSame
+          ]
+        | u <- ["", cycle_unit, icpt_unit, "this is a test"]
+        ]
+    , testGroup "can use available funds API" $
+        let getAvailableFundsTwice unit = join cat (i64tob (getAvailableFunds (bytes unit)))
+            test n = replyData (getAvailableFundsTwice n)
+        in concat
+        [ [ simpleTestCase ("in update   (unit: " ++ show u ++ ")") $ \cid ->
+            call cid (test u) >>= as2Word64 >>= bothSame
+          , simpleTestCase ("in callback (unit: " ++ show u ++ ")") $ \cid ->
+            call cid (inter_query cid defArgs{ on_reply = test u }) >>= as2Word64 >>= bothSame
+          ]
+        | u <- ["", cycle_unit, icpt_unit, "this is a test"]
+        ]
+    , testGroup "can accept zero funds at any unit"
+        [ simpleTestCase ("at unit " ++ show u) $ \cid ->
+            call_ cid $ acceptFunds (bytes u) (int64 0) >>> reply
+        | u <- ["", cycle_unit, icpt_unit, "this is a test"]
+        ]
+    , testGroup "cannot accept more than available funds"
+        [ simpleTestCase ("at unit " ++ show u) $ \cid ->
+            call' cid (acceptFunds (bytes u) (int64 1) >>> reply) >>= isReject [5]
+        | u <- ["", cycle_unit, icpt_unit, "this is a test"]
+        ]
+    , testGroup "cannot accept absurd amount of funds"
+        [ simpleTestCase ("at unit " ++ show u) $ \cid ->
+            call' cid (acceptFunds (bytes u) (int64 maxBound) >>> reply) >>= isReject [5]
+        | u <- ["", cycle_unit, icpt_unit, "this is a test"]
+        ]
+    , testGroup "cannot use available funds API" $
+      let test = ignore (getAvailableFunds (bytes (cycle_unit))) >>> reply in
+      [ simpleTestCase "in query" $ \cid -> do
+        query' cid test >>= isReject [5]
+      , testCase "in init" $ do
+        cid <- ic_create ic00
+        install' cid test >>= isReject [5]
+      ]
+    , testGroup "cannot use accept funds API" $
+      let test = acceptFunds (bytes cycle_unit) (int64 0) >>> reply in
+      [ simpleTestCase "in query" $ \cid -> do
+        query' cid test >>= isReject [5]
+      , testCase "in init" $ do
+        cid <- ic_create ic00
+        install' cid test >>= isReject [5]
+      ]
+    , testGroup "cannot use refunds funds API" $
+      let test = ignore (getRefund (bytes icpt_unit)) >>> reply in
+      [ simpleTestCase "in query" $ \cid -> do
+        query' cid test >>= isReject [5]
+      , simpleTestCase "in update" $ \cid -> do
+        call' cid test >>= isReject [5]
+      , testCase "in init" $ do
+        cid <- ic_create ic00
+        install' cid test >>= isReject [5]
+      ]
+    , testGroup "non-zero ICPT balance"
+      [ testCase "install" $ do
+        cid <- create rememberICPTs
+        query cid recallICPTs >>= asWord64 >>= is icpts
+      , testCase "update" $ do
+        cid <- create noop
+        call cid getICPTs >>= asWord64 >>= is icpts
+      , testCase "query" $ do
+        cid <- create noop
+        query cid getICPTs >>= asWord64 >>= is icpts
+      , testCase "in pre_upgrade" $ do
+        cid <- create $ onPreUpgrade (callback rememberICPTs)
+        upgrade cid noop
+        query cid recallICPTs >>= asWord64 >>= is icpts
+      , testCase "in post_upgrade" $ do
+        cid <- create noop
+        upgrade cid rememberICPTs
+        query cid recallICPTs >>= asWord64 >>= is icpts
+        query cid getICPTs >>= asWord64 >>= is icpts
+      ]
+    , testCase "sending more funds than in balance" $ do
+      cid <- create noop
+      do call' cid $ inter_call cid "bar" defArgs { icpts = 2*icpts }
+        >>= isReject [5]
+    , testCase "sending full balance" $ do
+      cid1 <- create noop
+      cid2 <- create noop
+      do call cid1 $ inter_call cid2 "update" defArgs
+          { other_side =
+            replyDataAppend (i64tob (getAvailableFunds (bytes icpt_unit))) >>>
+            acceptAll >>>
+            reply
+          , icpts = icpts
+          }
+        >>= asWord64 >>= is icpts
+      query cid1 getICPTs >>= asWord64 >>= is 0
+      query cid2 getICPTs >>= asWord64 >>= is (2*icpts)
+    , testCase "relay funds before accept traps" $ do
+      cid1 <- create noop
+      cid2 <- create noop
+      cid3 <- create noop
+      do call cid1 $ inter_call cid2 "update" defArgs
+          { icpts = icpts
+          , other_side =
+            inter_call cid3 "update" defArgs
+              { other_side = acceptAll >>> reply
+              , icpts = 2*icpts
+              , on_reply = noop -- must not double reply
+              } >>>
+            acceptAll >>> reply
+          , on_reply = trap "unexpected reply"
+          , on_reject = replyData (i64tob (getRefund (bytes icpt_unit)))
+          }
+        >>= asWord64 >>= is icpts
+      query cid1 getICPTs >>= asWord64 >>= is icpts
+      query cid2 getICPTs >>= asWord64 >>= is icpts
+      query cid3 getICPTs >>= asWord64 >>= is icpts
+    , testCase "relay funds after accept works" $ do
+      cid1 <- create noop
+      cid2 <- create noop
+      cid3 <- create noop
+      do call cid1 $ inter_call cid2 "update" defArgs
+          { icpts = icpts
+          , other_side =
+            acceptAll >>>
+            inter_call cid3 "update" defArgs
+              { other_side = acceptAll >>> reply
+              , icpts = 2*icpts
+              }
+          , on_reply = replyData (i64tob (getRefund (bytes icpt_unit)))
+          , on_reject = trap "unexpected reject"
+          }
+        >>= asWord64 >>= is 0
+      query cid1 getICPTs >>= asWord64 >>= is 0
+      query cid2 getICPTs >>= asWord64 >>= is 0
+      query cid3 getICPTs >>= asWord64 >>= is (3*icpts)
+    , testCase "aborting call resets balance" $ do
+      cid <- create noop
+      do call cid $
+          callNew "Foo" "Bar" "baz" "quux" >>>
+          callFundsAdd (bytes icpt_unit) (int64 (icpts `div` 2)) >>>
+          replyDataAppend (i64tob (getBalance (bytes icpt_unit))) >>>
+          callNew "Foo" "Bar" "baz" "quux" >>>
+          replyDataAppend (i64tob (getBalance (bytes icpt_unit))) >>>
+          reply
+        >>= as2Word64 >>= is (icpts `div` 2, icpts)
+
+    , testCase "partial refund" $ do
+      cid1 <- create noop
+      cid2 <- create noop
+      do call cid1 $ inter_call cid2 "update" defArgs
+          { icpts = icpts
+          , other_side = acceptFunds (bytes icpt_unit) (int64 (icpts `div` 2)) >>> reply
+          , on_reply = replyData (i64tob (getRefund (bytes icpt_unit)))
+          , on_reject = trap "unexpected reject"
+          }
+        >>= asWord64 >>= is (icpts `div` 2)
+      query cid1 getICPTs >>= asWord64 >>= is (icpts `div` 2)
+      query cid2 getICPTs >>= asWord64 >>= is (icpts + icpts `div` 2)
+    , testCase "funds not in balance while in transit" $ do
+      cid1 <- create noop
+      do call cid1 $ inter_call cid1 "update" defArgs
+          { icpts = icpts
+          , other_side = getICPTs
+          , on_reject = trap "unexpected reject"
+          }
+        >>= asWord64 >>= is 0
+      query cid1 getICPTs >>= asWord64 >>= is icpts
+    , testCase "create and delete canister with funds" $ do
+      cid1 <- create noop
+      cid2 <- ic_create (ic00viaWithFunds cid1 1000000000 (icpts`div`2))
+      universal_wasm <- getTestWasm "universal_canister"
+      ic_install (ic00via cid1) (enum #install) cid2 universal_wasm (run noop)
+      query cid1 getICPTs >>= asWord64 >>= is (icpts `div` 2)
+      query cid2 getICPTs >>= asWord64 >>= is (icpts `div` 2)
+      ic_stop_canister (ic00via cid1) cid2
+      -- We load some funds on the deletion call, just to check that they are refunded
+      ic_delete_canister (ic00viaWithFunds cid1 0 (icpts`div`2)) cid2
+      query cid1 getICPTs >>= asWord64 >>= is icpts
     ]
 
   , testGroup "signature checking" $
@@ -1090,6 +1299,23 @@ isReply (Reply b) = return b
 isReply (Reject n msg) =
   assertFailure $ "Unexpected reject (code " ++ show n ++ "): " ++ T.unpack msg
 
+-- Convenience decoders
+asWord64 :: HasCallStack => Blob -> IO Word64
+asWord64 = runGet Get.getWord64le
+
+as2Word64 :: HasCallStack => Blob -> IO (Word64, Word64)
+as2Word64 = runGet $ (,) <$> Get.getWord64le <*> Get.getWord64le
+
+bothSame :: (Eq a, Show a) => (a, a) -> Assertion
+bothSame (x,y) = x @?= y
+
+runGet :: HasCallStack => Get.Get a -> Blob -> IO a
+runGet a b = return $! Get.runGet (a <* done) b
+  where
+    done = do
+        nothing_left <- Get.isEmpty
+        unless nothing_left (fail "left-over bytes")
+
 is :: (Eq a, Show a) => a -> a -> Assertion
 is exp act = act @?= exp
 
@@ -1138,16 +1364,20 @@ ic00as user method_name arg = submitCBOR $ rec
       ]
 
 ic00via :: HasTestConfig => Blob -> IC00
-ic00via cid method_name arg =
-  call' cid $
-    call_simple
-        (bytes "") -- aaaaa-aa
-        (bytes (BS.fromStrict (T.encodeUtf8 method_name)))
-        (callback replyArgData)
-        (callback replyRejectData)
-        (bytes arg)
+ic00via cid = ic00viaWithFunds cid 0 0
 
-managementService :: HasTestConfig => IC00 -> Rec (ICManagement IO)
+ic00viaWithFunds :: HasTestConfig => Blob -> Word64 -> Word64 -> IC00
+ic00viaWithFunds cid cycles icpts method_name arg =
+  call' cid $
+    callNew
+      (bytes "") (bytes (BS.fromStrict (T.encodeUtf8 method_name))) -- aaaaa-aa
+      (callback replyArgData) (callback replyRejectData) >>>
+    callDataAppend (bytes arg) >>>
+    callFundsAdd (bytes cycle_unit) (int64 cycles) >>>
+    callFundsAdd (bytes icpt_unit) (int64 icpts) >>>
+    callPerform
+
+managementService :: (HasCallStack, HasTestConfig) => IC00 -> Rec (ICManagement IO)
 managementService ic00 =
   Candid.toCandidService err $ \method_name arg ->
     ic00 method_name arg >>= isReply
@@ -1159,6 +1389,13 @@ ic_create ic00 = do
   r <- managementService ic00 .! #create_canister $ ()
   return (rawPrincipal (r .! #canister_id))
 
+ic_create_with_funds :: HasTestConfig => IC00 -> Natural -> Natural -> IO Blob
+ic_create_with_funds ic00 cycles icpts = do
+  r <- managementService ic00 .! #dev_create_canister_with_funds $ empty
+    .+ #num_cycles .== cycles
+    .+ #num_icpt .== icpts
+  return (rawPrincipal (r .! #canister_id))
+
 ic_install :: HasTestConfig => IC00 -> InstallMode -> Blob -> Blob -> Blob -> IO ()
 ic_install ic00 mode canister_id wasm_module arg = do
   managementService ic00 .! #install_code $ empty
@@ -1167,7 +1404,7 @@ ic_install ic00 mode canister_id wasm_module arg = do
     .+ #wasm_module .== wasm_module
     .+ #arg .== arg
     .+ #compute_allocation .== Nothing
-    .+ #memory_allocation .== Nothing
+    .+ #memory_allocation .== Just (100 * 1024 * 1024)
 
 ic_set_controller :: HasTestConfig => IC00 -> Blob -> Blob -> IO ()
 ic_set_controller ic00 canister_id new_controller = do
@@ -1216,7 +1453,7 @@ ic_install' ic00 mode canister_id wasm_module arg =
     .+ #wasm_module .== wasm_module
     .+ #arg .== arg
     .+ #compute_allocation .== Nothing
-    .+ #memory_allocation .== Nothing
+    .+ #memory_allocation .== Just (100 * 1024 * 1024)
 
 ic_set_controller' :: HasTestConfig => IC00 -> Blob -> Blob -> IO ReqResponse
 ic_set_controller' ic00 canister_id new_controller = do
@@ -1244,6 +1481,14 @@ ic_delete_canister' ic00 canister_id = do
   callIC' ic00 #delete_canister $ empty
     .+ #canister_id .== Principal canister_id
 
+-- A barrier
+
+-- This will stop and start all mentioned canisters. This guarantees
+-- that all outstanding callbacks are handled
+barrier :: HasTestConfig => [Blob] -> IO ()
+barrier cids = do
+  mapM_ (ic_stop_canister ic00) cids
+  mapM_ (ic_start_canister ic00) cids
 
 -- * Interacting with the universal canister
 
@@ -1257,12 +1502,16 @@ install' cid prog = do
   universal_wasm <- getTestWasm "universal_canister"
   ic_install' ic00 (enum #install) cid universal_wasm (run prog)
 
+installAt :: (HasCallStack, HasTestConfig) => Blob -> Prog -> IO ()
+installAt cid prog = do
+  universal_wasm <- getTestWasm "universal_canister"
+  ic_install ic00 (enum #install) cid universal_wasm (run prog)
+
 -- Also calls create, used default 'ic00'
 install :: (HasCallStack, HasTestConfig) => Prog -> IO Blob
 install prog = do
     cid <- ic_create ic00
-    universal_wasm <- getTestWasm "universal_canister"
-    ic_install ic00 (enum #install) cid universal_wasm (run prog)
+    installAt cid prog
     return cid
 
 upgrade' :: (HasCallStack, HasTestConfig) => Blob -> Prog -> IO ReqResponse

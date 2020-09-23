@@ -1,6 +1,7 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE OverloadedStrings #-}
 module IC.Types where
 
 import qualified Data.ByteString.Lazy.Char8 as BS
@@ -15,6 +16,8 @@ import Data.Int
 import Data.List
 import Data.List.Split (chunksOf)
 import Numeric.Natural
+
+import IC.Funds
 
 type (↦) = M.Map
 
@@ -44,7 +47,7 @@ prettyID (EntityId blob) =
 
 
 newtype Responded = Responded Bool
-  deriving Show
+  deriving (Show, Eq)
 
 newtype Timestamp = Timestamp Natural
   deriving (Show, Num, Ord, Eq)
@@ -89,11 +92,12 @@ data MethodCall = MethodCall
   , call_method_name :: MethodName
   , call_arg :: Blob
   , call_callback :: Callback
+  , call_transferred_funds :: Funds
   }
   deriving Show
 
 type ExistingCanisters = [CanisterId]
 
-type UpdateResult = ([MethodCall], Maybe Response)
+type UpdateResult = ([MethodCall], Funds, Maybe Response)
 
 type StableMemory = Blob

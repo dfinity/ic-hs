@@ -18,6 +18,7 @@ import Control.Monad.ST
 import Data.ByteString.Lazy (ByteString)
 
 import IC.Types
+import IC.Funds
 import IC.Wasm.Winter (Module)
 import IC.Wasm.Winter.Persist
 import qualified IC.Canister.Interface as CI
@@ -31,21 +32,21 @@ data WasmState = WasmState
     }
   deriving Show
 
-initialize :: Module -> CanisterId -> EntityId -> Timestamp -> Blob -> TrapOr WasmState
-initialize wasm_mod cid caller time dat = runESST $ \esref ->
+initialize :: Module -> CanisterId -> EntityId -> Timestamp -> Funds -> Blob -> TrapOr WasmState
+initialize wasm_mod cid caller time balance dat = runESST $ \esref ->
   rawInitialize esref cid wasm_mod >>= \case
     Trap err -> return $ Trap err
     Return rs ->
-      rawInvoke rs (CI.Initialize wasm_mod caller time dat) >>= \case
+      rawInvoke rs (CI.Initialize wasm_mod caller time balance dat) >>= \case
         Trap err -> return $ Trap err
         Return () -> Return <$> newWasmState wasm_mod rs
 
-initializeUpgrade :: Module -> CanisterId -> EntityId -> Timestamp -> Blob -> Blob -> TrapOr WasmState
-initializeUpgrade wasm_mod cid caller time mem dat = runESST $ \esref ->
+initializeUpgrade :: Module -> CanisterId -> EntityId -> Timestamp -> Funds -> Blob -> Blob -> TrapOr WasmState
+initializeUpgrade wasm_mod cid caller time balance mem dat = runESST $ \esref ->
   rawInitialize esref cid wasm_mod >>= \case
     Trap err -> return $ Trap err
     Return rs ->
-      rawInvoke rs (CI.PostUpgrade wasm_mod caller time mem dat) >>= \case
+      rawInvoke rs (CI.PostUpgrade wasm_mod caller time balance mem dat) >>= \case
         Trap err -> return $ Trap err
         Return () -> Return <$> newWasmState wasm_mod rs
 

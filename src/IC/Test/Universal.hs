@@ -24,6 +24,7 @@ import qualified Data.ByteString.Lazy as BS
 import Data.ByteString.Builder
 import Data.Word
 import Data.String
+import IC.Funds
 
 -- The types of our little language are i32, i64 and blobs
 
@@ -85,6 +86,9 @@ ignore = op 1
 int :: Word32 -> Exp 'I
 int x = Exp $ word8 2 <> word32LE x
 
+int64 :: Word64 -> Exp 'I64
+int64 x = Exp $ word8 31 <> word64LE x
+
 bytes :: BS.ByteString -> Exp 'B
 bytes bytes = Exp $
     word8 3 <>
@@ -105,9 +109,6 @@ reject = op 7
 
 caller :: Exp 'B
 caller = op 8
-
-call_simple :: Exp 'B -> Exp 'B -> Exp 'B -> Exp 'B -> Exp 'B -> Prog
-call_simple = op 9
 
 reject_msg :: Exp 'B
 reject_msg = op 10
@@ -142,6 +143,18 @@ stableWrite = op 18
 getTime :: Exp 'I64
 getTime = op 26
 
+getAvailableFunds :: Exp 'B -> Exp 'I64
+getAvailableFunds = op 27
+
+getBalance :: Exp 'B -> Exp 'I64
+getBalance = op 28
+
+getRefund :: Exp 'B -> Exp 'I64
+getRefund = op 29
+
+acceptFunds :: Exp 'B -> Exp 'I64 -> Prog
+acceptFunds = op 30
+
 debugPrint :: Exp 'B -> Prog
 debugPrint = op 19
 
@@ -159,6 +172,18 @@ badPrint = op 23
 
 onPreUpgrade :: Exp 'B -> Prog
 onPreUpgrade = op 24
+
+callNew :: Exp 'B -> Exp 'B -> Exp 'B -> Exp 'B -> Prog
+callNew = op 32
+
+callDataAppend :: Exp 'B -> Prog
+callDataAppend = op 33
+
+callFundsAdd :: Exp 'B -> Exp 'I64 -> Prog
+callFundsAdd = op 34
+
+callPerform :: Prog
+callPerform = op 35
 
 
 -- Some convenience combinators
@@ -179,15 +204,18 @@ data CallArgs = CallArgs
     { on_reply :: Prog
     , on_reject :: Prog
     , other_side :: Prog
+    , cycles :: Word64
+    , icpts :: Word64
     }
 
 inter_call :: BS.ByteString -> BS.ByteString -> CallArgs -> Prog
-inter_call callee method_name ca = call_simple
-    (bytes callee)
-    (bytes method_name)
-    (callback (on_reply ca))
-    (callback (on_reject ca))
-    (callback (other_side ca))
+inter_call callee method_name ca =
+    callNew (bytes callee) (bytes method_name)
+            (callback (on_reply ca)) (callback (on_reject ca)) >>>
+    callDataAppend (callback (other_side ca)) >>>
+    callFundsAdd (bytes cycle_unit) (int64 (cycles ca)) >>>
+    callFundsAdd (bytes icpt_unit) (int64 (icpts ca)) >>>
+    callPerform
 
 inter_update :: BS.ByteString -> CallArgs -> Prog
 inter_update callee = inter_call callee "update"
@@ -201,11 +229,13 @@ defArgs :: CallArgs
 defArgs = CallArgs
     { on_reply = replyArgData
     , on_reject = replyRejectData
-    , other_side = defaulOtherSide
+    , other_side = defaultOtherSide
+    , cycles = 0
+    , icpts = 0
     }
 
-defaulOtherSide :: Prog
-defaulOtherSide =
+defaultOtherSide :: Prog
+defaultOtherSide =
     replyDataAppend "Hello " >>>
     replyDataAppend caller  >>>
     replyDataAppend " this is " >>>

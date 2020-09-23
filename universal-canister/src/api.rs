@@ -20,19 +20,24 @@ mod ic0 {
         pub fn msg_reject_msg_size() -> u32;
         pub fn msg_reply() -> ();
         pub fn msg_reply_data_append(offset: u32, size: u32) -> ();
+        pub fn msg_funds_available( unit_src: u32, unit_size: u32 ) -> u64;
+        pub fn msg_funds_refunded( unit_src: u32, unit_size: u32 ) -> u64;
+        pub fn msg_funds_accept( unit_src: u32, unit_size: u32, amount : u64 ) -> ();
+        pub fn canister_balance( unit_src: u32, unit_size: u32 ) -> u64;
         pub fn trap(offset: u32, size: u32) -> !;
-        pub fn call_simple(
+        pub fn call_new(
             callee_src: u32,
             callee_size: u32,
             name_src: u32,
             name_size: u32,
-            reply_fun: usize,
-            reply_env: u32,
-            reject_fun: usize,
-            reject_env: u32,
-            data_src: u32,
-            data_size: u32,
-        ) -> i32;
+            reply_fun : u32,
+            reply_env : u32,
+            reject_fun : u32,
+            reject_env : u32,
+            ) -> ();
+        pub fn call_data_append( src: u32, size: u32 ) -> ();
+        pub fn call_funds_add( unit_src: u32, unit_size: u32, amount : u64 ) -> ();
+        pub fn call_perform() -> u32;
         pub fn stable_size() -> u32;
         pub fn stable_grow(additional_pages: u32) -> u32;
         pub fn stable_read(dst: u32, offset: u32, size: u32) -> ();
@@ -43,29 +48,41 @@ mod ic0 {
 
 // Convenience wrappers around the DFINTY System API
 
-// call static
-pub fn call_static(
+pub fn call_new (
     callee: &[u8],
     method: &[u8],
-    on_reply: fn(u32) -> (),
-    reply_env: u32,
-    on_reject: fn(u32) -> (),
-    reject_env: u32,
-    data: &[u8],
-) -> i32 {
+    reply_fun: fn(u32) -> (), reply_env: u32,
+    reject_fun: fn(u32) -> (), reject_env: u32,
+) {
     unsafe {
-      ic0::call_simple(
+      ic0::call_new(
           callee.as_ptr() as u32,
           callee.len() as u32,
           method.as_ptr() as u32,
           method.len() as u32,
-          on_reply as usize,
+          reply_fun as u32,
           reply_env as u32,
-          on_reject as usize,
+          reject_fun as u32,
           reject_env as u32,
-          data.as_ptr() as u32,
-          data.len() as u32,
       )
+    }
+}
+
+pub fn call_data_append(payload: &[u8]) {
+    unsafe {
+        ic0::call_data_append(payload.as_ptr() as u32, payload.len() as u32);
+    }
+}
+
+pub fn call_funds_add(unit: &[u8], amount : u64) {
+    unsafe {
+        ic0::call_funds_add(unit.as_ptr() as u32, unit.len() as u32, amount);
+    }
+}
+
+pub fn call_perform() -> u32 {
+    unsafe {
+        ic0::call_perform()
     }
 }
 
@@ -128,9 +145,25 @@ pub fn reject(err_message: &[u8]) {
     }
 }
 
-/// Returns the rejection code.
 pub fn reject_code() -> u32 {
     unsafe { ic0::msg_reject_code() }
+}
+
+pub fn funds_available( unit: &[u8] ) -> u64 {
+    unsafe { ic0::msg_funds_available(unit.as_ptr() as u32, unit.len() as u32) }
+}
+
+pub fn funds_refunded( unit: &[u8] ) -> u64 {
+    unsafe { ic0::msg_funds_refunded(unit.as_ptr() as u32, unit.len() as u32) }
+}
+
+pub fn accept( unit: &[u8], amount : u64) {
+    unsafe { ic0::msg_funds_accept(unit.as_ptr() as u32, unit.len() as u32, amount) }
+}
+
+
+pub fn balance( unit: &[u8] ) -> u64 {
+    unsafe { ic0::canister_balance(unit.as_ptr() as u32, unit.len() as u32) }
 }
 
 pub fn stable_size() -> u32 {

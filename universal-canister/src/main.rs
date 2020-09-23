@@ -73,6 +73,11 @@ fn read_int(ops : &mut Ops) -> u32 {
   u32::from_le_bytes(bytes.try_into().unwrap())
 }
 
+fn read_int64(ops : &mut Ops) -> u64 {
+  let bytes = read_bytes(ops, std::mem::size_of::<u64>());
+  u64::from_le_bytes(bytes.try_into().unwrap())
+}
+
 fn eval(ops : Ops) {
   let mut ops : Ops = ops;
   let mut stack : Stack = Stack::new();
@@ -108,30 +113,6 @@ fn eval(ops : Ops) {
 
         // caller
         8 => stack.push_blob(api::caller()),
-
-        // call
-        9 => {
-          // pop in reverse order!
-          let data = stack.pop_blob();
-          let on_reject = stack.pop_blob();
-          let on_reply = stack.pop_blob();
-          let method = stack.pop_blob();
-          let callee = stack.pop_blob();
-          let reply_env = add_callback(on_reply);
-          let reject_env = add_callback(on_reject);
-          let err_code = api::call_static(
-                  &callee,
-                  &method,
-                  callback,
-                  reply_env,
-                  callback,
-                  reject_env,
-                  &data,
-              );
-          if err_code != 0 {
-              api::trap_with("call_simple failed")
-          }
-        }
 
         // reject_msg
         10 => stack.push_blob(api::reject_message()),
@@ -195,6 +176,69 @@ fn eval(ops : Ops) {
 
         // time
         26 => stack.push_int64(api::time()),
+
+        // available funds
+        27 => {
+            let unit = stack.pop_blob();
+            stack.push_int64(api::funds_available(&unit))
+        }
+
+        // balance
+        28 => {
+            let unit = stack.pop_blob();
+            stack.push_int64(api::balance(&unit))
+        }
+
+        // refunded
+        29 => {
+            let unit = stack.pop_blob();
+            stack.push_int64(api::funds_refunded(&unit))
+        }
+
+        // accept
+        30 => {
+            let amount = stack.pop_int64();
+            let unit = stack.pop_blob();
+            api::accept(&unit, amount)
+        }
+
+        // push int64
+        31 => {
+          let a = read_int64(&mut ops);
+          stack.push_int64(a);
+        }
+
+        // call_new
+        32 => {
+          // pop in reverse order!
+          let reject_code = stack.pop_blob();
+          let reply_code = stack.pop_blob();
+          let method = stack.pop_blob();
+          let callee = stack.pop_blob();
+
+          let reject_env = add_callback(reject_code);
+          let reply_env = add_callback(reply_code);
+
+          api::call_new(&callee, &method, callback, reply_env, callback, reject_env);
+        }
+
+        // append arg
+        33 => api::call_data_append(&stack.pop_blob()),
+
+        // append funds
+        34 => {
+            let amount = stack.pop_int64();
+            let unit = stack.pop_blob();
+            api::call_funds_add(&unit, amount);
+        }
+
+        // perform
+        35 => {
+          let err_code = api::call_perform();
+          if err_code != 0 {
+              api::trap_with("call_perform failed")
+          }
+        }
 
         _ => api::trap_with(&format!("unknown op {}", op)),
       }

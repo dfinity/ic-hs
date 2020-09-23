@@ -6,10 +6,10 @@
         "homepage": null,
         "owner": "nomeata",
         "repo": "haskell-candid",
-        "rev": "e0d054596e325b690a685cdf2a0014a9b40a0236",
-        "sha256": "1my01pqm06l87dbyrzi3rb1qhbvwnq03fjzwyy3xbi4396s98qq3",
+        "rev": "7130231141887f754239cf5c63682d788601366a",
+        "sha256": "12qdii9dsx9d1s0wywmda9z2f3abdczs334hdkky9lp4gris4z5j",
         "type": "tarball",
-        "url": "https://github.com/nomeata/haskell-candid/archive/e0d054596e325b690a685cdf2a0014a9b40a0236.tar.gz",
+        "url": "https://github.com/nomeata/haskell-candid/archive/7130231141887f754239cf5c63682d788601366a.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "leb128-cereal": {
@@ -19,10 +19,10 @@
         "homepage": null,
         "owner": "nomeata",
         "repo": "haskell-leb128-cereal",
-        "rev": "f756eb8c86c91f37c0cffd1d3bc4d2009e519fb9",
-        "sha256": "04ljy6cbsl9jzd6v3i5qs7cx3627l7vpkbkjw7j3yzwnrgmdvyw8",
+        "rev": "e8c0878fcdc2540379a02c44f94061bb262a2f8e",
+        "sha256": "1mzxfxdil8ss37jxqschfg3swf64s18bbqgcnbd311653wl8w6ir",
         "type": "tarball",
-        "url": "https://github.com/nomeata/haskell-leb128-cereal/archive/f756eb8c86c91f37c0cffd1d3bc4d2009e519fb9.tar.gz",
+        "url": "https://github.com/nomeata/haskell-leb128-cereal/archive/e8c0878fcdc2540379a02c44f94061bb262a2f8e.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "naersk": {
