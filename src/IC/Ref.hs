@@ -9,6 +9,8 @@
 {-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
 
 {-|
 This module implements the main abstract logic of the Internet Computer. It
@@ -44,20 +46,20 @@ where
 import qualified Data.Map as M
 import qualified Data.Row as R
 import qualified Data.Row.Variants as V
-import qualified Data.Text as T
 import qualified Data.ByteString.Lazy as BS
 import Data.Maybe
-import Control.Monad.Trans.Maybe
 import Control.Monad.State.Class
 import Control.Monad.Except
 import Control.Monad.Random.Lazy
 import Data.Sequence (Seq(..))
 import Data.Foldable (toList)
 import Codec.Candid
-import Data.Row (empty, Rec, (.==), (.+), (.!), type (.!))
+import Data.Row ((.==), (.+), (.!), type (.!))
+import GHC.Stack
 
 import IC.Id.Forms hiding (Blob)
 import IC.Types
+import IC.Funds
 import IC.Canister
 import IC.Id.Fresh
 import IC.Utils
@@ -109,6 +111,7 @@ data CanState = CanState
   , run_status :: RunStatus
   , controller :: EntityId
   , time :: Timestamp
+  , balance :: Funds
   }
   deriving (Show)
 
@@ -116,7 +119,7 @@ data CanState = CanState
 -- (callback + environment)
 data EntryPoint
   = Public MethodName Blob
-  | Closure Callback Response
+  | Closure Callback Response Funds
   deriving (Show)
 
 type CallId = Int
@@ -124,6 +127,7 @@ data CallContext = CallContext
   { canister :: CanisterId
   , origin :: CallOrigin
   , responded :: Responded
+  , available_funds :: Funds
   , last_trap :: Maybe String
       -- ^ non-normative, but yields better reject messages
   }
@@ -142,6 +146,7 @@ data Message
   | ResponseMessage
     { call_context :: CallId
     , response :: Response
+    , refunded_funds :: Funds
     }
   deriving (Show)
 
@@ -158,7 +163,7 @@ data IC = IC
 
 -- The functions below want stateful access to a value of type 'IC', and be
 -- able to log message (used for `ic0.debug_print`).
-type ICM m = (MonadState IC m, Logger m)
+type ICM m = (MonadState IC m, Logger m, HasCallStack)
 
 initialIC :: IO IC
 initialIC = IC mempty mempty mempty mempty <$> newStdGen
@@ -203,6 +208,7 @@ createEmptyCanister cid controller time = modify $ \ic ->
       , run_status = IsRunning
       , controller = controller
       , time = time
+      , balance = no_funds
       }
 
 canisterMustExist :: (CanReject m, ICM m) => CanisterId -> m ()
@@ -224,7 +230,7 @@ isCanisterEmpty cid = isNothing . wasm_state <$> getCanister cid
 getCanister :: ICM m => CanisterId -> m CanState
 getCanister cid =
   gets (M.lookup cid . canisters)
-    `orElse` error "canister does not exist"
+    `orElse` error ("canister does not exist: " ++ prettyID cid)
 
 modCanister :: ICM m => CanisterId -> (CanState -> CanState) -> m ()
 modCanister cid f = do
@@ -245,6 +251,13 @@ getController cid = controller <$> getCanister cid
 setController :: ICM m => CanisterId -> EntityId -> m ()
 setController cid controller = modCanister cid $
     \cs -> cs { controller = controller }
+
+getBalance :: ICM m => CanisterId -> m Funds
+getBalance cid = balance <$> getCanister cid
+
+setBalance :: ICM m => CanisterId -> Funds -> m ()
+setBalance cid balance = modCanister cid $
+    \cs -> cs { balance = balance }
 
 getRunStatus :: ICM m => CanisterId -> m RunStatus
 getRunStatus cid = run_status <$> getCanister cid
@@ -305,12 +318,12 @@ readRequest (QueryRequest _ canister_id user_id method arg) =
     wasm_state <- getCanisterState canister_id
     can_mod <- getCanisterMod canister_id
     time <- getCanisterTime canister_id
+    balance <- getBalance canister_id
 
     f <- return (M.lookup method (query_methods can_mod))
       `orElse` reject RC_DESTINATION_INVALID "query method does not exist"
 
-
-    case f user_id time arg wasm_state of
+    case f user_id time balance arg wasm_state of
       Trap msg -> reject RC_CANISTER_ERROR $ "canister trapped: " ++ msg
       Return (Reject (rc,rm)) -> reject rc rm
       Return (Reply res) -> return $ Completed (CompleteArg res)
@@ -336,6 +349,7 @@ processRequest (rid, req) = onReject (setReqStatus rid . Rejected) $ case req of
       , origin = FromUser rid
       , responded = Responded False
       , last_trap = Nothing
+      , available_funds = no_funds
       }
     enqueueMessage $ CallMessage
       { call_context = ctxt_id
@@ -357,19 +371,35 @@ modifyCallContext :: ICM m => CallId -> (CallContext -> CallContext) -> m ()
 modifyCallContext ctxt_id f = modify $ \ic ->
   ic { call_contexts = M.adjust f ctxt_id (call_contexts ic) }
 
+getCallContextFunds :: ICM m => CallId -> m Funds
+getCallContextFunds ctxt_id = available_funds <$> getCallContext ctxt_id
+
+setCallContextFunds :: ICM m => CallId -> Funds -> m ()
+setCallContextFunds ctxt_id funds = modifyCallContext ctxt_id $ \ctxt ->
+  ctxt { available_funds = funds }
+
 respondCallContext :: ICM m => CallId -> Response -> m ()
 respondCallContext ctxt_id response = do
-  -- TODO: check no prior response
-  modifyCallContext ctxt_id $ \ctxt -> ctxt { responded = Responded True }
-  enqueueMessage $ ResponseMessage { call_context = ctxt_id, response }
+  ctxt <- getCallContext ctxt_id
+  when (responded ctxt == Responded True) $
+    error "Internal error: Double response"
+  modifyCallContext ctxt_id $ \ctxt -> ctxt
+    { responded = Responded True
+    , available_funds = no_funds
+    }
+  enqueueMessage $ ResponseMessage {
+    call_context = ctxt_id,
+    response,
+    refunded_funds = available_funds ctxt
+  }
 
 replyCallContext :: ICM m => CallId -> Blob -> m ()
-replyCallContext ctxt_id =
-  respondCallContext ctxt_id . Reply
+replyCallContext ctxt_id blob =
+  respondCallContext ctxt_id (Reply blob)
 
 rejectCallContext :: ICM m => CallId -> (RejectCode, String) -> m ()
-rejectCallContext ctxt_id =
-  respondCallContext ctxt_id . Reject
+rejectCallContext ctxt_id r =
+  respondCallContext ctxt_id (Reject r)
 
 rememberTrap :: ICM m => CallId -> String -> m ()
 rememberTrap ctxt_id msg =
@@ -407,10 +437,8 @@ processMessage m = case m of
     if callee == managementCanisterId
     then do
       caller <- callerOfCallID ctxt_id
-      rejectAsCanister $ do
-        -- using MaybeT to signal that no resonse is to be sent yet
-        r <- runMaybeT $ invokeManagementCanister caller ctxt_id entry
-        forM_ r $ replyCallContext ctxt_id
+      rejectAsCanister $
+        invokeManagementCanister caller ctxt_id entry
     else do
       canisterMustExist callee
       getRunStatus callee >>= \case
@@ -421,57 +449,127 @@ processMessage m = case m of
       wasm_state <- getCanisterState callee
       can_mod <- getCanisterMod callee
       time <- getCanisterTime callee
-      invokeEntry ctxt_id wasm_state can_mod time entry >>= \case
+      balance <- getBalance callee
+      invokeEntry ctxt_id wasm_state can_mod time balance entry >>= \case
         Trap msg -> do
+          -- Eventually update cycle balance here
           logTrap msg
           rememberTrap ctxt_id msg
-        Return (new_state, (new_calls, mb_response)) -> do
+        Return (new_state, (new_calls, accepted, mb_response)) -> do
+          updateBalances ctxt_id new_calls accepted
           setCanisterState callee new_state
           mapM_ (newCall ctxt_id) new_calls
           mapM_ (respondCallContext ctxt_id) mb_response
 
-  ResponseMessage ctxt_id response -> do
+  ResponseMessage ctxt_id response refunded_funds -> do
     ctxt <- getCallContext ctxt_id
     case origin ctxt of
       FromUser rid -> setReqStatus rid $
+        -- NB: Here funds disappear
         case response of
           Reject (rc, msg) -> Rejected (rc, msg)
           Reply blob -> Completed (CompleteArg blob)
-      FromCanister other_ctxt_id callback ->
+      FromCanister other_ctxt_id callback -> do
+        -- Add refund to balance
+        cid <- calleeOfCallID other_ctxt_id
+        prev_balance <- getBalance cid
+        setBalance cid $ prev_balance `add_funds` refunded_funds
+
         enqueueMessage $ CallMessage
           { call_context = other_ctxt_id
-          , entry = Closure callback response
+          , entry = Closure callback response refunded_funds
           }
+
+updateBalances :: ICM m => CallId -> [MethodCall] -> Funds -> m ()
+updateBalances ctxt_id new_calls accepted = do
+  cid <- calleeOfCallID ctxt_id
+
+  -- Eventually update when we track cycle consumption
+  let max_cycles = no_funds
+  let cycles_consumed = no_funds
+
+  prev_balance <- getBalance cid
+  available <- getCallContextFunds ctxt_id
+  if accepted `le_funds` available
+  then do
+    let to_spend = prev_balance `add_funds` accepted `sub_funds` max_cycles
+    let transferred = sum_funds [ call_transferred_funds c | c <- new_calls]
+    if transferred `le_funds` to_spend
+    then do
+      setBalance cid $ prev_balance
+        `add_funds` accepted
+        `sub_funds` cycles_consumed
+        `sub_funds` transferred
+      setCallContextFunds ctxt_id $ available `sub_funds` accepted
+    else error "Internal error: More funds transferred than available"
+  else error "Internal error: More funds accepted than available"
+
 
 managementCanisterId :: EntityId
 managementCanisterId = EntityId mempty
 
-invokeManagementCanister :: (CanReject m, ICM m) => EntityId -> CallId -> EntryPoint -> MaybeT m Blob
-invokeManagementCanister caller cid = \case
-    Public method_name arg -> raw_service (T.pack method_name) arg
-    Closure{} -> error "closure invoked on management function "
+
+invokeManagementCanister ::
+  forall m. (CanReject m, ICM m) => EntityId -> CallId -> EntryPoint -> m ()
+invokeManagementCanister caller ctxt_id (Public method_name arg) =
+  case method_name of
+      "create_canister" -> atomic $ icCreateCanister caller ctxt_id
+      "dev_create_canister_with_funds" -> atomic $ icCreateCanisterWithFunds caller ctxt_id
+      "dev_set_funds" -> atomic $ icDevSetFunds caller
+      "install_code" -> atomic $ icInstallCode caller
+      "set_controller" -> atomic $ icSetController caller
+      "start_canister" -> atomic $ icStartCanister caller
+      "stop_canister" -> deferred $ icStopCanister caller ctxt_id
+      "canister_status" -> atomic $ icCanisterStatus caller
+      "delete_canister" -> atomic $ icDeleteCanister caller ctxt_id
+      "raw_rand" -> atomic icRawRand
+      _ -> reject RC_DESTINATION_INVALID $ "Unsupported management function " ++ method_name
   where
-    raw_service = fromCandidService not_found err (managementCanister caller cid)
-    not_found f = reject RC_DESTINATION_INVALID $ "Unsupported management function " ++ T.unpack f
-    err msg = reject RC_CANISTER_ERROR $ "Candid failed to decode: " ++ msg
+    -- always responds
+    atomic :: forall a b.  (CandidArg a, CandidArg b) => (a -> m b) -> m ()
+    atomic meth = wrap (\k x -> meth x >>= k) (replyCallContext ctxt_id) arg
 
-managementCanister :: (CanReject m, ICM m) => EntityId -> CallId -> Rec (ICManagement (MaybeT m))
-managementCanister caller ctxt_id = empty
-    .+ #create_canister .== icCreateCanister caller
-    .+ #install_code    .== icInstallCode caller
-    .+ #set_controller  .== icSetController caller
-    .+ #start_canister  .== icStartCanister caller
-    .+ #stop_canister   .== icStopCanister caller ctxt_id
-    .+ #canister_status .== icCanisterStatus caller
-    .+ #delete_canister .== icDeleteCanister caller
-    .+ #raw_rand        .== icRawRand
+    -- no implict reply
+    deferred :: forall a. CandidArg a => (a -> m ()) -> m ()
+    deferred meth = wrap @a @() (\_k x -> meth x) (error "unused") arg
 
-icCreateCanister :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "create_canister"
-icCreateCanister caller _r = do
+    wrap
+      :: forall a b.
+      (CandidArg a, CandidArg b) =>
+      ((b -> m ()) -> a -> m ()) ->
+      ((Blob -> m ()) -> Blob -> m ())
+    wrap method raw_reply blob =
+      case decode @a blob of
+        Left msg -> reject RC_CANISTER_ERROR $ "Candid failed to decode: " ++ msg
+        Right x -> method (raw_reply . encode @b) x
+
+invokeManagementCanister _ _ Closure{} = error "closure invoked on management function "
+
+icCreateCanister :: (ICM m, CanReject m) => EntityId -> CallId -> ICManagement m .! "create_canister"
+icCreateCanister caller ctxt_id _r =
+    icCreateCanisterWithFunds caller ctxt_id (#num_cycles .== 0 .+ #num_icpt .== 0)
+
+icCreateCanisterWithFunds :: (ICM m, CanReject m) => EntityId -> CallId -> ICManagement m .! "dev_create_canister_with_funds"
+icCreateCanisterWithFunds caller ctxt_id r = do
+    -- This is for testing only
+    let fake_funds = cycle_funds (r .! #num_cycles) `add_funds` icpt_funds (r .! #num_icpt)
     new_id <- gets (freshId . M.keys . canisters)
     let currentTime = 0 -- ic-ref lives in the 70ies
     createEmptyCanister new_id caller currentTime
+    -- Here we fill up the canister with the funds provided by the caller
+    real_funds <- getCallContextFunds ctxt_id
+    setBalance new_id (fake_funds `add_funds` real_funds)
+    setCallContextFunds ctxt_id no_funds
     return (#canister_id .== entityIdToPrincipal new_id)
+
+icDevSetFunds :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "dev_set_funds"
+icDevSetFunds caller r = do
+    -- This is for testing only
+    let canister_id = principalToEntityId (r .! #canister_id)
+    let fake_funds = cycle_funds (r .! #num_cycles) `add_funds` icpt_funds (r .! #num_icpt)
+    canisterMustExist canister_id
+    checkController canister_id caller
+    setBalance canister_id fake_funds
 
 icInstallCode :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "install_code"
 icInstallCode caller r = do
@@ -483,10 +581,11 @@ icInstallCode caller r = do
     checkController canister_id caller
     was_empty <- isCanisterEmpty canister_id
     time <- getCanisterTime canister_id
+    balance <- getBalance canister_id
 
     let
       reinstall = do
-        wasm_state <- return (init_method new_can_mod canister_id caller time arg)
+        wasm_state <- return (init_method new_can_mod canister_id caller time balance arg)
           `onTrap` (\msg -> reject RC_CANISTER_ERROR $ "Initialization trapped: " ++ msg)
         setCanisterModule canister_id new_can_mod
         setCanisterState canister_id wasm_state
@@ -501,9 +600,9 @@ icInstallCode caller r = do
           reject RC_DESTINATION_INVALID "canister is empty during upgrade"
         old_wasm_state <- getCanisterState canister_id
         old_can_mod <- getCanisterMod canister_id
-        mem <- return (pre_upgrade_method old_can_mod old_wasm_state caller time)
+        mem <- return (pre_upgrade_method old_can_mod old_wasm_state caller time balance)
           `onTrap` (\msg -> reject RC_CANISTER_ERROR $ "Pre-upgrade trapped: " ++ msg)
-        new_wasm_state <- return (post_upgrade_method new_can_mod canister_id caller time mem arg)
+        new_wasm_state <- return (post_upgrade_method new_can_mod canister_id caller time balance mem arg)
           `onTrap` (\msg -> reject RC_CANISTER_ERROR $ "Post-upgrade trapped: " ++ msg)
         setCanisterModule canister_id new_can_mod
         setCanisterState canister_id new_wasm_state
@@ -541,19 +640,18 @@ icStartCanister caller r = do
         IsStopped -> setRunStatus canister_id IsRunning
         IsDeleted -> error "deleted canister encountered"
 
-icStopCanister :: (ICM m, CanReject m) => EntityId -> CallId -> ICManagement (MaybeT m) .! "stop_canister"
+icStopCanister ::
+  (ICM m, CanReject m) =>
+  (a -> m b) ~ (ICManagement m .! "stop_canister") =>
+  EntityId -> CallId -> a -> m ()
 icStopCanister caller ctxt_id r = do
     let canister_id = principalToEntityId (r .! #canister_id)
     canisterMustExist canister_id
     checkController canister_id caller
     getRunStatus canister_id >>= \case
-        IsRunning -> do
-            setRunStatus canister_id (IsStopping [ctxt_id])
-            MaybeT (return Nothing)
-        IsStopping pending -> do
-            setRunStatus canister_id (IsStopping (pending ++ [ctxt_id]))
-            MaybeT (return Nothing)
-        IsStopped -> return ()
+        IsRunning -> setRunStatus canister_id (IsStopping [ctxt_id])
+        IsStopping pending -> setRunStatus canister_id (IsStopping (pending ++ [ctxt_id]))
+        IsStopped -> replyCallContext ctxt_id (encode ())
         IsDeleted -> error "deleted canister encountered"
 
 actuallyStopCanister :: ICM m => CanisterId -> m ()
@@ -579,8 +677,8 @@ icCanisterStatus caller r = do
         IsDeleted -> error "deleted canister encountered"
     return $ #status .== s
 
-icDeleteCanister :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "delete_canister"
-icDeleteCanister caller r = do
+icDeleteCanister :: (ICM m, CanReject m) => EntityId -> CallId -> ICManagement m .! "delete_canister"
+icDeleteCanister caller ctxt_id r = do
     let canister_id = principalToEntityId (r .! #canister_id)
     canisterMustExist canister_id
     checkController canister_id caller
@@ -589,6 +687,11 @@ icDeleteCanister caller r = do
         IsStopping _pending -> reject RC_SYS_FATAL "Cannot delete stopping canister"
         IsStopped -> return ()
         IsDeleted -> error "deleted canister encountered"
+
+    funds <- getBalance canister_id
+    available <- getCallContextFunds ctxt_id
+    setCallContextFunds ctxt_id (available `add_funds` funds)
+
     setRunStatus canister_id IsDeleted
 
 icRawRand :: ICM m => ICManagement m .! "raw_rand"
@@ -600,23 +703,26 @@ runRandIC a = state $ \ic ->
     in (x, ic { rng = g })
 
 invokeEntry :: ICM m =>
-    CallId -> WasmState -> CanisterModule -> Timestamp -> EntryPoint ->
+    CallId -> WasmState -> CanisterModule -> Timestamp -> Funds -> EntryPoint ->
     m (TrapOr (WasmState, UpdateResult))
-invokeEntry ctxt_id wasm_state can_mod time entry = do
+invokeEntry ctxt_id wasm_state can_mod time balance entry = do
     responded <- respondedCallID ctxt_id
+    available <- getCallContextFunds ctxt_id
     case entry of
       Public method dat -> do
         caller <- callerOfCallID ctxt_id
-        case M.lookup method (update_methods can_mod) of
-          Just f -> return $ f caller time responded dat wasm_state
-          Nothing ->
-            case M.lookup method (query_methods can_mod) of
-              Just f -> return $ asUpdate f caller time responded dat wasm_state
-              Nothing -> do
-                let reject = Reject (RC_DESTINATION_INVALID, "method does not exist: " ++ method)
-                return $ Return (wasm_state, ([], Just reject))
-      Closure cb r ->
-        return $ callbacks can_mod cb time responded r wasm_state
+        case lookupUpdate method can_mod of
+          Just f -> return $ f caller time balance responded available dat wasm_state
+          Nothing -> do
+            let reject = Reject (RC_DESTINATION_INVALID, "method does not exist: " ++ method)
+            return $ Return (wasm_state, ([], no_funds, Just reject))
+      Closure cb r refund ->
+        return $ callbacks can_mod cb time balance responded available r refund wasm_state
+  where
+    lookupUpdate method can_mod
+        | Just f <- M.lookup method (update_methods can_mod) = Just f
+        | Just f <- M.lookup method (query_methods can_mod)  = Just (asUpdate f)
+        | otherwise = Nothing
 
 newCall :: ICM m => CallId -> MethodCall -> m ()
 newCall from_ctxt_id call = do
@@ -625,6 +731,7 @@ newCall from_ctxt_id call = do
     , origin = FromCanister from_ctxt_id (call_callback call)
     , responded = Responded False
     , last_trap = Nothing
+    , available_funds = call_transferred_funds call
     }
   enqueueMessage $ CallMessage
     { call_context = new_ctxt_id

@@ -59,5 +59,17 @@ type ICManagement m =
         canister_id : principal;
       }) -> ();
       raw_rand : () -> (blob);
+
+      /* unspec’ed */
+      dev_create_canister_with_funds : (record{
+        num_cycles : nat;
+        num_icpt : nat;
+      }) -> (record {canister_id : principal});
+
+      dev_set_funds : (record{
+        canister_id : principal;
+        num_cycles : nat;
+        num_icpt : nat;
+      }) -> ();
     }
   |]
