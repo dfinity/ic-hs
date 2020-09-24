@@ -568,7 +568,6 @@ icDevSetFunds caller r = do
     let canister_id = principalToEntityId (r .! #canister_id)
     let fake_funds = cycle_funds (r .! #num_cycles) `add_funds` icpt_funds (r .! #num_icpt)
     canisterMustExist canister_id
-    checkController canister_id caller
     setBalance canister_id fake_funds
 
 icInstallCode :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "install_code"
