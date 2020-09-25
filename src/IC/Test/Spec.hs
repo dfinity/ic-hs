@@ -919,7 +919,7 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
         | u <- ["", cycle_unit, icpt_unit, "this is a test"]
         ]
     , testGroup "cannot use available funds API" $
-      let test = ignore (getAvailableFunds (bytes (cycle_unit))) >>> reply in
+      let test = ignore (getAvailableFunds (bytes cycle_unit)) >>> reply in
       [ simpleTestCase "in query" $ \cid -> do
         query' cid test >>= isReject [5]
       , testCase "in init" $ do
@@ -1063,6 +1063,28 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
       -- We load some funds on the deletion call, just to check that they are refunded
       ic_delete_canister (ic00viaWithFunds cid1 0 (icpts`div`2)) cid2
       query cid1 getICPTs >>= asWord64 >>= is icpts
+    , testCase "two-step-refund" $ do
+      cid1 <- create noop
+      do call cid1 $ inter_call cid1 "update" defArgs
+          { icpts = 10
+          , other_side = inter_call cid1 "update" defArgs
+              { icpts = 5
+              , other_side = reply -- no accept
+              , on_reply =
+                    -- remember refund
+                    replyDataAppend (i64tob (getRefund (bytes icpt_unit))) >>>
+                    reply
+              , on_reject = trap "unexpected reject"
+              }
+          , on_reply =
+                -- remember the refund above and this refund
+                replyDataAppend argData >>>
+                replyDataAppend (i64tob (getRefund (bytes icpt_unit))) >>>
+                reply
+          , on_reject = trap "unexpected reject"
+          }
+        >>= as2Word64 >>= is (5,10)
+      query cid1 getICPTs >>= asWord64 >>= is icpts -- nothing lost?
     ]
 
   , testGroup "signature checking" $
