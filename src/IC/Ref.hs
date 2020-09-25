@@ -515,7 +515,7 @@ invokeManagementCanister caller ctxt_id (Public method_name arg) =
   case method_name of
       "create_canister" -> atomic $ icCreateCanister caller ctxt_id
       "dev_create_canister_with_funds" -> atomic $ icCreateCanisterWithFunds caller ctxt_id
-      "dev_set_funds" -> atomic $ icDevSetFunds caller
+      "dev_set_funds" -> atomic $ icDevSetFunds
       "install_code" -> atomic $ icInstallCode caller
       "set_controller" -> atomic $ icSetController caller
       "start_canister" -> atomic $ icStartCanister caller
@@ -562,8 +562,8 @@ icCreateCanisterWithFunds caller ctxt_id r = do
     setCallContextFunds ctxt_id no_funds
     return (#canister_id .== entityIdToPrincipal new_id)
 
-icDevSetFunds :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "dev_set_funds"
-icDevSetFunds caller r = do
+icDevSetFunds :: (ICM m, CanReject m) => ICManagement m .! "dev_set_funds"
+icDevSetFunds r = do
     -- This is for testing only
     let canister_id = principalToEntityId (r .! #canister_id)
     let fake_funds = cycle_funds (r .! #num_cycles) `add_funds` icpt_funds (r .! #num_icpt)
