@@ -21,7 +21,7 @@ module IC.Wasm.Winter.Persist
   )
   where
 
-import Control.Monad.Identity
+import Control.Monad
 import Control.Monad.ST
 import Data.Primitive.MutVar
 import qualified Data.IntMap as IM
@@ -34,6 +34,7 @@ import qualified Wasm.Runtime.Global as W
 import qualified Wasm.Runtime.Instance as W
 import qualified Wasm.Runtime.Memory as W
 import qualified Wasm.Syntax.Values as W
+import qualified Wasm.Util.Source as W
 
 import IC.Wasm.Winter (Instance)
 
@@ -97,13 +98,13 @@ instance Persistable (W.Extern f (ST s)) where
 data PModuleInst = PModuleInst
   { memories :: V.Vector (Persisted (W.MemoryInst (ST ())))
   , globals :: V.Vector (Persisted (W.GlobalInst (ST ())))
-  , exports :: M.Map T.Text (Persisted (W.Extern Identity (ST ())))
+  , exports :: M.Map T.Text (Persisted (W.Extern W.Phrase (ST ())))
   }
   deriving Show
 
-instance Persistable (W.ModuleInst Identity (ST s)) where
-  type Persisted (W.ModuleInst Identity (ST s)) = PModuleInst
-  type M (W.ModuleInst Identity (ST s)) = ST s
+instance Persistable (W.ModuleInst W.Phrase (ST s)) where
+  type Persisted (W.ModuleInst W.Phrase (ST s)) = PModuleInst
+  type M (W.ModuleInst W.Phrase (ST s)) = ST s
   persist inst = PModuleInst
     <$> persist (W._miMemories inst)
     <*> persist (W._miGlobals inst)

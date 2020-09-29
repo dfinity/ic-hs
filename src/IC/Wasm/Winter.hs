@@ -29,7 +29,6 @@ module IC.Wasm.Winter
 where
 
 import qualified Data.ByteString.Lazy as BS
-import Control.Monad.Identity
 import Control.Monad.Except
 import qualified Data.Map as M
 import qualified Data.Vector as V
@@ -49,8 +48,9 @@ import qualified Wasm.Syntax.AST as W
 import qualified Wasm.Syntax.Types as W
 import qualified Wasm.Syntax.Values as W
 import qualified Wasm.Syntax.Memory as W
+import qualified Wasm.Util.Source as W
 
-type Instance s = (IM.IntMap (W.ModuleInst Identity (ST s)), Int)
+type Instance s = (IM.IntMap (W.ModuleInst W.Phrase (ST s)), Int)
 
 type HostM s = ExceptT String (ST s)
 
@@ -61,7 +61,7 @@ type FuncName = String
 type Import s = (ModName, FuncName, W.StackType, W.StackType, [W.Value] -> HostFunc s)
 type Imports s = [Import s]
 
-type Module = W.Module Identity
+type Module = W.Module W.Phrase
 
 parseModule :: BS.ByteString -> Either String Module
 parseModule bytes = case runGetOrFail W.getModule bytes of
@@ -78,7 +78,7 @@ initialize mod imps = withExceptT show $ do
       names :: M.Map T.Text Int
       names = M.fromList (zip (map fst by_mod) [1..])
 
-      mods :: IM.IntMap (W.ModuleInst Identity (ST s))
+      mods :: IM.IntMap (W.ModuleInst W.Phrase (ST s))
       mods  = IM.fromList $ zip [1..]
         [ (W.emptyModuleInst def)
           { W._miGlobals  = mempty
@@ -94,7 +94,7 @@ initialize mod imps = withExceptT show $ do
           }
         | (_name, funcs) <- by_mod
         ]
-  (ref, inst) <- W.initialize (Identity mod) names mods
+  (ref, inst) <- W.initialize mod names mods
   let mods' = IM.insert ref inst mods
   return (mods', ref)
 
@@ -102,7 +102,7 @@ initialize mod imps = withExceptT show $ do
 exportedFunctions :: Module -> [FuncName]
 exportedFunctions wasm_mod =
   [ T.unpack (W._exportName e)
-  | Identity e <- V.toList $ W._moduleExports wasm_mod
+  | W.Phrase _ e <- V.toList $ W._moduleExports wasm_mod
   , W.FuncExport {} <- return $ W._exportDesc e
   ]
 
@@ -117,7 +117,7 @@ invokeTable :: Instance s -> Int32 -> [W.Value] -> HostM s [W.Value]
 invokeTable (mods', ref) idx args = do
   let inst = mods' IM.! ref
   withExceptT show $ do
-    func <- W.elem inst 0 idx def
+    func <- W.elem inst (0 W.@@ def) idx def
     W.invoke mods' inst func args
 
 getBytes :: Instance s -> W.Address -> W.Size -> HostM s BS.ByteString
