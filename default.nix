@@ -120,7 +120,7 @@ rec {
       asciidoctor $asciidoctor_args --failure-level WARN -v \
         -R $PWD -D $out/$doc_path/ index.adoc
       find . -type f -name '*.png' | cpio -pdm $out/$doc_path/
-      cp requests.cddl $out/$doc_path
+      cp *.cddl $out/$doc_path
       cp ic.did $out/$doc_path
 
 
@@ -150,7 +150,7 @@ rec {
       fi
 
       # also check cddl
-      cddl requests.cddl generate 1 > /dev/null
+      for file in *.cddl; do cddl $file generate 1 > /dev/null; done
     '';
 
   };
