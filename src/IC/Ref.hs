@@ -515,13 +515,14 @@ invokeManagementCanister caller ctxt_id (Public method_name arg) =
   case method_name of
       "create_canister" -> atomic $ icCreateCanister caller ctxt_id
       "dev_create_canister_with_funds" -> atomic $ icCreateCanisterWithFunds caller ctxt_id
-      "dev_set_funds" -> atomic $ icDevSetFunds
+      "dev_set_funds" -> atomic icDevSetFunds
       "install_code" -> atomic $ icInstallCode caller
       "set_controller" -> atomic $ icSetController caller
       "start_canister" -> atomic $ icStartCanister caller
       "stop_canister" -> deferred $ icStopCanister caller ctxt_id
       "canister_status" -> atomic $ icCanisterStatus caller
       "delete_canister" -> atomic $ icDeleteCanister caller ctxt_id
+      "deposit_funds" -> atomic $ icDepositFunds caller ctxt_id
       "raw_rand" -> atomic icRawRand
       _ -> reject RC_DESTINATION_INVALID $ "Unsupported management function " ++ method_name
   where
@@ -692,6 +693,18 @@ icDeleteCanister caller ctxt_id r = do
     setCallContextFunds ctxt_id (available `add_funds` funds)
 
     setRunStatus canister_id IsDeleted
+
+icDepositFunds :: (ICM m, CanReject m) => EntityId -> CallId -> ICManagement m .! "deposit_funds"
+icDepositFunds caller ctxt_id r = do
+    let canister_id = principalToEntityId (r .! #canister_id)
+    canisterMustExist canister_id
+    checkController canister_id caller
+
+    funds <- getCallContextFunds ctxt_id
+    available <- getCallContextFunds ctxt_id
+    setCallContextFunds ctxt_id (available `sub_funds` funds)
+    prev_balance <- getBalance canister_id
+    setBalance canister_id $ prev_balance `add_funds` funds
 
 icRawRand :: ICM m => ICManagement m .! "raw_rand"
 icRawRand _r = runRandIC $ BS.pack <$> replicateM 32 getRandom

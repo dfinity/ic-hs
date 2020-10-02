@@ -875,6 +875,11 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
           cid <- ic_create_with_funds ic00 cycles (fromIntegral icpts)
           installAt cid prog
           return cid
+        create_via cid initial_icpts = do
+          cid2 <- ic_create (ic00viaWithFunds cid 1000000000 initial_icpts)
+          universal_wasm <- getTestWasm "universal_canister"
+          ic_install (ic00via cid) (enum #install) cid2 universal_wasm (run noop)
+          return cid2
     in
     [ testGroup "can use balance API" $
         let getBalanceTwice unit = join cat (i64tob (getBalance (bytes unit)))
@@ -1054,15 +1059,46 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
       query cid1 getICPTs >>= asWord64 >>= is icpts
     , testCase "create and delete canister with funds" $ do
       cid1 <- create noop
-      cid2 <- ic_create (ic00viaWithFunds cid1 1000000000 (icpts`div`2))
-      universal_wasm <- getTestWasm "universal_canister"
-      ic_install (ic00via cid1) (enum #install) cid2 universal_wasm (run noop)
+      cid2 <- create_via cid1 (icpts`div`2)
       query cid1 getICPTs >>= asWord64 >>= is (icpts `div` 2)
       query cid2 getICPTs >>= asWord64 >>= is (icpts `div` 2)
       ic_stop_canister (ic00via cid1) cid2
       -- We load some funds on the deletion call, just to check that they are refunded
       ic_delete_canister (ic00viaWithFunds cid1 0 (icpts`div`2)) cid2
       query cid1 getICPTs >>= asWord64 >>= is icpts
+
+    , testGroup "deposit_funds"
+      [ testCase "deposit funds (as controller)" $ do
+        cid1 <- create noop
+        cid2 <- create_via cid1 (icpts`div`2)
+        query cid1 getICPTs >>= asWord64 >>= is (icpts `div` 2)
+        query cid2 getICPTs >>= asWord64 >>= is (icpts `div` 2)
+        ic_deposit_funds (ic00viaWithFunds cid1 0 (icpts`div`2)) cid2
+        query cid1 getICPTs >>= asWord64 >>= is 0
+        query cid2 getICPTs >>= asWord64 >>= is icpts
+      , testCase "deposit funds (as controller, too much)" $ do
+        cid1 <- create noop
+        cid2 <- create_via cid1 (icpts`div`2)
+        query cid1 getICPTs >>= asWord64 >>= is (icpts `div` 2)
+        query cid2 getICPTs >>= asWord64 >>= is (icpts `div` 2)
+        ic_deposit_funds' (ic00viaWithFunds cid1 0 icpts) cid2 >>= isReject [5]
+        query cid1 getICPTs >>= asWord64 >>= is (icpts `div` 2)
+        query cid2 getICPTs >>= asWord64 >>= is (icpts `div` 2)
+      , testCase "deposit funds (as wrong controller)" $ do
+        cid1 <- create noop
+        cid2 <- create_via cid1 (icpts`div`2)
+        query cid1 getICPTs >>= asWord64 >>= is (icpts `div` 2)
+        query cid2 getICPTs >>= asWord64 >>= is (icpts `div` 2)
+        ic_deposit_funds' (ic00viaWithFunds cid2 0 (icpts`div`2)) cid1 >>= isRelayReject [5]
+        query cid1 getICPTs >>= asWord64 >>= is (icpts `div` 2)
+        query cid2 getICPTs >>= asWord64 >>= is (icpts `div` 2)
+      , testCase "deposit funds (as user controller, zero funds)" $ do
+        cid1 <- create noop
+        query cid1 getICPTs >>= asWord64 >>= is icpts
+        ic_deposit_funds ic00 cid1
+        query cid1 getICPTs >>= asWord64 >>= is icpts
+      ]
+
     , testCase "two-step-refund" $ do
       cid1 <- create noop
       do call cid1 $ inter_call cid1 "update" defArgs
@@ -1338,7 +1374,7 @@ runGet a b = return $! Get.runGet (a <* done) b
         nothing_left <- Get.isEmpty
         unless nothing_left (fail "left-over bytes")
 
-is :: (Eq a, Show a) => a -> a -> Assertion
+is :: (HasCallStack, Eq a, Show a) => a -> a -> Assertion
 is exp act = act @?= exp
 
 -- A reject forwarded by replyRejectData
@@ -1450,6 +1486,11 @@ ic_canister_status ic00 canister_id = do
     .+ #canister_id .== Principal canister_id
   return (r .! #status)
 
+ic_deposit_funds :: HasTestConfig => IC00 -> Blob -> IO ()
+ic_deposit_funds ic00 canister_id = do
+  managementService ic00 .! #deposit_funds $ empty
+    .+ #canister_id .== Principal canister_id
+
 ic_delete_canister :: HasTestConfig => IC00 -> Blob -> IO ()
 ic_delete_canister ic00 canister_id = do
   managementService ic00 .! #delete_canister $ empty
@@ -1501,6 +1542,11 @@ ic_canister_status' ic00 canister_id = do
 ic_delete_canister' :: HasTestConfig => IC00 -> Blob -> IO ReqResponse
 ic_delete_canister' ic00 canister_id = do
   callIC' ic00 #delete_canister $ empty
+    .+ #canister_id .== Principal canister_id
+
+ic_deposit_funds' :: HasTestConfig => IC00 -> Blob -> IO ReqResponse
+ic_deposit_funds' ic00 canister_id = do
+  callIC' ic00 #deposit_funds $ empty
     .+ #canister_id .== Principal canister_id
 
 -- A barrier
