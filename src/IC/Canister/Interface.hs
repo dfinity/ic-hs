@@ -12,11 +12,17 @@ import IC.Types
 import IC.Funds
 import IC.Wasm.Winter (Module)
 
+-- | This data type contains all read-only data that should be available to the
+-- canister almost always
+data Env = Env
+    { time :: Timestamp
+    , balance :: Funds
+    }
 
 data CanisterMethod r where
-    Initialize :: Module -> EntityId -> Timestamp -> Funds -> Blob -> CanisterMethod ()
-    Query :: MethodName -> EntityId -> Timestamp -> Funds -> Blob -> CanisterMethod Response
-    Update :: MethodName -> EntityId -> Timestamp -> Funds -> Responded -> Funds -> Blob -> CanisterMethod UpdateResult
-    Callback :: Callback -> Timestamp -> Funds -> Responded -> Funds -> Response -> Funds -> CanisterMethod UpdateResult
-    PreUpgrade :: Module -> EntityId -> Timestamp -> Funds -> CanisterMethod Blob
-    PostUpgrade :: Module -> EntityId -> Timestamp -> Funds -> Blob -> Blob -> CanisterMethod ()
+    Initialize :: Module -> EntityId -> Env -> Blob -> CanisterMethod ()
+    Query :: MethodName -> EntityId -> Env -> Blob -> CanisterMethod Response
+    Update :: MethodName -> EntityId -> Env -> Responded -> Funds -> Blob -> CanisterMethod UpdateResult
+    Callback :: Callback -> Env -> Responded -> Funds -> Response -> Funds -> CanisterMethod UpdateResult
+    PreUpgrade :: Module -> EntityId -> Env -> CanisterMethod Blob
+    PostUpgrade :: Module -> EntityId -> Env -> Blob -> Blob -> CanisterMethod ()
