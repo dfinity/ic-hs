@@ -683,30 +683,6 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
       do call' cid $ inter_query cid defArgs{ on_reply = replyData (i2b reject_code) }
         >>= isRelayReject [0]
 
-    , simpleTestCase "traps in reply: getting reject message" $ \cid ->
-      do call' cid $ inter_query cid defArgs{ on_reply = replyRejectData }
-        >>= isReject [5]
-
-    , simpleTestCase "traps in reply: getting caller" $ \cid ->
-      do call' cid $ inter_query cid defArgs{ on_reply = replyData caller }
-        >>= isReject [5]
-
-    , simpleTestCase "traps in reject: getting argument" $ \cid ->
-      do call' cid $
-           inter_query cid defArgs{
-             on_reject = replyArgData,
-             other_side = reject "rejecting"
-           }
-        >>= isReject [5]
-
-    , simpleTestCase "traps in reject: getting caller" $ \cid ->
-      do call' cid $
-          inter_query cid defArgs{
-            on_reject = replyData caller,
-            other_side = reject "rejecting"
-          }
-        >>= isReject [5]
-
     , simpleTestCase "Second reply in callback" $ \cid -> do
       do call cid $
           setGlobal "FOO" >>>
@@ -1025,32 +1001,6 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
             call' cid (acceptFunds (bytes u) (int64 maxBound) >>> reply) >>= isReject [5]
         | u <- ["", cycle_unit, icpt_unit, "this is a test"]
         ]
-    , testGroup "cannot use available funds API" $
-      let test = ignore (getAvailableFunds (bytes cycle_unit)) >>> reply in
-      [ simpleTestCase "in query" $ \cid -> do
-        query' cid test >>= isReject [5]
-      , testCase "in init" $ do
-        cid <- ic_create ic00
-        install' cid test >>= isReject [5]
-      ]
-    , testGroup "cannot use accept funds API" $
-      let test = acceptFunds (bytes cycle_unit) (int64 0) >>> reply in
-      [ simpleTestCase "in query" $ \cid -> do
-        query' cid test >>= isReject [5]
-      , testCase "in init" $ do
-        cid <- ic_create ic00
-        install' cid test >>= isReject [5]
-      ]
-    , testGroup "cannot use refunds funds API" $
-      let test = ignore (getRefund (bytes icpt_unit)) >>> reply in
-      [ simpleTestCase "in query" $ \cid -> do
-        query' cid test >>= isReject [5]
-      , simpleTestCase "in update" $ \cid -> do
-        call' cid test >>= isReject [5]
-      , testCase "in init" $ do
-        cid <- ic_create ic00
-        install' cid test >>= isReject [5]
-      ]
     , testGroup "non-zero ICPT balance"
       [ testCase "install" $ do
         cid <- create rememberICPTs
