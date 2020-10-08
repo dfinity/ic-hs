@@ -64,7 +64,6 @@ import IC.Canister
 import qualified IC.Canister.Interface as CI
 import IC.Id.Fresh
 import IC.Utils
-import IC.Logger
 import IC.Management
 
 -- Abstract HTTP Interface
@@ -162,9 +161,8 @@ data IC = IC
   }
   deriving (Show)
 
--- The functions below want stateful access to a value of type 'IC', and be
--- able to log message (used for `ic0.debug_print`).
-type ICM m = (MonadState IC m, Logger m, HasCallStack)
+-- The functions below want stateful access to a value of type 'IC'
+type ICM m = (MonadState IC m, HasCallStack)
 
 initialIC :: IO IC
 initialIC = IC mempty mempty mempty mempty <$> newStdGen
@@ -456,7 +454,6 @@ processMessage m = case m of
       invokeEntry ctxt_id wasm_state can_mod env entry >>= \case
         Trap msg -> do
           -- Eventually update cycle balance here
-          logTrap msg
           rememberTrap ctxt_id msg
         Return (new_state, (call_actions, canister_actions)) -> do
           performCallActions ctxt_id call_actions
