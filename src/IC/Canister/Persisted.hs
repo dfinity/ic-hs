@@ -31,23 +31,23 @@ data WasmState = WasmState
     }
   deriving Show
 
-initialize :: Module -> CanisterId -> EntityId -> CI.Env -> Blob -> TrapOr WasmState
+initialize :: Module -> CanisterId -> EntityId -> CI.Env -> Blob -> TrapOr (WasmState, CanisterActions)
 initialize wasm_mod cid caller env dat = runESST $ \esref ->
   rawInitialize esref cid wasm_mod >>= \case
     Trap err -> return $ Trap err
     Return rs ->
       rawInvoke rs (CI.Initialize wasm_mod caller env dat) >>= \case
         Trap err -> return $ Trap err
-        Return () -> Return <$> newWasmState wasm_mod rs
+        Return ca -> Return . (,ca) <$> newWasmState wasm_mod rs
 
-initializeUpgrade :: Module -> CanisterId -> EntityId -> CI.Env -> Blob -> Blob -> TrapOr WasmState
+initializeUpgrade :: Module -> CanisterId -> EntityId -> CI.Env -> Blob -> Blob -> TrapOr (WasmState, CanisterActions)
 initializeUpgrade wasm_mod cid caller env mem dat = runESST $ \esref ->
   rawInitialize esref cid wasm_mod >>= \case
     Trap err -> return $ Trap err
     Return rs ->
       rawInvoke rs (CI.PostUpgrade wasm_mod caller env mem dat) >>= \case
         Trap err -> return $ Trap err
-        Return () -> Return <$> newWasmState wasm_mod rs
+        Return ca -> Return . (,ca) <$> newWasmState wasm_mod rs
 
 invoke :: WasmState -> CI.CanisterMethod r -> TrapOr (WasmState, r)
 invoke s m = runESST $ \esref -> do

@@ -20,9 +20,9 @@ data Env = Env
     }
 
 data CanisterMethod r where
-    Initialize :: Module -> EntityId -> Env -> Blob -> CanisterMethod ()
+    Initialize :: Module -> EntityId -> Env -> Blob -> CanisterMethod CanisterActions
     Query :: MethodName -> EntityId -> Env -> Blob -> CanisterMethod Response
     Update :: MethodName -> EntityId -> Env -> Responded -> Funds -> Blob -> CanisterMethod UpdateResult
     Callback :: Callback -> Env -> Responded -> Funds -> Response -> Funds -> CanisterMethod UpdateResult
-    PreUpgrade :: Module -> EntityId -> Env -> CanisterMethod Blob
-    PostUpgrade :: Module -> EntityId -> Env -> Blob -> Blob -> CanisterMethod ()
+    PreUpgrade :: Module -> EntityId -> Env -> CanisterMethod (CanisterActions, Blob)
+    PostUpgrade :: Module -> EntityId -> Env -> Blob -> Blob -> CanisterMethod CanisterActions

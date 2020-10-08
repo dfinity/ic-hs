@@ -480,7 +480,10 @@ cantRespond = Responded True
 canRespond :: Responded
 canRespond = Responded False
 
-rawInitializeMethod :: ImpState s -> Module -> EntityId -> CI.Env -> Blob -> ST s (TrapOr ())
+canisterActions :: ExecutionState s -> CanisterActions
+canisterActions _es = CanisterActions
+
+rawInitializeMethod :: ImpState s -> Module -> EntityId -> CI.Env -> Blob -> ST s (TrapOr CanisterActions)
 rawInitializeMethod (ImpState esref cid inst sm) wasm_mod caller env dat = do
   result <- runExceptT $ do
     let es = (initialExecutionState cid inst sm env cantRespond)
@@ -501,10 +504,10 @@ rawInitializeMethod (ImpState esref cid inst sm) wasm_mod caller env dat = do
   case result of
     Left  err -> return $ Trap err
     Right (_, es')
-        | null (calls es') -> return $ Return ()
+        | null (calls es') -> return $ Return $ canisterActions es'
         | otherwise        -> return $ Trap "cannot call from init"
 
-rawPreUpgrade :: ImpState s -> Module -> EntityId -> CI.Env -> ST s (TrapOr Blob)
+rawPreUpgrade :: ImpState s -> Module -> EntityId -> CI.Env -> ST s (TrapOr (CanisterActions, Blob))
 rawPreUpgrade (ImpState esref cid inst sm) wasm_mod caller env = do
   result <- runExceptT $ do
     let es = (initialExecutionState cid inst sm env cantRespond)
@@ -524,10 +527,12 @@ rawPreUpgrade (ImpState esref cid inst sm) wasm_mod caller env = do
   case result of
     Left  err -> return $ Trap err
     Right (_, es')
-        | null (calls es') -> Return <$> Mem.export (stableMem es')
+        | null (calls es') -> do
+            stable_mem <- Mem.export (stableMem es')
+            return $ Return (canisterActions es', stable_mem)
         | otherwise        -> return $ Trap "cannot call from pre_upgrade"
 
-rawPostUpgrade :: ImpState s -> Module -> EntityId -> CI.Env -> Blob -> Blob -> ST s (TrapOr ())
+rawPostUpgrade :: ImpState s -> Module -> EntityId -> CI.Env -> Blob -> Blob -> ST s (TrapOr CanisterActions)
 rawPostUpgrade (ImpState esref cid inst sm) wasm_mod caller env mem dat = do
   result <- runExceptT $ do
     let es = (initialExecutionState cid inst sm env cantRespond)
@@ -548,7 +553,7 @@ rawPostUpgrade (ImpState esref cid inst sm) wasm_mod caller env mem dat = do
   case result of
     Left  err -> return $ Trap err
     Right (_, es')
-        | null (calls es') -> return $ Return ()
+        | null (calls es') -> return $ Return (canisterActions es')
         | otherwise        -> return $ Trap "cannot call from post_upgrade"
 
 rawQueryMethod :: ImpState s -> MethodName -> EntityId -> CI.Env -> Blob -> ST s (TrapOr Response)
@@ -589,7 +594,10 @@ rawUpdateMethod (ImpState esref cid inst sm) method caller env responded funds_a
     invokeExport inst ("canister_update " ++ method) []
   case result of
     Left  err -> return $ Trap err
-    Right (_, es') -> return $ Return (calls es', funds_accepted es', response es')
+    Right (_, es') -> return $ Return
+        ( CallActions (calls es') (funds_accepted es') (response es')
+        , canisterActions es'
+        )
 
 rawCallbackMethod :: ImpState s -> Callback -> CI.Env -> Responded -> Funds -> Response -> Funds -> ST s (TrapOr UpdateResult)
 rawCallbackMethod (ImpState esref cid inst sm) callback env responded funds_available res refund = do
@@ -611,5 +619,8 @@ rawCallbackMethod (ImpState esref cid inst sm) callback env responded funds_avai
     invokeTable inst fun_idx [I32 env]
   case result of
     Left  err -> return $ Trap err
-    Right (_, es') -> return $ Return (calls es', funds_accepted es', response es')
+    Right (_, es') -> return $ Return
+        ( CallActions (calls es') (funds_accepted es') (response es')
+        , canisterActions es'
+        )
 

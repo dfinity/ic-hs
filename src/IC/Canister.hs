@@ -20,7 +20,7 @@ import qualified IC.Canister.Interface as CI
 -- Here we can swap out the persistence implementation
 import IC.Canister.Persisted
 
-type InitFunc = CanisterId -> EntityId -> CI.Env -> Blob -> TrapOr WasmState
+type InitFunc = CanisterId -> EntityId -> CI.Env -> Blob -> TrapOr (WasmState, CanisterActions)
 type UpdateFunc = WasmState -> TrapOr (WasmState, UpdateResult)
 type QueryFunc = WasmState -> TrapOr Response
 
@@ -29,8 +29,8 @@ data CanisterModule = CanisterModule
   , update_methods :: MethodName ↦ (EntityId -> CI.Env -> Responded -> Funds -> Blob -> UpdateFunc)
   , query_methods :: MethodName ↦ (EntityId -> CI.Env -> Blob -> QueryFunc)
   , callbacks :: Callback -> CI.Env -> Responded -> Funds -> Response -> Funds -> UpdateFunc
-  , pre_upgrade_method :: WasmState -> EntityId -> CI.Env -> TrapOr Blob
-  , post_upgrade_method :: CanisterId -> EntityId -> CI.Env -> Blob -> Blob -> TrapOr WasmState
+  , pre_upgrade_method :: WasmState -> EntityId -> CI.Env -> TrapOr (CanisterActions, Blob)
+  , post_upgrade_method :: CanisterId -> EntityId -> CI.Env -> Blob -> Blob -> TrapOr (WasmState, CanisterActions)
   }
 
 instance Show CanisterModule where
@@ -73,5 +73,5 @@ asUpdate ::
 asUpdate f caller env (Responded responded) _funds_available dat wasm_state
   | responded = error "asUpdate: responded == True"
   | otherwise =
-    (\res -> (wasm_state, ([], no_funds, Just res))) <$>
+    (\res -> (wasm_state, (noCallActions { ca_response = Just res }, noCanisterActions))) <$>
     f caller env dat wasm_state
