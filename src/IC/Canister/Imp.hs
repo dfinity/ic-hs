@@ -41,8 +41,8 @@ import qualified IC.Canister.Interface as CI
 data Params = Params
   { param_dat  :: Maybe Blob
   , param_caller :: Maybe EntityId
-  , reject_code :: Int
-  , reject_message :: String
+  , reject_code :: Maybe Int
+  , reject_message :: Maybe String
   , funds_refunded :: Maybe Funds
   }
 
@@ -74,7 +74,7 @@ initialExecutionState self_id inst stableMem env responded = ExecutionState
   { inst
   , stableMem
   , self_id
-  , params = Params Nothing Nothing 0 "" Nothing
+  , params = Params Nothing Nothing Nothing Nothing Nothing
   , env
   , funds_available = Nothing
   , balance = CI.balance env
@@ -270,19 +270,19 @@ systemAPI esref =
     msg_caller_size :: () -> HostM s Int32
     msg_caller_copy :: (Int32, Int32, Int32) -> HostM s ()
     (msg_caller_size, msg_caller_copy) = size_and_copy $
-        fmap rawEntityId $ gets (param_caller . params) >>= maybe (throwError "No argument") return
+      gets (param_caller . params)
+        >>= maybe (throwError "No argument") (return . rawEntityId)
 
     msg_reject_code :: () -> HostM s Int32
     msg_reject_code () =
-      fromIntegral <$> gets (reject_code . params)
+      gets (reject_code . params)
+        >>= maybe (throwError "No reject code") (return . fromIntegral)
 
     msg_reject_msg_size :: () -> HostM s Int32
     msg_reject_msg_copy :: (Int32, Int32, Int32) -> HostM s ()
     (msg_reject_msg_size, msg_reject_msg_copy) = size_and_copy $ do
-      c <- gets (reject_code . params)
-      when (c == 0) $ throwError "No reject message"
-      msg <- gets (reject_message . params)
-      return $ BSU.fromString msg
+      gets (reject_message . params)
+        >>= maybe (throwError "No reject code") (return . BSU.fromString)
 
     assert_not_responded :: HostM s ()
     assert_not_responded = do
@@ -490,8 +490,8 @@ rawInitializeMethod (ImpState esref cid inst sm) wasm_mod caller env dat = do
               { params = Params
                   { param_dat    = Just dat
                   , param_caller = Just caller
-                  , reject_code  = 0
-                  , reject_message = ""
+                  , reject_code  = Nothing
+                  , reject_message = Nothing
                   , funds_refunded = Nothing
                   }
               }
@@ -514,8 +514,8 @@ rawPreUpgrade (ImpState esref cid inst sm) wasm_mod caller env = do
               { params = Params
                   { param_dat    = Nothing
                   , param_caller = Just caller
-                  , reject_code  = 0
-                  , reject_message = ""
+                  , reject_code  = Nothing
+                  , reject_message = Nothing
                   , funds_refunded = Nothing
                   }
               }
@@ -539,8 +539,8 @@ rawPostUpgrade (ImpState esref cid inst sm) wasm_mod caller env mem dat = do
               { params = Params
                   { param_dat    = Just dat
                   , param_caller = Just caller
-                  , reject_code  = 0
-                  , reject_message = ""
+                  , reject_code  = Nothing
+                  , reject_message = Nothing
                   , funds_refunded = Nothing
                   }
               }
@@ -562,8 +562,8 @@ rawQueryMethod (ImpState esref cid inst sm) method caller env dat = do
             { params = Params
                 { param_dat    = Just dat
                 , param_caller = Just caller
-                , reject_code  = 0
-                , reject_message = ""
+                , reject_code  = Nothing
+                , reject_message = Nothing
                 , funds_refunded = Nothing
                 }
             }
@@ -583,8 +583,8 @@ rawUpdateMethod (ImpState esref cid inst sm) method caller env responded funds_a
             { params = Params
                 { param_dat    = Just dat
                 , param_caller = Just caller
-                , reject_code  = 0
-                , reject_message = ""
+                , reject_code  = Nothing
+                , reject_message = Nothing
                 , funds_refunded = Nothing
                 }
             , funds_available = Just funds_available
@@ -603,9 +603,9 @@ rawCallbackMethod :: ImpState s -> Callback -> CI.Env -> Responded -> Funds -> R
 rawCallbackMethod (ImpState esref cid inst sm) callback env responded funds_available res refund = do
   let params = case res of
         Reply dat ->
-          Params { param_dat = Just dat, param_caller = Nothing, reject_code = 0, reject_message = "", funds_refunded = Just refund }
+          Params { param_dat = Just dat, param_caller = Nothing, reject_code = Just 0, reject_message = Nothing, funds_refunded = Just refund }
         Reject (rc, reject_message) ->
-          Params { param_dat = Nothing, param_caller = Nothing, reject_code = rejectCode rc, reject_message, funds_refunded = Just refund }
+          Params { param_dat = Nothing, param_caller = Nothing, reject_code = Just (rejectCode rc), reject_message = Just reject_message, funds_refunded = Just refund }
   let es = (initialExecutionState cid inst sm env responded)
             { params
             , funds_available = Just funds_available

@@ -23,6 +23,7 @@ import qualified Data.Text.Encoding.Error as T
 import qualified Data.ByteString.Lazy as BS
 import qualified Data.ByteString.Builder as BS
 import qualified Data.HashMap.Lazy as HM
+import qualified Data.Set as S
 import Network.HTTP.Client
 import Network.HTTP.Types
 import Numeric.Natural
@@ -496,6 +497,107 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
       -- (Using growing stable memory as non-idempotent action)
       callTwice' cid (ignore (stableGrow (int 1)) >>> reply) >>= isReply >>= is ""
       query cid (replyData (i2b stableSize)) >>= is "\1\0\0\0"
+    ]
+
+  , testGroup "API availablility" $
+    {-
+    This section checks various API calls in various contexts, to see
+    if they trap when they should
+    This mirros the table in https://docs.dfinity.systems/public/#system-api-imports
+
+    -}
+    let
+      {-
+      Contexts
+
+      A context is a function of type
+         (String, Prog -> TestCase, Prog -> TestCase)
+      building a test for does-not-trap or does-trap
+      -}
+      contexts = mconcat
+        [ "I" =: twoContexts
+          (reqResponse (\prog -> do
+            cid <- ic_create ic00
+            install' cid prog
+          ))
+          (reqResponse (\prog -> do
+            cid <- install noop
+            upgrade' cid prog
+          ))
+        , "G" =: reqResponse (\prog -> do
+            cid <- install (onPreUpgrade (callback prog))
+            upgrade' cid noop
+          )
+        , "U" =: reqResponse (\prog -> do
+            cid <- install noop
+            call' cid (prog >>> reply)
+          )
+        , "Q" =: reqResponse (\prog -> do
+            cid <- install noop
+            query' cid (prog >>> reply)
+          )
+        , "Ry" =: reqResponse (\prog -> do
+            cid <- install noop
+            call' cid $ inter_query cid defArgs{
+              on_reply = prog >>> reply
+            }
+          )
+        , "Rt" =: reqResponse (\prog -> do
+            cid <- install noop
+            call' cid $ inter_query cid defArgs{
+              on_reject = prog >>> reply,
+              other_side = trap "trap!"
+            }
+          )
+        ]
+
+      -- context builder helpers
+      reqResponse act = (act >=> void . isReply, act >=> isReject [5])
+      twoContexts (aNT1, aT1) (aNT2, aT2) = (\p -> aNT1 p >> aNT2 p,\p -> aT1 p >> aT2 p)
+
+      -- assembling it all
+      t name trapping prog
+        | Just n <- find (not . (`HM.member` contexts)) s
+        = error $ "Undefined context " ++ T.unpack n
+        | otherwise =
+        [ if cname `S.member` s
+          then testCase (name ++ " works in " ++ T.unpack cname) $ actNT prog
+          else testCase (name ++ " traps in " ++ T.unpack cname) $ actTrap prog
+        | (cname, (actNT, actTrap)) <- HM.toList contexts
+        ]
+        where s = S.fromList (T.words trapping)
+
+      star = "I G U Q Ry Rt"
+      never = ""
+
+    in concat
+    [ t "msg_arg_data"          "I U Q Ry"  $ ignore argData
+    , t "msg_caller"            "I G U Q"   $ ignore caller
+    , t "msg_reject_code"       "Ry Rt"     $ ignore reject_code
+    , t "msg_reject_msg"        "Rt"        $ ignore reject_msg
+    , t "msg_reply_data_append" "U Q Ry Rt" $ replyDataAppend "Hey!"
+    , t "msg_reply"             never         reply -- due to double reply
+    , t "msg_reject"            never       $ reject "rejecting" -- due to double reply
+    , t "msg_funds_available"   "U Rt Ry"   $ ignore (getAvailableFunds (bytes cycle_unit))
+    , t "msg_funds_refunded"    "Rt Ry"     $ ignore (getRefund (bytes cycle_unit))
+    , t "msg_funds_accept"      "U Rt Ry"   $ acceptFunds (bytes cycle_unit) (int64 0)
+    , t "canister_self"         star        $ ignore self
+    , t "canister_balance"      star        $ ignore (getBalance (bytes cycle_unit))
+    , t "call_new…call_perform" "U Rt Ry"   $
+        callNew "foo" "bar" "baz" "quux" >>>
+        callDataAppend "foo" >>>
+        callFundsAdd (bytes cycle_unit) (int64 0) >>>
+        callPerform
+    , t "call_data_append"      never       $ callDataAppend (bytes "foo")
+    , t "call_funds_add"        never       $ callFundsAdd (bytes cycle_unit) (int64 0)
+    , t "call_perform"          never         callPerform
+    , t "stable_size"           star        $ ignore stableSize
+    , t "stable_grow"           star        $ ignore $ stableGrow (int 1)
+    , t "stable_read"           star        $ ignore $ stableRead (int 0) (int 0)
+    , t "stable_write"          star        $ stableWrite (int 0) ""
+    , t "time"                  star        $ ignore getTime
+    , t "debug_print"           star        $ debugPrint "hello"
+    , t "trap"                  never       $ trap "this better traps"
     ]
 
   , simpleTestCase "self" $ \cid ->
