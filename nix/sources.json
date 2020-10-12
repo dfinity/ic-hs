@@ -6,10 +6,10 @@
         "homepage": null,
         "owner": "nomeata",
         "repo": "haskell-candid",
-        "rev": "7130231141887f754239cf5c63682d788601366a",
-        "sha256": "12qdii9dsx9d1s0wywmda9z2f3abdczs334hdkky9lp4gris4z5j",
+        "rev": "36202a9aef4387925c0d0de23a0e3645ed7d2b3e",
+        "sha256": "0m5ib1xnfwnx73v0vllnx4nhk77dfgsdn9xri2v22bv7gxampkw6",
         "type": "tarball",
-        "url": "https://github.com/nomeata/haskell-candid/archive/7130231141887f754239cf5c63682d788601366a.tar.gz",
+        "url": "https://github.com/nomeata/haskell-candid/archive/36202a9aef4387925c0d0de23a0e3645ed7d2b3e.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "leb128-cereal": {
@@ -39,16 +39,16 @@
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "nixpkgs": {
-        "branch": "release-20.03",
+        "branch": "release-20.09",
         "builtin": true,
         "description": "Nixpkgs/NixOS branches that track the Nixpkgs/NixOS channels",
         "homepage": null,
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "e79d1e83f91b6c7a92f899b0a356ea6d770fb426",
-        "sha256": "1qh0sl3szadxpnvp1baby2zw10lsbpkynyjhy2d4kf6qzj95v2nl",
+        "rev": "60ec8e5c617f3fef20b85b7b39049dfb786fb1b8",
+        "sha256": "0cfii0hm4qzqzv7flc8myva0zl6mvw5r42i018jkc7r2d1nxfqiy",
         "type": "tarball",
-        "url": "https://github.com/NixOS/nixpkgs/archive/e79d1e83f91b6c7a92f899b0a356ea6d770fb426.tar.gz",
+        "url": "https://github.com/NixOS/nixpkgs/archive/60ec8e5c617f3fef20b85b7b39049dfb786fb1b8.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "winter": {
