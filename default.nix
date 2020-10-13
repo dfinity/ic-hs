@@ -86,7 +86,44 @@ rec {
       echo "report coverage $out hpc_index.html" >> $out/nix-support/hydra-build-products
     '';
 
+  # The following two derivations keep the impl/cabal.products.freeze files
+  # up to date. It is quite hacky to get the package data base for the ic-ref
+  # derivation, and then convince Cabal to use that...
+  cabal-freeze = haskellPackages.ic-ref.overrideAttrs(old: {
+      nativeBuildInputs = (old.nativeBuildInputs or []) ++ [ nixpkgs.cabal-install ];
+      phases = [ "unpackPhase" "setupCompilerEnvironmentPhase" "buildPhase" "installPhase" ];
+      buildPhase = ''
+        rm -f cabal.project.freeze cabal.project
+        unset GHC_PACKAGE_PATH
+        mkdir .cabal
+        touch .cabal/config # empty, no repository
+        HOME=$PWD cabal v2-freeze --ghc-pkg-options="-f $packageConfDir" --offline --enable-tests || true
+      '';
+      outputs = ["out"]; # no docs
+      installPhase = ''
+        mkdir -p $out
+        echo "-- Run nix-shell .. -A check-cabal-freeze to update this file" > $out/cabal.project.freeze
+        cat cabal.project.freeze >> $out/cabal.project.freeze
+      '';
+    });
 
+  check-cabal-freeze = nixpkgs.runCommandNoCC "check-cabal-freeze" {
+      nativeBuildInputs = [ nixpkgs.diffutils ];
+      expected = cabal-freeze + /cabal.project.freeze;
+      actual = ./impl/cabal.project.freeze;
+      cmd = "nix-shell . -A check-cabal-freeze";
+      shellHook = ''
+        dest=${toString ./impl/cabal.project.freeze}
+        rm -f $dest
+        cp -v $expected $dest
+        chmod u-w $dest
+        exit 0
+      '';
+    } ''
+      diff -r -U 3 $actual $expected ||
+        { echo "To update, please run"; echo "nix-shell . -A check-cabal-freeze"; exit 1; }
+      touch $out
+    '';
 
   check-generated = nixpkgs.runCommandNoCC "check-generated" {
       nativeBuildInputs = [ nixpkgs.diffutils ];
