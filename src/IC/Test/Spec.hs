@@ -84,6 +84,7 @@ anonymousUser = "\x04"
 queryToNonExistant :: GenR
 queryToNonExistant = rec
     [ "request_type" =: GText "query"
+    , "sender" =: GBlob anonymousUser
     , "canister_id" =: GBlob doesn'tExist
     , "method_name" =: GText "foo"
     , "arg" =: GBlob "nothing to see here"
@@ -445,22 +446,22 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
   ]
 
   , testGroup "anonymous user"
-    [ simpleTestCase "update, sender absent" $ \cid ->
-      do submitCBOR $ rec
+    [ simpleTestCase "update, sender absent fails" $ \cid ->
+      do postCBOR "/api/v1/submit" $ envelopeFor anonymousUser $ rec
           [ "request_type" =: GText "call"
           , "canister_id" =: GBlob cid
           , "method_name" =: GText "update"
           , "arg" =: GBlob (run (replyData caller))
           ]
-        >>= isReply >>= is anonymousUser
-    , simpleTestCase "query, sender absent" $ \cid ->
-      do readCBOR $ rec
+        >>= code4xx
+    , simpleTestCase "query, sender absent fails" $ \cid ->
+      do postCBOR "/api/v1/read" $ envelopeFor anonymousUser $ rec
           [ "request_type" =: GText "query"
           , "canister_id" =: GBlob cid
           , "method_name" =: GText "query"
           , "arg" =: GBlob (run (replyData caller))
           ]
-        >>= queryResponse >>= isReply >>= is anonymousUser
+        >>= code4xx
     , simpleTestCase "update, sender explicit" $ \cid ->
       do submitCBOR $ rec
           [ "request_type" =: GText "call"
