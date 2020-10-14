@@ -98,6 +98,25 @@ data MethodCall = MethodCall
 
 type ExistingCanisters = [CanisterId]
 
-type UpdateResult = ([MethodCall], Funds, Maybe Response)
+-- Canister actions (independent of calls)
+data CanisterActions = CanisterActions
+
+instance Semigroup CanisterActions where
+    _ca1 <> _ca2 = CanisterActions
+
+noCanisterActions :: CanisterActions
+noCanisterActions = CanisterActions
+
+-- Actions relative to a call context
+data CallActions = CallActions
+  { ca_new_calls :: [MethodCall]
+  , ca_accept :: Funds
+  , ca_response :: Maybe Response
+  }
+
+noCallActions :: CallActions
+noCallActions = CallActions [] no_funds Nothing
+
+type UpdateResult = (CallActions, CanisterActions)
 
 type StableMemory = Blob

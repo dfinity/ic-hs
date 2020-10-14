@@ -41,8 +41,8 @@ import qualified IC.Canister.Interface as CI
 data Params = Params
   { param_dat  :: Maybe Blob
   , param_caller :: Maybe EntityId
-  , reject_code :: Int
-  , reject_message :: String
+  , reject_code :: Maybe Int
+  , reject_message :: Maybe String
   , funds_refunded :: Maybe Funds
   }
 
@@ -54,7 +54,7 @@ data ExecutionState s = ExecutionState
   , stableMem :: Memory s
   , self_id :: CanisterId
   , params :: Params
-  , time :: Timestamp
+  , env :: CI.Env
   -- now the mutable parts
   , funds_available :: Maybe Funds
   , funds_accepted :: Funds
@@ -68,16 +68,16 @@ data ExecutionState s = ExecutionState
 
 
 initialExecutionState ::
-    CanisterId -> Instance s -> Memory s -> Funds -> Responded ->
+    CanisterId -> Instance s -> Memory s -> CI.Env -> Responded ->
     ExecutionState s
-initialExecutionState self_id inst stableMem balance responded = ExecutionState
+initialExecutionState self_id inst stableMem env responded = ExecutionState
   { inst
   , stableMem
   , self_id
-  , params = Params Nothing Nothing 0 "" Nothing
-  , time = error "No time"
+  , params = Params Nothing Nothing Nothing Nothing Nothing
+  , env
   , funds_available = Nothing
-  , balance
+  , balance = CI.balance env
   , funds_accepted = no_funds
   , responded
   , response = Nothing
@@ -270,19 +270,19 @@ systemAPI esref =
     msg_caller_size :: () -> HostM s Int32
     msg_caller_copy :: (Int32, Int32, Int32) -> HostM s ()
     (msg_caller_size, msg_caller_copy) = size_and_copy $
-        fmap rawEntityId $ gets (param_caller . params) >>= maybe (throwError "No argument") return
+      gets (param_caller . params)
+        >>= maybe (throwError "No argument") (return . rawEntityId)
 
     msg_reject_code :: () -> HostM s Int32
     msg_reject_code () =
-      fromIntegral <$> gets (reject_code . params)
+      gets (reject_code . params)
+        >>= maybe (throwError "No reject code") (return . fromIntegral)
 
     msg_reject_msg_size :: () -> HostM s Int32
     msg_reject_msg_copy :: (Int32, Int32, Int32) -> HostM s ()
     (msg_reject_msg_size, msg_reject_msg_copy) = size_and_copy $ do
-      c <- gets (reject_code . params)
-      when (c == 0) $ throwError "No reject message"
-      msg <- gets (reject_message . params)
-      return $ BSU.fromString msg
+      gets (reject_message . params)
+        >>= maybe (throwError "No reject code") (return . BSU.fromString)
 
     assert_not_responded :: HostM s ()
     assert_not_responded = do
@@ -424,7 +424,7 @@ systemAPI esref =
 
     get_time :: () -> HostM s Word64
     get_time () = do
-        Timestamp ns <- gets time
+        Timestamp ns <- gets (CI.time . env)
         return (fromIntegral ns)
 
     debug_print :: (Int32, Int32) -> HostM s ()
@@ -461,18 +461,18 @@ rawInitialize esref cid wasm_mod = do
     Right (inst, sm) -> return $ Return $ ImpState esref cid inst sm
 
 rawInvoke :: ImpState s -> CI.CanisterMethod r -> ST s (TrapOr r)
-rawInvoke is (CI.Initialize wasm_mod caller time balance dat) =
-    rawInitializeMethod is wasm_mod caller time balance dat
-rawInvoke is (CI.Query name caller time blance dat) =
-    rawQueryMethod is name caller time blance dat
-rawInvoke is (CI.Update name caller time balance responded funds_available dat) =
-    rawUpdateMethod is name caller time balance responded funds_available dat
-rawInvoke is (CI.Callback cb time balance responded funds_received res refund) =
-    rawCallbackMethod is cb time balance responded funds_received res refund
-rawInvoke is (CI.PreUpgrade wasm_mod caller time balance) =
-    rawPreUpgrade is wasm_mod caller time balance
-rawInvoke is (CI.PostUpgrade wasm_mod caller time blance mem dat) =
-    rawPostUpgrade is wasm_mod caller time blance mem dat
+rawInvoke is (CI.Initialize wasm_mod caller env dat) =
+    rawInitializeMethod is wasm_mod caller env dat
+rawInvoke is (CI.Query name caller env dat) =
+    rawQueryMethod is name caller env dat
+rawInvoke is (CI.Update name caller env responded funds_available dat) =
+    rawUpdateMethod is name caller env responded funds_available dat
+rawInvoke is (CI.Callback cb env responded funds_received res refund) =
+    rawCallbackMethod is cb env responded funds_received res refund
+rawInvoke is (CI.PreUpgrade wasm_mod caller env) =
+    rawPreUpgrade is wasm_mod caller env
+rawInvoke is (CI.PostUpgrade wasm_mod caller env mem dat) =
+    rawPostUpgrade is wasm_mod caller env mem dat
 
 cantRespond :: Responded
 cantRespond = Responded True
@@ -480,18 +480,20 @@ cantRespond = Responded True
 canRespond :: Responded
 canRespond = Responded False
 
-rawInitializeMethod :: ImpState s -> Module -> EntityId -> Timestamp -> Funds -> Blob -> ST s (TrapOr ())
-rawInitializeMethod (ImpState esref cid inst sm) wasm_mod caller time balance dat = do
+canisterActions :: ExecutionState s -> CanisterActions
+canisterActions _es = CanisterActions
+
+rawInitializeMethod :: ImpState s -> Module -> EntityId -> CI.Env -> Blob -> ST s (TrapOr CanisterActions)
+rawInitializeMethod (ImpState esref cid inst sm) wasm_mod caller env dat = do
   result <- runExceptT $ do
-    let es = (initialExecutionState cid inst sm balance cantRespond)
+    let es = (initialExecutionState cid inst sm env cantRespond)
               { params = Params
                   { param_dat    = Just dat
                   , param_caller = Just caller
-                  , reject_code  = 0
-                  , reject_message = ""
+                  , reject_code  = Nothing
+                  , reject_message = Nothing
                   , funds_refunded = Nothing
                   }
-              , time = time
               }
 
     --  invoke canister_init
@@ -502,21 +504,20 @@ rawInitializeMethod (ImpState esref cid inst sm) wasm_mod caller time balance da
   case result of
     Left  err -> return $ Trap err
     Right (_, es')
-        | null (calls es') -> return $ Return ()
+        | null (calls es') -> return $ Return $ canisterActions es'
         | otherwise        -> return $ Trap "cannot call from init"
 
-rawPreUpgrade :: ImpState s -> Module -> EntityId -> Timestamp -> Funds -> ST s (TrapOr Blob)
-rawPreUpgrade (ImpState esref cid inst sm) wasm_mod caller time balance = do
+rawPreUpgrade :: ImpState s -> Module -> EntityId -> CI.Env -> ST s (TrapOr (CanisterActions, Blob))
+rawPreUpgrade (ImpState esref cid inst sm) wasm_mod caller env = do
   result <- runExceptT $ do
-    let es = (initialExecutionState cid inst sm balance cantRespond)
+    let es = (initialExecutionState cid inst sm env cantRespond)
               { params = Params
                   { param_dat    = Nothing
                   , param_caller = Just caller
-                  , reject_code  = 0
-                  , reject_message = ""
+                  , reject_code  = Nothing
+                  , reject_message = Nothing
                   , funds_refunded = Nothing
                   }
-              , time = time
               }
 
     if "canister_pre_upgrade" `elem` exportedFunctions wasm_mod
@@ -526,21 +527,22 @@ rawPreUpgrade (ImpState esref cid inst sm) wasm_mod caller time balance = do
   case result of
     Left  err -> return $ Trap err
     Right (_, es')
-        | null (calls es') -> Return <$> Mem.export (stableMem es')
+        | null (calls es') -> do
+            stable_mem <- Mem.export (stableMem es')
+            return $ Return (canisterActions es', stable_mem)
         | otherwise        -> return $ Trap "cannot call from pre_upgrade"
 
-rawPostUpgrade :: ImpState s -> Module -> EntityId -> Timestamp -> Funds -> Blob -> Blob -> ST s (TrapOr ())
-rawPostUpgrade (ImpState esref cid inst sm) wasm_mod caller time balance mem dat = do
+rawPostUpgrade :: ImpState s -> Module -> EntityId -> CI.Env -> Blob -> Blob -> ST s (TrapOr CanisterActions)
+rawPostUpgrade (ImpState esref cid inst sm) wasm_mod caller env mem dat = do
   result <- runExceptT $ do
-    let es = (initialExecutionState cid inst sm balance cantRespond)
+    let es = (initialExecutionState cid inst sm env cantRespond)
               { params = Params
                   { param_dat    = Just dat
                   , param_caller = Just caller
-                  , reject_code  = 0
-                  , reject_message = ""
+                  , reject_code  = Nothing
+                  , reject_message = Nothing
                   , funds_refunded = Nothing
                   }
-              , time = time
               }
     lift $ Mem.imp (stableMem es) mem
 
@@ -551,20 +553,19 @@ rawPostUpgrade (ImpState esref cid inst sm) wasm_mod caller time balance mem dat
   case result of
     Left  err -> return $ Trap err
     Right (_, es')
-        | null (calls es') -> return $ Return ()
+        | null (calls es') -> return $ Return (canisterActions es')
         | otherwise        -> return $ Trap "cannot call from post_upgrade"
 
-rawQueryMethod :: ImpState s -> MethodName -> EntityId -> Timestamp -> Funds -> Blob -> ST s (TrapOr Response)
-rawQueryMethod (ImpState esref cid inst sm) method caller time balance dat = do
-  let es = (initialExecutionState cid inst sm balance canRespond)
+rawQueryMethod :: ImpState s -> MethodName -> EntityId -> CI.Env -> Blob -> ST s (TrapOr Response)
+rawQueryMethod (ImpState esref cid inst sm) method caller env dat = do
+  let es = (initialExecutionState cid inst sm env canRespond)
             { params = Params
                 { param_dat    = Just dat
                 , param_caller = Just caller
-                , reject_code  = 0
-                , reject_message = ""
+                , reject_code  = Nothing
+                , reject_message = Nothing
                 , funds_refunded = Nothing
                 }
-            , time = time
             }
   result <- runExceptT $ withES esref es $
     invokeExport inst ("canister_query " ++ method) []
@@ -576,17 +577,16 @@ rawQueryMethod (ImpState esref cid inst sm) method caller time balance dat = do
       | Just r <- response es' -> return $ Return r
       | otherwise -> return $ Trap "No response"
 
-rawUpdateMethod :: ImpState s -> MethodName -> EntityId -> Timestamp -> Funds -> Responded -> Funds -> Blob -> ST s (TrapOr UpdateResult)
-rawUpdateMethod (ImpState esref cid inst sm) method caller time balance responded funds_available dat = do
-  let es = (initialExecutionState cid inst sm balance responded)
+rawUpdateMethod :: ImpState s -> MethodName -> EntityId -> CI.Env -> Responded -> Funds -> Blob -> ST s (TrapOr UpdateResult)
+rawUpdateMethod (ImpState esref cid inst sm) method caller env responded funds_available dat = do
+  let es = (initialExecutionState cid inst sm env responded)
             { params = Params
                 { param_dat    = Just dat
                 , param_caller = Just caller
-                , reject_code  = 0
-                , reject_message = ""
+                , reject_code  = Nothing
+                , reject_message = Nothing
                 , funds_refunded = Nothing
                 }
-            , time = time
             , funds_available = Just funds_available
             }
 
@@ -594,18 +594,20 @@ rawUpdateMethod (ImpState esref cid inst sm) method caller time balance responde
     invokeExport inst ("canister_update " ++ method) []
   case result of
     Left  err -> return $ Trap err
-    Right (_, es') -> return $ Return (calls es', funds_accepted es', response es')
+    Right (_, es') -> return $ Return
+        ( CallActions (calls es') (funds_accepted es') (response es')
+        , canisterActions es'
+        )
 
-rawCallbackMethod :: ImpState s -> Callback -> Timestamp -> Funds -> Responded -> Funds -> Response -> Funds -> ST s (TrapOr UpdateResult)
-rawCallbackMethod (ImpState esref cid inst sm) callback time balance responded funds_available res refund = do
+rawCallbackMethod :: ImpState s -> Callback -> CI.Env -> Responded -> Funds -> Response -> Funds -> ST s (TrapOr UpdateResult)
+rawCallbackMethod (ImpState esref cid inst sm) callback env responded funds_available res refund = do
   let params = case res of
         Reply dat ->
-          Params { param_dat = Just dat, param_caller = Nothing, reject_code = 0, reject_message = "", funds_refunded = Just refund }
+          Params { param_dat = Just dat, param_caller = Nothing, reject_code = Just 0, reject_message = Nothing, funds_refunded = Just refund }
         Reject (rc, reject_message) ->
-          Params { param_dat = Nothing, param_caller = Nothing, reject_code = rejectCode rc, reject_message, funds_refunded = Just refund }
-  let es = (initialExecutionState cid inst sm balance responded)
+          Params { param_dat = Nothing, param_caller = Nothing, reject_code = Just (rejectCode rc), reject_message = Just reject_message, funds_refunded = Just refund }
+  let es = (initialExecutionState cid inst sm env responded)
             { params
-            , time = time
             , funds_available = Just funds_available
             }
 
@@ -617,5 +619,8 @@ rawCallbackMethod (ImpState esref cid inst sm) callback time balance responded f
     invokeTable inst fun_idx [I32 env]
   case result of
     Left  err -> return $ Trap err
-    Right (_, es') -> return $ Return (calls es', funds_accepted es', response es')
+    Right (_, es') -> return $ Return
+        ( CallActions (calls es') (funds_accepted es') (response es')
+        , canisterActions es'
+        )
 

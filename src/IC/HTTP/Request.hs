@@ -62,7 +62,7 @@ asyncRequest = record $ do
     case t of
         "call" -> do
             cid <- EntityId <$> field blob "canister_id"
-            sender <- maybe (EntityId "\x04") EntityId <$> optionalField blob "sender"
+            sender <- EntityId <$> field blob "sender"
             method_name <- field text "method_name"
             arg <- field blob "arg"
             return $ UpdateRequest e cid sender (T.unpack method_name) arg
@@ -80,7 +80,7 @@ syncRequest = record $ do
             return $ StatusRequest e rid
         "query" -> do
             cid <- EntityId <$> field blob "canister_id"
-            sender <- maybe (EntityId "\x04") EntityId <$> optionalField blob "sender"
+            sender <- EntityId <$> field blob "sender"
             method_name <- field text "method_name"
             arg <- field blob "arg"
             return $ QueryRequest e cid sender (T.unpack method_name) arg

@@ -61,9 +61,9 @@ import IC.Id.Forms hiding (Blob)
 import IC.Types
 import IC.Funds
 import IC.Canister
+import qualified IC.Canister.Interface as CI
 import IC.Id.Fresh
 import IC.Utils
-import IC.Logger
 import IC.Management
 
 -- Abstract HTTP Interface
@@ -161,9 +161,8 @@ data IC = IC
   }
   deriving (Show)
 
--- The functions below want stateful access to a value of type 'IC', and be
--- able to log message (used for `ic0.debug_print`).
-type ICM m = (MonadState IC m, Logger m, HasCallStack)
+-- The functions below want stateful access to a value of type 'IC'
+type ICM m = (MonadState IC m, HasCallStack)
 
 initialIC :: IO IC
 initialIC = IC mempty mempty mempty mempty <$> newStdGen
@@ -319,11 +318,12 @@ readRequest (QueryRequest _ canister_id user_id method arg) =
     can_mod <- getCanisterMod canister_id
     time <- getCanisterTime canister_id
     balance <- getBalance canister_id
+    let env = CI.Env time balance
 
     f <- return (M.lookup method (query_methods can_mod))
       `orElse` reject RC_DESTINATION_INVALID "query method does not exist"
 
-    case f user_id time balance arg wasm_state of
+    case f user_id env arg wasm_state of
       Trap msg -> reject RC_CANISTER_ERROR $ "canister trapped: " ++ msg
       Return (Reject (rc,rm)) -> reject rc rm
       Return (Reply res) -> return $ Completed (CompleteArg res)
@@ -450,16 +450,15 @@ processMessage m = case m of
       can_mod <- getCanisterMod callee
       time <- getCanisterTime callee
       balance <- getBalance callee
-      invokeEntry ctxt_id wasm_state can_mod time balance entry >>= \case
+      let env = CI.Env time balance
+      invokeEntry ctxt_id wasm_state can_mod env entry >>= \case
         Trap msg -> do
           -- Eventually update cycle balance here
-          logTrap msg
           rememberTrap ctxt_id msg
-        Return (new_state, (new_calls, accepted, mb_response)) -> do
-          updateBalances ctxt_id new_calls accepted
+        Return (new_state, (call_actions, canister_actions)) -> do
+          performCallActions ctxt_id call_actions
+          performCanisterActions callee canister_actions
           setCanisterState callee new_state
-          mapM_ (newCall ctxt_id) new_calls
-          mapM_ (respondCallContext ctxt_id) mb_response
 
   ResponseMessage ctxt_id response refunded_funds -> do
     ctxt <- getCallContext ctxt_id
@@ -479,6 +478,16 @@ processMessage m = case m of
           { call_context = other_ctxt_id
           , entry = Closure callback response refunded_funds
           }
+
+performCallActions :: ICM m => CallId -> CallActions -> m ()
+performCallActions ctxt_id ca = do
+  updateBalances ctxt_id (ca_new_calls ca) (ca_accept ca)
+  mapM_ (newCall ctxt_id) (ca_new_calls ca)
+  mapM_ (respondCallContext ctxt_id) (ca_response ca)
+
+
+performCanisterActions :: ICM m => CanisterId -> CanisterActions -> m ()
+performCanisterActions _cid _ca = return ()
 
 updateBalances :: ICM m => CallId -> [MethodCall] -> Funds -> m ()
 updateBalances ctxt_id new_calls accepted = do
@@ -582,13 +591,15 @@ icInstallCode caller r = do
     was_empty <- isCanisterEmpty canister_id
     time <- getCanisterTime canister_id
     balance <- getBalance canister_id
+    let env = CI.Env time balance
 
     let
       reinstall = do
-        wasm_state <- return (init_method new_can_mod canister_id caller time balance arg)
+        (wasm_state, ca) <- return (init_method new_can_mod canister_id caller env arg)
           `onTrap` (\msg -> reject RC_CANISTER_ERROR $ "Initialization trapped: " ++ msg)
         setCanisterModule canister_id new_can_mod
         setCanisterState canister_id wasm_state
+        performCanisterActions canister_id ca
 
       install = do
         unless was_empty $
@@ -600,12 +611,17 @@ icInstallCode caller r = do
           reject RC_DESTINATION_INVALID "canister is empty during upgrade"
         old_wasm_state <- getCanisterState canister_id
         old_can_mod <- getCanisterMod canister_id
-        mem <- return (pre_upgrade_method old_can_mod old_wasm_state caller time balance)
+        (ca1, mem) <- return (pre_upgrade_method old_can_mod old_wasm_state caller env)
           `onTrap` (\msg -> reject RC_CANISTER_ERROR $ "Pre-upgrade trapped: " ++ msg)
-        new_wasm_state <- return (post_upgrade_method new_can_mod canister_id caller time balance mem arg)
+        -- TODO: update balance in env based on ca1 here, once canister actions
+        -- can change balances
+        let env2 = env
+        (new_wasm_state, ca2) <- return (post_upgrade_method new_can_mod canister_id caller env2 mem arg)
           `onTrap` (\msg -> reject RC_CANISTER_ERROR $ "Post-upgrade trapped: " ++ msg)
+
         setCanisterModule canister_id new_can_mod
         setCanisterState canister_id new_wasm_state
+        performCanisterActions canister_id (ca1 <> ca2)
 
     R.switch (r .! #mode) $ R.empty
       .+ #install .== (\() -> install)
@@ -715,21 +731,21 @@ runRandIC a = state $ \ic ->
     in (x, ic { rng = g })
 
 invokeEntry :: ICM m =>
-    CallId -> WasmState -> CanisterModule -> Timestamp -> Funds -> EntryPoint ->
+    CallId -> WasmState -> CanisterModule -> CI.Env -> EntryPoint ->
     m (TrapOr (WasmState, UpdateResult))
-invokeEntry ctxt_id wasm_state can_mod time balance entry = do
+invokeEntry ctxt_id wasm_state can_mod env entry = do
     responded <- respondedCallID ctxt_id
     available <- getCallContextFunds ctxt_id
     case entry of
       Public method dat -> do
         caller <- callerOfCallID ctxt_id
         case lookupUpdate method can_mod of
-          Just f -> return $ f caller time balance responded available dat wasm_state
+          Just f -> return $ f caller env responded available dat wasm_state
           Nothing -> do
             let reject = Reject (RC_DESTINATION_INVALID, "method does not exist: " ++ method)
-            return $ Return (wasm_state, ([], no_funds, Just reject))
+            return $ Return (wasm_state, (noCallActions { ca_response = Just reject}, noCanisterActions))
       Closure cb r refund ->
-        return $ callbacks can_mod cb time balance responded available r refund wasm_state
+        return $ callbacks can_mod cb env responded available r refund wasm_state
   where
     lookupUpdate method can_mod
         | Just f <- M.lookup method (update_methods can_mod) = Just f

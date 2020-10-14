@@ -4,6 +4,7 @@
 { mkDerivation
 , pkgs
 , base
+, base16-bytestring
 , base32
 , bytestring
 , cereal
@@ -40,6 +41,7 @@ mkDerivation {
   isExecutable = true;
   libraryHaskellDepends = [
     base
+    base16-bytestring
     base32
     bytestring
     cereal

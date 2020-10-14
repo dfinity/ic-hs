@@ -23,6 +23,7 @@ import qualified Data.Text.Encoding.Error as T
 import qualified Data.ByteString.Lazy as BS
 import qualified Data.ByteString.Builder as BS
 import qualified Data.HashMap.Lazy as HM
+import qualified Data.Set as S
 import Network.HTTP.Client
 import Network.HTTP.Types
 import Numeric.Natural
@@ -83,6 +84,7 @@ anonymousUser = "\x04"
 queryToNonExistant :: GenR
 queryToNonExistant = rec
     [ "request_type" =: GText "query"
+    , "sender" =: GBlob anonymousUser
     , "canister_id" =: GBlob doesn'tExist
     , "method_name" =: GText "foo"
     , "arg" =: GBlob "nothing to see here"
@@ -444,22 +446,22 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
   ]
 
   , testGroup "anonymous user"
-    [ simpleTestCase "update, sender absent" $ \cid ->
-      do submitCBOR $ rec
+    [ simpleTestCase "update, sender absent fails" $ \cid ->
+      do postCBOR "/api/v1/submit" $ envelopeFor anonymousUser $ rec
           [ "request_type" =: GText "call"
           , "canister_id" =: GBlob cid
           , "method_name" =: GText "update"
           , "arg" =: GBlob (run (replyData caller))
           ]
-        >>= isReply >>= is anonymousUser
-    , simpleTestCase "query, sender absent" $ \cid ->
-      do readCBOR $ rec
+        >>= code4xx
+    , simpleTestCase "query, sender absent fails" $ \cid ->
+      do postCBOR "/api/v1/read" $ envelopeFor anonymousUser $ rec
           [ "request_type" =: GText "query"
           , "canister_id" =: GBlob cid
           , "method_name" =: GText "query"
           , "arg" =: GBlob (run (replyData caller))
           ]
-        >>= queryResponse >>= isReply >>= is anonymousUser
+        >>= code4xx
     , simpleTestCase "update, sender explicit" $ \cid ->
       do submitCBOR $ rec
           [ "request_type" =: GText "call"
@@ -496,6 +498,107 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
       -- (Using growing stable memory as non-idempotent action)
       callTwice' cid (ignore (stableGrow (int 1)) >>> reply) >>= isReply >>= is ""
       query cid (replyData (i2b stableSize)) >>= is "\1\0\0\0"
+    ]
+
+  , testGroup "API availablility" $
+    {-
+    This section checks various API calls in various contexts, to see
+    if they trap when they should
+    This mirros the table in https://docs.dfinity.systems/public/#system-api-imports
+
+    -}
+    let
+      {-
+      Contexts
+
+      A context is a function of type
+         (String, Prog -> TestCase, Prog -> TestCase)
+      building a test for does-not-trap or does-trap
+      -}
+      contexts = mconcat
+        [ "I" =: twoContexts
+          (reqResponse (\prog -> do
+            cid <- ic_create ic00
+            install' cid prog
+          ))
+          (reqResponse (\prog -> do
+            cid <- install noop
+            upgrade' cid prog
+          ))
+        , "G" =: reqResponse (\prog -> do
+            cid <- install (onPreUpgrade (callback prog))
+            upgrade' cid noop
+          )
+        , "U" =: reqResponse (\prog -> do
+            cid <- install noop
+            call' cid (prog >>> reply)
+          )
+        , "Q" =: reqResponse (\prog -> do
+            cid <- install noop
+            query' cid (prog >>> reply)
+          )
+        , "Ry" =: reqResponse (\prog -> do
+            cid <- install noop
+            call' cid $ inter_query cid defArgs{
+              on_reply = prog >>> reply
+            }
+          )
+        , "Rt" =: reqResponse (\prog -> do
+            cid <- install noop
+            call' cid $ inter_query cid defArgs{
+              on_reject = prog >>> reply,
+              other_side = trap "trap!"
+            }
+          )
+        ]
+
+      -- context builder helpers
+      reqResponse act = (act >=> void . isReply, act >=> isReject [5])
+      twoContexts (aNT1, aT1) (aNT2, aT2) = (\p -> aNT1 p >> aNT2 p,\p -> aT1 p >> aT2 p)
+
+      -- assembling it all
+      t name trapping prog
+        | Just n <- find (not . (`HM.member` contexts)) s
+        = error $ "Undefined context " ++ T.unpack n
+        | otherwise =
+        [ if cname `S.member` s
+          then testCase (name ++ " works in " ++ T.unpack cname) $ actNT prog
+          else testCase (name ++ " traps in " ++ T.unpack cname) $ actTrap prog
+        | (cname, (actNT, actTrap)) <- HM.toList contexts
+        ]
+        where s = S.fromList (T.words trapping)
+
+      star = "I G U Q Ry Rt"
+      never = ""
+
+    in concat
+    [ t "msg_arg_data"          "I U Q Ry"  $ ignore argData
+    , t "msg_caller"            "I G U Q"   $ ignore caller
+    , t "msg_reject_code"       "Ry Rt"     $ ignore reject_code
+    , t "msg_reject_msg"        "Rt"        $ ignore reject_msg
+    , t "msg_reply_data_append" "U Q Ry Rt" $ replyDataAppend "Hey!"
+    , t "msg_reply"             never         reply -- due to double reply
+    , t "msg_reject"            never       $ reject "rejecting" -- due to double reply
+    , t "msg_funds_available"   "U Rt Ry"   $ ignore (getAvailableFunds (bytes cycle_unit))
+    , t "msg_funds_refunded"    "Rt Ry"     $ ignore (getRefund (bytes cycle_unit))
+    , t "msg_funds_accept"      "U Rt Ry"   $ acceptFunds (bytes cycle_unit) (int64 0)
+    , t "canister_self"         star        $ ignore self
+    , t "canister_balance"      star        $ ignore (getBalance (bytes cycle_unit))
+    , t "call_new…call_perform" "U Rt Ry"   $
+        callNew "foo" "bar" "baz" "quux" >>>
+        callDataAppend "foo" >>>
+        callFundsAdd (bytes cycle_unit) (int64 0) >>>
+        callPerform
+    , t "call_data_append"      never       $ callDataAppend (bytes "foo")
+    , t "call_funds_add"        never       $ callFundsAdd (bytes cycle_unit) (int64 0)
+    , t "call_perform"          never         callPerform
+    , t "stable_size"           star        $ ignore stableSize
+    , t "stable_grow"           star        $ ignore $ stableGrow (int 1)
+    , t "stable_read"           star        $ ignore $ stableRead (int 0) (int 0)
+    , t "stable_write"          star        $ stableWrite (int 0) ""
+    , t "time"                  star        $ ignore getTime
+    , t "debug_print"           star        $ debugPrint "hello"
+    , t "trap"                  never       $ trap "this better traps"
     ]
 
   , simpleTestCase "self" $ \cid ->
@@ -580,30 +683,6 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
     , simpleTestCase "Reject code is 0 in reply" $ \cid ->
       do call' cid $ inter_query cid defArgs{ on_reply = replyData (i2b reject_code) }
         >>= isRelayReject [0]
-
-    , simpleTestCase "traps in reply: getting reject message" $ \cid ->
-      do call' cid $ inter_query cid defArgs{ on_reply = replyRejectData }
-        >>= isReject [5]
-
-    , simpleTestCase "traps in reply: getting caller" $ \cid ->
-      do call' cid $ inter_query cid defArgs{ on_reply = replyData caller }
-        >>= isReject [5]
-
-    , simpleTestCase "traps in reject: getting argument" $ \cid ->
-      do call' cid $
-           inter_query cid defArgs{
-             on_reject = replyArgData,
-             other_side = reject "rejecting"
-           }
-        >>= isReject [5]
-
-    , simpleTestCase "traps in reject: getting caller" $ \cid ->
-      do call' cid $
-          inter_query cid defArgs{
-            on_reject = replyData caller,
-            other_side = reject "rejecting"
-          }
-        >>= isReject [5]
 
     , simpleTestCase "Second reply in callback" $ \cid -> do
       do call cid $
@@ -923,32 +1002,6 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
             call' cid (acceptFunds (bytes u) (int64 maxBound) >>> reply) >>= isReject [5]
         | u <- ["", cycle_unit, icpt_unit, "this is a test"]
         ]
-    , testGroup "cannot use available funds API" $
-      let test = ignore (getAvailableFunds (bytes cycle_unit)) >>> reply in
-      [ simpleTestCase "in query" $ \cid -> do
-        query' cid test >>= isReject [5]
-      , testCase "in init" $ do
-        cid <- ic_create ic00
-        install' cid test >>= isReject [5]
-      ]
-    , testGroup "cannot use accept funds API" $
-      let test = acceptFunds (bytes cycle_unit) (int64 0) >>> reply in
-      [ simpleTestCase "in query" $ \cid -> do
-        query' cid test >>= isReject [5]
-      , testCase "in init" $ do
-        cid <- ic_create ic00
-        install' cid test >>= isReject [5]
-      ]
-    , testGroup "cannot use refunds funds API" $
-      let test = ignore (getRefund (bytes icpt_unit)) >>> reply in
-      [ simpleTestCase "in query" $ \cid -> do
-        query' cid test >>= isReject [5]
-      , simpleTestCase "in update" $ \cid -> do
-        call' cid test >>= isReject [5]
-      , testCase "in init" $ do
-        cid <- ic_create ic00
-        install' cid test >>= isReject [5]
-      ]
     , testGroup "non-zero ICPT balance"
       [ testCase "install" $ do
         cid <- create rememberICPTs
