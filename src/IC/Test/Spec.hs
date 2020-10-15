@@ -15,7 +15,7 @@ This module contains a test suite for the Internet Computer
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
-module IC.Test.Spec (preFlight, TestConfig(..), icTests) where
+module IC.Test.Spec (preFlight, TestConfig, icTests) where
 
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
@@ -170,11 +170,10 @@ noExpiryEnv = deleteField "ingress_expiry"
 pastExpiryEnv = modNatField "ingress_expiry" (subtract 3600_000_000_000)
 futureExpiryEnv = modNatField "ingress_expiry" (+ 3600_000_000_000)
 
--- * Preflight checks: Get the root key, and check if test suite should be primed
+-- * Preflight checks: Get the root key, and tell user about versions
 
 data TestConfig = TestConfig
-    { tc_primed :: Bool
-    , tc_manager :: Manager
+    { tc_manager :: Manager
     , tc_endPoint :: String
     }
 
@@ -187,16 +186,11 @@ preFlight os = do
     s <- (httpLbs request manager >>= okCBOR >>= statusResonse)
         `catch` (\(HUnitFailure _ r) -> putStrLn r >> exitFailure)
 
-    let primed = status_api_version s == specVersion
     putStrLn $ "Spec version tested:  " ++ T.unpack specVersion
     putStrLn $ "Spec version claimed: " ++ T.unpack (status_api_version s)
-    if primed
-    then putStrLn $ "Test suite is primed"
-    else putStrLn $ "Test suite is not primed (failures are informative only)"
 
     return TestConfig
-        { tc_primed = primed
-        , tc_manager = manager
+        { tc_manager = manager
         , tc_endPoint = ep
         }
 
