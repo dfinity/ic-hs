@@ -630,10 +630,10 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
       call' cid (inter_call cid "bar" defArgs) >>= isRelayReject [3]
 
     , simpleTestCase "Call from query method traps (in update call)" $ \cid ->
-      callToQuery' cid (inter_update cid defArgs) >>= isReject [5]
+      callToQuery' cid (inter_query cid defArgs) >>= isReject [5]
 
     , simpleTestCase "Call from query method traps (in query call)" $ \cid ->
-      query' cid (inter_update cid defArgs) >>= isReject [5]
+      query' cid (inter_query cid defArgs) >>= isReject [5]
 
     , simpleTestCase "Call from query method traps (in inter-canister-call)" $ \cid ->
       do call' cid $
