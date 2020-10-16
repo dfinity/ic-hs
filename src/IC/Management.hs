@@ -53,7 +53,12 @@ type ICManagement m =
       canister_status : (record {
         canister_id : principal;
       }) -> (record {
-        status : variant { running; stopping; stopped }
+        status : variant { running; stopping; stopped };
+        module_hash: opt blob;
+        controller: principal;
+        memory_size: nat;
+        // haskell-candid does not support tuple short hands yet:
+        balance: vec record {0 : blob; 1 : nat};
       });
       delete_canister : (record {
         canister_id : principal;
