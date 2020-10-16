@@ -44,6 +44,7 @@
 , utf8-string
 , vector
 , wai
+, wai-extra
 , warp
 , winter
 }:
@@ -95,6 +96,7 @@ mkDerivation {
     utf8-string
     vector
     wai
+    wai-extra
     warp
     winter
   ];
