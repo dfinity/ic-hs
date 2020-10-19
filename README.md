@@ -108,22 +108,23 @@ To achieve these goals, the following design decisions are made:
    This is an ongoing refinement process, striving for a probably unattainable
    ideal as the goal.
 
-Installation
-------------
+Running
+-------
 
-To install it into your normal environment, run from the `impl/` directory
+This is the fastest way to run `ic-ref` or `ic-ref-test`:
 
-    nix-env -if .
+    nix run -f . -c ic-ref
 
-This installs the all binaries (`ic-ref`, `ic-ref-test`, `ic-ref-run`) in your
-the PATH.
+or
+
+    nix run -f . -c ic-ref-test
+
+You can also pass arguments, e.g.
+
+    nix run -f . -c ic-ref-test --endpoint http://0.0.0.0:8080 -p 'WebAuthn'
 
 Using
 -----
-
-* The `ic-ref-run` program takes, as an argument, a file with `install`, `call`,
-  `query`, `upgrade` commands, just like
-  [`drun`](https://github.com/dfinity-lab/dfinity/tree/master/rs/drun/).
 
 * The `ic-ref` program starts a webserver at `http://0.0.0.0:8001/` that implements the public
   Internet Computer interface, and can be used with `dfx --client http://0.0.0.0:8001/`.
@@ -132,14 +133,26 @@ Using
   the IC state as JSON. Recommended to use Firefox, as it provides a nice UI for
   browsing JSON.
 
+* The `ic-ref-test` acceptance test.
+
+  Pass `--endpoint http://localhost:8080/` to run against a specific node.
+
+  With the `-p pattern` flag you can select individual tests; those whose names
+  contain the pattern. See https://github.com/feuerbach/tasty#patterns for
+  advanced use of this flag.
+
+  When passing `--rerun`, the test suite will remember which tests have failed,
+  and only run those that failed last tests (or all again, if none have failed
+  last run).
+
 * The `ic-request-id` tool takes a CBOR-request (stdin or via a file) and
   calculates its request id.
 
-* The `ic-ref-test` acceptance test.
-  Run `ic-ref-test --endpoint http://localhost:8080/` to run against a specific node.
+* The `ic-ref-run` program takes, as an argument, a file with `install`, `call`,
+  `query`, `upgrade` commands, just like
+  [`drun`](https://github.com/dfinity-lab/dfinity/tree/master/rs/drun/).
 
-Both `ic-ref` and `ic-ref-run` can report the spec version (`--spec-version`)
-and implementation version (`--version`).
+The `--version` flag reports the current version.
 
 Developing on ic-ref
 ---------------------
@@ -150,9 +163,9 @@ that allows you to build the project using `cabal build`. You can also run
 
 One possible workflow is to run
 
-    ghcid -c 'cabal repl ic-ref' -rMain.main
+    ghcid -c 'cabal repl ic-ref' -T Main.main
 
-which will run `ic-ref` and restart upon file changes.
+which will run `ic-ref` and restart upon file changes.  Similarly
 
 Developing on ic-ref-test
 -------------------------
@@ -175,6 +188,15 @@ The `-p` flag, i.e.
 
 allows you can run tests selectively (i.e. only those whose name include
 “upgrade”).
+
+Again, you can use `ghcid` to run the test suite upon file changes:
+
+    ghcid -c 'cabal repl ic-ref-test' -T Main.main
+
+and you can flags with
+
+    ghcid -c 'cabal repl ic-ref-test' -T Main.main --setup ':set args --rerun -p "query call"'
+
 
 Updating Haskell Packages
 -------------------------

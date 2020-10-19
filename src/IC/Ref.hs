@@ -47,6 +47,7 @@ import qualified Data.Map as M
 import qualified Data.Row as R
 import qualified Data.Row.Variants as V
 import qualified Data.ByteString.Lazy as BS
+import qualified Data.Vector as Vec
 import Data.Maybe
 import Control.Monad.State.Class
 import Control.Monad.Except
@@ -64,6 +65,7 @@ import IC.Canister
 import qualified IC.Canister.Interface as CI
 import IC.Id.Fresh
 import IC.Utils
+import IC.Hash
 import IC.Management
 
 -- Abstract HTTP Interface
@@ -106,8 +108,9 @@ data RunStatus
   deriving (Show)
 
 data CanState = CanState
-  { wasm_state :: Maybe WasmState -- absent when empty
+  { wasm_state :: Maybe WasmState   -- absent when empty
   , can_mod :: Maybe CanisterModule -- absent when empty
+  , can_hash :: Maybe Blob          -- absent when empty
   , run_status :: RunStatus
   , controller :: EntityId
   , time :: Timestamp
@@ -204,6 +207,7 @@ createEmptyCanister cid controller time = modify $ \ic ->
     can = CanState
       { wasm_state = Nothing
       , can_mod = Nothing
+      , can_hash = Nothing
       , run_status = IsRunning
       , controller = controller
       , time = time
@@ -236,9 +240,9 @@ modCanister cid f = do
     void $ getCanister cid
     modify $ \ic -> ic { canisters = M.adjust f cid (canisters ic) }
 
-setCanisterModule :: ICM m => CanisterId -> CanisterModule -> m ()
-setCanisterModule cid can_mod = modCanister cid $
-    \cs -> cs { can_mod = Just can_mod }
+setCanisterModule :: ICM m => CanisterId -> CanisterModule -> Blob -> m ()
+setCanisterModule cid can_mod can_hash = modCanister cid $
+    \cs -> cs { can_mod = Just can_mod, can_hash = Just can_hash }
 
 setCanisterState :: ICM m => CanisterId -> WasmState -> m ()
 setCanisterState cid wasm_state = modCanister cid $
@@ -597,7 +601,7 @@ icInstallCode caller r = do
       reinstall = do
         (wasm_state, ca) <- return (init_method new_can_mod canister_id caller env arg)
           `onTrap` (\msg -> reject RC_CANISTER_ERROR $ "Initialization trapped: " ++ msg)
-        setCanisterModule canister_id new_can_mod
+        setCanisterModule canister_id new_can_mod (sha256 (r .! #wasm_module))
         setCanisterState canister_id wasm_state
         performCanisterActions canister_id ca
 
@@ -619,7 +623,7 @@ icInstallCode caller r = do
         (new_wasm_state, ca2) <- return (post_upgrade_method new_can_mod canister_id caller env2 mem arg)
           `onTrap` (\msg -> reject RC_CANISTER_ERROR $ "Post-upgrade trapped: " ++ msg)
 
-        setCanisterModule canister_id new_can_mod
+        setCanisterModule canister_id new_can_mod (sha256 (r .! #wasm_module))
         setCanisterState canister_id new_wasm_state
         performCanisterActions canister_id (ca1 <> ca2)
 
@@ -691,7 +695,18 @@ icCanisterStatus caller r = do
         IsStopping _pending -> return (V.IsJust #stopping ())
         IsStopped -> return (V.IsJust #stopped ())
         IsDeleted -> error "deleted canister encountered"
-    return $ #status .== s
+    controller <- getController canister_id
+    hash <- can_hash <$> getCanister canister_id
+    funds <- getBalance canister_id
+    return $ R.empty
+      .+ #status .== s
+      .+ #controller .== entityIdToPrincipal controller
+      .+ #memory_size .== 0 -- not implemented here
+      .+ #module_hash .== hash
+      .+ #balance .== Vec.fromList
+        -- no tuple short-hands in haskell-candid yet
+        [ #_0_ .== u .+ #_1_ .== a | (u,a) <- M.toList funds, a > 0]
+
 
 icDeleteCanister :: (ICM m, CanReject m) => EntityId -> CallId -> ICManagement m .! "delete_canister"
 icDeleteCanister caller ctxt_id r = do

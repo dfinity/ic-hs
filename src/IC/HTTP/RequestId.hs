@@ -1,4 +1,3 @@
-{-# LANGUAGE TypeApplications #-}
 module IC.HTTP.RequestId (requestId) where
 
 import Numeric.Natural
@@ -8,18 +7,17 @@ import qualified Data.HashMap.Lazy as HM
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import Data.List (sort)
-import Crypto.Hash (hashlazy, SHA256)
-import Data.ByteArray (convert)
 import Data.Serialize.LEB128
+import IC.Hash
 
 type RequestId = BS.ByteString
 
 requestId :: GenR -> RequestId
-requestId (GRec hm) = h $ BS.concat $ sort $ map encodeKV $ HM.toList hm
+requestId (GRec hm) = sha256 $ BS.concat $ sort $ map encodeKV $ HM.toList hm
 requestId _ = error "requestID: expected a record"
 
 encodeKV :: (T.Text, GenR) -> BS.ByteString
-encodeKV (k,v) = h (encodeText k) <> h (encodeVal v)
+encodeKV (k,v) = sha256 (encodeText k) <> sha256 (encodeVal v)
 
 encodeVal :: GenR -> BS.ByteString
 encodeVal (GBlob b) = b
@@ -32,6 +30,3 @@ encodeText = BS.fromStrict . T.encodeUtf8
 
 encodeNat :: Natural -> BS.ByteString
 encodeNat = BS.fromStrict . toLEB128
-
-h :: BS.ByteString -> BS.ByteString
-h = BS.fromStrict . convert . hashlazy @SHA256

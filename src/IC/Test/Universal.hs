@@ -213,8 +213,8 @@ inter_call callee method_name ca =
     callNew (bytes callee) (bytes method_name)
             (callback (on_reply ca)) (callback (on_reject ca)) >>>
     callDataAppend (callback (other_side ca)) >>>
-    callFundsAdd (bytes cycle_unit) (int64 (cycles ca)) >>>
-    callFundsAdd (bytes icpt_unit) (int64 (icpts ca)) >>>
+    (if cycles ca > 0 then callFundsAdd (bytes cycle_unit) (int64 (cycles ca)) else noop) >>>
+    (if icpts ca > 0 then callFundsAdd (bytes icpt_unit) (int64 (icpts ca)) else noop) >>>
     callPerform
 
 inter_update :: BS.ByteString -> CallArgs -> Prog

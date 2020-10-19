@@ -1,5 +1,4 @@
 {-# LANGUAGE LambdaCase #-}
-
 {- |
 Generic utilities related to standard or imported data structures that we do
 don’t want to see in non-plumbing code.
@@ -16,7 +15,3 @@ repeatWhileTrue :: Monad m => m Bool -> m ()
 repeatWhileTrue act = act >>= \case
     True -> repeatWhileTrue act
     False -> return ()
-
-
-
-

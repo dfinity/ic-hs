@@ -14,8 +14,9 @@ This module contains a test suite for the Internet Computer
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE NumericUnderscores #-}
+{-# LANGUAGE DataKinds #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
-module IC.Test.Spec (preFlight, TestConfig(..), icTests) where
+module IC.Test.Spec (preFlight, TestConfig, icTests) where
 
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
@@ -24,6 +25,7 @@ import qualified Data.ByteString.Lazy as BS
 import qualified Data.ByteString.Builder as BS
 import qualified Data.HashMap.Lazy as HM
 import qualified Data.Set as S
+import qualified Data.Vector as Vec
 import Network.HTTP.Client
 import Network.HTTP.Types
 import Numeric.Natural
@@ -61,6 +63,7 @@ import IC.Id.Forms hiding (Blob)
 import IC.Test.Options
 import IC.Test.Universal
 import IC.Funds
+import IC.Hash
 
 -- * Test data, standard requests
 
@@ -171,11 +174,10 @@ noExpiryEnv = deleteField "ingress_expiry"
 pastExpiryEnv = modNatField "ingress_expiry" (subtract 3600_000_000_000)
 futureExpiryEnv = modNatField "ingress_expiry" (+ 3600_000_000_000)
 
--- * Preflight checks: Get the root key, and check if test suite should be primed
+-- * Preflight checks: Get the root key, and tell user about versions
 
 data TestConfig = TestConfig
-    { tc_primed :: Bool
-    , tc_manager :: Manager
+    { tc_manager :: Manager
     , tc_endPoint :: String
     }
 
@@ -184,20 +186,15 @@ preFlight os = do
     let Endpoint ep = lookupOption os
     manager <- newManager defaultManagerSettings
     request <- parseRequest $ ep ++ "/api/v1/status"
-    putStrLn $ "Fetching endpoit status from " ++ show ep ++ "..."
+    putStrLn $ "Fetching endpoint status from " ++ show ep ++ "..."
     s <- (httpLbs request manager >>= okCBOR >>= statusResonse)
         `catch` (\(HUnitFailure _ r) -> putStrLn r >> exitFailure)
 
-    let primed = status_api_version s == specVersion
     putStrLn $ "Spec version tested:  " ++ T.unpack specVersion
     putStrLn $ "Spec version claimed: " ++ T.unpack (status_api_version s)
-    if primed
-    then putStrLn $ "Test suite is primed"
-    else putStrLn $ "Test suite is not primed (failures are informative only)"
 
     return TestConfig
-        { tc_primed = primed
-        , tc_manager = manager
+        { tc_manager = manager
         , tc_endPoint = ep
         }
 
@@ -251,19 +248,32 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
       step "Reinstall over empty canister"
       ic_install ic00 (enum #reinstall) can_id trivialWasmModule ""
 
+  , testCaseSteps "canister_status" $ \step -> do
+      step "Create empty"
+      cid <- ic_create ic00
+      cs <- ic_canister_status ic00 cid
+      cs .! #status @?= enum #running
+      cs .! #controller @?= Principal defaultUser
+      cs .! #module_hash @?= Nothing
+
+      step "Install"
+      ic_install ic00 (enum #install) cid trivialWasmModule ""
+      cs <- ic_canister_status ic00 cid
+      cs .! #module_hash @?= Just (sha256 trivialWasmModule)
+
   , testCaseSteps "canister lifecycle" $ \step -> do
       cid <- install noop
 
       step "Is running?"
-      sv <- ic_canister_status ic00 cid
-      V.view #running sv @?= Just ()
+      cs <- ic_canister_status ic00 cid
+      cs .! #status @?= enum #running
 
       step "Stop"
       ic_stop_canister ic00 cid
 
       step "Is stopped?"
-      sv <- ic_canister_status ic00 cid
-      V.view #stopped sv @?= Just ()
+      cs <- ic_canister_status ic00 cid
+      cs .! #status @?= enum #stopped
 
       step "Stop is noop"
       ic_stop_canister ic00 cid
@@ -278,8 +288,8 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
       ic_start_canister ic00 cid
 
       step "Is running?"
-      sv <- ic_canister_status ic00 cid
-      V.view #running sv @?= Just ()
+      cs <- ic_canister_status ic00 cid
+      cs .! #status @?= enum #running
 
       step "Can call (update)?"
       call_ cid reply
@@ -300,18 +310,27 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
       ic_stop_canister ic00 cid
 
       step "Is stopped?"
-      ic_canister_status ic00 cid >>= is (enum #stopped)
+      cs <- ic_canister_status ic00 cid
+      cs .! #status @?= enum #stopped
 
       step "Deletion succeeds"
       ic_delete_canister ic00 cid
 
-      step "Cannot call (update)?"
-      call' cid reply >>= isReject [3]
+      -- Disabled; such a call gets accepted (200) but
+      -- then the status never shows up, which causes a timeout
+      --
+      -- step "Cannot call (update)?"
+      -- call' cid reply >>= isReject [3]
+
+      step "Cannot call (inter-canister)?"
+      cid2 <- install noop
+      do call' cid2 $ inter_update cid defArgs
+        >>= isRelayReject [3]
 
       step "Cannot call (query)?"
       query' cid reply >>= isReject [3]
 
-      step "Cannot query canister status"
+      step "Cannot query canister_status"
       ic_canister_status' ic00 cid >>= isReject [3,5]
 
       step "Deletion fails"
@@ -637,10 +656,10 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
       call' cid (inter_call cid "bar" defArgs) >>= isRelayReject [3]
 
     , simpleTestCase "Call from query method traps (in update call)" $ \cid ->
-      callToQuery' cid (inter_update cid defArgs) >>= isReject [5]
+      callToQuery' cid (inter_query cid defArgs) >>= isReject [5]
 
     , simpleTestCase "Call from query method traps (in query call)" $ \cid ->
-      query' cid (inter_update cid defArgs) >>= isReject [5]
+      query' cid (inter_query cid defArgs) >>= isReject [5]
 
     , simpleTestCase "Call from query method traps (in inter-canister-call)" $ \cid ->
       do call' cid $
@@ -1002,6 +1021,13 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
             call' cid (acceptFunds (bytes u) (int64 maxBound) >>> reply) >>= isReject [5]
         | u <- ["", cycle_unit, icpt_unit, "this is a test"]
         ]
+    , testCase "funds in canister_status" $ do
+        cid <- create noop
+        cs <- ic_canister_status ic00 cid
+        [ (e .! #_0_, e .! #_1_)
+          | e <- Vec.toList (cs .! #balance)
+          , e .! #_0_ /= cycle_unit ] -- filter out cycles, these are unspecified
+            @?= [ (icpt_unit, fromIntegral icpts) ]
     , testGroup "non-zero ICPT balance"
       [ testCase "install" $ do
         cid <- create rememberICPTs
@@ -1533,11 +1559,12 @@ ic_stop_canister ic00 canister_id = do
   managementService ic00 .! #stop_canister $ empty
     .+ #canister_id .== Principal canister_id
 
-ic_canister_status :: HasTestConfig => IC00 -> Blob -> IO RunState
+ic_canister_status ::
+    forall a b. (a -> IO b) ~ (ICManagement IO .! "canister_status") =>
+    HasTestConfig => IC00 -> Blob -> IO b
 ic_canister_status ic00 canister_id = do
-  r <- managementService ic00 .! #canister_status $ empty
+  managementService ic00 .! #canister_status $ empty
     .+ #canister_id .== Principal canister_id
-  return (r .! #status)
 
 ic_deposit_funds :: HasTestConfig => IC00 -> Blob -> IO ()
 ic_deposit_funds ic00 canister_id = do

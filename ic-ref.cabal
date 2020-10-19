@@ -35,6 +35,7 @@ common logic
   other-modules:       IC.Id.Fresh
   other-modules:       IC.Id.Forms
   other-modules:       IC.Utils
+  other-modules:       IC.Hash
   other-modules:       IC.Canister.Imp
   other-modules:       IC.Canister.Interface
   other-modules:       IC.Canister.Pure
@@ -74,6 +75,7 @@ common cbor
   other-modules:       IC.HTTP.CBOR
   other-modules:       IC.HTTP.GenR.Parse
   other-modules:       IC.HTTP.RequestId
+  other-modules:       IC.Hash
   other-modules:       IC.Id.Forms
   other-modules:       IC.Crypto
   build-depends:       base >=4.12 && <5
@@ -153,6 +155,7 @@ executable ic-ref-test
   build-depends:       transformers
   build-depends:       base32
   build-depends:       time
+  build-depends:       vector
 
 test-suite unit-test
   import: cbor, ghc-flags
