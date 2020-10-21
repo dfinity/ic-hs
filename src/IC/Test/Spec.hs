@@ -180,6 +180,7 @@ futureExpiryEnv = modNatField "ingress_expiry" (+ 3600_000_000_000)
 data TestConfig = TestConfig
     { tc_manager :: Manager
     , tc_endPoint :: String
+    , tc_universal_wasm :: Blob
     , tc_simple_canister :: IO Blob
     }
 
@@ -195,13 +196,17 @@ preFlight os = do
     putStrLn $ "Spec version tested:  " ++ T.unpack specVersion
     putStrLn $ "Spec version claimed: " ++ T.unpack (status_api_version s)
 
-    sharedCanister <- installSharedCanister manager ep
+    universal_wasm <- getTestWasm "universal_canister"
 
-    return TestConfig
-        { tc_manager = manager
-        , tc_endPoint = ep
-        , tc_simple_canister = sharedCanister
-        }
+    let pre_test_config = TestConfig
+            { tc_manager = manager
+            , tc_endPoint = ep
+            , tc_universal_wasm = universal_wasm
+            , tc_simple_canister = error "tc_simple_canister not available yet"
+            }
+    sharedCanister <- installSharedCanister pre_test_config
+
+    return pre_test_config{tc_simple_canister = sharedCanister}
 
 
 -- * The actual test suite (see below for helper functions)
@@ -398,9 +403,8 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
     ic_install (ic00via cid) (enum #reinstall) can_id2 trivialWasmModule ""
 
   , simpleTestCase "aaaaa-aa (inter-canister, large)" $ \cid -> do
-    universal_wasm <- getTestWasm "universal_canister"
     can_id <- ic_create (ic00via cid)
-    ic_install (ic00via cid) (enum #install) can_id universal_wasm ""
+    ic_install (ic00via cid) (enum #install) can_id universalWasm ""
     do call can_id $ replyData "Hi"
       >>= is "Hi"
 
@@ -558,7 +562,7 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
             install' cid prog
           ))
           (reqResponse (\prog -> do
-            cid <- useShared
+            cid <- install noop
             upgrade' cid prog
           ))
         , "G" =: reqResponse (\prog -> do
@@ -816,16 +820,17 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
     , simpleTestCase "in update" $ \cid ->
       query cid (replyData getTimeTwice) >>= as2Word64 >>= bothSame
     , testCase "in install" $ do
-      cid <- install $ setGlobal (getTimeTwice)
+      cid <- install $ setGlobal getTimeTwice
       query cid (replyData getGlobal) >>= as2Word64 >>= bothSame
     , testCase "in pre_upgrade" $ do
       cid <- install $
         ignore (stableGrow (int 1)) >>>
-        onPreUpgrade (callback $ stableWrite (int 0) (getTimeTwice))
+        onPreUpgrade (callback $ stableWrite (int 0) getTimeTwice)
       upgrade cid noop
       query cid (replyData (stableRead (int 0) (int (2*8)))) >>= as2Word64 >>= bothSame
-    , simpleTestCase "in post_upgrade" $ \cid -> do
-      upgrade cid $ setGlobal (getTimeTwice)
+    , testCase "in post_upgrade" $ do
+      cid <- install noop
+      upgrade cid $ setGlobal getTimeTwice
       query cid (replyData getGlobal) >>= as2Word64 >>= bothSame
     ]
 
@@ -995,8 +1000,7 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
           return cid
         create_via cid initial_icpts = do
           cid2 <- ic_create (ic00viaWithFunds cid 1000000000 initial_icpts)
-          universal_wasm <- getTestWasm "universal_canister"
-          ic_install (ic00via cid) (enum #install) cid2 universal_wasm (run noop)
+          ic_install (ic00via cid) (enum #install) cid2 universalWasm (run noop)
           return cid2
     in
     [ testGroup "can use balance API" $
@@ -1667,13 +1671,11 @@ barrier cids = do
 
 install' :: (HasCallStack, HasTestConfig) => Blob -> Prog -> IO ReqResponse
 install' cid prog = do
-  universal_wasm <- getTestWasm "universal_canister"
-  ic_install' ic00 (enum #install) cid universal_wasm (run prog)
+  ic_install' ic00 (enum #install) cid universalWasm (run prog)
 
 installAt :: (HasCallStack, HasTestConfig) => Blob -> Prog -> IO ()
 installAt cid prog = do
-  universal_wasm <- getTestWasm "universal_canister"
-  ic_install ic00 (enum #install) cid universal_wasm (run prog)
+  ic_install ic00 (enum #install) cid universalWasm (run prog)
 
 -- Also calls create, used default 'ic00'
 install :: (HasCallStack, HasTestConfig) => Prog -> IO Blob
@@ -1684,23 +1686,19 @@ install prog = do
 
 upgrade' :: (HasCallStack, HasTestConfig) => Blob -> Prog -> IO ReqResponse
 upgrade' cid prog = do
-  universal_wasm <- getTestWasm "universal_canister"
-  ic_install' ic00 (enum #upgrade) cid universal_wasm (run prog)
+  ic_install' ic00 (enum #upgrade) cid universalWasm (run prog)
 
 upgrade :: (HasCallStack, HasTestConfig) => Blob -> Prog -> IO ()
 upgrade cid prog = do
-  universal_wasm <- getTestWasm "universal_canister"
-  ic_install ic00 (enum #upgrade) cid universal_wasm (run prog)
+  ic_install ic00 (enum #upgrade) cid universalWasm (run prog)
 
 reinstall' :: (HasCallStack, HasTestConfig) => Blob -> Prog -> IO ReqResponse
 reinstall' cid prog = do
-  universal_wasm <- getTestWasm "universal_canister"
-  ic_install' ic00 (enum #reinstall) cid universal_wasm (run prog)
+  ic_install' ic00 (enum #reinstall) cid universalWasm (run prog)
 
 reinstall :: (HasCallStack, HasTestConfig) => Blob -> Prog -> IO ()
 reinstall cid prog = do
-  universal_wasm <- getTestWasm "universal_canister"
-  ic_install ic00 (enum #reinstall) cid universal_wasm (run prog)
+  ic_install ic00 (enum #reinstall) cid universalWasm (run prog)
 
 callRequest :: HasTestConfig => Blob -> Prog -> GenR
 callRequest cid prog = rec
@@ -1751,7 +1749,8 @@ query_ cid prog = query cid prog >>= is ""
 -- Shortcut for test cases that just need one canister
 --
 -- This canister may be shared between different tests, so do not assume
--- that its state (stable memory, global) is unmodified.
+-- that its state (stable memory, global) is unmodified, and do not
+-- use this canister in upgrades or for stopping etc.
 
 simpleTestCase :: HasTestConfig => String -> (Blob -> IO ()) -> TestTree
 simpleTestCase name act = testCase name $ useShared >>= act
@@ -1759,17 +1758,9 @@ simpleTestCase name act = testCase name $ useShared >>= act
 useShared :: HasTestConfig => IO Blob
 useShared = tc_simple_canister testConfig
 
-installSharedCanister :: Manager -> String -> IO (IO Blob)
-installSharedCanister manager ep = delayed $ do
-  cid <- ic_create ic00
-  installAt cid noop
-  return cid
-  where
-    ?testConfig = TestConfig
-        { tc_manager = manager
-        , tc_endPoint = ep
-        , tc_simple_canister = error "tc_simple_canister not defined yet"
-        }
+installSharedCanister :: TestConfig -> IO (IO Blob)
+installSharedCanister pre_test_config = delayed $ install noop
+  where ?testConfig = pre_test_config
 
 
 -- * Programmatic test generation
@@ -1810,6 +1801,9 @@ endPoint = tc_endPoint testConfig
 
 testManager :: HasTestConfig => Manager
 testManager = tc_manager testConfig
+
+universalWasm :: HasTestConfig => Blob
+universalWasm = tc_universal_wasm testConfig
 
 -- * Test data access
 
