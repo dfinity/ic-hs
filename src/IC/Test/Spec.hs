@@ -62,6 +62,7 @@ import IC.Crypto
 import IC.Id.Forms hiding (Blob)
 import IC.Test.Options
 import IC.Test.Universal
+import IC.Test.DelayedIO
 import IC.Funds
 import IC.Hash
 
@@ -179,6 +180,7 @@ futureExpiryEnv = modNatField "ingress_expiry" (+ 3600_000_000_000)
 data TestConfig = TestConfig
     { tc_manager :: Manager
     , tc_endPoint :: String
+    , tc_simple_canister :: IO Blob
     }
 
 preFlight :: OptionSet -> IO TestConfig
@@ -193,9 +195,12 @@ preFlight os = do
     putStrLn $ "Spec version tested:  " ++ T.unpack specVersion
     putStrLn $ "Spec version claimed: " ++ T.unpack (status_api_version s)
 
+    sharedCanister <- installSharedCanister manager ep
+
     return TestConfig
         { tc_manager = manager
         , tc_endPoint = ep
+        , tc_simple_canister = sharedCanister
         }
 
 
@@ -323,7 +328,7 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
       -- call' cid reply >>= isReject [3]
 
       step "Cannot call (inter-canister)?"
-      cid2 <- install noop
+      cid2 <- useShared
       do call' cid2 $ inter_update cid defArgs
         >>= isRelayReject [3]
 
@@ -351,8 +356,9 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
 
 
   , testCaseSteps "aaaaa-aa (inter-canister)" $ \step -> do
-    -- install universal canisters to proxy the requests
-    cid <- install noop
+    -- used universal canisters to proxy the requests
+    cid <- useShared
+    -- a second canister with different id
     cid2 <- install noop
 
     step "Create"
@@ -438,7 +444,8 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
     , simpleTestCase "No response" $ \cid ->
       call' cid noop >>= isReject [5]
 
-    , simpleTestCase "No response does not rollback" $ \cid -> do
+    , testCase "No response does not rollback" $  do
+      cid <- install noop
       call' cid (setGlobal "FOO") >>= isReject [5]
       query cid (replyData getGlobal) >>= is "FOO"
 
@@ -502,16 +509,19 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
     ]
 
   , testGroup "state"
-    [ simpleTestCase "set/get" $ \cid -> do
+    [ testCase "set/get" $ do
+      cid <- install noop
       call_ cid $ setGlobal "FOO" >>> reply
       query cid (replyData getGlobal) >>= is "FOO"
 
-    , simpleTestCase "set/set/get" $ \cid -> do
+    , testCase "set/set/get" $ do
+      cid <- install noop
       call_ cid $ setGlobal "FOO" >>> reply
       call_ cid $ setGlobal "BAR" >>> reply
       query cid (replyData getGlobal) >>= is "BAR"
 
-    , simpleTestCase "resubmission" $ \cid -> do
+    , testCase "resubmission" $ do
+      cid <- install noop
       -- Submits the same request (same nonce) twice, checks that
       -- the IC does not act twice.
       -- (Using growing stable memory as non-idempotent action)
@@ -541,7 +551,7 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
             install' cid prog
           ))
           (reqResponse (\prog -> do
-            cid <- install noop
+            cid <- useShared
             upgrade' cid prog
           ))
         , "G" =: reqResponse (\prog -> do
@@ -549,21 +559,21 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
             upgrade' cid noop
           )
         , "U" =: reqResponse (\prog -> do
-            cid <- install noop
+            cid <- useShared
             call' cid (prog >>> reply)
           )
         , "Q" =: reqResponse (\prog -> do
-            cid <- install noop
+            cid <- useShared
             query' cid (prog >>> reply)
           )
         , "Ry" =: reqResponse (\prog -> do
-            cid <- install noop
+            cid <- useShared
             call' cid $ inter_query cid defArgs{
               on_reply = prog >>> reply
             }
           )
         , "Rt" =: reqResponse (\prog -> do
-            cid <- install noop
+            cid <- useShared
             call' cid $ inter_query cid defArgs{
               on_reject = prog >>> reply,
               other_side = trap "trap!"
@@ -676,14 +686,16 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
       call cid (inter_query cid defArgs)
         >>= is ("Hello " <> cid <> " this is " <> cid)
 
-    , simpleTestCase "update commits" $ \cid -> do
+    , testCase "update commits" $ do
+      cid <- install noop
       call_ cid $
         setGlobal "FOO" >>>
         inter_update cid defArgs{ other_side = setGlobal "BAR" >>> reply }
 
       query cid (replyData getGlobal) >>= is "BAR"
 
-    , simpleTestCase "query does not commit" $ \cid -> do
+    , testCase "query does not commit" $ do
+      cid <- install noop
       call_ cid $
         setGlobal "FOO" >>>
         inter_query cid defArgs{ other_side = setGlobal "BAR" >>> reply }
@@ -703,7 +715,8 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
       do call' cid $ inter_query cid defArgs{ on_reply = replyData (i2b reject_code) }
         >>= isRelayReject [0]
 
-    , simpleTestCase "Second reply in callback" $ \cid -> do
+    , testCase "Second reply in callback" $ do
+      cid <- install noop
       do call cid $
           setGlobal "FOO" >>>
           replyData "First reply" >>>
@@ -1729,8 +1742,28 @@ query_ :: (HasCallStack, HasTestConfig) => Blob -> Prog -> IO ()
 query_ cid prog = query cid prog >>= is ""
 
 -- Shortcut for test cases that just need one canister
+--
+-- This canister may be shared between different tests, so do not assume
+-- that its state (stable memory, global) is unmodified.
+
 simpleTestCase :: HasTestConfig => String -> (Blob -> IO ()) -> TestTree
-simpleTestCase name act = testCase name $ install noop >>= act
+simpleTestCase name act = testCase name $ useShared >>= act
+
+useShared :: HasTestConfig => IO Blob
+useShared = tc_simple_canister testConfig
+
+installSharedCanister :: Manager -> String -> IO (IO Blob)
+installSharedCanister manager ep = delayed $ do
+  cid <- ic_create ic00
+  installAt cid noop
+  return cid
+  where
+    ?testConfig = TestConfig
+        { tc_manager = manager
+        , tc_endPoint = ep
+        , tc_simple_canister = error "tc_simple_canister not defined yet"
+        }
+
 
 -- * Programmatic test generation
 

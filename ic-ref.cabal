@@ -133,6 +133,7 @@ executable ic-ref-test
   main-is:             ic-ref-test.hs
   other-modules:       IC.Test.Spec
   other-modules:       IC.Test.Options
+  other-modules:       IC.Test.DelayedIO
   other-modules:       IC.Test.Universal
   other-modules:       IC.Management
   other-modules:       IC.Types
