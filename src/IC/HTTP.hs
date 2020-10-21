@@ -3,7 +3,9 @@
 module IC.HTTP where
 
 import Network.Wai
+import Control.Concurrent (forkIO)
 import Control.Concurrent.MVar
+import Data.IORef
 import Network.HTTP.Types
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
@@ -20,18 +22,19 @@ import IC.Debug.JSON ()
 startApp :: IO Application
 startApp = do
     ic <- initialIC
-    stateVar <- newMVar [ic]
-    return $ handle stateVar
+    stateVar <- newMVar ic
+    history <- newIORef [ic]
+    return $ handle stateVar history
 
-handle :: MVar [IC] -> Application
-handle stateVar req respond = case (requestMethod req, pathInfo req) of
+handle :: MVar IC -> IORef [IC] -> Application
+handle stateVar history req respond = case (requestMethod req, pathInfo req) of
     ("GET", []) -> withHistory $ json status200
     ("GET", ["api","v1","status"]) ->
         cbor status200 IC.HTTP.Status.r
     ("POST", ["api","v1","submit"]) ->
         withSignedCBOR $ \(pk, gr) -> case asyncRequest gr of
             Left err -> invalidRequest err
-            Right ar -> (<* loopIC runStep) $ runIC $ do
+            Right ar -> runIC $ do
                 authd <- authAsyncRequest pk ar
                 if authd
                 then do
@@ -54,20 +57,30 @@ handle stateVar req respond = case (requestMethod req, pathInfo req) of
                 else lift $ invalidRequest "Wrong signature"
     _ -> notFound
   where
+    -- This modifies state, so must be atomic, so blocks on stateVar
     runIC :: StateT IC IO a -> IO a
-    runIC a = modifyMVar stateVar $ \(s:ss) -> do
+    runIC a = do
+      x <- modifyMVar stateVar $ \s -> do
         (x, s') <- runStateT a s
-        return (s':s:ss, x)
+        modifyIORef history (s':)
+        return (s', x)
+      -- begin processing in the background (it is important that
+      -- this thread returns, else warp is blocked somehow)
+      void $ forkIO (loopIC runStep)
+      return x
 
+    -- Not atomic, reads most recent state from history
     peekIC :: StateT IC IO a -> IO a
     peekIC a = do
-        (s:_) <- readMVar stateVar
+        (s:_) <- readIORef history
         evalStateT a s
 
+    -- This modifies state, so must be atomic, so blocks on stateVar
     stepIC :: StateT IC IO Bool -> IO Bool
-    stepIC a = modifyMVar stateVar $ \(s:ss) -> do
+    stepIC a = modifyMVar stateVar $ \s -> do
         (changed, s') <- runStateT a s
-        return (if changed then s':s:ss else s:ss, changed)
+        when changed $ modifyIORef history (s':)
+        return (if changed then s' else s, changed)
 
     loopIC :: StateT IC IO Bool -> IO ()
     loopIC a = stepIC a >>= \case
@@ -75,7 +88,7 @@ handle stateVar req respond = case (requestMethod req, pathInfo req) of
         False -> return ()
 
     withHistory :: ([IC] -> IO a) -> IO a
-    withHistory a = readMVar stateVar >>= a . reverse
+    withHistory a = readIORef history >>= a . reverse
 
     cbor status gr = respond $ responseBuilder
         status
