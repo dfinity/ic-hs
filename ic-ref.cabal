@@ -118,6 +118,7 @@ executable ic-ref
   build-depends:       cborg
   build-depends:       aeson
   build-depends:       warp
+  build-depends:       wai-extra
   build-depends:       wai
   build-depends:       http-types
   build-depends:       unordered-containers

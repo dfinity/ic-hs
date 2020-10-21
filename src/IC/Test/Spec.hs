@@ -391,6 +391,13 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
     step "Reinstall on empty"
     ic_install (ic00via cid) (enum #reinstall) can_id2 trivialWasmModule ""
 
+  , simpleTestCase "aaaaa-aa (inter-canister, large)" $ \cid -> do
+    universal_wasm <- getTestWasm "universal_canister"
+    can_id <- ic_create (ic00via cid)
+    ic_install (ic00via cid) (enum #install) can_id universal_wasm ""
+    do call can_id $ replyData "Hi"
+      >>= is "Hi"
+
   , simpleTestCase "randomness" $ \cid -> do
     r1 <- ic_raw_rand ic00
     r2 <- ic_raw_rand ic00

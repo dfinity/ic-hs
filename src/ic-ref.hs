@@ -3,6 +3,7 @@ import Options.Applicative
 import Data.Foldable
 import Control.Concurrent
 import Control.Monad (join, forever)
+import Network.Wai.Middleware.RequestLogger
 import Network.Wai.Handler.Warp
 import qualified Data.Text as T
 import IC.HTTP
@@ -12,18 +13,21 @@ defaultPort :: Port
 defaultPort = 8001
 
 
-work :: Bool -> Maybe FilePath -> IO ()
-work pickPort writePortTo = do
+work :: Bool -> Maybe FilePath -> Bool ->  IO ()
+work pickPort writePortTo log = do
     putStrLn "Starting ic-ref..."
+
     if pickPort
-    then withApplicationSettings settings IC.HTTP.startApp $ \port -> do
+    then withApplicationSettings settings start $ \port -> do
         greet port
         forever (threadDelay maxBound)
     else do
-        app <- IC.HTTP.startApp
+        app <- start
         greet defaultPort
         runSettings settings app
   where
+    start = (if log then logStdoutDev else id) <$> IC.HTTP.startApp
+
     greet port = do
        putStrLn $ "Running at http://127.0.0.1:" ++ show port ++ "/"
        for_ writePortTo $ \fn -> writeFile fn (show port)
@@ -52,4 +56,7 @@ main = join . customExecParser (prefs showHelpOnError) $
           (  long "write-port-to"
           <> help "write port to the given file"
         ))
-
+      <*> switch
+          (  long "http-log"
+          <> help "print a HTTP log to stdout"
+          )
