@@ -231,6 +231,10 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
       step "Upgrade"
       ic_install ic00 (enum #upgrade) can_id trivialWasmModule ""
 
+      step "Upgrade as wrong user"
+      ic_install'  (ic00as otherUser) (enum #upgrade) can_id trivialWasmModule ""
+        >>= isReject [3,5]
+
       step "Change controller"
       ic_set_controller ic00 can_id otherUser
 
