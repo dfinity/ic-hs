@@ -26,6 +26,21 @@ common version
   build-depends:       process
   build-depends:       split
 
+common crypto
+  other-modules: IC.Crypto
+  other-modules: IC.Crypto.DER
+  other-modules: IC.Crypto.Ed25519
+  other-modules: IC.Crypto.WebAuthn
+  build-depends: ed25519
+  build-depends: cryptonite
+  build-depends: memory
+  build-depends: bindings-DSL
+  build-depends: asn1-types
+  build-depends: asn1-encoding
+  build-depends: process-extras
+  build-depends: temporary
+  build-depends: hashable
+
 common logic
   hs-source-dirs:      src
   other-modules:       IC.Ref
@@ -77,7 +92,6 @@ common cbor
   other-modules:       IC.HTTP.RequestId
   other-modules:       IC.Hash
   other-modules:       IC.Id.Forms
-  other-modules:       IC.Crypto
   build-depends:       base >=4.12 && <5
   build-depends:       text
   build-depends:       bytestring
@@ -88,9 +102,6 @@ common cbor
   build-depends:       cryptonite
   build-depends:       memory
   build-depends:       leb128-cereal
-  build-depends:       ed25519
-  build-depends:       cryptonite
-  build-depends:       memory
 
 common ghc-flags
   default-language:    Haskell2010
@@ -100,7 +111,7 @@ common ghc-flags
     ghc-options:       -Werror
 
 executable ic-ref-run
-  import: version, logic, ghc-flags
+  import: version, logic, crypto, ghc-flags
   main-is:             ic-ref-run.hs
   hs-source-dirs:      src
   other-modules:       IC.DRun.Parse
@@ -108,7 +119,7 @@ executable ic-ref-run
   build-depends:       prettyprinter
 
 executable ic-ref
-  import: version, logic, cbor, ghc-flags
+  import: version, logic, crypto, cbor, ghc-flags
   main-is:             ic-ref.hs
   other-modules:       IC.HTTP
   other-modules:       IC.HTTP.Status
@@ -130,7 +141,7 @@ executable ic-request-id
   build-depends:       optparse-applicative
 
 executable ic-ref-test
-  import: version, cbor, ghc-flags
+  import: version, crypto, cbor, ghc-flags
   main-is:             ic-ref-test.hs
   other-modules:       IC.Test.Spec
   other-modules:       IC.Test.Options
@@ -159,9 +170,12 @@ executable ic-ref-test
   build-depends:       vector
 
 test-suite unit-test
-  import: cbor, ghc-flags
+  import: cbor, crypto, ghc-flags
   type: exitcode-stdio-1.0
   main-is: unit-tests.hs
+  other-modules:       IC.Test.WebAuthn
   build-depends: base >= 4 && < 5
   build-depends: tasty >= 0.7
   build-depends: tasty-hunit
+  build-depends: tasty-quickcheck
+  build-depends: QuickCheck

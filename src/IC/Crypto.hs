@@ -2,53 +2,80 @@
 Everything related to signature creation and checking
 -}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE LambdaCase #-}
 module IC.Crypto
  ( SecretKey
- , createSecretKey
+ , createSecretKeyEd25519
+ , createSecretKeyEd25519Raw
+ , createSecretKeyWebAuthn
  , toPublicKey
  , sign
  , verify
  )
-
  where
 
 import qualified Data.Text as T
 import qualified Data.ByteString.Lazy as BS
-import qualified Crypto.Sign.Ed25519 as Ed25519
+import qualified IC.Crypto.Ed25519 as Ed25519
+import qualified IC.Crypto.DER as DER
+import qualified IC.Crypto.WebAuthn as WebAuthn
+import Data.Int
+import Data.Bifunctor
 import Control.Monad.Except
 
-type SecretKey = Ed25519.SecretKey
+data SecretKey
+    = Ed25519 Ed25519.SecretKey
+    | Ed25519Raw Ed25519.SecretKey -- non-DER encoded public keys
+    | WebAuthn WebAuthn.SecretKey
+  deriving Show
 
-createSecretKey :: BS.ByteString -> SecretKey
-createSecretKey seed | BS.length seed > 32 = error "Seed too long"
-createSecretKey seed = sk
-  where
-    seed' = seed <> BS.replicate (32 - BS.length seed) 0x00
-    Just (_, sk) = Ed25519.createKeypairFromSeed_ (BS.toStrict seed')
+createSecretKeyEd25519 :: BS.ByteString -> SecretKey
+createSecretKeyEd25519 = Ed25519 . Ed25519.createKey
 
+createSecretKeyEd25519Raw :: BS.ByteString -> SecretKey
+createSecretKeyEd25519Raw = Ed25519Raw . Ed25519.createKey
+
+createSecretKeyWebAuthn :: BS.ByteString -> SecretKey
+createSecretKeyWebAuthn = WebAuthn . WebAuthn.createKey
 
 toPublicKey :: SecretKey -> BS.ByteString
-toPublicKey = BS.fromStrict . Ed25519.unPublicKey . Ed25519.toPublicKey
+toPublicKey (Ed25519Raw sk) = Ed25519.toPublicKey sk
+toPublicKey (Ed25519 sk) = DER.encode DER.Ed25519 $ Ed25519.toPublicKey sk
+toPublicKey (WebAuthn sk) = DER.encode DER.WebAuthn $ WebAuthn.toPublicKey sk
 
 sign :: BS.ByteString -> SecretKey -> BS.ByteString -> BS.ByteString
-sign domain_sep sk payload =
-    BS.fromStrict $ Ed25519.unSignature $ Ed25519.dsign sk $ BS.toStrict (domain_sep <> payload)
+sign domain_sep sk payload = case sk of
+    Ed25519 sk -> Ed25519.sign sk msg
+    Ed25519Raw sk -> Ed25519.sign sk msg
+    WebAuthn sk -> WebAuthn.sign sk msg
+  where
+    msg = BS.singleton (fromIntegral (BS.length domain_sep)) <> domain_sep <> payload
 
+unpack :: BS.ByteString -> Either T.Text (DER.Suite, BS.ByteString)
+unpack pk | BS.take 1 pk == "\x30" = first T.pack $ DER.decode pk
+          | otherwise = Right (DER.Ed25519, pk) -- raw format
 
 verify :: BS.ByteString -> BS.ByteString -> BS.ByteString -> BS.ByteString -> Either T.Text ()
-verify domain_sep pk payload sig = do
-    unless (BS.length pk == 32) $
-        throwError $ "public key has wrong length " <> T.pack (show (BS.length pk)) <> ", expected 32"
-    let pk' = Ed25519.PublicKey (BS.toStrict pk)
-
-    unless (BS.length sig == 64) $
-        throwError $ "signature has wrong length " <> T.pack (show (BS.length pk)) <> ", expected 64"
-    let sig' = Ed25519.Signature (BS.toStrict sig)
-
-    when (Ed25519.dverify pk' (BS.toStrict payload) sig') $
-        throwError $ "domain separator " <> T.pack (show domain_sep) <> " missing"
-
-    unless (Ed25519.dverify pk' (BS.toStrict (domain_sep <> payload)) sig') $
+verify domain_sep der_pk payload sig = unpack der_pk >>= \case
+  (DER.WebAuthn, pk) -> do
+    unless (WebAuthn.verify pk msg sig) $ do
+        when (WebAuthn.verify pk payload sig) $
+            throwError $ "domain separator " <> T.pack (show domain_sep) <> " missing"
         throwError "signature verification failed"
 
+  (DER.Ed25519, pk) -> do
+    assertLen "Ed25519 public key" 32 pk
+    assertLen "Ed25519 signature" 64 sig
 
+    unless (Ed25519.verify pk msg sig) $ do
+        when (Ed25519.verify pk payload sig) $
+            throwError $ "domain separator " <> T.pack (show domain_sep) <> " missing"
+        throwError "signature verification failed"
+  where
+    msg = BS.singleton (fromIntegral (BS.length domain_sep)) <> domain_sep <> payload
+
+
+assertLen :: T.Text -> Int64 -> BS.ByteString -> Either T.Text ()
+assertLen what len bs
+  | BS.length bs == len = return ()
+  | otherwise = throwError $ what <> " has wrong length " <>  T.pack (show (BS.length bs)) <> ", expected " <> T.pack (show len)

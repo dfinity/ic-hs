@@ -20,6 +20,7 @@ data GenR
     | GText Text
     | GBlob ByteString
     | GRec (HashMap Text GenR)
+    | GList [GenR]
   deriving Show
 
 emptyR :: GenR

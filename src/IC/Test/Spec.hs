@@ -70,17 +70,26 @@ import IC.Hash
 doesn'tExist :: Blob
 doesn'tExist = "\xDE\xAD\xBE\xEF" -- hopefully no such canister/user exists
 
-
 defaultSK :: SecretKey
-defaultSK = createSecretKey "fixed32byteseedfortesting"
+defaultSK = createSecretKeyEd25519Raw "fixed32byteseedfortesting"
 
 otherSK :: SecretKey
-otherSK = createSecretKey "anotherfixed32byteseedfortesting"
+otherSK = createSecretKeyEd25519Raw "anotherfixed32byteseedfortesting"
+
+ed25519SK :: SecretKey
+ed25519SK = createSecretKeyEd25519 "notarawkey"
+
+webAuthnSK :: SecretKey
+webAuthnSK = createSecretKeyWebAuthn "webauthnseed"
 
 defaultUser :: Blob
 defaultUser = mkSelfAuthenticatingId $ toPublicKey defaultSK
 otherUser :: Blob
 otherUser = mkSelfAuthenticatingId $ toPublicKey otherSK
+webAuthnUser :: Blob
+webAuthnUser = mkSelfAuthenticatingId $ toPublicKey webAuthnSK
+ed25519User :: Blob
+ed25519User = mkSelfAuthenticatingId $ toPublicKey ed25519SK
 anonymousUser :: Blob
 anonymousUser = "\x04"
 
@@ -138,13 +147,15 @@ envelopeFor u content = envelope key content
     key ::  SecretKey
     key | u == defaultUser = defaultSK
         | u == otherUser = otherSK
+        | u == ed25519User = ed25519SK
+        | u == webAuthnUser = webAuthnSK
         | u == anonymousUser = error "No key for the anonymous user"
         | otherwise = error $ "Don't know key for user " ++ show u
 
 envelope :: SecretKey -> GenR -> GenR
 envelope sk content = rec
     [ "sender_pubkey" =: GBlob (toPublicKey sk)
-    , "sender_sig" =: GBlob (sign "\x0Aic-request" sk (requestId content))
+    , "sender_sig" =: GBlob (sign "ic-request" sk (requestId content))
     , "content" =: content
     ]
 
@@ -1213,10 +1224,41 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
       query cid1 getICPTs >>= asWord64 >>= is icpts -- nothing lost?
     ]
 
+  , testGroup "Authentication schemes" $
+    flip foldMap
+      [ ("Ed25519",            ed25519User,  return . envelope ed25519SK)
+      , ("Ed25519 (raw)",      defaultUser,  return . envelope defaultSK)
+      , ("WebAuthn",           webAuthnUser, return . envelope webAuthnSK)
+      ] $ \ (name, user, env) ->
+    [ simpleTestCase (name ++ " in query") $ \cid -> do
+      req <- addExpiry $ rec
+            [ "request_type" =: GText "query"
+            , "sender" =: GBlob user
+            , "canister_id" =: GBlob cid
+            , "method_name" =: GText "query"
+            , "arg" =: GBlob (run reply)
+            ]
+      signed_req <- env req
+      postCBOR "/api/v1/read" signed_req >>= okCBOR >>= queryResponse >>= isReply >>= is ""
+
+    , simpleTestCase (name ++ " in update") $ \cid -> do
+      req <- addExpiry $ rec
+            [ "request_type" =: GText "call"
+            , "sender" =: GBlob user
+            , "canister_id" =: GBlob cid
+            , "method_name" =: GText "update"
+            , "arg" =: GBlob (run reply)
+            ]
+      signed_req <- env req
+      postCBOR "/api/v1/submit" signed_req >>= code2xx
+
+      awaitStatus user (requestId req) >>= isReply >>= is ""
+    ]
+
   , testGroup "signature checking" $
     [ ("with bad signature", badEnvelope, id)
     , ("with wrong key", envelope otherSK, id)
-    , ("with no domain separator", noDomainSepEnv defaultSK, id)
+    , ("with empty domain separator", noDomainSepEnv defaultSK, id)
     , ("with no expiry", envelope defaultSK, noExpiryEnv)
     , ("with expiry in the past", envelope defaultSK, pastExpiryEnv)
     , ("with expiry in the future", envelope defaultSK, futureExpiryEnv)

@@ -24,6 +24,7 @@ encodeVal (GBlob b) = b
 encodeVal (GText t) = encodeText t
 encodeVal (GNat n) = encodeNat n
 encodeVal (GRec _) = error "requestID: Nested record"
+encodeVal (GList vs) = BS.concat $ map (sha256 . encodeVal) vs
 
 encodeText :: T.Text -> BS.ByteString
 encodeText = BS.fromStrict . T.encodeUtf8

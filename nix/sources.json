@@ -12,6 +12,12 @@
         "url": "https://github.com/nomeata/haskell-candid/archive/36202a9aef4387925c0d0de23a0e3645ed7d2b3e.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
+    "ic-webauthn-cli": {
+        "branch": "devel",
+        "repo": "ssh://git@github.com/dfinity-lab/ic-webauthn-cli",
+        "rev": "9163edadb59cb60ff99b621283b0bd7999603f59",
+        "type": "git"
+    },
     "leb128-cereal": {
         "branch": "master",
         "builtin": false,
