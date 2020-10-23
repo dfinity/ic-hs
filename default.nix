@@ -163,14 +163,6 @@ rec {
 
       mkdir -p $out/nix-support
       echo "report spec $out/$doc_path index.html" >> $out/nix-support/hydra-build-products
-
-      comment_template=$out/nix-support/gh-comment
-      cat <<EOF >$comment_template
-      {{{! comment:edit-one }}}This PR changes the public spec, you can preview the result at:
-      {{{ host }}}/latest/{{{ project }}}/{{{ jobset }}}/{{{ job }}}/1/index.html
-      EOF
-      echo "comment manifest $comment_template comment.mustache" >> $out/nix-support/hydra-build-products
-
     '';
 
     # These ones are needed for htmlproofer
