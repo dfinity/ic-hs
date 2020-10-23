@@ -29,7 +29,7 @@ let haskellPackages = nixpkgs.haskellPackages.override {
 }; in
 
 let
-  ic-ref = nixpkgs.haskell.lib.dontCheck (nixpkgs.haskell.lib.justStaticExecutables (
+  ic-ref = nixpkgs.haskell.lib.dontCheck (
     haskellPackages.ic-ref.overrideAttrs (old: {
       installPhase = (old.installPhase or "") + ''
         cp -rv test-data $out/test-data
@@ -37,8 +37,12 @@ let
         rm -f $out/test-data/universal_canister.wasm
         cp ${universal-canister}/universal_canister.wasm $out/test-data
       '';
+      propagatedBuildInputs = (old.propagatedBuildInputs or []) ++
+        [ nixpkgs.ic-webauthn-cli ];
+      # variant of justStaticExecutables that retains propagatedBuildInputs
+      postFixup = "rm -rf $out/lib $out/share/doc";
     })
-  ));
+  );
 
   # We run the unit test suite only as part of coverage checking (saves time)
   ic-ref-coverage = nixpkgs.haskell.lib.doCheck (nixpkgs.haskell.lib.doCoverage ic-ref);
@@ -89,7 +93,7 @@ rec {
   # The following two derivations keep the impl/cabal.products.freeze files
   # up to date. It is quite hacky to get the package data base for the ic-ref
   # derivation, and then convince Cabal to use that...
-  cabal-freeze = haskellPackages.ic-ref.overrideAttrs(old: {
+  cabal-freeze = (nixpkgs.haskell.lib.doCheck haskellPackages.ic-ref).overrideAttrs(old: {
       nativeBuildInputs = (old.nativeBuildInputs or []) ++ [ nixpkgs.cabal-install ];
       phases = [ "unpackPhase" "setupCompilerEnvironmentPhase" "buildPhase" "installPhase" ];
       buildPhase = ''

@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE FlexibleContexts #-}
 {- | Parses/produces generic requests -}
 module IC.HTTP.Request where
 
@@ -21,17 +22,23 @@ import IC.HTTP.GenR.Parse
 dummyUserId :: EntityId
 dummyUserId = EntityId $ BS.pack [0xCA, 0xFF, 0xEE]
 
-stripEnvelope :: GenR -> Either T.Text (Maybe PublicKey, GenR)
-stripEnvelope = record $ do
-    content <- field anyType "content"
-    pk <- optionalField blob "sender_pubkey"
-    sig <- optionalField blob "sender_sig"
-    case (pk, sig) of
-        (Just pk, Just sig) -> do
-            lift $ verify "\x0Aic-request" pk (requestId content) sig
-            return (Just pk, content)
-        (Nothing, Nothing) -> return (Nothing, content)
-        _ -> throwError "Need to set either both or none of sender_pubkey and sender_sig"
+stripEnvelope :: GenR -> IO (Either T.Text (Maybe PublicKey, GenR))
+stripEnvelope gr = do
+    t <- getTimestamp
+    return $ go t gr
+  where
+    go _t = record $ do
+        content <- field anyType "content"
+        pk <- optionalField blob "sender_pubkey"
+        sig <- optionalField blob "sender_sig"
+        case (pk, sig) of
+            (Just pk, Just sig) -> do
+                lift $ verify "ic-request" pk (requestId content) sig
+                return (Just pk, content)
+            (Nothing, Nothing) -> do
+                return (Nothing, content)
+            _ -> throwError "Need to set either both or none of sender_pubkey and sender_sig"
+
 
 getTimestamp :: IO Timestamp
 getTimestamp = do
