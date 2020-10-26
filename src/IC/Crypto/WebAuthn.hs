@@ -49,10 +49,8 @@ createKey seed = unsafePerformIO $ do
     die $ "ic-webauthn-cli create failed: " ++ show code ++ "\n" ++ BS.unpack err
   return (SecretKey out)
 
--- This signature is a lie! This is not a pure function
--- as there is randomness involved in `ic-webauthn-cli sign`… oh well
-sign :: SecretKey -> BS.ByteString -> BS.ByteString
-sign sk msg = unsafePerformIO $ do
+sign :: SecretKey -> BS.ByteString -> IO BS.ByteString
+sign sk msg = do
   (code, out, err) <- withSecretKey sk $ \fn ->
     readProcessWithExitCode "ic-webauthn-cli" [ "sign", fn ] msg
   unless (code == ExitSuccess) $
