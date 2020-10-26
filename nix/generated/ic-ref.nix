@@ -34,6 +34,7 @@
 , process
 , process-extras
 , QuickCheck
+, quickcheck-io
 , random
 , row-types
 , split
@@ -130,6 +131,7 @@ mkDerivation {
     mtl
     process-extras
     QuickCheck
+    quickcheck-io
     tasty
     tasty-hunit
     tasty-quickcheck
