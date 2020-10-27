@@ -10,6 +10,7 @@ import qualified Data.ByteString.Lazy as BS
 import qualified Data.HashMap.Lazy as HM
 import Control.Monad.Except
 import Data.Time.Clock.POSIX
+import Data.Bifunctor
 
 import IC.Types
 import IC.Crypto
@@ -33,12 +34,16 @@ stripEnvelope gr = do
         sig <- optionalField blob "sender_sig"
         case (pk, sig) of
             (Just pk, Just sig) -> do
-                lift $ verify "ic-request" pk (requestId content) sig
+                let rid = requestId content
+                lift $
+                    first (<> "\nExpected request id: " <> T.pack (prettyBlob rid)
+                           <> "\nPublic Key:          " <> T.pack (prettyBlob pk)
+                           <> "\nSignature:           " <> T.pack (prettyBlob sig)) $
+                    verify "ic-request" pk rid sig
                 return (Just pk, content)
             (Nothing, Nothing) -> do
                 return (Nothing, content)
             _ -> throwError "Need to set either both or none of sender_pubkey and sender_sig"
-
 
 getTimestamp :: IO Timestamp
 getTimestamp = do

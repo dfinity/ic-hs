@@ -57,7 +57,8 @@ sign domain_sep sk payload = case sk of
     WebAuthn sk -> WebAuthn.sign sk msg
     ECDSA sk -> ECDSA.sign sk msg
   where
-    msg = BS.singleton (fromIntegral (BS.length domain_sep)) <> domain_sep <> payload
+    msg | BS.null domain_sep = payload
+        | otherwise = BS.singleton (fromIntegral (BS.length domain_sep)) <> domain_sep <> payload
 
 unpack :: BS.ByteString -> Either T.Text (DER.Suite, BS.ByteString)
 unpack pk | BS.take 1 pk == "\x30" = first T.pack $ DER.decode pk
