@@ -22,6 +22,8 @@ import Data.ASN1.Encoding
 import Data.ASN1.BinaryEncoding
 import Data.Hashable
 
+import qualified IC.Crypto.DER.Decode as DER
+
 newtype SecretKey = SecretKey (KeyPair Curve_P256R1)
   deriving Show
 
@@ -52,7 +54,7 @@ sign (SecretKey kp) msg = do
 verify :: BS.ByteString -> BS.ByteString -> BS.ByteString -> Bool
 verify pk msg sig
  | CryptoPassed pk <- decodePublic (Proxy @Curve_P256R1) (BS.toStrict pk)
- , Right [Start Sequence, IntVal r, IntVal s, End Sequence] <- decodeASN1 DER sig
+ , Right [Start Sequence, IntVal r, IntVal s, End Sequence] <- DER.safeDecode sig
  , CryptoPassed sig <- signatureFromIntegers (Proxy @Curve_P256R1) (r, s)
  = Crypto.PubKey.ECDSA.verify
     (Proxy @Curve_P256R1)

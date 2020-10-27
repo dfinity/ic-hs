@@ -6,6 +6,8 @@ import Data.ASN1.Encoding
 import Data.ASN1.BinaryEncoding
 import Data.ASN1.BitArray
 
+import IC.Crypto.DER.Decode
+
 data Suite = Ed25519 | WebAuthn | ECDSA deriving Show
 
 webAuthnOID :: OID
@@ -37,7 +39,7 @@ encodeDER oids pk = encodeASN1 DER $
     ]
 
 decode :: BS.ByteString -> Either String (Suite, BS.ByteString)
-decode bs = case decodeASN1 DER bs of
+decode bs = case safeDecode bs of
   Left err -> Left $ "Could not decode DER: " ++ show err
   Right asn -> case asn of
       [  Start Sequence
