@@ -28,6 +28,7 @@ common version
 
 common crypto
   other-modules: IC.Crypto
+  other-modules: IC.Crypto.DER.Decode
   other-modules: IC.Crypto.DER
   other-modules: IC.Crypto.Ed25519
   other-modules: IC.Crypto.ECDSA
@@ -41,6 +42,7 @@ common crypto
   build-depends: process-extras
   build-depends: temporary
   build-depends: hashable
+  build-depends: parallel
 
 common logic
   hs-source-dirs:      src

@@ -29,6 +29,7 @@
 , MonadRandom
 , mtl
 , optparse-applicative
+, parallel
 , prettyprinter
 , primitive
 , process
@@ -91,6 +92,7 @@ mkDerivation {
     MonadRandom
     mtl
     optparse-applicative
+    parallel
     prettyprinter
     primitive
     process
@@ -129,6 +131,7 @@ mkDerivation {
     leb128-cereal
     memory
     mtl
+    parallel
     process-extras
     QuickCheck
     quickcheck-io
