@@ -76,5 +76,6 @@ percentage gr = do
         parseError "Expected a percentage (0..100)"
     return n
 
-
-
+listOf :: Field a -> Field [a]
+listOf f (GList xs) = mapM f xs
+listOf _ _ = parseError "Expected a list"

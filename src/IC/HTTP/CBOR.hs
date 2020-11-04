@@ -6,7 +6,7 @@ Encoding from generic requests/responses to/from CBOR
 module IC.HTTP.CBOR where
 
 import IC.HTTP.GenR
-import Data.HashMap.Lazy as HM
+import qualified Data.HashMap.Lazy as HM
 import Codec.CBOR.Term
 import Codec.CBOR.Write
 import Codec.CBOR.Read
@@ -24,6 +24,7 @@ encode r = toBuilder $ encodeTerm $ TTagged 55799 $ go r
     go (GText t) = TString t
     go (GBlob b) = TBytes (BS.toStrict b)
     go (GRec m) = TMap [ (TString k, go v) | (k,v) <- HM.toList m ]
+    go (GList xs) = TList (map go xs)
 
 decode :: ByteString -> Either T.Text GenR
 decode s =
@@ -43,6 +44,8 @@ decode s =
     go (TString t) = return $ GText t
     go (TMap kv) = goMap kv
     go (TMapI kv) = goMap kv
+    go (TList vs) = GList <$> mapM go vs
+    go (TListI vs) = GList <$> mapM go vs
     go t = Left $ "Unexpected term: " <> T.pack (show t)
 
     goMap kv = do

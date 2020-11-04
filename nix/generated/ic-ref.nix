@@ -4,9 +4,12 @@
 { mkDerivation
 , pkgs
 , aeson
+, asn1-encoding
+, asn1-types
 , base
 , base32
 , binary
+, bindings-DSL
 , bytestring
 , candid
 , cborg
@@ -17,6 +20,7 @@
 , directory
 , ed25519
 , filepath
+, hashable
 , hex-text
 , http-client
 , http-types
@@ -25,9 +29,13 @@
 , MonadRandom
 , mtl
 , optparse-applicative
+, parallel
 , prettyprinter
 , primitive
 , process
+, process-extras
+, QuickCheck
+, quickcheck-io
 , random
 , row-types
 , split
@@ -35,8 +43,10 @@
 , tasty
 , tasty-html
 , tasty-hunit
+, tasty-quickcheck
 , tasty-rerun
 , template-haskell
+, temporary
 , text
 , time
 , transformers
@@ -57,9 +67,12 @@ mkDerivation {
   isExecutable = true;
   executableHaskellDepends = [
     aeson
+    asn1-encoding
+    asn1-types
     base
     base32
     binary
+    bindings-DSL
     bytestring
     candid
     cborg
@@ -70,6 +83,7 @@ mkDerivation {
     directory
     ed25519
     filepath
+    hashable
     hex-text
     http-client
     http-types
@@ -78,9 +92,11 @@ mkDerivation {
     MonadRandom
     mtl
     optparse-applicative
+    parallel
     prettyprinter
     primitive
     process
+    process-extras
     random
     row-types
     split
@@ -89,6 +105,7 @@ mkDerivation {
     tasty-hunit
     tasty-rerun
     template-haskell
+    temporary
     text
     time
     transformers
@@ -101,17 +118,27 @@ mkDerivation {
     winter
   ];
   testHaskellDepends = [
+    asn1-encoding
+    asn1-types
     base
+    bindings-DSL
     bytestring
     cborg
     containers
     cryptonite
     ed25519
+    hashable
     leb128-cereal
     memory
     mtl
+    parallel
+    process-extras
+    QuickCheck
+    quickcheck-io
     tasty
     tasty-hunit
+    tasty-quickcheck
+    temporary
     text
     unordered-containers
   ];

@@ -123,7 +123,7 @@ handle stateVar history req respond = case (requestMethod req, pathInfo req) of
                 Right gr -> k gr
         _ -> invalidRequest "Expected application/cbor request"
 
-    withSignedCBOR k = withCBOR $ \gr -> case stripEnvelope gr of
+    withSignedCBOR k = withCBOR $ stripEnvelope >=> \case
         Left err -> invalidRequest err
         Right (pubkey, content) ->
             checkExpiry content >>= \case
