@@ -111,12 +111,10 @@ To achieve these goals, the following design decisions are made:
 Running
 -------
 
-This is the fastest way to run `ic-ref` or `ic-ref-test`:
+This is the fastest way to run `ic-ref` or `ic-ref-test` is to use the
+following commands in the `impl/` directory:
 
     nix run -f . -c ic-ref
-
-or
-
     nix run -f . -c ic-ref-test
 
 You can also pass arguments, e.g.
