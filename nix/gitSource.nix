@@ -77,7 +77,11 @@ then
           else abort "gitSource.nix: Cannot parse ${toString ./../.git}";
 
     whitelist_file =
-      nixpkgs.runCommand "git-ls-files" {envVariable = true;} ''
+      nixpkgs.runCommand "git-ls-files" {
+        envVariable = true;
+        preferLocalBuild = true;
+        allowSubstitutes = false;
+       } ''
         cp ${git_dir + "/index"} index
         echo "ref: refs/heads/master" > HEAD
         mkdir objects refs
