@@ -12,9 +12,11 @@ import Test.Tasty.Runners
 
 import IC.Test.Options
 import IC.Test.Spec
+import qualified IC.Crypto.BLS as BLS
 
 main :: IO ()
 main = do
+    BLS.init
     os <- parseOptions ingredients (testGroup "dummy" [])
     tc <- preFlight os
     defaultMainWithIngredients ingredients (icTests tc)

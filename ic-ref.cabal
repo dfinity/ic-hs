@@ -3,6 +3,7 @@ name:                ic-ref
 version:             0.0.1
 author:              Joachim Breitner
 build-type:          Simple
+extra-source-files:  cbits/*.h
 
 flag release
   default: False
@@ -26,12 +27,22 @@ common version
   build-depends:       process
   build-depends:       split
 
+common certificates
+  hs-source-dirs:      src
+  other-modules:       IC.HashTree
+  other-modules:       IC.Certificate
+  other-modules:       IC.Certificate.CBOR
+  other-modules:       IC.Certificate.Value
+  build-depends:       leb128-cereal
+  build-depends:       cborg
+
 common crypto
   other-modules: IC.Crypto
   other-modules: IC.Crypto.DER.Decode
   other-modules: IC.Crypto.DER
   other-modules: IC.Crypto.Ed25519
   other-modules: IC.Crypto.ECDSA
+  other-modules: IC.Crypto.BLS
   other-modules: IC.Crypto.WebAuthn
   build-depends: ed25519
   build-depends: cryptonite
@@ -43,6 +54,27 @@ common crypto
   build-depends: temporary
   build-depends: hashable
   build-depends: parallel
+  include-dirs: cbits
+  c-sources: cbits/aes.c
+  c-sources: cbits/rom_curve_BLS12381.c
+  c-sources: cbits/rom_field_BLS12381.c
+  c-sources: cbits/big_384_58.c
+  c-sources: cbits/bls_BLS12381.c
+  c-sources: cbits/ecp2_BLS12381.c
+  c-sources: cbits/ecp_BLS12381.c
+  c-sources: cbits/fp12_BLS12381.c
+  c-sources: cbits/fp2_BLS12381.c
+  c-sources: cbits/fp4_BLS12381.c
+  c-sources: cbits/fp_BLS12381.c
+  c-sources: cbits/gcm.c
+  c-sources: cbits/hash.c
+  c-sources: cbits/hmac.c
+  c-sources: cbits/newhope.c
+  c-sources: cbits/oct.c
+  c-sources: cbits/pair_BLS12381.c
+  c-sources: cbits/randapi.c
+  c-sources: cbits/rand.c
+  c-sources: cbits/share.c
 
 common logic
   hs-source-dirs:      src
@@ -86,6 +118,9 @@ common logic
   build-depends:       base32
   build-depends:       time
   build-depends:       MonadRandom
+  build-depends:       ed25519
+
+
 
 common cbor
   hs-source-dirs:      src
@@ -114,7 +149,7 @@ common ghc-flags
     ghc-options:       -Werror
 
 executable ic-ref-run
-  import: version, logic, crypto, ghc-flags
+  import: version, logic, crypto, certificates, ghc-flags
   main-is:             ic-ref-run.hs
   hs-source-dirs:      src
   other-modules:       IC.DRun.Parse
@@ -122,7 +157,7 @@ executable ic-ref-run
   build-depends:       prettyprinter
 
 executable ic-ref
-  import: version, logic, crypto, cbor, ghc-flags
+  import: version, logic, crypto, certificates, cbor, ghc-flags
   main-is:             ic-ref.hs
   other-modules:       IC.HTTP
   other-modules:       IC.HTTP.Status
@@ -144,7 +179,7 @@ executable ic-request-id
   build-depends:       optparse-applicative
 
 executable ic-ref-test
-  import: version, crypto, cbor, ghc-flags
+  import: version, crypto, certificates, cbor, ghc-flags
   main-is:             ic-ref-test.hs
   other-modules:       IC.Test.Spec
   other-modules:       IC.Test.Options
@@ -176,6 +211,9 @@ test-suite unit-test
   import: cbor, crypto, ghc-flags
   type: exitcode-stdio-1.0
   main-is: unit-tests.hs
+  other-modules:       IC.HashTree
+  other-modules:       IC.Test.HashTree
+  other-modules:       IC.Test.BLS
   other-modules:       IC.Test.WebAuthn
   other-modules:       IC.Test.ECDSA
   build-depends: base >= 4 && < 5

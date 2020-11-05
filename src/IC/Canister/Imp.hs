@@ -28,6 +28,7 @@ import Data.STRef
 import Data.Maybe
 import Data.Int -- TODO: Should be Word32 in most cases
 import Data.Word
+import Numeric.Natural
 
 import IC.Types
 import IC.Funds
@@ -41,7 +42,7 @@ import qualified IC.Canister.Interface as CI
 data Params = Params
   { param_dat  :: Maybe Blob
   , param_caller :: Maybe EntityId
-  , reject_code :: Maybe Int
+  , reject_code :: Maybe Natural
   , reject_message :: Maybe String
   , funds_refunded :: Maybe Funds
   }
@@ -64,6 +65,7 @@ data ExecutionState s = ExecutionState
   , reply_data :: Blob
   , pending_call :: Maybe MethodCall
   , calls :: [MethodCall]
+  , new_certified_data :: Maybe Blob
   }
 
 
@@ -84,6 +86,7 @@ initialExecutionState self_id inst stableMem env responded = ExecutionState
   , reply_data = mempty
   , pending_call = Nothing
   , calls = mempty
+  , new_certified_data = Nothing
   }
 
 -- Some bookkeeping to access the ExecutionState
@@ -215,6 +218,11 @@ systemAPI esref =
   , toImport "ic0" "stable_grow" stable_grow
   , toImport "ic0" "stable_write" stable_write
   , toImport "ic0" "stable_read" stable_read
+
+  , toImport "ic0" "certified_data_set" certified_data_set
+  , toImport "ic0" "data_certificate_present" data_certificate_present
+  , toImport "ic0" "data_certificate_size" data_certificate_size
+  , toImport "ic0" "data_certificate_copy" data_certificate_copy
 
   , toImport "ic0" "time" get_time
 
@@ -422,6 +430,25 @@ systemAPI esref =
       blob <- Mem.read m (fromIntegral src) size
       setBytes i (fromIntegral dst) blob
 
+    certified_data_set :: (Int32, Int32) -> HostM s ()
+    certified_data_set (src, size) = do
+      when (size > 32) $ throwError "certified_data_set: too large"
+      blob <- copy_from_canister "certified_data_set" src size
+      modES esref $ \es -> es { new_certified_data = Just blob }
+
+    data_certificate_present :: () -> HostM s Int32
+    data_certificate_present () =
+      gets (CI.certificate . env) >>= \case
+        Just _ -> return 1
+        Nothing -> return 0
+
+    data_certificate_size :: () -> HostM s Int32
+    data_certificate_copy :: (Int32, Int32, Int32) -> HostM s ()
+    (data_certificate_size, data_certificate_copy) = size_and_copy $
+      gets (CI.certificate . env) >>= \case
+        Just b -> return b
+        Nothing -> throwError "no certificate available"
+
     get_time :: () -> HostM s Word64
     get_time () = do
         Timestamp ns <- gets (CI.time . env)
@@ -481,7 +508,9 @@ canRespond :: Responded
 canRespond = Responded False
 
 canisterActions :: ExecutionState s -> CanisterActions
-canisterActions _es = CanisterActions
+canisterActions es = CanisterActions
+    { set_certified_data = new_certified_data es
+    }
 
 rawInitializeMethod :: ImpState s -> Module -> EntityId -> CI.Env -> Blob -> ST s (TrapOr CanisterActions)
 rawInitializeMethod (ImpState esref cid inst sm) wasm_mod caller env dat = do

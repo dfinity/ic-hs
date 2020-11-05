@@ -42,6 +42,11 @@ mod ic0 {
         pub fn stable_grow(additional_pages: u32) -> u32;
         pub fn stable_read(dst: u32, offset: u32, size: u32) -> ();
         pub fn stable_write(offset: u32, src: u32, size: u32) -> ();
+        pub fn certified_data_set(src: u32, size: u32) -> ();
+        pub fn data_certificate_present() -> u32;
+        pub fn data_certificate_size() -> u32;
+        pub fn data_certificate_copy(dst: u32, offset: u32, size: u32) -> ();
+
         pub fn time() -> u64;
     }
 }
@@ -186,6 +191,25 @@ pub fn stable_write(offset: u32, data : &[u8]) {
     unsafe {
         ic0::stable_write(offset, data.as_ptr() as u32, data.len() as u32);
     }
+}
+
+pub fn certified_data_set(data : &[u8]) {
+    unsafe {
+        ic0::certified_data_set(data.as_ptr() as u32, data.len() as u32);
+    }
+}
+
+pub fn data_certificate_present() -> u32 {
+    unsafe { ic0::data_certificate_present() }
+}
+
+pub fn data_certificate() -> Vec<u8> {
+    let len: u32 = unsafe { ic0::data_certificate_size() };
+    let mut bytes = vec![0; len as usize];
+    unsafe {
+        ic0::data_certificate_copy(bytes.as_mut_ptr() as u32, 0, len);
+    }
+    bytes
 }
 
 pub fn time() -> u64 {

@@ -8,6 +8,7 @@ import Network.Wai.Handler.Warp
 import qualified Data.Text as T
 import IC.HTTP
 import IC.Version
+import qualified IC.Crypto.BLS as BLS
 
 defaultPort :: Port
 defaultPort = 8001
@@ -16,7 +17,7 @@ defaultPort = 8001
 work :: Bool -> Maybe FilePath -> Bool ->  IO ()
 work pickPort writePortTo log = do
     putStrLn "Starting ic-ref..."
-
+    BLS.init
     if pickPort
     then withApplicationSettings settings start $ \port -> do
         greet port

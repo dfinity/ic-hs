@@ -2,6 +2,7 @@
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE OverloadedStrings  #-}
+{-# LANGUAGE TypeSynonymInstances  #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 {- |
 This module defines ToJSON instances of the IC state.
@@ -33,6 +34,7 @@ import IC.Wasm.Winter.Persist
 import IC.Canister.Persisted
 import IC.Canister
 import IC.Ref
+import IC.Crypto
 
 customOptions :: Options
 customOptions = defaultOptions
@@ -130,6 +132,12 @@ instance ToJSON RequestStatus where
     toJSON     = genericToJSON customOptions
     toEncoding = genericToEncoding customOptions
 
+deriving instance Generic CallResponse
+instance ToJSON CallResponse where
+    toJSON     = genericToJSON customOptions
+    toEncoding = genericToEncoding customOptions
+
+
 deriving instance Generic AsyncRequest
 instance ToJSON AsyncRequest where
     toJSON     = genericToJSON customOptions
@@ -172,3 +180,6 @@ instance ToJSONKey EntityId where
 
 instance ToJSON StdGen where
   toJSON = toJSON . show
+
+instance ToJSON SecretKey where
+    toJSON = placeholder "(secret key)"

@@ -10,6 +10,7 @@ import Network.HTTP.Types
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import Control.Monad.State
+import Control.Monad.Except
 import Data.Aeson as JSON
 
 import IC.Ref
@@ -29,32 +30,30 @@ startApp = do
 handle :: MVar IC -> IORef [IC] -> Application
 handle stateVar history req respond = case (requestMethod req, pathInfo req) of
     ("GET", []) -> withHistory $ json status200
-    ("GET", ["api","v1","status"]) ->
-        cbor status200 IC.HTTP.Status.r
+    ("GET", ["api","v1","status"]) -> do
+        r <- peekIC $ gets IC.HTTP.Status.r
+        cbor status200 r
     ("POST", ["api","v1","submit"]) ->
         withSignedCBOR $ \(pk, gr) -> case asyncRequest gr of
             Left err -> invalidRequest err
-            Right ar -> runIC $ do
-                authd <- authAsyncRequest pk ar
-                if authd
-                then do
-                    submitRequest (requestId gr) ar
-                    lift $ empty status202
-                else lift $ invalidRequest "Wrong signature"
+            Right ar -> runIC $
+                runExceptT (authAsyncRequest pk ar) >>= \case
+                    Left err ->
+                        lift $ invalidRequest (T.pack err)
+                    Right () -> do
+                        submitRequest (requestId gr) ar
+                        lift $ empty status202
     ("POST", ["api","v1","read"]) ->
         withSignedCBOR $ \(pk,gr) -> case syncRequest gr of
             Left err -> invalidRequest err
-            Right sr -> peekIC $ do
-                authd <- authSyncRequest pk sr
-                if authd
-                then do
-                    -- not pretty
-                    (wants_time, r) <- readRequest sr
-                    mt <- if wants_time
-                          then Just <$> lift getTimestamp
-                          else return Nothing
-                    lift $ cbor status200 (IC.HTTP.Request.response mt r)
-                else lift $ invalidRequest "Wrong signature"
+            Right sr -> peekIC $
+                runExceptT (authSyncRequest pk sr) >>= \case
+                    Left err ->
+                        lift $ invalidRequest (T.pack err)
+                    Right () -> do
+                        t <- lift getTimestamp
+                        r <- readRequest t sr
+                        lift $ cbor status200 (IC.HTTP.Request.response r)
     _ -> notFound
   where
     -- This modifies state, so must be atomic, so blocks on stateVar
