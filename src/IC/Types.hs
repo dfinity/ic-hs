@@ -29,6 +29,7 @@ newtype EntityId = EntityId { rawEntityId :: Blob }
     deriving (Show, Eq, Ord)
 
 type CanisterId = EntityId
+type SubnetId = EntityId
 type UserId = EntityId
 type MethodName = String
 type RequestID = Blob
@@ -60,7 +61,7 @@ data RejectCode
     | RC_CANISTER_ERROR
   deriving Show
 
-rejectCode :: RejectCode -> Int
+rejectCode :: RejectCode -> Natural
 rejectCode RC_SYS_FATAL           = 1
 rejectCode RC_SYS_TRANSIENT       = 2
 rejectCode RC_DESTINATION_INVALID = 3
@@ -99,13 +100,18 @@ data MethodCall = MethodCall
 type ExistingCanisters = [CanisterId]
 
 -- Canister actions (independent of calls)
-data CanisterActions = CanisterActions
+newtype CanisterActions = CanisterActions
+  { set_certified_data :: Maybe Blob
+  }
 
 instance Semigroup CanisterActions where
-    _ca1 <> _ca2 = CanisterActions
+    ca1 <> ca2 = CanisterActions (set_certified_data ca1 `setter` set_certified_data ca2)
+      where
+        setter _ (Just x) = Just x
+        setter x Nothing = x
 
 noCanisterActions :: CanisterActions
-noCanisterActions = CanisterActions
+noCanisterActions = CanisterActions Nothing
 
 -- Actions relative to a call context
 data CallActions = CallActions

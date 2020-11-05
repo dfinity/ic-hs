@@ -15,7 +15,8 @@ import Data.Bifunctor
 import IC.Types
 import IC.Crypto
 import IC.Ref (AsyncRequest(..), SyncRequest(..),
-  RequestStatus(..), CompletionValue(..))
+  ReqResponse(..), CallResponse(..))
+import IC.Certificate.CBOR
 import IC.HTTP.RequestId
 import IC.HTTP.GenR
 import IC.HTTP.GenR.Parse
@@ -87,38 +88,29 @@ syncRequest = record $ do
     _ <- optionalField blob "nonce"
     e <- Timestamp <$> field nat "ingress_expiry"
     case t of
-        "request_status" -> do
-            rid <- field blob "request_id"
-            return $ StatusRequest e rid
         "query" -> do
             cid <- EntityId <$> field blob "canister_id"
             sender <- EntityId <$> field blob "sender"
             method_name <- field text "method_name"
             arg <- field blob "arg"
             return $ QueryRequest e cid sender (T.unpack method_name) arg
+        "read_state" -> do
+            sender <- EntityId <$> field blob "sender"
+            paths <- field (listOf (listOf blob)) "paths"
+            return $ ReadStateRequest e sender paths
         _ -> throwError $ "Unknown request type \"" <> t <> "\""
 
 -- Printing responses
-response :: Maybe Timestamp -> RequestStatus -> GenR
-response mt = \case
-    Unknown -> statusRec "unknown" []
-    Received -> statusRec "received" []
-    Processing -> statusRec "processing" []
-    Rejected (c, s) -> statusRec "rejected"
-        [ "reject_code" =: GNat (fromIntegral (rejectCode c))
-        , "reject_message" =: GText (T.pack s)
-        ]
-    Completed r -> statusRec "replied"
-        [ "reply" =: case r of
-            CompleteUnit ->
-                rec []
-            CompleteCanisterId id ->
-                rec [ "canister_id" =: GBlob (rawEntityId id) ]
-            CompleteArg blob ->
-                rec [ "arg" =: GBlob blob ]
-        ]
-  where
-    statusRec s fs = rec $
-        [ "status" =: GText s ] <>
-        [ "time" =: GNat t | Just (Timestamp t) <- pure mt ] <>
-        fs
+response :: ReqResponse -> GenR
+response (QueryResponse (Rejected (c, s))) = rec
+    [ "status" =: GText "rejected"
+    , "reject_code" =: GNat (fromIntegral (rejectCode c))
+    , "reject_message" =: GText (T.pack s)
+    ]
+response (QueryResponse (Replied blob)) = rec
+    [ "status" =: GText "replied"
+    , "reply" =: rec [ "arg" =: GBlob blob ]
+    ]
+response (ReadStateResponse cert) = rec
+    [ "certificate" =: GBlob (encodeCert cert)
+    ]

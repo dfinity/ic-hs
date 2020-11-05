@@ -240,6 +240,11 @@ fn eval(ops : Ops) {
           }
         }
 
+        // certified variables
+        36 => api::certified_data_set(&stack.pop_blob()),
+        37 => stack.push_int(api::data_certificate_present()),
+        38 => stack.push_blob(api::data_certificate()),
+
         _ => api::trap_with(&format!("unknown op {}", op)),
       }
   }

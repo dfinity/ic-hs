@@ -5,6 +5,7 @@ This module contains a test suite for the Internet Computer
 -}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ImplicitParams #-}
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -21,6 +22,7 @@ module IC.Test.Spec (preFlight, TestConfig, icTests) where
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.Text.Encoding.Error as T
+import qualified Text.Hex as H
 import qualified Data.ByteString.Lazy as BS
 import qualified Data.ByteString.Builder as BS
 import qualified Data.HashMap.Lazy as HM
@@ -30,6 +32,7 @@ import Network.HTTP.Client
 import Network.HTTP.Types
 import Numeric.Natural
 import Data.List
+import Data.Char
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.Options
@@ -59,9 +62,14 @@ import IC.HTTP.CBOR (decode, encode)
 import IC.HTTP.RequestId
 import IC.Management
 import IC.Crypto
+import qualified IC.Crypto.DER as DER
 import IC.Id.Forms hiding (Blob)
 import IC.Test.Options
 import IC.Test.Universal
+import IC.HashTree hiding (Blob, Label)
+import IC.Certificate
+import IC.Certificate.Value
+import IC.Certificate.CBOR
 import IC.Funds
 import IC.Hash
 
@@ -107,10 +115,11 @@ queryToNonExistant = rec
     , "arg" =: GBlob "nothing to see here"
     ]
 
-requestStatusNonExistant :: GenR
-requestStatusNonExistant = rec
-    [ "request_type" =: GText "request_status"
-    , "request_id" =: GBlob doesn'tExist
+readStateEmpty :: GenR
+readStateEmpty = rec
+    [ "request_type" =: GText "read_state"
+    , "sender" =: GBlob defaultUser
+    , "paths" =: GList []
     ]
 
 
@@ -197,7 +206,8 @@ futureExpiryEnv = modNatField "ingress_expiry" (+ 3600_000_000_000)
 -- * Preflight checks: Get the root key, and tell user about versions
 
 data TestConfig = TestConfig
-    { tc_manager :: Manager
+    { tc_root_key :: Blob
+    , tc_manager :: Manager
     , tc_endPoint :: String
     }
 
@@ -214,7 +224,8 @@ preFlight os = do
     putStrLn $ "Spec version claimed: " ++ T.unpack (status_api_version s)
 
     return TestConfig
-        { tc_manager = manager
+        { tc_root_key = status_root_key s
+        , tc_manager = manager
         , tc_endPoint = ep
         }
 
@@ -985,10 +996,130 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
           >>= okCBOR >>= queryResponse >>= isReject [3]
     ]
 
-  , testGroup "request_status"
+  , testGroup "read state" $
+    let ensure_request_exists cid user = do
+          req <- addNonce >=> addExpiry $ rec
+            [ "request_type" =: GText "call"
+            , "sender" =: GBlob user
+            , "canister_id" =: GBlob cid
+            , "method_name" =: GText "query"
+            , "arg" =: GBlob (run (replyData "\xff\xff"))
+            ]
+          submitCBOR req >>= isReply >>= is "\xff\xff"
+
+          -- check that the request is there
+          getRequestStatus user (requestId req) >>= is (Responded (Reply "\xff\xff"))
+
+          return (requestId req)
+    in
     [ testGroup "required fields" $
-        omitFields requestStatusNonExistant $ \req ->
+        omitFields readStateEmpty $ \req ->
           addExpiry req >>= envelope defaultSK >>= postCBOR "/api/v1/read" >>= code4xx
+
+    , testCase "certificate validates" $ do
+        cert <- getStateCert defaultUser []
+        validateStateCert cert
+
+    , testCase "time is present" $ do
+        cert <- getStateCert defaultUser []
+        void $ certValue @Natural cert ["time"]
+
+    , testCase "time can be asked for" $ do
+        cert <- getStateCert defaultUser [["time"]]
+        void $ certValue @Natural cert ["time"]
+
+    , testGroup "non-existence proofs for non-existing request id"
+        [ testCase ("rid \"" ++ shorten 8 (asHex rid) ++ "\"") $ do
+            cert <- getStateCert defaultUser [["request_status", rid]]
+            certValueAbsent cert ["request_status", rid, "status"]
+        | rid <- [ "", BS.replicate 32 0, BS.replicate 32 8, BS.replicate 32 255 ]
+        ]
+
+    , simpleTestCase "can ask for portion of request status " $ \cid -> do
+        rid <- ensure_request_exists cid defaultUser
+        cert <- getStateCert defaultUser
+          [["request_status", rid, "status"], ["request_status", rid, "reply"]]
+        void $ certValue @T.Text cert ["request_status", rid, "status"]
+        void $ certValue @Blob cert ["request_status", rid, "reply"]
+
+    , simpleTestCase "access denied for other users request" $ \cid -> do
+        rid <- ensure_request_exists cid defaultUser
+        getStateCert' otherUser [["request_status", rid]] >>= code4xx
+
+    , simpleTestCase "reading two statuses in one go" $ \cid -> do
+        rid1 <- ensure_request_exists cid defaultUser
+        rid2 <- ensure_request_exists cid defaultUser
+        cert <- getStateCert defaultUser [["request_status", rid1], ["request_status", rid2]]
+        void $ certValue @T.Text cert ["request_status", rid1, "status"]
+        void $ certValue @T.Text cert ["request_status", rid2, "status"]
+
+    , simpleTestCase "access denied for other users request (mixed request)" $ \cid -> do
+        rid1 <- ensure_request_exists cid defaultUser
+        rid2 <- ensure_request_exists cid otherUser
+        getStateCert' defaultUser [["request_status", rid1], ["request_status", rid2]] >>= code4xx
+
+    , testCase "access denied for bogus path" $ do
+        getStateCert' otherUser [["hello", "world"]] >>= code4xx
+
+    , testCase "access denied for fetching full state tree" $ do
+        getStateCert' otherUser [[]] >>= code4xx
+    ]
+
+  , testGroup "certified variables" $
+    let extract :: Blob -> Blob -> IO Blob
+        extract cid b = do
+          cert <- decodeStateCert b
+          case wellFormed (cert_tree cert) of
+              Left err -> assertFailure $ "Hash tree not well formed: " ++ err
+              Right () -> return ()
+          certValue cert ["canister", cid, "certified_data"]
+    in
+    [ simpleTestCase "initially empty" $ \cid -> do
+      query cid (replyData getCertificate) >>= extract cid >>= is ""
+    , simpleTestCase "validates" $ \cid -> do
+      query cid (replyData getCertificate)
+        >>= decodeStateCert >>= validateStateCert
+    , simpleTestCase "present in query method (query call)" $ \cid -> do
+      query cid (replyData (i2b getCertificatePresent))
+        >>= is "\1\0\0\0"
+    , simpleTestCase "not present in query method (update call)" $ \cid -> do
+      callToQuery' cid (replyData (i2b getCertificatePresent))
+        >>= isReply >>= is "\0\0\0\0"
+    , simpleTestCase "not present in query method (inter-canister call)" $ \cid -> do
+      do call cid $
+          inter_call cid "query" defArgs {
+            other_side = replyData (i2b getCertificatePresent)
+          }
+        >>= is "\0\0\0\0"
+    , simpleTestCase "not present in update method" $ \cid -> do
+      call cid (replyData (i2b getCertificatePresent))
+        >>= is "\0\0\0\0"
+
+    , simpleTestCase "set and get" $ \cid -> do
+      call_ cid $ setCertifiedData "FOO" >>> reply
+      query cid (replyData getCertificate) >>= extract cid >>= is "FOO"
+    , simpleTestCase "set twice" $ \cid -> do
+      call_ cid $ setCertifiedData "FOO" >>> setCertifiedData "BAR" >>> reply
+      query cid (replyData getCertificate) >>= extract cid >>= is "BAR"
+    , simpleTestCase "set then trap" $ \cid -> do
+      call_ cid $ setCertifiedData "FOO" >>> reply
+      call' cid (setCertifiedData "BAR" >>> trap "Trapped") >>= isReject [5]
+      query cid (replyData getCertificate) >>= extract cid >>= is "FOO"
+    , simpleTestCase "too large traps, old value retained" $ \cid -> do
+      call_ cid $ setCertifiedData "FOO" >>> reply
+      call' cid (setCertifiedData (bytes (BS.replicate 33 0x42)) >>> reply)
+        >>= isReject [5]
+      query cid (replyData getCertificate) >>= extract cid >>= is "FOO"
+    , testCase "set in init" $ do
+      cid <- install $ setCertifiedData "FOO"
+      query cid (replyData getCertificate) >>= extract cid >>= is "FOO"
+    , testCase "set in pre-upgrade" $ do
+      cid <- install $ onPreUpgrade (callback $ setCertifiedData "FOO")
+      upgrade cid noop
+      query cid (replyData getCertificate) >>= extract cid >>= is "FOO"
+    , simpleTestCase "set in post-upgrade" $ \cid -> do
+      upgrade cid $ setCertifiedData "FOO"
+      query cid (replyData getCertificate) >>= extract cid >>= is "FOO"
     ]
 
   , testGroup "funds" $
@@ -1284,8 +1415,10 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
         readCBOR good_req >>= queryResponse >>= isReply >>= is ""
         env (mod_req good_req) >>= postCBOR "/api/v1/read" >>= code4xx
 
-      , testCase "in unknown request status" $
-          env (mod_req requestStatusNonExistant) >>= postCBOR "/api/v1/read" >>= code4xx
+      , testCase "in empty read state request" $ do
+          good_req <- addNonce >=> addExpiry $ readStateEmpty
+          envelope defaultSK good_req >>= postCBOR "/api/v1/read" >>= code2xx
+          env (mod_req good_req) >>= postCBOR "/api/v1/read"  >>= code4xx
 
       , simpleTestCase "in call" $ \cid -> do
           good_req <- addNonce >=> addExpiry $ rec
@@ -1300,28 +1433,10 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
 
           -- Also check that the request was not created
           ingressDelay
-          getRequestStatus_or_4xx defaultUser (requestId req) >>= is UnknownStatus
+          getRequestStatus defaultUser (requestId req) >>= is UnknownStatus
 
           -- check that with a valid signature, this would have worked
           submitCBOR good_req >>= isReply >>= is ""
-
-      , testCase "in request status" $ do
-          req <- addNonce >=> addExpiry $ rec
-                [ "request_type" =: GText "call"
-                , "sender" =: GBlob defaultUser
-                , "canister_id" =: GBlob ""
-                , "method_name" =: GText "create_canister"
-                , "arg" =: GBlob "DIDL\0\0"
-                ]
-          _reply <- submitCBOR req >>= isReply
-          let status_req = rec
-                [ "request_type" =: GText "request_status"
-                , "request_id" =: GBlob (requestId req)
-                ]
-          status_req <- addExpiry status_req
-          envelope defaultSK status_req >>= postCBOR "/api/v1/read" >>= code2xx
-          env (mod_req status_req) >>= postCBOR "/api/v1/read" >>= code4xx
-
       ]
   ]
 
@@ -1380,52 +1495,111 @@ submitCBORTwice req = do
   assertBool "Response body not empty" (BS.null (responseBody res))
   awaitStatus (senderOf req) (requestId req)
 
+getStateCert' :: (HasCallStack, HasTestConfig) => Blob -> [[Blob]] -> IO (Response Blob)
+getStateCert' sender paths = do
+    req <- addExpiry $ rec
+      [ "request_type" =: GText "read_state"
+      , "sender" =: GBlob sender
+      , "paths" =: GList (map (GList . map GBlob) paths)
+      ]
+    envelopeFor (senderOf req) req >>= postCBOR "/api/v1/read"
+
+decodeStateCert :: HasCallStack => Blob -> IO Certificate
+decodeStateCert b = either assertFailure return $ decodeCert b
+
+getStateCert :: (HasCallStack, HasTestConfig) => Blob -> [[Blob]] -> IO Certificate
+getStateCert sender paths = do
+    gr <- getStateCert' sender paths >>= okCBOR
+    b <- record (field blob "certificate") gr
+    cert <- decodeStateCert b
+
+    case wellFormed (cert_tree cert) of
+        Left err -> assertFailure $ "Hash tree not well formed: " ++ err
+        Right () -> return ()
+
+    return cert
+
+verboseVerify :: Blob -> Blob -> Blob -> Blob -> IO ()
+verboseVerify domain_sep pk msg sig =
+    case verify domain_sep pk msg sig of
+        Left err -> assertFailure $ unlines
+            [ "Signature verification failed"
+            , T.unpack err
+            , "Domain separator:   " ++ prettyBlob domain_sep
+            , "Public key (DER):   " ++ asHex pk
+            , "Public key decoded: " ++
+               case DER.decode pk of
+                 Left err -> err
+                 Right (suite, key) -> asHex key ++ " (" ++ show suite ++ ")"
+            , "Signature:          " ++ asHex sig
+            , "Checked message:    " ++ prettyBlob msg
+            ]
+        Right () -> return ()
+
+validateDelegation :: (HasCallStack, HasTestConfig) => Maybe Delegation -> IO Blob
+validateDelegation Nothing = return (tc_root_key testConfig)
+validateDelegation (Just del) = do
+    cert <- either assertFailure return $ decodeCert (del_certificate del)
+    case wellFormed (cert_tree cert) of
+        Left err -> assertFailure $ "Hash tree not well formed: " ++ err
+        Right () -> return ()
+    validateStateCert cert
+
+    certValue cert ["subnet", del_subnet_id del, "public_key"]
+
+validateStateCert :: (HasCallStack, HasTestConfig) => Certificate -> IO ()
+validateStateCert cert = do
+    pk <- validateDelegation (cert_delegation cert)
+    verboseVerify "ic-state-root" pk (reconstruct (cert_tree cert)) (cert_sig cert)
+
 data ReqResponse = Reply Blob | Reject Natural T.Text
   deriving (Eq, Show)
 data ReqStatus = Processing | Pending | Responded ReqResponse | UnknownStatus
   deriving (Eq, Show)
 
-getRequestStatus :: HasTestConfig => Blob -> Blob -> IO ReqStatus
+prettyPath :: [Blob] -> String
+prettyPath = concatMap (("/" ++) . shorten 15 . prettyBlob)
+
+prettyBlob :: Blob -> String
+prettyBlob x =
+  let s = map (chr . fromIntegral) (BS.unpack x) in
+  if all isPrint s then s else asHex x
+
+certValue :: HasCallStack => CertVal a => Certificate -> [Blob] -> IO a
+certValue cert path = case lookupPath (cert_tree cert) path of
+    Found b -> case fromCertVal b of
+      Just x -> return x
+      Nothing -> assertFailure $ "Cannot parse " ++ prettyPath path ++ " from " ++ show b
+    x -> assertFailure $ "Expected to find " ++ prettyPath path ++ ", but got " ++ show x
+
+certValueAbsent :: HasCallStack => Certificate -> [Blob] -> IO ()
+certValueAbsent cert path = case lookupPath (cert_tree cert) path of
+    Absent -> return ()
+    x -> assertFailure $ "Path " ++ prettyPath path ++ " should be absent, but got " ++ show x
+
+getRequestStatus :: (HasCallStack, HasTestConfig) => Blob -> Blob -> IO ReqStatus
 getRequestStatus sender rid = do
-    req <- addExpiry $ rec
-        [ "request_type" =: GText "request_status"
-        , "request_id" =: GBlob rid
-        ]
-    res <- envelopeFor sender req >>= postCBOR "/api/v1/read"
-    gr <- okCBOR res
-    requestStatusReply gr
+    cert <- getStateCert sender [["request_status", rid]]
 
--- A hack that goes away when migrating to read_status
-getRequestStatus_or_4xx :: HasTestConfig => Blob -> Blob -> IO ReqStatus
-getRequestStatus_or_4xx sender rid = do
-    req <- addExpiry $ rec
-        [ "request_type" =: GText "request_status"
-        , "request_id" =: GBlob rid
-        ]
-    res <- envelopeFor sender req >>= postCBOR "/api/v1/read"
-    let c = statusCode (responseStatus res)
-    if c == 200 then do
-      gr <- okCBOR res
-      requestStatusReply gr
-    else if 400 <= c && c < 500 then return UnknownStatus
-    else assertFailure $ "Status " ++ show c ++ " is not 4xx or status unknown\n"
-
-requestStatusReply :: GenR -> IO ReqStatus
-requestStatusReply = record $ do
-        s <- field text "status"
-        _ <- field nat "time"
-        case s of
-          "unknown" -> return UnknownStatus
-          "processing" -> return Processing
-          "received" -> return Pending
-          "replied" -> do
-            b <- field (record (field blob "arg")) "reply"
-            return $ Responded (Reply b)
-          "rejected" -> do
-            code <- field nat "reject_code"
-            msg <- field text "reject_message"
-            return $ Responded (Reject code msg)
-          _ -> lift $ assertFailure $ "Unexpected status " ++ show s
+    case lookupPath (cert_tree cert) ["request_status", rid, "status"] of
+      Absent -> return UnknownStatus
+      Found "processing" -> return Processing
+      Found "received" -> return Pending
+      Found "replied" -> do
+        b <- certValue cert ["request_status", rid, "reply"]
+        certValueAbsent cert ["request_status", rid, "reject_code"]
+        certValueAbsent cert ["request_status", rid, "reject_message"]
+        return $ Responded (Reply b)
+      Found "rejected" -> do
+        certValueAbsent cert ["request_status", rid, "reply"]
+        code <- certValue cert ["request_status", rid, "reject_code"]
+        msg <- certValue cert ["request_status", rid, "reject_message"]
+        return $ Responded (Reject code msg)
+      Found s -> assertFailure $ "Unexpected status " ++ show s
+      -- This case should not happen with a compliant IC, but let
+      -- us be liberal here, and strict in a dedicated test
+      Unknown -> return UnknownStatus
+      x -> assertFailure $ "Unexpected request status, got " ++ show x
 
 awaitStatus :: HasTestConfig => Blob -> Blob -> IO ReqResponse
 awaitStatus sender rid = loop $ pollDelay >> getRequestStatus sender rid >>= \case
@@ -1528,6 +1702,7 @@ isRelayReject codes r = do
 
 data StatusResponse = StatusResponse
     { status_api_version :: T.Text
+    , status_root_key :: Blob
     }
 
 statusResonse :: HasCallStack => GenR -> IO StatusResponse
@@ -1536,8 +1711,9 @@ statusResonse = record $ do
     _ <- optionalField text "impl_source"
     _ <- optionalField text "impl_version"
     _ <- optionalField text "impl_revision"
+    pk <- field blob "root_key"
     swallowAllFields -- More fields are explicitly allowed
-    return StatusResponse {status_api_version = v}
+    return StatusResponse {status_api_version = v, status_root_key = pk }
 
 -- * Interacting with aaaaa-aa (via HTTP)
 
@@ -1861,3 +2037,12 @@ getTestWasm base = do
 
 enum :: (AllUniqueLabels r, KnownSymbol l, (r .! l) ~ ()) => Label l -> Var r
 enum l = V.IsJust l ()
+
+-- Other utilities
+
+asHex :: Blob -> String
+asHex = T.unpack . H.encodeHex . BS.toStrict
+
+shorten :: Int -> String -> String
+shorten n s = a ++ (if null b then "" else "…")
+  where (a,b) = splitAt n s

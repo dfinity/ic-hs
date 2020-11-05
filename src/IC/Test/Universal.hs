@@ -185,6 +185,14 @@ callFundsAdd = op 34
 callPerform :: Prog
 callPerform = op 35
 
+setCertifiedData :: Exp 'B -> Prog
+setCertifiedData = op 36
+
+getCertificatePresent :: Exp 'I
+getCertificatePresent = op 37
+
+getCertificate :: Exp 'B
+getCertificate = op 38
 
 -- Some convenience combinators
 

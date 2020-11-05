@@ -1,4 +1,5 @@
 {-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE RankNTypes #-}
@@ -20,8 +21,10 @@ import qualified Data.Text.Encoding as T
 import Control.Monad.Trans
 import Control.Monad.Trans.State
 import Text.Printf
+import Data.List
 import Data.IORef
 import Data.Text.Prettyprint.Doc (pretty)
+import Data.Time.Clock.POSIX
 
 import GHC.TypeLits (KnownSymbol, symbolVal)
 import Data.Row (empty, (.==), (.+), type (.!), Label)
@@ -54,26 +57,27 @@ printAsyncRequest (UpdateRequest _ _ _ method arg) =
     printf "→ update %s%s\n" method (shorten 60 (candidOrPretty arg))
 
 printSyncRequest :: SyncRequest -> IO ()
-printSyncRequest (StatusRequest _ rid) =
-    printf "→ status? %s\n" (candidOrPretty rid)
+printSyncRequest (ReadStateRequest _ _ paths) =
+    printf "→ state? %s\n" (intercalate ", " $ map (intercalate "/" . map show) paths)
 printSyncRequest (QueryRequest _ _ _ method arg) =
     printf "→ query %s%s\n" method (shorten 60 (candidOrPretty arg))
 
+printCallResponse :: CallResponse -> IO ()
+printCallResponse (Rejected (c, s)) =
+    printf "← rejected (%s): %s\n" (show c) s
+printCallResponse (Replied blob) =
+    printf "← replied: %s\n" (shorten 100 (candidOrPretty blob))
+
 printReqStatus :: RequestStatus -> IO ()
-printReqStatus Unknown =
-    printf "← unknown\n"
 printReqStatus Received =
     printf "← received\n"
 printReqStatus Processing =
     printf "← processing\n"
-printReqStatus (Rejected (c, s)) =
-    printf "← rejected (%s): %s\n" (show c) s
-printReqStatus (Completed CompleteUnit) =
-    printf "← completed\n"
-printReqStatus (Completed (CompleteCanisterId id)) =
-    printf "← completed: canister-id = %s\n" (prettyID id)
-printReqStatus (Completed (CompleteArg blob)) =
-    printf "← completed: %s\n" (shorten 100 (candidOrPretty blob))
+printReqStatus (CallResponse c) = printCallResponse c
+
+printReqResponse :: ReqResponse -> IO ()
+printReqResponse (QueryResponse c) = printCallResponse c
+printReqResponse (ReadStateResponse _ ) = error "dead code in ic-ref"
 
 candidOrPretty :: Blob -> String
 candidOrPretty b
@@ -95,14 +99,25 @@ submitAndRun mkRid r = do
     rid <- lift mkRid
     submitRequest rid r
     runToCompletion
+    -- TODO: Add a backdoor to IC.Ref, no need to go through certification here
+    {-
     (_wants_time, r) <- readRequest (StatusRequest dummyExpiry rid)
     lift $ printReqStatus r
+    -}
 
 submitRead :: SyncRequest -> DRun ()
 submitRead r = do
     lift $ printSyncRequest r
-    (_wants_time, r) <- readRequest r
-    lift $ printReqStatus r
+    t <- lift getTimestamp
+    _r <- readRequest t r
+    -- TODO: Add a backdoor to IC.Ref, no need to go through certification here
+    -- lift $ printReqStatus r
+    return ()
+  where
+    getTimestamp :: IO Timestamp
+    getTimestamp = do
+        t <- getPOSIXTime
+        return $ Timestamp $ round (t * 1000_000_000)
 
 newRequestIdProvider :: IO (IO RequestID)
 newRequestIdProvider = do

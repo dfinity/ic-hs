@@ -8,7 +8,7 @@ import Data.ASN1.BitArray
 
 import IC.Crypto.DER.Decode
 
-data Suite = Ed25519 | WebAuthn | ECDSA deriving Show
+data Suite = Ed25519 | WebAuthn | ECDSA | BLS deriving Show
 
 webAuthnOID :: OID
 webAuthnOID = [1,3,6,1,4,1,56387,1,1]
@@ -22,10 +22,16 @@ ecPublicKeyOID =[1,2,840,10045,2,1]
 secp256r1OID :: OID
 secp256r1OID = [1,2,840,10045,3,1,7]
 
+blsAlgoOID :: OID
+blsAlgoOID = [1,3,6,1,4,1,44668,5,3,1,2,1]
+blsCurveOID :: OID
+blsCurveOID = [1,3,6,1,4,1,44668,5,3,2,1]
+
 encode :: Suite -> BS.ByteString -> BS.ByteString
 encode Ed25519  = encodeDER [ed25519OID]
 encode WebAuthn = encodeDER [webAuthnOID]
 encode ECDSA    = encodeDER [ecPublicKeyOID, secp256r1OID]
+encode BLS      = encodeDER [blsAlgoOID, blsCurveOID]
 
 encodeDER :: [OID] -> BS.ByteString -> BS.ByteString
 encodeDER oids pk = encodeASN1 DER $
@@ -65,6 +71,8 @@ decode bs = case safeDecode bs of
         ]
         | algo == ecPublicKeyOID && curve == ecPublicKeyOID
         -> Right (ECDSA, BS.fromStrict (bitArrayGetData ba))
+        | algo == blsAlgoOID && curve == blsCurveOID
+        -> Right (BLS, BS.fromStrict (bitArrayGetData ba))
         | otherwise
         -> Left $ "Unexpected cipher: algo = " ++ show algo
       _ -> Left $ "Unexpected DER shape: " ++ show asn

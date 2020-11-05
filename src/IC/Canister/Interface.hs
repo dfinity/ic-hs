@@ -17,6 +17,7 @@ import IC.Wasm.Winter (Module)
 data Env = Env
     { time :: Timestamp
     , balance :: Funds
+    , certificate :: Maybe Blob
     }
 
 data CanisterMethod r where

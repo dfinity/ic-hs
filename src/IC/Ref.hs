@@ -1,4 +1,5 @@
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
@@ -7,9 +8,8 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE OverloadedLabels #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DataKinds #-}
-{-# LANGUAGE TupleSections #-}
-{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE AllowAmbiguousTypes #-}
 
 {-|
@@ -25,7 +25,8 @@ module IC.Ref
   , SyncRequest(..)
   , RequestStatus(..)
   , CompletionValue(..)
-  , ReqResponse
+  , ReqResponse(..)
+  , CallResponse(..)
   , initialIC
   , authSyncRequest
   , authAsyncRequest
@@ -47,6 +48,7 @@ import qualified Data.Map as M
 import qualified Data.Row as R
 import qualified Data.Row.Variants as V
 import qualified Data.ByteString.Lazy as BS
+import qualified Data.Text as T
 import qualified Data.Vector as Vec
 import Data.Maybe
 import Control.Monad.State.Class
@@ -67,6 +69,11 @@ import IC.Id.Fresh
 import IC.Utils
 import IC.Hash
 import IC.Management
+import IC.HashTree hiding (Blob)
+import IC.Certificate
+import IC.Certificate.Value
+import IC.Certificate.CBOR
+import IC.Crypto
 
 -- Abstract HTTP Interface
 
@@ -76,19 +83,25 @@ data AsyncRequest
 
 data SyncRequest
     = QueryRequest Expiry CanisterId UserId MethodName Blob
-    | StatusRequest Expiry Blob
+    | ReadStateRequest Expiry UserId [Path]
 
 type Expiry = Timestamp
 
 data RequestStatus
-  = Unknown -- never used inside the IC, only as ReqResponse
-  | Received
+  = Received
   | Processing
-  | Rejected (RejectCode, String)
-  | Completed CompletionValue
+  | CallResponse CallResponse
   deriving (Show)
 
-type ReqResponse = (Bool, RequestStatus) -- Bool = True: Include timestamp
+data CallResponse
+  = Rejected (RejectCode, String)
+  | Replied Blob
+  deriving (Show)
+
+data ReqResponse
+  = QueryResponse CallResponse
+  | ReadStateResponse Certificate
+  deriving (Show)
 
 data CompletionValue -- ^ we need to be more typed than the public spec here
   = CompleteUnit
@@ -115,6 +128,7 @@ data CanState = CanState
   , controller :: EntityId
   , time :: Timestamp
   , balance :: Funds
+  , certified_data :: Blob
   }
   deriving (Show)
 
@@ -161,6 +175,8 @@ data IC = IC
   , messages :: Seq Message
   , call_contexts :: CallId ↦ CallContext
   , rng :: StdGen
+  , secretRootKey :: SecretKey
+  , secretSubnetKey :: SecretKey
   }
   deriving (Show)
 
@@ -168,7 +184,10 @@ data IC = IC
 type ICM m = (MonadState IC m, HasCallStack)
 
 initialIC :: IO IC
-initialIC = IC mempty mempty mempty mempty <$> newStdGen
+initialIC = do
+    let sk1 = createSecretKeyBLS "ic-ref's very secure secret key"
+    let sk2 = createSecretKeyBLS "ic-ref's very secure subnet key"
+    IC mempty mempty mempty mempty <$> newStdGen <*> pure sk1 <*> pure sk2
 
 -- Request handling
 
@@ -186,7 +205,7 @@ _expiryOfAsync = \case
 _expiryOfSync :: SyncRequest -> Expiry
 _expiryOfSync = \case
     QueryRequest expiry _ _ _ _ -> expiry
-    StatusRequest expiry _ -> expiry
+    ReadStateRequest expiry _ _ -> expiry
 
 callerOfAsync :: AsyncRequest -> EntityId
 callerOfAsync = \case
@@ -212,6 +231,7 @@ createEmptyCanister cid controller time = modify $ \ic ->
       , controller = controller
       , time = time
       , balance = no_funds
+      , certified_data = ""
       }
 
 canisterMustExist :: (CanReject m, ICM m) => CanisterId -> m ()
@@ -255,6 +275,10 @@ setController :: ICM m => CanisterId -> EntityId -> m ()
 setController cid controller = modCanister cid $
     \cs -> cs { controller = controller }
 
+setCertifiedData :: ICM m => CanisterId -> Blob -> m ()
+setCertifiedData cid b = modCanister cid $
+    \cs -> cs { certified_data = b }
+
 getBalance :: ICM m => CanisterId -> m Funds
 getBalance cid = balance <$> getCanister cid
 
@@ -278,40 +302,47 @@ getCanisterMod cid = fromJust . can_mod <$> getCanister cid
 getCanisterTime :: ICM m => CanisterId -> m Timestamp
 getCanisterTime cid = time <$> getCanister cid
 
--- Authentication of requests
+-- Authentication and authorization of requests
 
 -- This is monadic, as authentication may depend on the state of the system
 -- for request status: Whether the request exists and who owns it
 -- in general: eventually there will be user key management
 
-authUser :: ICM m => Maybe PublicKey -> EntityId -> m Bool
-authUser Nothing id = return $ isAnonymousId (rawEntityId id)
-authUser (Just pk) id = return $ -- This is monadic to allow for key management
-    isSelfAuthenticatingId pk (rawEntityId id)
+type AuthValidation m = (MonadError String m, ICM m)
+authUser :: AuthValidation m => Maybe PublicKey -> EntityId -> m ()
+authUser Nothing id =
+  unless (isAnonymousId (rawEntityId id)) $
+    throwError "No signature, but user is not the anonymous user"
+authUser (Just pk) id =
+  unless (isSelfAuthenticatingId pk (rawEntityId id)) $
+    throwError "Public key not authorized to sign for user"
 
-authAsyncRequest :: ICM m => Maybe PublicKey -> AsyncRequest -> m Bool
+authAsyncRequest :: AuthValidation m => Maybe PublicKey -> AsyncRequest -> m ()
 authAsyncRequest pk ar = authUser pk (callerOfAsync ar)
 
-authSyncRequest :: ICM m => Maybe PublicKey -> SyncRequest -> m Bool
+authSyncRequest :: AuthValidation m => Maybe PublicKey -> SyncRequest -> m ()
 authSyncRequest pk = \case
-  StatusRequest _ rid ->
-    gets (findRequest rid) >>= \case
-      Just (ar,_) -> authUser pk (callerOfAsync ar)
-      Nothing -> return False
-  QueryRequest _ _ user_id _ _ ->
+  QueryRequest _ _ user_id _ _ -> authUser pk user_id
+  ReadStateRequest _ user_id paths -> do
     authUser pk user_id
+    -- Implement ACL for read requests here
+    forM_ paths $ \case
+      ["time"] -> return ()
+      ("subnet":_) -> return ()
+      ("request_status" :rid: _) ->
+        gets (findRequest rid) >>= \case
+          Just (ar,_)
+            | user_id == callerOfAsync ar -> return ()
+            | otherwise -> throwError "User is not authorized to read this request status"
+          Nothing -> return ()
+      _ -> throwError "User is not authorized to read unspecified state paths"
+
 
 -- Synchronous requests
 
-readRequest :: ICM m => SyncRequest -> m ReqResponse
-readRequest (StatusRequest _ rid) =
-  fmap (True,) $ onReject (return . Rejected) $
-    gets (findRequest rid) >>= \case
-      Just (_r,status) -> return status
-      Nothing -> return Unknown
-
-readRequest (QueryRequest _ canister_id user_id method arg) =
-  fmap (False,) $ onReject (return . Rejected) $ do
+readRequest :: ICM m => Timestamp -> SyncRequest -> m ReqResponse
+readRequest time (QueryRequest _ canister_id user_id method arg) =
+  fmap QueryResponse $ onReject (return . Rejected) $ do
     canisterMustExist canister_id
     getRunStatus canister_id >>= \case
        IsRunning -> return ()
@@ -320,9 +351,10 @@ readRequest (QueryRequest _ canister_id user_id method arg) =
     when empty $ reject RC_DESTINATION_INVALID "canister is empty"
     wasm_state <- getCanisterState canister_id
     can_mod <- getCanisterMod canister_id
-    time <- getCanisterTime canister_id
+    can_time <- getCanisterTime canister_id
     balance <- getBalance canister_id
-    let env = CI.Env time balance
+    certificate <- getDataCertificate time canister_id
+    let env = CI.Env can_time balance (Just certificate)
 
     f <- return (M.lookup method (query_methods can_mod))
       `orElse` reject RC_DESTINATION_INVALID "query method does not exist"
@@ -330,7 +362,97 @@ readRequest (QueryRequest _ canister_id user_id method arg) =
     case f user_id env arg wasm_state of
       Trap msg -> reject RC_CANISTER_ERROR $ "canister trapped: " ++ msg
       Return (Reject (rc,rm)) -> reject rc rm
-      Return (Reply res) -> return $ Completed (CompleteArg res)
+      Return (Reply res) -> return $ Replied res
+
+readRequest time (ReadStateRequest _ _sender paths) = do
+    -- NB: Already authorized in authSyncRequest
+    cert <- getPrunedCertificate time (["time"] : paths)
+    return $ ReadStateResponse cert
+
+-- The state tree
+
+stateTree :: Timestamp -> IC -> LabeledTree
+stateTree (Timestamp t) ic = node
+  [ "time" =: val t
+  , "request_status" =: node
+    [ rid =: case rs of
+        Received -> node
+          [ "status" =: str "received" ]
+        Processing -> node
+          [ "status" =: str "processing" ]
+        CallResponse (Replied r) -> node
+          [ "status" =: str "replied"
+          , "reply" =: val r
+          ]
+        CallResponse (Rejected (c,msg)) -> node
+          [ "status" =: str "rejected"
+          , "reject_code" =: val (rejectCode c)
+          , "reject_message" =: val (T.pack msg)
+          ]
+    | (rid, (_, rs)) <- M.toList (requests ic)
+    ]
+  , "canister" =: node
+    [ cid =: node [ "certified_data" =: val (certified_data cs) ]
+    | (EntityId cid, cs) <- M.toList (canisters ic)
+    ]
+  ]
+  where
+    node = SubTrees . mconcat
+    val :: CertVal a => a -> LabeledTree
+    val = Value . toCertVal
+    str = val @T.Text
+    (=:) = M.singleton
+
+delegationTree :: Timestamp -> SubnetId -> Blob -> LabeledTree
+delegationTree (Timestamp t) (EntityId subnet_id) subnet_pub_key = node
+  [ "time" =: val t
+  , "subnet" =: node
+    [ subnet_id =: node
+          [ "public_key" =: val subnet_pub_key ]
+    ]
+  ]
+  where
+    node = SubTrees . mconcat
+    val :: CertVal a => a -> LabeledTree
+    val = Value . toCertVal
+    (=:) = M.singleton
+
+getPrunedCertificate :: ICM m => Timestamp -> [Path] -> m Certificate
+getPrunedCertificate time paths = do
+    full_tree <- gets (construct . stateTree time)
+    let cert_tree = prune full_tree (["time"] : paths)
+    sk1 <- gets secretRootKey
+    sk2 <- gets secretSubnetKey
+    return $ signCertificate time sk1 (Just (fake_subnet_id, sk2)) cert_tree
+  where
+    fake_subnet_id = EntityId "\x01"
+
+signCertificate :: Timestamp -> SecretKey -> Maybe (SubnetId, SecretKey) -> HashTree -> Certificate
+signCertificate time rootKey (Just (subnet_id, subnet_key)) cert_tree =
+    Certificate { cert_tree, cert_sig, cert_delegation }
+ where
+    cert_sig = signPure "ic-state-root" subnet_key (reconstruct cert_tree)
+    cert_delegation = Just $ Delegation { del_subnet_id, del_certificate }
+    del_subnet_id = rawEntityId subnet_id
+    del_certificate =
+      encodeCert $
+      signCertificate time rootKey Nothing $
+      construct $
+      delegationTree time subnet_id (toPublicKey subnet_key)
+
+signCertificate _time rootKey Nothing cert_tree =
+    Certificate { cert_tree, cert_sig, cert_delegation = Nothing }
+ where
+    cert_sig = signPure "ic-state-root" rootKey (reconstruct cert_tree)
+
+-- If `stateTree` ever becomes a bottleneck:
+-- Since ic-ref creates a fresh state tree everytime it is used, we _could_
+-- construct one with just the required data, e.g. only of the canister in
+-- question. That would not be secure, but `ic-ref` doesn’t have to be.
+getDataCertificate :: ICM m => Timestamp -> CanisterId -> m Blob
+getDataCertificate t cid = do
+    encodeCert <$> getPrunedCertificate t
+        [["time"], ["canister", rawEntityId cid, "certified_data"]]
 
 -- Asynchronous requests
 
@@ -346,7 +468,8 @@ submitRequest rid r = modify $ \ic ->
 -- | Eventually, they are processed
 
 processRequest :: ICM m => (RequestID, AsyncRequest) -> m ()
-processRequest (rid, req) = onReject (setReqStatus rid . Rejected) $ case req of
+processRequest (rid, req) = onReject (setReqStatus rid . CallResponse .  Rejected) $
+  case req of
   UpdateRequest _expiry canister_id _user_id method arg -> do
     ctxt_id <- newCallContext $ CallContext
       { canister = canister_id
@@ -454,7 +577,7 @@ processMessage m = case m of
       can_mod <- getCanisterMod callee
       time <- getCanisterTime callee
       balance <- getBalance callee
-      let env = CI.Env time balance
+      let env = CI.Env time balance Nothing
       invokeEntry ctxt_id wasm_state can_mod env entry >>= \case
         Trap msg -> do
           -- Eventually update cycle balance here
@@ -467,17 +590,16 @@ processMessage m = case m of
   ResponseMessage ctxt_id response refunded_funds -> do
     ctxt <- getCallContext ctxt_id
     case origin ctxt of
-      FromUser rid -> setReqStatus rid $
+      FromUser rid -> setReqStatus rid $ CallResponse $
         -- NB: Here funds disappear
         case response of
           Reject (rc, msg) -> Rejected (rc, msg)
-          Reply blob -> Completed (CompleteArg blob)
+          Reply blob -> Replied blob
       FromCanister other_ctxt_id callback -> do
         -- Add refund to balance
         cid <- calleeOfCallID other_ctxt_id
         prev_balance <- getBalance cid
         setBalance cid $ prev_balance `add_funds` refunded_funds
-
         enqueueMessage $ CallMessage
           { call_context = other_ctxt_id
           , entry = Closure callback response refunded_funds
@@ -491,7 +613,8 @@ performCallActions ctxt_id ca = do
 
 
 performCanisterActions :: ICM m => CanisterId -> CanisterActions -> m ()
-performCanisterActions _cid _ca = return ()
+performCanisterActions cid ca = do
+  mapM_ (setCertifiedData cid) (set_certified_data ca)
 
 updateBalances :: ICM m => CallId -> [MethodCall] -> Funds -> m ()
 updateBalances ctxt_id new_calls accepted = do
@@ -595,7 +718,7 @@ icInstallCode caller r = do
     was_empty <- isCanisterEmpty canister_id
     time <- getCanisterTime canister_id
     balance <- getBalance canister_id
-    let env = CI.Env time balance
+    let env = CI.Env time balance Nothing
 
     let
       reinstall = do
