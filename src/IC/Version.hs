@@ -5,5 +5,5 @@ import Data.Text
 import SourceId
 
 specVersion, implVersion :: Text
-specVersion = "0.13.0"
+specVersion = "0.13.1"
 implVersion = pack SourceId.id

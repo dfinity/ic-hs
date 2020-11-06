@@ -24,7 +24,6 @@ module IC.Ref
   , callerOfAsync
   , SyncRequest(..)
   , RequestStatus(..)
-  , CompletionValue(..)
   , ReqResponse(..)
   , CallResponse(..)
   , initialIC
@@ -60,7 +59,6 @@ import Codec.Candid
 import Data.Row ((.==), (.+), (.!), type (.!))
 import GHC.Stack
 
-import IC.Id.Forms hiding (Blob)
 import IC.Types
 import IC.Funds
 import IC.Canister
@@ -78,14 +76,12 @@ import IC.Crypto
 -- Abstract HTTP Interface
 
 data AsyncRequest
-    = UpdateRequest Expiry CanisterId UserId MethodName Blob
+    = UpdateRequest CanisterId UserId MethodName Blob
   deriving (Eq, Ord, Show)
 
 data SyncRequest
-    = QueryRequest Expiry CanisterId UserId MethodName Blob
-    | ReadStateRequest Expiry UserId [Path]
-
-type Expiry = Timestamp
+    = QueryRequest CanisterId UserId MethodName Blob
+    | ReadStateRequest UserId [Path]
 
 data RequestStatus
   = Received
@@ -101,12 +97,6 @@ data CallResponse
 data ReqResponse
   = QueryResponse CallResponse
   | ReadStateResponse Certificate
-  deriving (Show)
-
-data CompletionValue -- ^ we need to be more typed than the public spec here
-  = CompleteUnit
-  | CompleteCanisterId CanisterId
-  | CompleteArg Blob
   deriving (Show)
 
 -- IC state
@@ -198,18 +188,13 @@ setReqStatus :: ICM m => RequestID -> RequestStatus -> m ()
 setReqStatus rid s = modify $ \ic ->
   ic { requests = M.adjust (\(r,_) -> (r,s)) rid (requests ic) }
 
-_expiryOfAsync :: AsyncRequest -> Expiry
-_expiryOfAsync = \case
-    UpdateRequest expiry _ _ _ _ -> expiry
-
-_expiryOfSync :: SyncRequest -> Expiry
-_expiryOfSync = \case
-    QueryRequest expiry _ _ _ _ -> expiry
-    ReadStateRequest expiry _ _ -> expiry
+calleeOfAsync :: AsyncRequest -> EntityId
+calleeOfAsync = \case
+    UpdateRequest canister_id _ _ _ -> canister_id
 
 callerOfAsync :: AsyncRequest -> EntityId
 callerOfAsync = \case
-    UpdateRequest _ _ user_id _ _ -> user_id
+    UpdateRequest _ user_id _ _ -> user_id
 
 callerOfRequest :: ICM m => RequestID -> m EntityId
 callerOfRequest rid = gets (M.lookup rid . requests) >>= \case
@@ -308,32 +293,34 @@ getCanisterTime cid = time <$> getCanister cid
 -- for request status: Whether the request exists and who owns it
 -- in general: eventually there will be user key management
 
-type AuthValidation m = (MonadError String m, ICM m)
-authUser :: AuthValidation m => Maybe PublicKey -> EntityId -> m ()
-authUser Nothing id =
-  unless (isAnonymousId (rawEntityId id)) $
-    throwError "No signature, but user is not the anonymous user"
-authUser (Just pk) id =
-  unless (isSelfAuthenticatingId pk (rawEntityId id)) $
-    throwError "Public key not authorized to sign for user"
+type AuthValidation m = (MonadError T.Text m, ICM m)
 
-authAsyncRequest :: AuthValidation m => Maybe PublicKey -> AsyncRequest -> m ()
-authAsyncRequest pk ar = authUser pk (callerOfAsync ar)
+authAsyncRequest :: AuthValidation m => Timestamp -> EnvValidity -> AsyncRequest -> m ()
+authAsyncRequest t ev (UpdateRequest canister_id user_id _ _) = do
+    valid_when ev t
+    valid_for ev user_id
+    valid_where ev canister_id
 
-authSyncRequest :: AuthValidation m => Maybe PublicKey -> SyncRequest -> m ()
-authSyncRequest pk = \case
-  QueryRequest _ _ user_id _ _ -> authUser pk user_id
-  ReadStateRequest _ user_id paths -> do
-    authUser pk user_id
+authSyncRequest :: AuthValidation m => Timestamp -> EnvValidity -> SyncRequest -> m ()
+authSyncRequest t ev = \case
+  QueryRequest canister_id user_id _ _ -> do
+    valid_when ev t
+    valid_for ev user_id
+    valid_where ev canister_id
+
+  ReadStateRequest user_id paths -> do
+    valid_when ev t
+    valid_for ev user_id
     -- Implement ACL for read requests here
     forM_ paths $ \case
       ["time"] -> return ()
       ("subnet":_) -> return ()
       ("request_status" :rid: _) ->
         gets (findRequest rid) >>= \case
-          Just (ar,_)
-            | user_id == callerOfAsync ar -> return ()
-            | otherwise -> throwError "User is not authorized to read this request status"
+          Just (ar,_) -> do
+            unless (user_id == callerOfAsync ar) $
+              throwError "User is not authorized to read this request status"
+            valid_where ev (calleeOfAsync ar)
           Nothing -> return ()
       _ -> throwError "User is not authorized to read unspecified state paths"
 
@@ -341,7 +328,7 @@ authSyncRequest pk = \case
 -- Synchronous requests
 
 readRequest :: ICM m => Timestamp -> SyncRequest -> m ReqResponse
-readRequest time (QueryRequest _ canister_id user_id method arg) =
+readRequest time (QueryRequest canister_id user_id method arg) =
   fmap QueryResponse $ onReject (return . Rejected) $ do
     canisterMustExist canister_id
     getRunStatus canister_id >>= \case
@@ -364,7 +351,7 @@ readRequest time (QueryRequest _ canister_id user_id method arg) =
       Return (Reject (rc,rm)) -> reject rc rm
       Return (Reply res) -> return $ Replied res
 
-readRequest time (ReadStateRequest _ _sender paths) = do
+readRequest time (ReadStateRequest _sender paths) = do
     -- NB: Already authorized in authSyncRequest
     cert <- getPrunedCertificate time (["time"] : paths)
     return $ ReadStateResponse cert
@@ -470,7 +457,7 @@ submitRequest rid r = modify $ \ic ->
 processRequest :: ICM m => (RequestID, AsyncRequest) -> m ()
 processRequest (rid, req) = onReject (setReqStatus rid . CallResponse .  Rejected) $
   case req of
-  UpdateRequest _expiry canister_id _user_id method arg -> do
+  UpdateRequest canister_id _user_id method arg -> do
     ctxt_id <- newCallContext $ CallContext
       { canister = canister_id
       , origin = FromUser rid

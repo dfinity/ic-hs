@@ -4,3 +4,4 @@
 - ignore: {name: "Use camelCase"}
 - ignore: {name: "Eta reduce"}
 - ignore: {name: "Use >=>"}
+- ignore: {name: "Use const"}

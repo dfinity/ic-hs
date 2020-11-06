@@ -42,9 +42,6 @@ import IC.Management
 
 type DRun = StateT IC IO
 
-dummyExpiry :: Timestamp
-dummyExpiry = Timestamp 0
-
 dummyUserId :: CanisterId
 dummyUserId = EntityId $ B.pack [0xCA, 0xFF, 0xEE]
 
@@ -54,13 +51,13 @@ dummyRequestId = B.fromStrict . T.encodeUtf8 . T.pack . show
 -- Pretty printing
 
 printAsyncRequest :: AsyncRequest -> IO ()
-printAsyncRequest (UpdateRequest _ _ _ method arg) =
+printAsyncRequest (UpdateRequest _ _ method arg) =
     printf "→ update %s%s\n" method (shorten 60 (candidOrPretty arg))
 
 printSyncRequest :: SyncRequest -> IO ()
-printSyncRequest (ReadStateRequest _ _ paths) =
+printSyncRequest (ReadStateRequest _ paths) =
     printf "→ state? %s\n" (intercalate ", " $ map (intercalate "/" . map show) paths)
-printSyncRequest (QueryRequest _ _ _ method arg) =
+printSyncRequest (QueryRequest _ _ method arg) =
     printf "→ query %s%s\n" method (shorten 60 (candidOrPretty arg))
 
 printCallResponse :: CallResponse -> IO ()
@@ -130,7 +127,7 @@ callManagement :: forall s a b.
   IO RequestID -> EntityId -> Label s -> a -> StateT IC IO ()
 callManagement getRid user_id l x =
   submitAndRun getRid $
-    UpdateRequest dummyExpiry (EntityId mempty) user_id (symbolVal l) (Candid.encode x)
+    UpdateRequest (EntityId mempty) user_id (symbolVal l) (Candid.encode x)
 
 
 work :: FilePath -> IO ()
@@ -172,9 +169,9 @@ work msg_file = do
           .+ #compute_allocation .== Nothing
           .+ #memory_allocation .== Nothing
       Query  cid method arg ->
-        submitRead  (QueryRequest dummyExpiry (EntityId cid) user_id method arg)
+        submitRead  (QueryRequest (EntityId cid) user_id method arg)
       Update cid method arg ->
-        submitAndRun getRid (UpdateRequest dummyExpiry (EntityId cid) user_id method arg)
+        submitAndRun getRid (UpdateRequest (EntityId cid) user_id method arg)
 
 main :: IO ()
 main = join . customExecParser (prefs showHelpOnError) $
