@@ -13,6 +13,7 @@ import Numeric.Natural
 import qualified Data.Text as T
 import qualified Data.ByteString.Lazy as BS
 import Control.Monad.State
+import Control.Monad.Writer
 import qualified Data.HashMap.Lazy as HM
 import GHC.Stack
 
@@ -23,7 +24,9 @@ import IC.HTTP.GenR
 type RecordM m = StateT (HM.HashMap T.Text GenR) m
 type Field a = forall m. HasCallStack => Parse m => GenR -> m a
 class Monad m => Parse m where parseError :: HasCallStack => T.Text -> m a
+
 instance Parse (Either T.Text) where  parseError = Left
+instance (Monoid a, Parse m) => Parse (WriterT a m) where parseError = lift . parseError
 
 record :: HasCallStack => Parse m => RecordM m a -> GenR -> m a
 record m (GRec hm) = (`evalStateT` hm) $ do

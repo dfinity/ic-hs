@@ -163,12 +163,6 @@ instance ToJSON EntryPoint where
     toJSON     = genericToJSON customOptions
     toEncoding = genericToEncoding customOptions
 
-deriving instance Generic CompletionValue
-instance ToJSON CompletionValue where
-    toJSON     = genericToJSON customOptions
-    toEncoding = genericToEncoding customOptions
-
-
 instance ToJSON CanisterModule where
     toJSON = placeholder "(CanisterModule)"
 

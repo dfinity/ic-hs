@@ -13,9 +13,11 @@ import Control.Monad.State
 import Control.Monad.Except
 import Data.Aeson as JSON
 
+import IC.Types
 import IC.Ref
 import IC.HTTP.Status
 import IC.HTTP.CBOR
+import IC.HTTP.GenR
 import IC.HTTP.Request
 import IC.HTTP.RequestId
 import IC.Debug.JSON ()
@@ -34,22 +36,24 @@ handle stateVar history req respond = case (requestMethod req, pathInfo req) of
         r <- peekIC $ gets IC.HTTP.Status.r
         cbor status200 r
     ("POST", ["api","v1","submit"]) ->
-        withSignedCBOR $ \(pk, gr) -> case asyncRequest gr of
+        withSignedCBOR $ \(gr, ev) -> case asyncRequest gr of
             Left err -> invalidRequest err
-            Right ar -> runIC $
-                runExceptT (authAsyncRequest pk ar) >>= \case
+            Right ar -> runIC $ do
+                t <- lift getTimestamp
+                runExceptT (authAsyncRequest t ev ar) >>= \case
                     Left err ->
-                        lift $ invalidRequest (T.pack err)
+                        lift $ invalidRequest err
                     Right () -> do
                         submitRequest (requestId gr) ar
                         lift $ empty status202
     ("POST", ["api","v1","read"]) ->
-        withSignedCBOR $ \(pk,gr) -> case syncRequest gr of
+        withSignedCBOR $ \(gr, ev) -> case syncRequest gr of
             Left err -> invalidRequest err
-            Right sr -> peekIC $
-                runExceptT (authSyncRequest pk sr) >>= \case
+            Right sr -> peekIC $ do
+                t <- lift getTimestamp
+                runExceptT (authSyncRequest t ev sr) >>= \case
                     Left err ->
-                        lift $ invalidRequest (T.pack err)
+                        lift $ invalidRequest err
                     Right () -> do
                         t <- lift getTimestamp
                         r <- readRequest t sr
@@ -122,9 +126,5 @@ handle stateVar history req respond = case (requestMethod req, pathInfo req) of
                 Right gr -> k gr
         _ -> invalidRequest "Expected application/cbor request"
 
-    withSignedCBOR k = withCBOR $ stripEnvelope >=> \case
-        Left err -> invalidRequest err
-        Right (pubkey, content) ->
-            checkExpiry content >>= \case
-                Left err -> invalidRequest err
-                Right () -> k (pubkey, content)
+    withSignedCBOR :: ((GenR, EnvValidity) -> IO ResponseReceived) -> IO ResponseReceived
+    withSignedCBOR k = withCBOR $ either invalidRequest k . stripEnvelope

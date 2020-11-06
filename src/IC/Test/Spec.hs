@@ -16,6 +16,7 @@ This module contains a test suite for the Internet Computer
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE TupleSections #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 module IC.Test.Spec (preFlight, TestConfig, icTests) where
 
@@ -40,6 +41,7 @@ import Control.Monad.Trans
 import Control.Concurrent
 import Control.Monad
 import Control.Exception (catch)
+import Data.Traversable
 import Data.Word
 import Data.Functor
 import GHC.TypeLits
@@ -168,13 +170,29 @@ envelopeFor u content = envelope key content
         | otherwise = error $ "Don't know key for user " ++ show u
 
 envelope :: SecretKey -> GenR -> IO GenR
-envelope sk content = do
-  sig <- sign "ic-request" sk (requestId content)
-  return $ rec
-    [ "sender_pubkey" =: GBlob (toPublicKey sk)
-    , "sender_sig" =: GBlob sig
-    , "content" =: content
-    ]
+envelope sk = delegationEnv sk []
+
+delegationEnv :: SecretKey -> [(SecretKey, Maybe [Blob])] -> GenR -> IO GenR
+delegationEnv sk1 dels content = do
+    let sks = sk1 : map fst dels
+
+    t <- getPOSIXTime
+    let expiry = round ((t + 60) * 1000_000_000)
+    delegations <- for (zip sks dels) $ \(sk1, (sk2,targets)) -> do
+      let delegation = rec $
+            [ "pubkey" =: GBlob (toPublicKey sk2)
+            , "expiration" =: GNat expiry
+            ] ++
+            [ "targets" =: GList (map GBlob ts) | Just ts <- pure targets ]
+      sig <- sign "ic-request-auth-delegation" sk1 (requestId delegation)
+      return $ rec [ "delegation" =: delegation, "signature" =: GBlob sig ]
+    sig <- sign "ic-request" (last sks) (requestId content)
+    return $ rec $
+      [ "sender_pubkey" =: GBlob (toPublicKey sk1)
+      , "sender_sig" =: GBlob sig
+      , "content" =: content
+      ] ++
+      [ "sender_delegation" =: GList delegations | not (null delegations) ]
 
 -- a little bit of smartness in our combinators
 
@@ -1364,12 +1382,115 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
       query cid1 getICPTs >>= asWord64 >>= is icpts -- nothing lost?
     ]
 
+  , testGroup "Delegation targets" $ let
+      callReq cid = rec
+        [ "request_type" =: GText "call"
+        , "sender" =: GBlob defaultUser
+        , "canister_id" =: GBlob cid
+        , "method_name" =: GText "update"
+        , "arg" =: GBlob (run reply)
+        ]
+
+      mgmtReq cid = rec
+        [ "request_type" =: GText "call"
+        , "sender" =: GBlob defaultUser
+        , "canister_id" =: GBlob ""
+        , "method_name" =: GText "canister_status"
+        , "arg" =: GBlob (Candid.encode (#canister_id .== Principal cid))
+        ]
+
+      env dels req =
+        delegationEnv defaultSK
+          (zip [createSecretKeyEd25519 (BS.singleton n) | n <- [0..]] dels) req
+
+      good req dels = do
+        req <- addExpiry req
+        let rid = requestId req
+        -- sign request with delegations
+        env dels req >>= postCBOR "/api/v1/submit" >>= code2xx
+        -- wait for it
+        void $ awaitStatus defaultUser rid >>= isReply
+        -- also read status with delegation
+        sreq <- addExpiry $ rec
+          [ "request_type" =: GText "read_state"
+          , "sender" =: GBlob defaultUser
+          , "paths" =: GList [GList [GBlob "request_status", GBlob rid]]
+          ]
+        env dels sreq >>= postCBOR "/api/v1/read" >>= void . code2xx
+
+      badSubmit req dels = do
+        req <- addExpiry req
+        -- sign request with delegations (should fail)
+        env dels req >>= postCBOR "/api/v1/submit" >>= code4xx
+
+      badRead req dels = do
+        req <- addExpiry req
+        let rid = requestId req
+        -- submit with plain signature
+        envelope defaultSK req >>= postCBOR "/api/v1/submit" >>= code202
+        -- wait for it
+        void $ awaitStatus defaultUser rid >>= isReply
+        -- also read status with delegation
+        sreq <- addExpiry $ rec
+          [ "request_type" =: GText "read_state"
+          , "sender" =: GBlob defaultUser
+          , "paths" =: GList [GList [GBlob "request_status", GBlob rid]]
+          ]
+        env dels sreq >>= postCBOR "/api/v1/read" >>= void . code4xx
+
+      goodTestCase name mkReq mkDels =
+        simpleTestCase name $ \cid -> good (mkReq cid) (mkDels cid)
+
+      badTestCase name mkReq mkDels = testGroup name
+        [ simpleTestCase "in submit" $ \cid -> badSubmit (mkReq cid) (mkDels cid)
+        , simpleTestCase "in read_state" $ \cid -> badRead (mkReq cid) (mkDels cid)
+        ]
+
+    in
+    [ goodTestCase "one delegation, singleton target" callReq $ \cid ->
+      [Just [cid]]
+    , badTestCase "one delegation, wrong singleton target" callReq $ \_cid ->
+      [Just [doesn'tExist]]
+    , goodTestCase "one delegation, two targets" callReq $ \cid ->
+      [Just [cid, doesn'tExist]]
+    , goodTestCase "one delegation, redundant targets" callReq $ \cid ->
+      [Just [cid, cid, doesn'tExist]]
+    , goodTestCase "two delegations, singletons" callReq $ \cid ->
+      [Just [cid], Just [cid] ]
+    , goodTestCase "two delegations, first restricted" callReq $ \cid ->
+      [Just [cid], Nothing ]
+    , goodTestCase "two delegations, second restricted" callReq $ \cid ->
+      [Nothing, Just [cid]]
+    , badTestCase "two delegations, empty intersection" callReq $ \cid ->
+      [Just [cid], Just [doesn'tExist]]
+    , badTestCase "two delegations, first empty target set" callReq $ \cid ->
+      [Just [], Just [cid]]
+    , badTestCase "two delegations, second empty target set" callReq $ \cid ->
+      [Just [cid], Just []]
+    , goodTestCase "management canister: correct target" mgmtReq $ \_cid ->
+      [Just [""]]
+    , badTestCase "management canister: empty target set" mgmtReq $ \_cid ->
+      [Just []]
+    , badTestCase "management canister: bogus target" mgmtReq $ \_cid ->
+      [Just [doesn'tExist]]
+    , badTestCase "management canister: bogus target (using target canister)" mgmtReq $ \cid ->
+      [Just [cid]]
+    ]
+
   , testGroup "Authentication schemes" $
-    flip foldMap
+    let ed25519SK2 = createSecretKeyEd25519 "more keys"
+        ed25519SK3 = createSecretKeyEd25519 "yet more keys"
+        ed25519SK4 = createSecretKeyEd25519 "even more keys"
+        delEnv sks = delegationEnv ed25519SK (map (, Nothing) sks) -- no targets in these tests
+    in flip foldMap
       [ ("Ed25519",            ed25519User,  envelope ed25519SK)
       , ("Ed25519 (raw)",      defaultUser,  envelope defaultSK)
       , ("WebAuthn",           webAuthnUser, envelope webAuthnSK)
-      , ("ECDSA",              ecdsaUser,    envelope ecdsaSK)
+      , ("empty delegations",  ed25519User,  delEnv [])
+      , ("same delegations",   ed25519User,  delEnv [ed25519SK])
+      , ("three delegations",  ed25519User,  delEnv [ed25519SK2, ed25519SK3])
+      , ("four delegations",   ed25519User,  delEnv [ed25519SK2, ed25519SK3, ed25519SK4])
+      , ("mixed delegations",  ed25519User,  delEnv [defaultSK, webAuthnSK])
       ] $ \ (name, user, env) ->
     [ simpleTestCase (name ++ " in query") $ \cid -> do
       req <- addExpiry $ rec

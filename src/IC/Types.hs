@@ -2,13 +2,16 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE FlexibleContexts #-}
 module IC.Types where
 
 import qualified Data.ByteString.Lazy.Char8 as BS
 import qualified Data.ByteString.Builder as BS
 import qualified Data.Map as M
 import qualified Data.Text as T
-import qualified Text.Hex as T
+import qualified Text.Hex as T hiding (Text)
 import Data.Digest.CRC
 import Data.Digest.CRC32
 import Data.ByteString.Base32
@@ -16,6 +19,7 @@ import Data.Int
 import Data.List
 import Data.List.Split (chunksOf)
 import Numeric.Natural
+import Control.Monad.Except
 
 import IC.Funds
 
@@ -126,3 +130,40 @@ noCallActions = CallActions [] no_funds Nothing
 type UpdateResult = (CallActions, CanisterActions)
 
 type StableMemory = Blob
+
+-- Semantically relevant information from an envelope
+--
+--  * When is it valid
+--  * Which users can it sign for
+--  * Which canisters can it be used at
+--
+-- All represented as validation functions
+
+type ValidityPred a = forall m. MonadError T.Text m => a -> m ()
+data EnvValidity = EnvValidity
+    { valid_when  :: ValidityPred Timestamp
+    , valid_for   :: ValidityPred EntityId
+    , valid_where :: ValidityPred EntityId
+    }
+
+instance Semigroup EnvValidity where
+    ed1 <> ed2 = EnvValidity
+        { valid_when  = valid_when  ed1 >>> valid_when  ed2
+        , valid_for   = valid_for   ed1 >>> valid_for   ed2
+        , valid_where = valid_where ed1 >>> valid_where ed2
+        } where a >>> b = \x -> a x >> b x
+instance Monoid EnvValidity where
+    mempty = EnvValidity x x x
+      where
+        x :: ValidityPred a
+        x = const (return ())
+
+validWhen :: ValidityPred Timestamp -> EnvValidity
+validWhen valid_when = mempty { valid_when }
+
+validFor :: ValidityPred EntityId -> EnvValidity
+validFor valid_for = mempty { valid_for }
+
+validWhere :: ValidityPred EntityId -> EnvValidity
+validWhere valid_where = mempty { valid_where }
+
