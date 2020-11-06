@@ -13,6 +13,7 @@ module Main where
 
 import Options.Applicative hiding (empty)
 import Control.Monad
+import qualified Data.Map as M
 import qualified Data.ByteString.Lazy as B
 import qualified Data.ByteString.Lazy.Char8 as BC
 import qualified Data.ByteString.Builder as B
@@ -99,20 +100,15 @@ submitAndRun mkRid r = do
     rid <- lift mkRid
     submitRequest rid r
     runToCompletion
-    -- TODO: Add a backdoor to IC.Ref, no need to go through certification here
-    {-
-    (_wants_time, r) <- readRequest (StatusRequest dummyExpiry rid)
+    r <- gets (snd . (M.! rid) . requests)
     lift $ printReqStatus r
-    -}
 
 submitRead :: SyncRequest -> DRun ()
 submitRead r = do
     lift $ printSyncRequest r
     t <- lift getTimestamp
-    _r <- readRequest t r
-    -- TODO: Add a backdoor to IC.Ref, no need to go through certification here
-    -- lift $ printReqStatus r
-    return ()
+    r <- readRequest t r
+    lift $ printReqResponse r
   where
     getTimestamp :: IO Timestamp
     getTimestamp = do
