@@ -26,12 +26,12 @@ startApp :: IO Application
 startApp = do
     ic <- initialIC
     stateVar <- newMVar ic
-    history <- newIORef [ic]
-    return $ handle stateVar history
+    lastState <- newIORef ic
+    return $ handle stateVar lastState
 
-handle :: MVar IC -> IORef [IC] -> Application
-handle stateVar history req respond = case (requestMethod req, pathInfo req) of
-    ("GET", []) -> withHistory $ json status200
+handle :: MVar IC -> IORef IC -> Application
+handle stateVar lastState req respond = case (requestMethod req, pathInfo req) of
+    ("GET", []) -> readIORef lastState >>= json status200
     ("GET", ["api","v1","status"]) -> do
         r <- peekIC $ gets IC.HTTP.Status.r
         cbor status200 r
@@ -65,33 +65,28 @@ handle stateVar history req respond = case (requestMethod req, pathInfo req) of
     runIC a = do
       x <- modifyMVar stateVar $ \s -> do
         (x, s') <- runStateT a s
-        modifyIORef history (s':)
+        writeIORef lastState s'
         return (s', x)
       -- begin processing in the background (it is important that
       -- this thread returns, else warp is blocked somehow)
       void $ forkIO (loopIC runStep)
       return x
 
-    -- Not atomic, reads most recent state from history
+    -- Not atomic, reads most recent state
     peekIC :: StateT IC IO a -> IO a
-    peekIC a = do
-        (s:_) <- readIORef history
-        evalStateT a s
+    peekIC a = readIORef lastState >>= evalStateT a
 
     -- This modifies state, so must be atomic, so blocks on stateVar
     stepIC :: StateT IC IO Bool -> IO Bool
     stepIC a = modifyMVar stateVar $ \s -> do
         (changed, s') <- runStateT a s
-        when changed $ modifyIORef history (s':)
+        when changed $ writeIORef lastState s'
         return (if changed then s' else s, changed)
 
     loopIC :: StateT IC IO Bool -> IO ()
     loopIC a = stepIC a >>= \case
         True -> loopIC a
         False -> return ()
-
-    withHistory :: ([IC] -> IO a) -> IO a
-    withHistory a = readIORef history >>= a . reverse
 
     cbor status gr = respond $ responseBuilder
         status

@@ -2118,8 +2118,8 @@ getRand8Bytes = BS.pack <$> replicateM 8 randomIO
 
 type HasTestConfig = (?testConfig :: TestConfig)
 
-withTestConfig :: (forall. HasTestConfig => TestTree) -> TestConfig -> TestTree
-withTestConfig act tc = let ?testConfig = tc in act
+withTestConfig :: (forall. HasTestConfig => a) -> TestConfig -> a
+withTestConfig x tc = let ?testConfig = tc in x
 
 testConfig :: HasTestConfig => TestConfig
 testConfig = ?testConfig
