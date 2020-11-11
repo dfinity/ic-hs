@@ -8,14 +8,15 @@ module IC.Certificate.CBOR (encodeCert, decodeCert) where
 
 import qualified Data.Text as T
 import qualified Data.ByteString.Lazy as BS
-import Numeric.Natural
 import Data.Bifunctor
 import Codec.CBOR.Term
 import Codec.CBOR.Write
 import Codec.CBOR.Read
 
 import IC.Certificate
+import IC.CBORPatterns
 import IC.HashTree
+import IC.HashTree.CBOR
 
 encodeCert :: Certificate -> Blob
 encodeCert Certificate{..} = toLazyByteString $ encodeTerm $ TTagged 55799 $ TMap $
@@ -28,15 +29,6 @@ encodeCert Certificate{..} = toLazyByteString $ encodeTerm $ TTagged 55799 $ TMa
       ])
     | Just Delegation{..} <- pure cert_delegation
     ]
-
-encodeHashTree :: HashTree -> Term
-encodeHashTree = go
-  where
-    go EmptyTree =     TList [ TInteger 0 ]
-    go (Fork t1 t2) =  TList [ TInteger 1, go t1, go t2 ]
-    go (Labeled l t) = TList [ TInteger 2, TBlob l, go t ]
-    go (Leaf v) =      TList [ TInteger 3, TBlob v ]
-    go (Pruned h) =    TList [ TInteger 4, TBlob h ]
 
 decodeCert :: Blob -> Either String Certificate
 decodeCert s =
@@ -58,16 +50,6 @@ parseBlob :: String -> Term -> Either String Blob
 parseBlob _ (TBlob s) = return s
 parseBlob what t = Left $ "expected " ++ what ++ ", found " ++ show t
 
-parseHashTree :: Term -> Either String HashTree
-parseHashTree = go
-  where
-    go (TList_ [ TNat 0 ]) = return EmptyTree
-    go (TList_ [ TNat 1, t1, t2 ]) = Fork <$> parseHashTree t1 <*> parseHashTree t2
-    go (TList_ [ TNat 2, TBlob l, t ]) = Labeled l <$> parseHashTree t
-    go (TList_ [ TNat 3, TBlob v ]) = return $ Leaf v
-    go (TList_ [ TNat 4, TBlob h ]) = return $ Pruned h
-    go t = Left $ "Cannot parse as a Hash Tree: " ++ show t
-
 parseDelegation :: Term -> Either String Delegation
 parseDelegation (TMap_ kv) = do
     del_subnet_id <- field "subnet_id" kv >>= parseBlob "subnet_id"
@@ -82,25 +64,3 @@ field f kv = case lookup (TString f) kv of
 
 optionalField :: T.Text -> [(Term, a)] -> Either String (Maybe a)
 optionalField f kv = return $ lookup (TString f) kv
-
-pattern TMap_ :: [(Term, Term)] -> Term
-pattern TMap_ m <- (\case {TMapI m -> Just m; TMap m -> Just m; _ -> Nothing} -> Just m)
-
-pattern TList_ :: [Term] -> Term
-pattern TList_ m <- (\case {TListI m -> Just m; TList m -> Just m; _ -> Nothing} -> Just m)
-
-pattern TNat :: Natural -> Term
-pattern TNat m <- (\case
-        TInt m | m >= 0 -> Just (fromIntegral m)
-        TInteger m | m >= 0 -> Just (fromIntegral m)
-        _ -> Nothing
-    -> Just m)
-
-
-pattern TBlob :: Blob -> Term
-pattern TBlob m <- TBytes (BS.fromStrict -> m)
-  where TBlob m = TBytes (BS.toStrict m)
-
-
-
-

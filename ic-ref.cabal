@@ -29,6 +29,8 @@ common version
 
 common certificates
   hs-source-dirs:      src
+  other-modules:       IC.CBORPatterns
+  other-modules:       IC.HashTree.CBOR
   other-modules:       IC.HashTree
   other-modules:       IC.Certificate
   other-modules:       IC.Certificate.CBOR
@@ -211,6 +213,8 @@ test-suite unit-test
   import: cbor, crypto, ghc-flags
   type: exitcode-stdio-1.0
   main-is: unit-tests.hs
+  other-modules:       IC.CBORPatterns
+  other-modules:       IC.HashTree.CBOR
   other-modules:       IC.HashTree
   other-modules:       IC.Test.HashTree
   other-modules:       IC.Test.BLS
@@ -222,3 +226,4 @@ test-suite unit-test
   build-depends: tasty-quickcheck
   build-depends: QuickCheck
   build-depends: quickcheck-io
+  build-depends: hex-text
