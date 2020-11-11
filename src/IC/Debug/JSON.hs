@@ -31,7 +31,8 @@ import Control.Monad.Random.Lazy
 
 import IC.Types
 import IC.Wasm.Winter.Persist
-import IC.Canister.Persisted
+import IC.Purify
+import IC.Canister.Snapshot
 import IC.Canister
 import IC.Ref
 import IC.Crypto
@@ -53,6 +54,9 @@ instance ToJSONKey BS.ByteString where
 
 instance ToJSON (W.Module f) where
     toJSON = placeholder "(module)"
+
+instance ToJSON (Replay i) where
+    toJSON = placeholder "(replay)"
 
 placeholder :: String -> a -> Value
 placeholder s = const (String (T.pack s))
@@ -107,8 +111,13 @@ instance ToJSON PExtern where
     toJSON     = genericToJSON customOptions
     toEncoding = genericToEncoding customOptions
 
-deriving instance Generic WasmState
-instance ToJSON WasmState where
+deriving instance Generic (Snapshot a)
+instance ToJSON a => ToJSON (Snapshot a) where
+    toJSON     = genericToJSON customOptions
+    toEncoding = genericToEncoding customOptions
+
+deriving instance Generic CanisterSnapshot
+instance ToJSON CanisterSnapshot where
     toJSON     = genericToJSON customOptions
     toEncoding = genericToEncoding customOptions
 

@@ -10,10 +10,17 @@ The canister interface, presented imperatively (or impurely), i.e. without rollb
 -}
 module IC.Canister.Imp
  ( ESRef
+ , CanisterEntryPoint
  , ImpState(..)
+ , newESRef
  , runESST
+ , rawInstantiate
  , rawInitialize
- , rawInvoke
+ , rawQuery
+ , rawUpdate
+ , rawCallback
+ , rawPreUpgrade
+ , rawPostUpgrade
  , silently
  )
 where
@@ -35,7 +42,6 @@ import IC.Funds
 import IC.Wasm.Winter
 import IC.Wasm.WinterMemory as Mem
 import IC.Wasm.Imports
-import qualified IC.Canister.Interface as CI
 
 -- Parameters are the data that come from the caller
 
@@ -53,9 +59,8 @@ data Params = Params
 data ExecutionState s = ExecutionState
   { inst :: Instance s
   , stableMem :: Memory s
-  , self_id :: CanisterId
   , params :: Params
-  , env :: CI.Env
+  , env :: Env
   -- now the mutable parts
   , funds_available :: Maybe Funds
   , funds_accepted :: Funds
@@ -69,17 +74,14 @@ data ExecutionState s = ExecutionState
   }
 
 
-initialExecutionState ::
-    CanisterId -> Instance s -> Memory s -> CI.Env -> Responded ->
-    ExecutionState s
-initialExecutionState self_id inst stableMem env responded = ExecutionState
+initialExecutionState :: Instance s -> Memory s -> Env -> Responded -> ExecutionState s
+initialExecutionState inst stableMem env responded = ExecutionState
   { inst
   , stableMem
-  , self_id
   , params = Params Nothing Nothing Nothing Nothing Nothing
   , env
   , funds_available = Nothing
-  , balance = CI.balance env
+  , balance = env_balance env
   , funds_accepted = no_funds
   , responded
   , response = Nothing
@@ -323,7 +325,7 @@ systemAPI esref =
     canister_self_size :: () -> HostM s Int32
     canister_self_copy :: (Int32, Int32, Int32) -> HostM s ()
     (canister_self_size, canister_self_copy) = size_and_copy $
-      rawEntityId <$> gets self_id
+      rawEntityId <$> gets (env_self . env)
 
     msg_funds_refunded :: (Int32, Int32) -> HostM s Word64
     msg_funds_refunded (unit_src, unit_size) = do
@@ -438,20 +440,20 @@ systemAPI esref =
 
     data_certificate_present :: () -> HostM s Int32
     data_certificate_present () =
-      gets (CI.certificate . env) >>= \case
+      gets (env_certificate . env) >>= \case
         Just _ -> return 1
         Nothing -> return 0
 
     data_certificate_size :: () -> HostM s Int32
     data_certificate_copy :: (Int32, Int32, Int32) -> HostM s ()
     (data_certificate_size, data_certificate_copy) = size_and_copy $
-      gets (CI.certificate . env) >>= \case
+      gets (env_certificate . env) >>= \case
         Just b -> return b
         Nothing -> throwError "no certificate available"
 
     get_time :: () -> HostM s Word64
     get_time () = do
-        Timestamp ns <- gets (CI.time . env)
+        Timestamp ns <- gets (env_time . env)
         return (fromIntegral ns)
 
     debug_print :: (Int32, Int32) -> HostM s ()
@@ -467,39 +469,27 @@ systemAPI esref =
       let msg = BSU.toString bytes
       throwError $ "canister trapped explicitly: " ++ msg
 
--- The state of an instance, consistig of the underlying Wasm state,
--- additional remembered information like the CanisterId
--- and the 'ESRef' that the system api functions are accessing
+-- The state of an instance, consistig of
+--  * the underlying Wasm state,
+--  * additional remembered information like the CanisterId
+--  * the 'ESRef' that the system api functions are accessing
+--  * the original module (so that this ImpState can be snapshotted)
 
 data ImpState s = ImpState
   { isESRef :: ESRef s
-  , isCanisterId :: CanisterId
   , isInstance :: Instance s
   , isStableMem :: Memory s
+  , isModule :: Module
   }
 
-rawInitialize :: ESRef s -> CanisterId -> Module -> ST s (TrapOr (ImpState s))
-rawInitialize esref cid wasm_mod = do
+rawInstantiate :: ESRef s -> Module -> ST s (TrapOr (ImpState s))
+rawInstantiate esref wasm_mod = do
   result <- runExceptT $ (,)
     <$> initialize wasm_mod (systemAPI esref)
     <*> Mem.new
   case result of
     Left  err -> return $ Trap err
-    Right (inst, sm) -> return $ Return $ ImpState esref cid inst sm
-
-rawInvoke :: ImpState s -> CI.CanisterMethod r -> ST s (TrapOr r)
-rawInvoke is (CI.Initialize wasm_mod caller env dat) =
-    rawInitializeMethod is wasm_mod caller env dat
-rawInvoke is (CI.Query name caller env dat) =
-    rawQueryMethod is name caller env dat
-rawInvoke is (CI.Update name caller env responded funds_available dat) =
-    rawUpdateMethod is name caller env responded funds_available dat
-rawInvoke is (CI.Callback cb env responded funds_received res refund) =
-    rawCallbackMethod is cb env responded funds_received res refund
-rawInvoke is (CI.PreUpgrade wasm_mod caller env) =
-    rawPreUpgrade is wasm_mod caller env
-rawInvoke is (CI.PostUpgrade wasm_mod caller env mem dat) =
-    rawPostUpgrade is wasm_mod caller env mem dat
+    Right (inst, sm) -> return $ Return $ ImpState esref inst sm wasm_mod
 
 cantRespond :: Responded
 cantRespond = Responded True
@@ -512,10 +502,12 @@ canisterActions es = CanisterActions
     { set_certified_data = new_certified_data es
     }
 
-rawInitializeMethod :: ImpState s -> Module -> EntityId -> CI.Env -> Blob -> ST s (TrapOr CanisterActions)
-rawInitializeMethod (ImpState esref cid inst sm) wasm_mod caller env dat = do
+type CanisterEntryPoint r = forall s. (ImpState s -> ST s r)
+
+rawInitialize :: EntityId -> Env -> Blob -> ImpState s -> ST s (TrapOr CanisterActions)
+rawInitialize caller env dat (ImpState esref inst sm wasm_mod) = do
   result <- runExceptT $ do
-    let es = (initialExecutionState cid inst sm env cantRespond)
+    let es = (initialExecutionState inst sm env cantRespond)
               { params = Params
                   { param_dat    = Just dat
                   , param_caller = Just caller
@@ -536,10 +528,10 @@ rawInitializeMethod (ImpState esref cid inst sm) wasm_mod caller env dat = do
         | null (calls es') -> return $ Return $ canisterActions es'
         | otherwise        -> return $ Trap "cannot call from init"
 
-rawPreUpgrade :: ImpState s -> Module -> EntityId -> CI.Env -> ST s (TrapOr (CanisterActions, Blob))
-rawPreUpgrade (ImpState esref cid inst sm) wasm_mod caller env = do
+rawPreUpgrade :: EntityId -> Env -> ImpState s -> ST s (TrapOr (CanisterActions, Blob))
+rawPreUpgrade caller env (ImpState esref inst sm wasm_mod) = do
   result <- runExceptT $ do
-    let es = (initialExecutionState cid inst sm env cantRespond)
+    let es = (initialExecutionState inst sm env cantRespond)
               { params = Params
                   { param_dat    = Nothing
                   , param_caller = Just caller
@@ -561,10 +553,10 @@ rawPreUpgrade (ImpState esref cid inst sm) wasm_mod caller env = do
             return $ Return (canisterActions es', stable_mem)
         | otherwise        -> return $ Trap "cannot call from pre_upgrade"
 
-rawPostUpgrade :: ImpState s -> Module -> EntityId -> CI.Env -> Blob -> Blob -> ST s (TrapOr CanisterActions)
-rawPostUpgrade (ImpState esref cid inst sm) wasm_mod caller env mem dat = do
+rawPostUpgrade :: EntityId -> Env -> Blob -> Blob -> ImpState s -> ST s (TrapOr CanisterActions)
+rawPostUpgrade caller env mem dat (ImpState esref inst sm wasm_mod) = do
   result <- runExceptT $ do
-    let es = (initialExecutionState cid inst sm env cantRespond)
+    let es = (initialExecutionState inst sm env cantRespond)
               { params = Params
                   { param_dat    = Just dat
                   , param_caller = Just caller
@@ -585,9 +577,9 @@ rawPostUpgrade (ImpState esref cid inst sm) wasm_mod caller env mem dat = do
         | null (calls es') -> return $ Return (canisterActions es')
         | otherwise        -> return $ Trap "cannot call from post_upgrade"
 
-rawQueryMethod :: ImpState s -> MethodName -> EntityId -> CI.Env -> Blob -> ST s (TrapOr Response)
-rawQueryMethod (ImpState esref cid inst sm) method caller env dat = do
-  let es = (initialExecutionState cid inst sm env canRespond)
+rawQuery :: MethodName -> EntityId -> Env -> Blob -> ImpState s -> ST s (TrapOr Response)
+rawQuery method caller env dat (ImpState esref inst sm _) = do
+  let es = (initialExecutionState inst sm env canRespond)
             { params = Params
                 { param_dat    = Just dat
                 , param_caller = Just caller
@@ -606,9 +598,9 @@ rawQueryMethod (ImpState esref cid inst sm) method caller env dat = do
       | Just r <- response es' -> return $ Return r
       | otherwise -> return $ Trap "No response"
 
-rawUpdateMethod :: ImpState s -> MethodName -> EntityId -> CI.Env -> Responded -> Funds -> Blob -> ST s (TrapOr UpdateResult)
-rawUpdateMethod (ImpState esref cid inst sm) method caller env responded funds_available dat = do
-  let es = (initialExecutionState cid inst sm env responded)
+rawUpdate :: MethodName -> EntityId -> Env -> Responded -> Funds -> Blob -> ImpState s -> ST s (TrapOr UpdateResult)
+rawUpdate method caller env responded funds_available dat (ImpState esref inst sm _) = do
+  let es = (initialExecutionState inst sm env responded)
             { params = Params
                 { param_dat    = Just dat
                 , param_caller = Just caller
@@ -628,14 +620,14 @@ rawUpdateMethod (ImpState esref cid inst sm) method caller env responded funds_a
         , canisterActions es'
         )
 
-rawCallbackMethod :: ImpState s -> Callback -> CI.Env -> Responded -> Funds -> Response -> Funds -> ST s (TrapOr UpdateResult)
-rawCallbackMethod (ImpState esref cid inst sm) callback env responded funds_available res refund = do
+rawCallback :: Callback -> Env -> Responded -> Funds -> Response -> Funds -> ImpState s -> ST s (TrapOr UpdateResult)
+rawCallback callback env responded funds_available res refund (ImpState esref inst sm _) = do
   let params = case res of
         Reply dat ->
           Params { param_dat = Just dat, param_caller = Nothing, reject_code = Just 0, reject_message = Nothing, funds_refunded = Just refund }
         Reject (rc, reject_message) ->
           Params { param_dat = Nothing, param_caller = Nothing, reject_code = Just (rejectCode rc), reject_message = Just reject_message, funds_refunded = Just refund }
-  let es = (initialExecutionState cid inst sm env responded)
+  let es = (initialExecutionState inst sm env responded)
             { params
             , funds_available = Just funds_available
             }

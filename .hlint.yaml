@@ -5,3 +5,4 @@
 - ignore: {name: "Eta reduce"}
 - ignore: {name: "Use >=>"}
 - ignore: {name: "Use const"}
+- ignore: {name: "Avoid lambda using `infix`"}

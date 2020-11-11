@@ -62,7 +62,6 @@ import GHC.Stack
 import IC.Types
 import IC.Funds
 import IC.Canister
-import qualified IC.Canister.Interface as CI
 import IC.Id.Fresh
 import IC.Utils
 import IC.Hash
@@ -325,6 +324,18 @@ authSyncRequest t ev = \case
       _ -> throwError "User is not authorized to read unspecified state paths"
 
 
+canisterEnv :: ICM m => CanisterId -> m Env
+canisterEnv canister_id = do
+  env_time <- getCanisterTime canister_id
+  env_balance <- getBalance canister_id
+  return $ Env
+    { env_self = canister_id
+    , env_time
+    , env_balance
+    , env_certificate = Nothing
+    }
+
+
 -- Synchronous requests
 
 readRequest :: ICM m => Timestamp -> SyncRequest -> m ReqResponse
@@ -338,10 +349,9 @@ readRequest time (QueryRequest canister_id user_id method arg) =
     when empty $ reject RC_DESTINATION_INVALID "canister is empty"
     wasm_state <- getCanisterState canister_id
     can_mod <- getCanisterMod canister_id
-    can_time <- getCanisterTime canister_id
-    balance <- getBalance canister_id
     certificate <- getDataCertificate time canister_id
-    let env = CI.Env can_time balance (Just certificate)
+    env0 <- canisterEnv canister_id
+    let env = env0 { env_certificate = Just certificate }
 
     f <- return (M.lookup method (query_methods can_mod))
       `orElse` reject RC_DESTINATION_INVALID "query method does not exist"
@@ -562,9 +572,7 @@ processMessage m = case m of
       when empty $ reject RC_DESTINATION_INVALID "canister is empty"
       wasm_state <- getCanisterState callee
       can_mod <- getCanisterMod callee
-      time <- getCanisterTime callee
-      balance <- getBalance callee
-      let env = CI.Env time balance Nothing
+      env <- canisterEnv callee
       invokeEntry ctxt_id wasm_state can_mod env entry >>= \case
         Trap msg -> do
           -- Eventually update cycle balance here
@@ -703,13 +711,11 @@ icInstallCode caller r = do
     canisterMustExist canister_id
     checkController canister_id caller
     was_empty <- isCanisterEmpty canister_id
-    time <- getCanisterTime canister_id
-    balance <- getBalance canister_id
-    let env = CI.Env time balance Nothing
+    env <- canisterEnv canister_id
 
     let
       reinstall = do
-        (wasm_state, ca) <- return (init_method new_can_mod canister_id caller env arg)
+        (wasm_state, ca) <- return (init_method new_can_mod caller env arg)
           `onTrap` (\msg -> reject RC_CANISTER_ERROR $ "Initialization trapped: " ++ msg)
         setCanisterModule canister_id new_can_mod (sha256 (r .! #wasm_module))
         setCanisterState canister_id wasm_state
@@ -730,7 +736,7 @@ icInstallCode caller r = do
         -- TODO: update balance in env based on ca1 here, once canister actions
         -- can change balances
         let env2 = env
-        (new_wasm_state, ca2) <- return (post_upgrade_method new_can_mod canister_id caller env2 mem arg)
+        (new_wasm_state, ca2) <- return (post_upgrade_method new_can_mod caller env2 mem arg)
           `onTrap` (\msg -> reject RC_CANISTER_ERROR $ "Post-upgrade trapped: " ++ msg)
 
         setCanisterModule canister_id new_can_mod (sha256 (r .! #wasm_module))
@@ -856,7 +862,7 @@ runRandIC a = state $ \ic ->
     in (x, ic { rng = g })
 
 invokeEntry :: ICM m =>
-    CallId -> WasmState -> CanisterModule -> CI.Env -> EntryPoint ->
+    CallId -> WasmState -> CanisterModule -> Env -> EntryPoint ->
     m (TrapOr (WasmState, UpdateResult))
 invokeEntry ctxt_id wasm_state can_mod env entry = do
     responded <- respondedCallID ctxt_id

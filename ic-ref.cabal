@@ -89,9 +89,8 @@ common logic
   other-modules:       IC.Utils
   other-modules:       IC.Hash
   other-modules:       IC.Canister.Imp
-  other-modules:       IC.Canister.Interface
-  other-modules:       IC.Canister.Pure
-  other-modules:       IC.Canister.Persisted
+  other-modules:       IC.Canister.Snapshot
+  other-modules:       IC.Purify
   other-modules:       IC.Management
   other-modules:       IC.Wasm.Winter
   other-modules:       IC.Wasm.WinterMemory
