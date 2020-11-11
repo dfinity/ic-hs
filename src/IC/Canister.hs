@@ -82,8 +82,7 @@ concreteToAbstractModule wasm_mod = CanisterModule
 instantiate :: Module -> TrapOr WasmState
 instantiate wasm_mod =
   either Trap Return $ snd $ createMaybe $ do
-    esref <- newESRef
-    rawInstantiate esref wasm_mod >>= \case
+    rawInstantiate wasm_mod >>= \case
       Trap err -> return ((), Left err)
       Return rs -> return ((), Right rs)
 

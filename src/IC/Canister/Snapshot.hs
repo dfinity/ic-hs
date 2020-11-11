@@ -25,8 +25,7 @@ instance SnapshotAble ImpState where
     persist (ImpState _ inst sm mod) = do
         CanisterSnapshot mod <$> persistInstance inst <*> persistMemory sm
     recreate (CanisterSnapshot wasm_mod pinst pmem) = do
-        esref <- newESRef
-        rs <- rawInstantiate esref wasm_mod >>= trapToFail
+        rs <- rawInstantiate wasm_mod >>= trapToFail
         resumeInstance (isInstance rs) pinst
         resumeMemory (isStableMem rs) pmem
         return rs

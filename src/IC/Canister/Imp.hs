@@ -9,11 +9,8 @@
 The canister interface, presented imperatively (or impurely), i.e. without rollback
 -}
 module IC.Canister.Imp
- ( ESRef
- , CanisterEntryPoint
+ ( CanisterEntryPoint
  , ImpState(..)
- , newESRef
- , runESST
  , rawInstantiate
  , rawInitialize
  , rawQuery
@@ -21,7 +18,6 @@ module IC.Canister.Imp
  , rawCallback
  , rawPreUpgrade
  , rawPostUpgrade
- , silently
  )
 where
 
@@ -95,17 +91,11 @@ initialExecutionState inst stableMem env responded = ExecutionState
 --
 -- We “always” have the 'STRef', but only within 'withES' is it actually
 -- present.
---
--- Also: A flag to check whether we are running in silent mode or not
--- (a bit of a hack)
 
-type ESRef s = (STRef s Bool, STRef s (Maybe (ExecutionState s)))
+type ESRef s = STRef s (Maybe (ExecutionState s))
 
 newESRef :: ST s (ESRef s)
-newESRef = (,) <$> newSTRef True <*> newSTRef Nothing
-
-runESST :: (forall s. ESRef s -> ST s a) -> a
-runESST f = runST $ newESRef >>= f
+newESRef = newSTRef Nothing
 
 -- | runs a computation with the given initial execution state
 -- and returns the final execution state with it.
@@ -113,7 +103,7 @@ withES :: PrimMonad m =>
   ESRef (PrimState m) ->
   ExecutionState (PrimState m) ->
   m a -> m (a, ExecutionState (PrimState m))
-withES (_pref, esref) es f = do
+withES esref es f = do
   before <- stToPrim $ readSTRef esref
   unless (isNothing before) $ error "withES with non-empty es"
   stToPrim $ writeSTRef esref $ Just es
@@ -125,21 +115,13 @@ withES (_pref, esref) es f = do
       stToPrim $ writeSTRef esref Nothing
       return (x, es')
 
-silently :: PrimMonad m => ESRef (PrimState m) -> m x -> m x
-silently (pref, _esref) f = do
-  before <- stToPrim $ readSTRef pref
-  stToPrim $ writeSTRef pref False
-  x <- f
-  stToPrim $ writeSTRef pref before
-  return x
-
 getsES :: ESRef s -> (ExecutionState s -> b) -> HostM s b
-getsES (_, esref) f = lift (readSTRef esref) >>= \case
+getsES esref f = lift (readSTRef esref) >>= \case
   Nothing -> throwError "System API not available yet"
   Just es -> return (f es)
 
 modES :: ESRef s -> (ExecutionState s -> ExecutionState s) -> HostM s ()
-modES (_, esref) f = lift $ modifySTRef esref (fmap f)
+modES esref f = lift $ modifySTRef esref (fmap f)
 
 appendReplyData :: ESRef s -> Blob -> HostM s ()
 appendReplyData esref dat = modES esref $ \es ->
@@ -262,12 +244,10 @@ systemAPI esref =
         get_blob >>= \blob -> copy_to_canister dst offset size blob
       )
 
-    -- Unsafely print (if not in silent mode)
+    -- Unsafely print
     putBytes :: BS.ByteString -> HostM s ()
     putBytes bytes =
-      stToPrim (readSTRef (fst esref)) >>= \case
-        True -> unsafeIOToPrim $ BSC.putStrLn $ BSC.pack "debug.print: " <> bytes
-        False -> return ()
+      unsafeIOToPrim $ BSC.putStrLn $ BSC.pack "debug.print: " <> bytes
 
     -- The system calls (in the order of the public spec)
     -- https://docs.dfinity.systems/spec/public/#_system_imports
@@ -482,8 +462,9 @@ data ImpState s = ImpState
   , isModule :: Module
   }
 
-rawInstantiate :: ESRef s -> Module -> ST s (TrapOr (ImpState s))
-rawInstantiate esref wasm_mod = do
+rawInstantiate :: Module -> ST s (TrapOr (ImpState s))
+rawInstantiate wasm_mod = do
+  esref <- newESRef
   result <- runExceptT $ (,)
     <$> initialize wasm_mod (systemAPI esref)
     <*> Mem.new
