@@ -29,6 +29,8 @@ common version
 
 common certificates
   hs-source-dirs:      src
+  other-modules:       IC.CBORPatterns
+  other-modules:       IC.HashTree.CBOR
   other-modules:       IC.HashTree
   other-modules:       IC.Certificate
   other-modules:       IC.Certificate.CBOR
@@ -87,9 +89,8 @@ common logic
   other-modules:       IC.Utils
   other-modules:       IC.Hash
   other-modules:       IC.Canister.Imp
-  other-modules:       IC.Canister.Interface
-  other-modules:       IC.Canister.Pure
-  other-modules:       IC.Canister.Persisted
+  other-modules:       IC.Canister.Snapshot
+  other-modules:       IC.Purify
   other-modules:       IC.Management
   other-modules:       IC.Wasm.Winter
   other-modules:       IC.Wasm.WinterMemory
@@ -211,6 +212,8 @@ test-suite unit-test
   import: cbor, crypto, ghc-flags
   type: exitcode-stdio-1.0
   main-is: unit-tests.hs
+  other-modules:       IC.CBORPatterns
+  other-modules:       IC.HashTree.CBOR
   other-modules:       IC.HashTree
   other-modules:       IC.Test.HashTree
   other-modules:       IC.Test.BLS
@@ -222,3 +225,4 @@ test-suite unit-test
   build-depends: tasty-quickcheck
   build-depends: QuickCheck
   build-depends: quickcheck-io
+  build-depends: hex-text

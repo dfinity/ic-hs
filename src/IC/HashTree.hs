@@ -115,8 +115,13 @@ prune tree paths = go tree
         | l:p <- paths ]
 
     -- Smart constructor to avoid unnecessary forks
-    fork (Pruned h1) (Pruned h2) = Pruned $ h $ domSep "ic-hashtree-fork" <> h1 <> h2
-    fork t1 t2 = Fork t1 t2
+    fork t1 t2
+        | prunedOrEmpty t1, prunedOrEmpty t2 = Pruned (reconstruct (Fork t1 t2))
+        | otherwise = Fork t1 t2
+      where
+        prunedOrEmpty (Pruned _) = True
+        prunedOrEmpty EmptyTree = True
+        prunedOrEmpty _ = False
 
     go EmptyTree = EmptyTree
     go (Labeled l subtree)

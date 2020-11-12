@@ -9,6 +9,7 @@ mod ic0 {
     extern "C" {
         pub fn canister_self_copy(dst: u32, offset: u32, size: u32) -> ();
         pub fn canister_self_size() -> u32;
+        pub fn canister_status() -> u32;
         pub fn debug_print(offset: u32, size: u32) -> ();
         pub fn msg_arg_data_copy(dst: u32, offset: u32, size: u32) -> ();
         pub fn msg_arg_data_size() -> u32;
@@ -119,6 +120,10 @@ pub fn id() -> Vec<u8> {
         ic0::canister_self_copy(bytes.as_mut_ptr() as u32, 0, len);
     }
     bytes
+}
+
+pub fn status() -> u32 {
+    unsafe { ic0::canister_status() }
 }
 
 /// Returns the rejection message.

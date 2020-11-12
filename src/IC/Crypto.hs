@@ -81,8 +81,8 @@ sign domain_sep sk payload = case sk of
         | otherwise = BS.singleton (fromIntegral (BS.length domain_sep)) <> domain_sep <> payload
 
 unpack :: BS.ByteString -> Either T.Text (DER.Suite, BS.ByteString)
-unpack pk | BS.take 1 pk == "\x30" = first T.pack $ DER.decode pk
-          | otherwise = Right (DER.Ed25519, pk) -- raw format
+unpack pk | BS.length pk == 32 = Right (DER.Ed25519, pk) -- raw format
+          | otherwise          = first T.pack $ DER.decode pk
 
 verify :: BS.ByteString -> BS.ByteString -> BS.ByteString -> BS.ByteString -> Either T.Text ()
 verify domain_sep der_pk payload sig = unpack der_pk >>= \case

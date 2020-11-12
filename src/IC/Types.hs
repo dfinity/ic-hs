@@ -78,6 +78,17 @@ data Response = Reply Blob | Reject (RejectCode, String)
 
 -- Abstract canisters
 
+-- | This data type contains all read-only data that should be available to the
+-- canister almost always
+data Status = Running | Stopping | Stopped
+data Env = Env
+    { env_self :: CanisterId
+    , env_time :: Timestamp
+    , env_balance :: Funds
+    , env_status :: Status
+    , env_certificate :: Maybe Blob
+    }
+
 data TrapOr a = Trap String | Return a deriving Functor
 
 data WasmClosure = WasmClosure

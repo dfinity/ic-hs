@@ -315,16 +315,22 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
       cs .! #module_hash @?= Just (sha256 trivialWasmModule)
 
   , testCaseSteps "canister lifecycle" $ \step -> do
-      cid <- install noop
+      cid <- install $
+        onPreUpgrade $ callback $
+          ignore (stableGrow (int 1)) >>>
+          stableWrite (int 0) (i2b getStatus)
 
-      step "Is running?"
+      step "Is running (via management)?"
       cs <- ic_canister_status ic00 cid
       cs .! #status @?= enum #running
+
+      step "Is running (local)?"
+      query cid (replyData (i2b getStatus)) >>= asWord32 >>= is 1
 
       step "Stop"
       ic_stop_canister ic00 cid
 
-      step "Is stopped?"
+      step "Is stopped (via management)?"
       cs <- ic_canister_status ic00 cid
       cs .! #status @?= enum #stopped
 
@@ -337,12 +343,24 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
       step "Cannot call (query)?"
       query' cid reply >>= isReject [5]
 
+      step "Upgrade"
+      upgrade cid $ setGlobal (i2b getStatus)
+
       step "Start canister"
       ic_start_canister ic00 cid
 
-      step "Is running?"
+      step "Is running (via managemnet)?"
       cs <- ic_canister_status ic00 cid
       cs .! #status @?= enum #running
+
+      step "Is running (local)?"
+      query cid (replyData (i2b getStatus)) >>= asWord32 >>= is 1
+
+      step "Was stopped during pre-upgrade?"
+      query cid (replyData (stableRead (int 0) (int 4))) >>= asWord32 >>= is 3
+
+      step "Was stopped during post-upgrade?"
+      query cid (replyData getGlobal) >>= asWord32 >>= is 3
 
       step "Can call (update)?"
       call_ cid reply
@@ -1794,6 +1812,9 @@ isReply (Reject n msg) =
   assertFailure $ "Unexpected reject (code " ++ show n ++ "): " ++ T.unpack msg
 
 -- Convenience decoders
+asWord32 :: HasCallStack => Blob -> IO Word32
+asWord32 = runGet Get.getWord32le
+
 asWord64 :: HasCallStack => Blob -> IO Word64
 asWord64 = runGet Get.getWord64le
 
@@ -2118,8 +2139,8 @@ getRand8Bytes = BS.pack <$> replicateM 8 randomIO
 
 type HasTestConfig = (?testConfig :: TestConfig)
 
-withTestConfig :: (forall. HasTestConfig => TestTree) -> TestConfig -> TestTree
-withTestConfig act tc = let ?testConfig = tc in act
+withTestConfig :: (forall. HasTestConfig => a) -> TestConfig -> a
+withTestConfig x tc = let ?testConfig = tc in x
 
 testConfig :: HasTestConfig => TestConfig
 testConfig = ?testConfig

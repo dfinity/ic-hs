@@ -128,6 +128,7 @@ mkDerivation {
     cryptonite
     ed25519
     hashable
+    hex-text
     leb128-cereal
     memory
     mtl
