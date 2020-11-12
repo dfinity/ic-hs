@@ -245,6 +245,9 @@ fn eval(ops : Ops) {
         37 => stack.push_int(api::data_certificate_present()),
         38 => stack.push_blob(api::data_certificate()),
 
+        // canister_status
+        39 => stack.push_int(api::status()),
+
         _ => api::trap_with(&format!("unknown op {}", op)),
       }
   }

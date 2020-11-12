@@ -194,6 +194,9 @@ getCertificatePresent = op 37
 getCertificate :: Exp 'B
 getCertificate = op 38
 
+getStatus :: Exp 'I
+getStatus = op 39
+
 -- Some convenience combinators
 
 -- This allows us to write byte expressions as plain string literals

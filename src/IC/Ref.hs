@@ -50,6 +50,7 @@ import qualified Data.ByteString.Lazy as BS
 import qualified Data.Text as T
 import qualified Data.Vector as Vec
 import Data.Maybe
+import Data.Functor
 import Control.Monad.State.Class
 import Control.Monad.Except
 import Control.Monad.Random.Lazy
@@ -323,18 +324,22 @@ authSyncRequest t ev = \case
           Nothing -> return ()
       _ -> throwError "User is not authorized to read unspecified state paths"
 
-
 canisterEnv :: ICM m => CanisterId -> m Env
 canisterEnv canister_id = do
   env_time <- getCanisterTime canister_id
   env_balance <- getBalance canister_id
+  env_status <- getRunStatus canister_id <&> \case
+      IsRunning -> Running
+      IsStopping _pending -> Stopping
+      IsStopped -> Stopped
+      IsDeleted -> error "deleted canister encountered"
   return $ Env
     { env_self = canister_id
     , env_time
     , env_balance
+    , env_status
     , env_certificate = Nothing
     }
-
 
 -- Synchronous requests
 

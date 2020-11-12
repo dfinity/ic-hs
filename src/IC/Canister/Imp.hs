@@ -31,6 +31,7 @@ import Data.STRef
 import Data.Maybe
 import Data.Int -- TODO: Should be Word32 in most cases
 import Data.Word
+import Data.Functor
 import Numeric.Natural
 
 import IC.Types
@@ -187,6 +188,7 @@ systemAPI esref =
 
   , toImport "ic0" "canister_self_copy" canister_self_copy
   , toImport "ic0" "canister_self_size" canister_self_size
+  , toImport "ic0" "canister_status" canister_status
 
   , toImport "ic0" "msg_funds_available" msg_funds_available
   , toImport "ic0" "msg_funds_refunded" msg_funds_refunded
@@ -306,6 +308,12 @@ systemAPI esref =
     canister_self_copy :: (Int32, Int32, Int32) -> HostM s ()
     (canister_self_size, canister_self_copy) = size_and_copy $
       rawEntityId <$> gets (env_self . env)
+
+    canister_status :: () -> HostM s Int32
+    canister_status () = gets (env_status . env) <&> \case
+        Running -> 1
+        Stopping -> 2
+        Stopped -> 3
 
     msg_funds_refunded :: (Int32, Int32) -> HostM s Word64
     msg_funds_refunded (unit_src, unit_size) = do
