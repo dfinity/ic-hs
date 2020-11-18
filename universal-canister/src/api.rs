@@ -21,10 +21,10 @@ mod ic0 {
         pub fn msg_reject_msg_size() -> u32;
         pub fn msg_reply() -> ();
         pub fn msg_reply_data_append(offset: u32, size: u32) -> ();
-        pub fn msg_funds_available( unit_src: u32, unit_size: u32 ) -> u64;
-        pub fn msg_funds_refunded( unit_src: u32, unit_size: u32 ) -> u64;
-        pub fn msg_funds_accept( unit_src: u32, unit_size: u32, amount : u64 ) -> ();
-        pub fn canister_balance( unit_src: u32, unit_size: u32 ) -> u64;
+        pub fn msg_cycles_available() -> u64;
+        pub fn msg_cycles_refunded() -> u64;
+        pub fn msg_cycles_accept( max_amount : u64 ) -> u64;
+        pub fn canister_cycle_balance() -> u64;
         pub fn trap(offset: u32, size: u32) -> !;
         pub fn call_new(
             callee_src: u32,
@@ -37,7 +37,7 @@ mod ic0 {
             reject_env : u32,
             ) -> ();
         pub fn call_data_append( src: u32, size: u32 ) -> ();
-        pub fn call_funds_add( unit_src: u32, unit_size: u32, amount : u64 ) -> ();
+        pub fn call_cycles_add( amount : u64 ) -> ();
         pub fn call_perform() -> u32;
         pub fn stable_size() -> u32;
         pub fn stable_grow(additional_pages: u32) -> u32;
@@ -80,10 +80,8 @@ pub fn call_data_append(payload: &[u8]) {
     }
 }
 
-pub fn call_funds_add(unit: &[u8], amount : u64) {
-    unsafe {
-        ic0::call_funds_add(unit.as_ptr() as u32, unit.len() as u32, amount);
-    }
+pub fn call_cycles_add( amount : u64) {
+    unsafe { ic0::call_cycles_add(amount); }
 }
 
 pub fn call_perform() -> u32 {
@@ -159,21 +157,20 @@ pub fn reject_code() -> u32 {
     unsafe { ic0::msg_reject_code() }
 }
 
-pub fn funds_available( unit: &[u8] ) -> u64 {
-    unsafe { ic0::msg_funds_available(unit.as_ptr() as u32, unit.len() as u32) }
+pub fn cycles_available() -> u64 {
+    unsafe { ic0::msg_cycles_available() }
 }
 
-pub fn funds_refunded( unit: &[u8] ) -> u64 {
-    unsafe { ic0::msg_funds_refunded(unit.as_ptr() as u32, unit.len() as u32) }
+pub fn cycles_refunded() -> u64 {
+    unsafe { ic0::msg_cycles_refunded() }
 }
 
-pub fn accept( unit: &[u8], amount : u64) {
-    unsafe { ic0::msg_funds_accept(unit.as_ptr() as u32, unit.len() as u32, amount) }
+pub fn accept( amount : u64) -> u64 {
+    unsafe { ic0::msg_cycles_accept(amount) }
 }
 
-
-pub fn balance( unit: &[u8] ) -> u64 {
-    unsafe { ic0::canister_balance(unit.as_ptr() as u32, unit.len() as u32) }
+pub fn balance() -> u64 {
+    unsafe { ic0::canister_cycle_balance() }
 }
 
 pub fn stable_size() -> u32 {

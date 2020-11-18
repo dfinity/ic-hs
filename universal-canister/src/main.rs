@@ -177,29 +177,19 @@ fn eval(ops : Ops) {
         // time
         26 => stack.push_int64(api::time()),
 
-        // available funds
-        27 => {
-            let unit = stack.pop_blob();
-            stack.push_int64(api::funds_available(&unit))
-        }
+        // available cycles
+        27 => stack.push_int64(api::cycles_available()),
 
         // balance
-        28 => {
-            let unit = stack.pop_blob();
-            stack.push_int64(api::balance(&unit))
-        }
+        28 => stack.push_int64(api::balance()),
 
         // refunded
-        29 => {
-            let unit = stack.pop_blob();
-            stack.push_int64(api::funds_refunded(&unit))
-        }
+        29 => stack.push_int64(api::cycles_refunded()),
 
         // accept
         30 => {
-            let amount = stack.pop_int64();
-            let unit = stack.pop_blob();
-            api::accept(&unit, amount)
+            let a = stack.pop_int64();
+            stack.push_int64(api::accept(a))
         }
 
         // push int64
@@ -225,12 +215,8 @@ fn eval(ops : Ops) {
         // append arg
         33 => api::call_data_append(&stack.pop_blob()),
 
-        // append funds
-        34 => {
-            let amount = stack.pop_int64();
-            let unit = stack.pop_blob();
-            api::call_funds_add(&unit, amount);
-        }
+        // append cycles
+        34 => api::call_cycles_add(stack.pop_int64()),
 
         // perform
         35 => {

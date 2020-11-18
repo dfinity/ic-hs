@@ -14,7 +14,6 @@ specification than this file and `impl/universal-canister/src/`
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
 
@@ -24,7 +23,6 @@ import qualified Data.ByteString.Lazy as BS
 import Data.ByteString.Builder
 import Data.Word
 import Data.String
-import IC.Funds
 
 -- The types of our little language are i32, i64 and blobs
 
@@ -143,17 +141,17 @@ stableWrite = op 18
 getTime :: Exp 'I64
 getTime = op 26
 
-getAvailableFunds :: Exp 'B -> Exp 'I64
-getAvailableFunds = op 27
+getAvailableCycles :: Exp 'I64
+getAvailableCycles = op 27
 
-getBalance :: Exp 'B -> Exp 'I64
+getBalance :: Exp 'I64
 getBalance = op 28
 
-getRefund :: Exp 'B -> Exp 'I64
+getRefund :: Exp 'I64
 getRefund = op 29
 
-acceptFunds :: Exp 'B -> Exp 'I64 -> Prog
-acceptFunds = op 30
+acceptCycles :: Exp 'I64 -> Exp 'I64
+acceptCycles = op 30
 
 debugPrint :: Exp 'B -> Prog
 debugPrint = op 19
@@ -179,8 +177,8 @@ callNew = op 32
 callDataAppend :: Exp 'B -> Prog
 callDataAppend = op 33
 
-callFundsAdd :: Exp 'B -> Exp 'I64 -> Prog
-callFundsAdd = op 34
+callCyclesAdd :: Exp 'I64 -> Prog
+callCyclesAdd = op 34
 
 callPerform :: Prog
 callPerform = op 35
@@ -224,8 +222,7 @@ inter_call callee method_name ca =
     callNew (bytes callee) (bytes method_name)
             (callback (on_reply ca)) (callback (on_reject ca)) >>>
     callDataAppend (callback (other_side ca)) >>>
-    (if cycles ca > 0 then callFundsAdd (bytes cycle_unit) (int64 (cycles ca)) else noop) >>>
-    (if icpts ca > 0 then callFundsAdd (bytes icpt_unit) (int64 (icpts ca)) else noop) >>>
+    (if cycles ca > 0 then callCyclesAdd (int64 (cycles ca)) else noop) >>>
     callPerform
 
 inter_update :: BS.ByteString -> CallArgs -> Prog

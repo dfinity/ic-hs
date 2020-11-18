@@ -57,27 +57,23 @@ type ICManagement m =
         module_hash: opt blob;
         controller: principal;
         memory_size: nat;
-        // haskell-candid does not support tuple short hands yet:
-        balance: vec record {0 : blob; 1 : nat};
+        cycles : nat;
       });
       delete_canister : (record {
         canister_id : principal;
       }) -> ();
-      deposit_funds: (record {
+      deposit_cycles: (record {
         canister_id : principal;
       }) -> ();
       raw_rand : () -> (blob);
 
-      /* unspec’ed */
-      dev_create_canister_with_funds : (record{
-        num_cycles : nat;
-        num_icpt : nat;
+      provisional_create_canister_with_cycles : (record{
+        amount : opt nat;
       }) -> (record {canister_id : principal});
 
-      dev_set_funds : (record{
+      provisional_top_up_canister : (record{
         canister_id : principal;
-        num_cycles : nat;
-        num_icpt : nat;
+        amount : nat;
       }) -> ();
     }
   |]

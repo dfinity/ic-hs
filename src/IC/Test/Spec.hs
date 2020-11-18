@@ -28,7 +28,6 @@ import qualified Data.ByteString.Lazy as BS
 import qualified Data.ByteString.Builder as BS
 import qualified Data.HashMap.Lazy as HM
 import qualified Data.Set as S
-import qualified Data.Vector as Vec
 import Network.HTTP.Client
 import Network.HTTP.Types
 import Numeric.Natural
@@ -72,7 +71,6 @@ import IC.HashTree hiding (Blob, Label)
 import IC.Certificate
 import IC.Certificate.Value
 import IC.Certificate.CBOR
-import IC.Funds
 import IC.Hash
 
 -- * Test data, standard requests
@@ -669,33 +667,33 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
       never = ""
 
     in concat
-    [ t "msg_arg_data"          "I U Q Ry"  $ ignore argData
-    , t "msg_caller"            "I G U Q"   $ ignore caller
-    , t "msg_reject_code"       "Ry Rt"     $ ignore reject_code
-    , t "msg_reject_msg"        "Rt"        $ ignore reject_msg
-    , t "msg_reply_data_append" "U Q Ry Rt" $ replyDataAppend "Hey!"
-    , t "msg_reply"             never         reply -- due to double reply
-    , t "msg_reject"            never       $ reject "rejecting" -- due to double reply
-    , t "msg_funds_available"   "U Rt Ry"   $ ignore (getAvailableFunds (bytes cycle_unit))
-    , t "msg_funds_refunded"    "Rt Ry"     $ ignore (getRefund (bytes cycle_unit))
-    , t "msg_funds_accept"      "U Rt Ry"   $ acceptFunds (bytes cycle_unit) (int64 0)
-    , t "canister_self"         star        $ ignore self
-    , t "canister_balance"      star        $ ignore (getBalance (bytes cycle_unit))
+    [ t "msg_arg_data"           "I U Q Ry"  $ ignore argData
+    , t "msg_caller"             "I G U Q"   $ ignore caller
+    , t "msg_reject_code"        "Ry Rt"     $ ignore reject_code
+    , t "msg_reject_msg"         "Rt"        $ ignore reject_msg
+    , t "msg_reply_data_append"  "U Q Ry Rt" $ replyDataAppend "Hey!"
+    , t "msg_reply"              never         reply -- due to double reply
+    , t "msg_reject"             never       $ reject "rejecting" -- due to double reply
+    , t "msg_cycles_available"   "U Rt Ry"   $ ignore getAvailableCycles
+    , t "msg_cycles_refunded"    "Rt Ry"     $ ignore getRefund
+    , t "msg_cycles_accept"      "U Rt Ry"   $ ignore (acceptCycles (int64 0))
+    , t "canister_self"          star        $ ignore self
+    , t "canister_cycle_balance" star        $ ignore getBalance
     , t "call_new…call_perform" "U Rt Ry"   $
         callNew "foo" "bar" "baz" "quux" >>>
         callDataAppend "foo" >>>
-        callFundsAdd (bytes cycle_unit) (int64 0) >>>
+        callCyclesAdd (int64 0) >>>
         callPerform
-    , t "call_data_append"      never       $ callDataAppend (bytes "foo")
-    , t "call_funds_add"        never       $ callFundsAdd (bytes cycle_unit) (int64 0)
-    , t "call_perform"          never         callPerform
-    , t "stable_size"           star        $ ignore stableSize
-    , t "stable_grow"           star        $ ignore $ stableGrow (int 1)
-    , t "stable_read"           star        $ ignore $ stableRead (int 0) (int 0)
-    , t "stable_write"          star        $ stableWrite (int 0) ""
-    , t "time"                  star        $ ignore getTime
-    , t "debug_print"           star        $ debugPrint "hello"
-    , t "trap"                  never       $ trap "this better traps"
+    , t "call_data_append"       never       $ callDataAppend (bytes "foo")
+    , t "call_cycles_add"        never       $ callCyclesAdd (int64 0)
+    , t "call_perform"           never         callPerform
+    , t "stable_size"            star        $ ignore stableSize
+    , t "stable_grow"            star        $ ignore $ stableGrow (int 1)
+    , t "stable_read"            star        $ ignore $ stableRead (int 0) (int 0)
+    , t "stable_write"           star        $ stableWrite (int 0) ""
+    , t "time"                   star        $ ignore getTime
+    , t "debug_print"            star        $ debugPrint "hello"
+    , t "trap"                   never       $ trap "this better traps"
     ]
 
   , simpleTestCase "self" $ \cid ->
@@ -706,8 +704,8 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
       [ testGroup "traps without call_new"
         [ simpleTestCase "call_data_append" $ \cid ->
           call' cid (callDataAppend "Foo" >>> reply) >>= isReject [5]
-        , simpleTestCase "call_funds_add" $ \cid ->
-          call' cid (callFundsAdd "Foo" (int64 0) >>> reply) >>= isReject [5]
+        , simpleTestCase "call_cycles_add" $ \cid ->
+          call' cid (callCyclesAdd (int64 0) >>> reply) >>= isReject [5]
         , simpleTestCase "call_perform" $ \cid ->
           call' cid (callPerform >>> reply) >>= isReject [5]
         ]
@@ -1158,246 +1156,293 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
       query cid (replyData getCertificate) >>= extract cid >>= is "FOO"
     ]
 
-  , testGroup "funds" $
-    let getICPTs = replyData (i64tob (getBalance (bytes icpt_unit)))
-        rememberICPTs =
+  , testGroup "cycles" $
+    let replyBalance = replyData (i64tob getBalance)
+        rememberBalance =
           ignore (stableGrow (int 1)) >>>
-          stableWrite (int 0) (i64tob (getBalance (bytes icpt_unit)))
-        recallICPTs = replyData (stableRead (int 0) (int 8))
-        acceptAll = acceptFunds (bytes icpt_unit) (getAvailableFunds (bytes icpt_unit))
-        cycles = fromIntegral (maxBound :: Word64)
-        icpts = 64
+          stableWrite (int 0) (i64tob getBalance)
+        recallBalance = replyData (stableRead (int 0) (int 8))
+        acceptAll = ignore (acceptCycles getAvailableCycles)
+        queryBalance cid = query cid replyBalance >>= asWord64
+
+        def_cycles = 1000_000_000_000 :: Word64
+        -- we assume that cycle balances do not change more than one million
+        -- while running these tests.
+        eps = 20_000_000_000 :: Integer
+
+        isRoughly :: (HasCallStack, Show a, Num a, Integral a) => a -> a -> Assertion
+        isRoughly exp act = assertBool
+           (show act ++ " not near " ++ show exp)
+           (abs (fromIntegral exp - fromIntegral act) < eps)
+
         create prog = do
-          cid <- ic_create_with_funds ic00 cycles (fromIntegral icpts)
+          cid <- ic_create_with_cycles ic00 (Just (fromIntegral def_cycles))
           installAt cid prog
           return cid
-        create_via cid initial_icpts = do
-          cid2 <- ic_create (ic00viaWithFunds cid 1000000000 initial_icpts)
+        create_via cid initial_cycles = do
+          cid2 <- ic_create (ic00viaWithCycles cid initial_cycles)
           universal_wasm <- getTestWasm "universal_canister"
           ic_install (ic00via cid) (enum #install) cid2 universal_wasm (run noop)
           return cid2
     in
     [ testGroup "can use balance API" $
-        let getBalanceTwice unit = join cat (i64tob (getBalance (bytes unit)))
-            test n = replyData (getBalanceTwice n)
-        in concat
-        [ [ simpleTestCase ("in query (unit: " ++ show u ++ ")") $ \cid ->
-            query cid (test u) >>= as2Word64 >>= bothSame
-          , simpleTestCase ("in update (unit: " ++ show u ++ ")") $ \cid ->
-            call cid (test u) >>= as2Word64 >>= bothSame
-          , testCase ("in init (unit: " ++ show u ++ ")") $ do
-            cid <- install (setGlobal (getBalanceTwice u))
-            query cid (replyData getGlobal) >>= as2Word64 >>= bothSame
-          , simpleTestCase ("in callback (unit: " ++ show u ++ ")") $ \cid ->
-            call cid (inter_query cid defArgs{ on_reply = test u }) >>= as2Word64 >>= bothSame
-          ]
-        | u <- ["", cycle_unit, icpt_unit, "this is a test"]
+        let getBalanceTwice = join cat (i64tob getBalance)
+            test = replyData getBalanceTwice
+        in
+        [ simpleTestCase "in query" $ \cid ->
+          query cid test >>= as2Word64 >>= bothSame
+        , simpleTestCase "in update" $ \cid ->
+          call cid test >>= as2Word64 >>= bothSame
+        , testCase "in init" $ do
+          cid <- install (setGlobal getBalanceTwice)
+          query cid (replyData getGlobal) >>= as2Word64 >>= bothSame
+        , simpleTestCase "in callback" $ \cid ->
+          call cid (inter_query cid defArgs{ on_reply = test }) >>= as2Word64 >>= bothSame
         ]
-    , testGroup "can use available funds API" $
-        let getAvailableFundsTwice unit = join cat (i64tob (getAvailableFunds (bytes unit)))
-            test n = replyData (getAvailableFundsTwice n)
-        in concat
-        [ [ simpleTestCase ("in update   (unit: " ++ show u ++ ")") $ \cid ->
-            call cid (test u) >>= as2Word64 >>= bothSame
-          , simpleTestCase ("in callback (unit: " ++ show u ++ ")") $ \cid ->
-            call cid (inter_query cid defArgs{ on_reply = test u }) >>= as2Word64 >>= bothSame
-          ]
-        | u <- ["", cycle_unit, icpt_unit, "this is a test"]
+    , testGroup "can use available cycles API" $
+        let getAvailableCyclesTwice = join cat (i64tob getAvailableCycles)
+            test = replyData getAvailableCyclesTwice
+        in
+        [ simpleTestCase "in update" $ \cid ->
+          call cid test >>= as2Word64 >>= bothSame
+        , simpleTestCase "in callback" $ \cid ->
+          call cid (inter_query cid defArgs{ on_reply = test }) >>= as2Word64 >>= bothSame
         ]
-    , testGroup "can accept zero funds at any unit"
-        [ simpleTestCase ("at unit " ++ show u) $ \cid ->
-            call_ cid $ acceptFunds (bytes u) (int64 0) >>> reply
-        | u <- ["", cycle_unit, icpt_unit, "this is a test"]
-        ]
-    , testGroup "cannot accept more than available funds"
-        [ simpleTestCase ("at unit " ++ show u) $ \cid ->
-            call' cid (acceptFunds (bytes u) (int64 1) >>> reply) >>= isReject [5]
-        | u <- ["", cycle_unit, icpt_unit, "this is a test"]
-        ]
-    , testGroup "cannot accept absurd amount of funds"
-        [ simpleTestCase ("at unit " ++ show u) $ \cid ->
-            call' cid (acceptFunds (bytes u) (int64 maxBound) >>> reply) >>= isReject [5]
-        | u <- ["", cycle_unit, icpt_unit, "this is a test"]
-        ]
-    , testCase "funds in canister_status" $ do
+    , simpleTestCase "can accept zero cycles" $ \cid ->
+        call cid (replyData (i64tob (acceptCycles (int64 0)))) >>= asWord64 >>= is 0
+    , simpleTestCase "can accept more than available cycles" $ \cid ->
+        call cid (replyData (i64tob (acceptCycles (int64 1)))) >>= asWord64 >>= is 0
+    , simpleTestCase "cant accept absurd amount of cycles" $ \cid ->
+        call cid (replyData (i64tob (acceptCycles (int64 maxBound)))) >>= asWord64 >>= is 0
+
+    , testGroup "provisional_create_canister_with_cycles"
+      [ testCase "balance as expected" $ do
+        cid <- create noop
+        queryBalance cid >>= isRoughly def_cycles
+
+      , testCaseSteps "default (i.e. max) balance" $ \step -> do
+        cid <- ic_create_with_cycles ic00 Nothing
+        installAt cid noop
+        cycles <- queryBalance cid
+        step $ "Cycle balance now at " ++ show cycles
+
+      , testCaseSteps "> 2^128 succeeds" $ \step -> do
+        cid <- ic_create_with_cycles ic00 (Just (10 * 2^(128::Int)))
+        installAt cid noop
+        cycles <- queryBalance cid
+        step $ "Cycle balance now at " ++ show cycles
+      ]
+
+    , testCase "cycles in canister_status" $ do
         cid <- create noop
         cs <- ic_canister_status ic00 cid
-        [ (e .! #_0_, e .! #_1_)
-          | e <- Vec.toList (cs .! #balance)
-          , e .! #_0_ /= cycle_unit ] -- filter out cycles, these are unspecified
-            @?= [ (icpt_unit, fromIntegral icpts) ]
-    , testGroup "non-zero ICPT balance"
+        isRoughly (fromIntegral def_cycles) (cs .! #cycles)
+
+    , testGroup "cycle balance"
       [ testCase "install" $ do
-        cid <- create rememberICPTs
-        query cid recallICPTs >>= asWord64 >>= is icpts
+        cid <- create rememberBalance
+        query cid recallBalance >>= asWord64 >>= isRoughly def_cycles
       , testCase "update" $ do
         cid <- create noop
-        call cid getICPTs >>= asWord64 >>= is icpts
+        call cid replyBalance >>= asWord64 >>= isRoughly def_cycles
       , testCase "query" $ do
         cid <- create noop
-        query cid getICPTs >>= asWord64 >>= is icpts
+        query cid replyBalance >>= asWord64 >>= isRoughly def_cycles
       , testCase "in pre_upgrade" $ do
-        cid <- create $ onPreUpgrade (callback rememberICPTs)
+        cid <- create $ onPreUpgrade (callback rememberBalance)
         upgrade cid noop
-        query cid recallICPTs >>= asWord64 >>= is icpts
+        query cid recallBalance >>= asWord64 >>= isRoughly def_cycles
       , testCase "in post_upgrade" $ do
         cid <- create noop
-        upgrade cid rememberICPTs
-        query cid recallICPTs >>= asWord64 >>= is icpts
-        query cid getICPTs >>= asWord64 >>= is icpts
+        upgrade cid rememberBalance
+        query cid recallBalance >>= asWord64 >>= isRoughly def_cycles
+        queryBalance cid >>= isRoughly def_cycles
       ]
-    , testCase "sending more funds than in balance" $ do
-      cid <- create noop
-      do call' cid $ inter_call cid "bar" defArgs { icpts = 2*icpts }
-        >>= isReject [5]
-    , testCase "sending full balance" $ do
+    , testCase "can send cycles" $ do
       cid1 <- create noop
       cid2 <- create noop
       do call cid1 $ inter_call cid2 "update" defArgs
           { other_side =
-            replyDataAppend (i64tob (getAvailableFunds (bytes icpt_unit))) >>>
+            replyDataAppend (i64tob getAvailableCycles) >>>
             acceptAll >>>
             reply
-          , icpts = icpts
+          , cycles = def_cycles `div` 4
           }
-        >>= asWord64 >>= is icpts
-      query cid1 getICPTs >>= asWord64 >>= is 0
-      query cid2 getICPTs >>= asWord64 >>= is (2*icpts)
-    , testCase "relay funds before accept traps" $ do
+        >>= asWord64 >>= isRoughly (def_cycles `div` 4)
+      queryBalance cid1 >>= isRoughly (def_cycles - def_cycles `div` 4)
+      queryBalance cid2 >>= isRoughly (def_cycles + def_cycles `div` 4)
+
+    , testCase "sending more cycles than in balance traps" $ do
+      cid <- create noop
+      cycles <- queryBalance cid
+      call' cid (inter_call cid cid defArgs { cycles = cycles + 1000_000 })
+        >>= isReject [5]
+
+    , testCase "relay cycles before accept traps" $ do
       cid1 <- create noop
       cid2 <- create noop
       cid3 <- create noop
       do call cid1 $ inter_call cid2 "update" defArgs
-          { icpts = icpts
+          { cycles = def_cycles `div` 2
           , other_side =
             inter_call cid3 "update" defArgs
               { other_side = acceptAll >>> reply
-              , icpts = 2*icpts
+              , cycles = def_cycles + def_cycles `div` 4
               , on_reply = noop -- must not double reply
               } >>>
             acceptAll >>> reply
           , on_reply = trap "unexpected reply"
-          , on_reject = replyData (i64tob (getRefund (bytes icpt_unit)))
+          , on_reject = replyData (i64tob getRefund)
           }
-        >>= asWord64 >>= is icpts
-      query cid1 getICPTs >>= asWord64 >>= is icpts
-      query cid2 getICPTs >>= asWord64 >>= is icpts
-      query cid3 getICPTs >>= asWord64 >>= is icpts
-    , testCase "relay funds after accept works" $ do
+        >>= asWord64 >>= isRoughly (def_cycles `div` 2)
+      queryBalance cid1 >>= isRoughly def_cycles
+      queryBalance cid2 >>= isRoughly def_cycles
+      queryBalance cid3 >>= isRoughly def_cycles
+    , testCase "relay cycles after accept works" $ do
       cid1 <- create noop
       cid2 <- create noop
       cid3 <- create noop
       do call cid1 $ inter_call cid2 "update" defArgs
-          { icpts = icpts
+          { cycles = def_cycles `div` 2
           , other_side =
             acceptAll >>>
             inter_call cid3 "update" defArgs
               { other_side = acceptAll >>> reply
-              , icpts = 2*icpts
+              , cycles = def_cycles + def_cycles `div` 4
               }
-          , on_reply = replyData (i64tob (getRefund (bytes icpt_unit)))
+          , on_reply = replyData (i64tob getRefund)
           , on_reject = trap "unexpected reject"
           }
-        >>= asWord64 >>= is 0
-      query cid1 getICPTs >>= asWord64 >>= is 0
-      query cid2 getICPTs >>= asWord64 >>= is 0
-      query cid3 getICPTs >>= asWord64 >>= is (3*icpts)
+        >>= asWord64 >>= isRoughly 0
+      queryBalance cid1 >>= isRoughly (def_cycles `div` 2)
+      queryBalance cid2 >>= isRoughly (def_cycles `div` 4)
+      queryBalance cid3 >>= isRoughly (2*def_cycles + def_cycles `div` 4)
     , testCase "aborting call resets balance" $ do
       cid <- create noop
-      do call cid $
+      (a,b) <- do
+         call cid $
           callNew "Foo" "Bar" "baz" "quux" >>>
-          callFundsAdd (bytes icpt_unit) (int64 (icpts `div` 2)) >>>
-          replyDataAppend (i64tob (getBalance (bytes icpt_unit))) >>>
+          callCyclesAdd (int64 (def_cycles `div` 2)) >>>
+          replyDataAppend (i64tob getBalance) >>>
           callNew "Foo" "Bar" "baz" "quux" >>>
-          replyDataAppend (i64tob (getBalance (bytes icpt_unit))) >>>
+          replyDataAppend (i64tob getBalance) >>>
           reply
-        >>= as2Word64 >>= is (icpts `div` 2, icpts)
+        >>= as2Word64
+      isRoughly (def_cycles `div` 2) a
+      isRoughly def_cycles b
 
     , testCase "partial refund" $ do
       cid1 <- create noop
       cid2 <- create noop
       do call cid1 $ inter_call cid2 "update" defArgs
-          { icpts = icpts
-          , other_side = acceptFunds (bytes icpt_unit) (int64 (icpts `div` 2)) >>> reply
-          , on_reply = replyData (i64tob (getRefund (bytes icpt_unit)))
+          { cycles = def_cycles `div` 2
+          , other_side = ignore (acceptCycles (int64 (def_cycles `div` 4))) >>> reply
+          , on_reply = replyData (i64tob getRefund)
           , on_reject = trap "unexpected reject"
           }
-        >>= asWord64 >>= is (icpts `div` 2)
-      query cid1 getICPTs >>= asWord64 >>= is (icpts `div` 2)
-      query cid2 getICPTs >>= asWord64 >>= is (icpts + icpts `div` 2)
-    , testCase "funds not in balance while in transit" $ do
+        >>= asWord64 >>= isRoughly (def_cycles `div` 4)
+      queryBalance cid1 >>= isRoughly (def_cycles - def_cycles `div` 4)
+      queryBalance cid2 >>= isRoughly (def_cycles + def_cycles `div` 4)
+    , testCase "cycles not in balance while in transit" $ do
       cid1 <- create noop
       do call cid1 $ inter_call cid1 "update" defArgs
-          { icpts = icpts
-          , other_side = getICPTs
+          { cycles = def_cycles `div` 4
+          , other_side = replyBalance
           , on_reject = trap "unexpected reject"
           }
-        >>= asWord64 >>= is 0
-      query cid1 getICPTs >>= asWord64 >>= is icpts
-    , testCase "create and delete canister with funds" $ do
+        >>= asWord64 >>= isRoughly (def_cycles - def_cycles `div` 4)
+      queryBalance cid1 >>= isRoughly def_cycles
+    , testCase "create and delete canister with cycles" $ do
       cid1 <- create noop
-      cid2 <- create_via cid1 (icpts`div`2)
-      query cid1 getICPTs >>= asWord64 >>= is (icpts `div` 2)
-      query cid2 getICPTs >>= asWord64 >>= is (icpts `div` 2)
+      cid2 <- create_via cid1 (def_cycles`div`2)
+      queryBalance cid1 >>= isRoughly (def_cycles `div` 2)
+      queryBalance cid2 >>= isRoughly (def_cycles `div` 2)
       ic_stop_canister (ic00via cid1) cid2
-      -- We load some funds on the deletion call, just to check that they are refunded
-      ic_delete_canister (ic00viaWithFunds cid1 0 (icpts`div`2)) cid2
-      query cid1 getICPTs >>= asWord64 >>= is icpts
+      -- We load some cycles on the deletion call, just to check that they are refunded
+      ic_delete_canister (ic00viaWithCycles cid1 (def_cycles`div`4)) cid2
+      queryBalance cid1 >>= isRoughly (def_cycles`div`2)
 
-    , testGroup "deposit_funds"
-      [ testCase "deposit funds (as controller)" $ do
+    , testGroup "deposit_cycles"
+      [ testCase "deposit cycles (as controller)" $ do
         cid1 <- create noop
-        cid2 <- create_via cid1 (icpts`div`2)
-        query cid1 getICPTs >>= asWord64 >>= is (icpts `div` 2)
-        query cid2 getICPTs >>= asWord64 >>= is (icpts `div` 2)
-        ic_deposit_funds (ic00viaWithFunds cid1 0 (icpts`div`2)) cid2
-        query cid1 getICPTs >>= asWord64 >>= is 0
-        query cid2 getICPTs >>= asWord64 >>= is icpts
-      , testCase "deposit funds (as controller, too much)" $ do
+        cid2 <- create_via cid1 (def_cycles`div`2)
+        queryBalance cid1 >>= isRoughly (def_cycles `div` 2)
+        queryBalance cid2 >>= isRoughly (def_cycles `div` 2)
+        ic_deposit_cycles (ic00viaWithCycles cid1 (def_cycles`div`4)) cid2
+        queryBalance cid1 >>= isRoughly (def_cycles `div` 4)
+        queryBalance cid2 >>= isRoughly (def_cycles - def_cycles `div` 4)
+      , testCase "deposit cycles (as controller, too much)" $ do
         cid1 <- create noop
-        cid2 <- create_via cid1 (icpts`div`2)
-        query cid1 getICPTs >>= asWord64 >>= is (icpts `div` 2)
-        query cid2 getICPTs >>= asWord64 >>= is (icpts `div` 2)
-        ic_deposit_funds' (ic00viaWithFunds cid1 0 icpts) cid2 >>= isReject [5]
-        query cid1 getICPTs >>= asWord64 >>= is (icpts `div` 2)
-        query cid2 getICPTs >>= asWord64 >>= is (icpts `div` 2)
-      , testCase "deposit funds (as wrong controller)" $ do
+        cid2 <- create_via cid1 (def_cycles`div`2)
+        queryBalance cid1 >>= isRoughly (def_cycles `div` 2)
+        queryBalance cid2 >>= isRoughly (def_cycles `div` 2)
+        ic_deposit_cycles' (ic00viaWithCycles cid1 def_cycles) cid2 >>= isReject [4,5]
+        queryBalance cid1 >>= isRoughly (def_cycles `div` 2)
+        queryBalance cid2 >>= isRoughly (def_cycles `div` 2)
+      , testCase "deposit cycles (as wrong controller)" $ do
         cid1 <- create noop
-        cid2 <- create_via cid1 (icpts`div`2)
-        query cid1 getICPTs >>= asWord64 >>= is (icpts `div` 2)
-        query cid2 getICPTs >>= asWord64 >>= is (icpts `div` 2)
-        ic_deposit_funds' (ic00viaWithFunds cid2 0 (icpts`div`2)) cid1 >>= isRelayReject [5]
-        query cid1 getICPTs >>= asWord64 >>= is (icpts `div` 2)
-        query cid2 getICPTs >>= asWord64 >>= is (icpts `div` 2)
-      , testCase "deposit funds (as user controller, zero funds)" $ do
+        cid2 <- create_via cid1 (def_cycles`div`2)
+        queryBalance cid1 >>= isRoughly (def_cycles `div` 2)
+        queryBalance cid2 >>= isRoughly (def_cycles `div` 2)
+        ic_deposit_cycles' (ic00viaWithCycles cid2 (def_cycles`div`4)) cid1 >>= isRelayReject [4,5]
+        queryBalance cid1 >>= isRoughly (def_cycles `div` 2)
+        queryBalance cid2 >>= isRoughly (def_cycles `div` 2)
+      , testCase "deposit cycles (as user controller, zero cycles)" $ do
         cid1 <- create noop
-        query cid1 getICPTs >>= asWord64 >>= is icpts
-        ic_deposit_funds ic00 cid1
-        query cid1 getICPTs >>= asWord64 >>= is icpts
+        queryBalance cid1 >>= isRoughly def_cycles
+        ic_deposit_cycles ic00 cid1
+        queryBalance cid1 >>= isRoughly def_cycles
       ]
 
     , testCase "two-step-refund" $ do
       cid1 <- create noop
       do call cid1 $ inter_call cid1 "update" defArgs
-          { icpts = 10
+          { cycles = 10
           , other_side = inter_call cid1 "update" defArgs
-              { icpts = 5
+              { cycles = 5
               , other_side = reply -- no accept
               , on_reply =
                     -- remember refund
-                    replyDataAppend (i64tob (getRefund (bytes icpt_unit))) >>>
+                    replyDataAppend (i64tob getRefund) >>>
                     reply
               , on_reject = trap "unexpected reject"
               }
           , on_reply =
                 -- remember the refund above and this refund
                 replyDataAppend argData >>>
-                replyDataAppend (i64tob (getRefund (bytes icpt_unit))) >>>
+                replyDataAppend (i64tob getRefund) >>>
                 reply
           , on_reject = trap "unexpected reject"
           }
         >>= as2Word64 >>= is (5,10)
-      query cid1 getICPTs >>= asWord64 >>= is icpts -- nothing lost?
+      queryBalance cid1 >>= isRoughly def_cycles -- nothing lost?
+
+    , testGroup "provisional top up"
+      [ testCase "as user" $ do
+        cid <- create noop
+        queryBalance cid >>= isRoughly def_cycles
+        ic_top_up ic00 cid (fromIntegral def_cycles)
+        queryBalance cid >>= isRoughly (2 * def_cycles)
+      , testCase "as self" $ do
+        cid <- create noop
+        queryBalance cid >>= isRoughly def_cycles
+        ic_top_up (ic00via cid) cid (fromIntegral def_cycles)
+        queryBalance cid >>= isRoughly (2 * def_cycles)
+      , testCase "as other canister" $ do
+        cid <- create noop
+        cid2 <- create noop
+        queryBalance cid >>= isRoughly def_cycles
+        ic_top_up (ic00via cid2) cid (fromIntegral def_cycles)
+        queryBalance cid >>= isRoughly (2 * def_cycles)
+      , testCaseSteps "more than 2^128" $ \step -> do
+        cid <- create noop
+        ic_top_up ic00 cid (10 * 2^(128::Int))
+        cycles <- queryBalance cid
+        step $ "Cycle balance now at " ++ show cycles
+      , testCase "nonexisting canister" $ do
+        ic_top_up' ic00 doesn'tExist (fromIntegral def_cycles)
+          >>= isReject [3,5]
+      ]
     ]
 
   , testGroup "Delegation targets" $ let
@@ -1825,7 +1870,10 @@ bothSame :: (Eq a, Show a) => (a, a) -> Assertion
 bothSame (x,y) = x @?= y
 
 runGet :: HasCallStack => Get.Get a -> Blob -> IO a
-runGet a b = return $! Get.runGet (a <* done) b
+runGet a b = case  Get.runGetOrFail (a <* done) b of
+    Left (_,_, err) ->
+        fail $ "Could not parse " ++ show b ++ ": " ++ err
+    Right (_,_, x) -> return x
   where
     done = do
         nothing_left <- Get.isEmpty
@@ -1839,7 +1887,7 @@ isRelayReject :: HasCallStack => [Word32] -> ReqResponse -> IO ()
 isRelayReject codes r = do
   b <- isReply r
   assertBool
-    ("Reject code " ++ show b ++ " not in" ++ show codes ++ "\n")
+    ("Reject code " ++ show b ++ " not in " ++ show codes ++ "\n")
     (BS.take 4 b `elem` map (BS.toLazyByteString . BS.word32LE) codes)
 
 data StatusResponse = StatusResponse
@@ -1881,17 +1929,16 @@ ic00as user method_name arg = submitCBOR $ rec
       ]
 
 ic00via :: HasTestConfig => Blob -> IC00
-ic00via cid = ic00viaWithFunds cid 0 0
+ic00via cid = ic00viaWithCycles cid 0
 
-ic00viaWithFunds :: HasTestConfig => Blob -> Word64 -> Word64 -> IC00
-ic00viaWithFunds cid cycles icpts method_name arg =
+ic00viaWithCycles :: HasTestConfig => Blob -> Word64 -> IC00
+ic00viaWithCycles cid cycles method_name arg =
   call' cid $
     callNew
       (bytes "") (bytes (BS.fromStrict (T.encodeUtf8 method_name))) -- aaaaa-aa
       (callback replyArgData) (callback replyRejectData) >>>
     callDataAppend (bytes arg) >>>
-    callFundsAdd (bytes cycle_unit) (int64 cycles) >>>
-    callFundsAdd (bytes icpt_unit) (int64 icpts) >>>
+    callCyclesAdd (int64 cycles) >>>
     callPerform
 
 managementService :: (HasCallStack, HasTestConfig) => IC00 -> Rec (ICManagement IO)
@@ -1906,11 +1953,10 @@ ic_create ic00 = do
   r <- managementService ic00 .! #create_canister $ ()
   return (rawPrincipal (r .! #canister_id))
 
-ic_create_with_funds :: HasTestConfig => IC00 -> Natural -> Natural -> IO Blob
-ic_create_with_funds ic00 cycles icpts = do
-  r <- managementService ic00 .! #dev_create_canister_with_funds $ empty
-    .+ #num_cycles .== cycles
-    .+ #num_icpt .== icpts
+ic_create_with_cycles :: HasTestConfig => IC00 -> Maybe Natural -> IO Blob
+ic_create_with_cycles ic00 cycles = do
+  r <- managementService ic00 .! #provisional_create_canister_with_cycles $ empty
+    .+ #amount .== cycles
   return (rawPrincipal (r .! #canister_id))
 
 ic_install :: HasTestConfig => IC00 -> InstallMode -> Blob -> Blob -> Blob -> IO ()
@@ -1946,10 +1992,16 @@ ic_canister_status ic00 canister_id = do
   managementService ic00 .! #canister_status $ empty
     .+ #canister_id .== Principal canister_id
 
-ic_deposit_funds :: HasTestConfig => IC00 -> Blob -> IO ()
-ic_deposit_funds ic00 canister_id = do
-  managementService ic00 .! #deposit_funds $ empty
+ic_deposit_cycles :: HasTestConfig => IC00 -> Blob -> IO ()
+ic_deposit_cycles ic00 canister_id = do
+  managementService ic00 .! #deposit_cycles $ empty
     .+ #canister_id .== Principal canister_id
+
+ic_top_up :: HasTestConfig => IC00 -> Blob -> Natural -> IO ()
+ic_top_up ic00 canister_id amount = do
+  managementService ic00 .! #provisional_top_up_canister $ empty
+    .+ #canister_id .== Principal canister_id
+    .+ #amount .== amount
 
 ic_delete_canister :: HasTestConfig => IC00 -> Blob -> IO ()
 ic_delete_canister ic00 canister_id = do
@@ -2004,10 +2056,16 @@ ic_delete_canister' ic00 canister_id = do
   callIC' ic00 #delete_canister $ empty
     .+ #canister_id .== Principal canister_id
 
-ic_deposit_funds' :: HasTestConfig => IC00 -> Blob -> IO ReqResponse
-ic_deposit_funds' ic00 canister_id = do
-  callIC' ic00 #deposit_funds $ empty
+ic_deposit_cycles' :: HasTestConfig => IC00 -> Blob -> IO ReqResponse
+ic_deposit_cycles' ic00 canister_id = do
+  callIC' ic00 #deposit_cycles $ empty
     .+ #canister_id .== Principal canister_id
+
+ic_top_up' :: HasTestConfig => IC00 -> Blob -> Natural -> IO ReqResponse
+ic_top_up' ic00 canister_id amount = do
+  callIC' ic00 #provisional_top_up_canister $ empty
+    .+ #canister_id .== Principal canister_id
+    .+ #amount .== amount
 
 -- A barrier
 
@@ -2139,8 +2197,8 @@ getRand8Bytes = BS.pack <$> replicateM 8 randomIO
 
 type HasTestConfig = (?testConfig :: TestConfig)
 
-withTestConfig :: (forall. HasTestConfig => a) -> TestConfig -> a
-withTestConfig x tc = let ?testConfig = tc in x
+withTestConfig :: (forall. HasTestConfig => TestTree) -> TestConfig -> TestTree
+withTestConfig act tc = let ?testConfig = tc in act
 
 testConfig :: HasTestConfig => TestConfig
 testConfig = ?testConfig
