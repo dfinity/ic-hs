@@ -82,7 +82,7 @@ common logic
   hs-source-dirs:      src
   other-modules:       IC.Ref
   other-modules:       IC.Types
-  other-modules:       IC.Funds
+  other-modules:       IC.Constants
   other-modules:       IC.Canister
   other-modules:       IC.Id.Fresh
   other-modules:       IC.Id.Forms
@@ -187,7 +187,6 @@ executable ic-ref-test
   other-modules:       IC.Test.Universal
   other-modules:       IC.Management
   other-modules:       IC.Types
-  other-modules:       IC.Funds
   build-depends:       binary
   build-depends:       tasty
   build-depends:       tasty-hunit

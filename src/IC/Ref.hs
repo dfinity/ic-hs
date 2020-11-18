@@ -48,8 +48,8 @@ import qualified Data.Row as R
 import qualified Data.Row.Variants as V
 import qualified Data.ByteString.Lazy as BS
 import qualified Data.Text as T
-import qualified Data.Vector as Vec
 import Data.Maybe
+import Numeric.Natural
 import Data.Functor
 import Control.Monad.State.Class
 import Control.Monad.Except
@@ -61,7 +61,7 @@ import Data.Row ((.==), (.+), (.!), type (.!))
 import GHC.Stack
 
 import IC.Types
-import IC.Funds
+import IC.Constants
 import IC.Canister
 import IC.Id.Fresh
 import IC.Utils
@@ -117,7 +117,7 @@ data CanState = CanState
   , run_status :: RunStatus
   , controller :: EntityId
   , time :: Timestamp
-  , balance :: Funds
+  , cycle_balance :: Natural
   , certified_data :: Blob
   }
   deriving (Show)
@@ -126,7 +126,7 @@ data CanState = CanState
 -- (callback + environment)
 data EntryPoint
   = Public MethodName Blob
-  | Closure Callback Response Funds
+  | Closure Callback Response Cycles
   deriving (Show)
 
 type CallId = Int
@@ -134,7 +134,7 @@ data CallContext = CallContext
   { canister :: CanisterId
   , origin :: CallOrigin
   , responded :: Responded
-  , available_funds :: Funds
+  , available_cycles :: Cycles
   , last_trap :: Maybe String
       -- ^ non-normative, but yields better reject messages
   }
@@ -153,7 +153,7 @@ data Message
   | ResponseMessage
     { call_context :: CallId
     , response :: Response
-    , refunded_funds :: Funds
+    , refunded_cycles :: Cycles
     }
   deriving (Show)
 
@@ -215,7 +215,7 @@ createEmptyCanister cid controller time = modify $ \ic ->
       , run_status = IsRunning
       , controller = controller
       , time = time
-      , balance = no_funds
+      , cycle_balance = 0
       , certified_data = ""
       }
 
@@ -260,16 +260,16 @@ setController :: ICM m => CanisterId -> EntityId -> m ()
 setController cid controller = modCanister cid $
     \cs -> cs { controller = controller }
 
+getBalance :: ICM m => CanisterId -> m Natural
+getBalance cid = cycle_balance <$> getCanister cid
+
+setBalance :: ICM m => CanisterId -> Natural -> m ()
+setBalance cid balance = modCanister cid $
+    \cs -> cs { cycle_balance = min cMAX_CANISTER_BALANCE balance }
+
 setCertifiedData :: ICM m => CanisterId -> Blob -> m ()
 setCertifiedData cid b = modCanister cid $
     \cs -> cs { certified_data = b }
-
-getBalance :: ICM m => CanisterId -> m Funds
-getBalance cid = balance <$> getCanister cid
-
-setBalance :: ICM m => CanisterId -> Funds -> m ()
-setBalance cid balance = modCanister cid $
-    \cs -> cs { balance = balance }
 
 getRunStatus :: ICM m => CanisterId -> m RunStatus
 getRunStatus cid = run_status <$> getCanister cid
@@ -478,7 +478,7 @@ processRequest (rid, req) = onReject (setReqStatus rid . CallResponse .  Rejecte
       , origin = FromUser rid
       , responded = Responded False
       , last_trap = Nothing
-      , available_funds = no_funds
+      , available_cycles = 0
       }
     enqueueMessage $ CallMessage
       { call_context = ctxt_id
@@ -500,12 +500,12 @@ modifyCallContext :: ICM m => CallId -> (CallContext -> CallContext) -> m ()
 modifyCallContext ctxt_id f = modify $ \ic ->
   ic { call_contexts = M.adjust f ctxt_id (call_contexts ic) }
 
-getCallContextFunds :: ICM m => CallId -> m Funds
-getCallContextFunds ctxt_id = available_funds <$> getCallContext ctxt_id
+getCallContextCycles :: ICM m => CallId -> m Cycles
+getCallContextCycles ctxt_id = available_cycles <$> getCallContext ctxt_id
 
-setCallContextFunds :: ICM m => CallId -> Funds -> m ()
-setCallContextFunds ctxt_id funds = modifyCallContext ctxt_id $ \ctxt ->
-  ctxt { available_funds = funds }
+setCallContextCycles :: ICM m => CallId -> Cycles -> m ()
+setCallContextCycles ctxt_id cycles = modifyCallContext ctxt_id $ \ctxt ->
+  ctxt { available_cycles = cycles }
 
 respondCallContext :: ICM m => CallId -> Response -> m ()
 respondCallContext ctxt_id response = do
@@ -514,12 +514,12 @@ respondCallContext ctxt_id response = do
     error "Internal error: Double response"
   modifyCallContext ctxt_id $ \ctxt -> ctxt
     { responded = Responded True
-    , available_funds = no_funds
+    , available_cycles = 0
     }
   enqueueMessage $ ResponseMessage {
     call_context = ctxt_id,
     response,
-    refunded_funds = available_funds ctxt
+    refunded_cycles = available_cycles ctxt
   }
 
 replyCallContext :: ICM m => CallId -> Blob -> m ()
@@ -587,11 +587,11 @@ processMessage m = case m of
           performCanisterActions callee canister_actions
           setCanisterState callee new_state
 
-  ResponseMessage ctxt_id response refunded_funds -> do
+  ResponseMessage ctxt_id response refunded_cycles -> do
     ctxt <- getCallContext ctxt_id
     case origin ctxt of
       FromUser rid -> setReqStatus rid $ CallResponse $
-        -- NB: Here funds disappear
+        -- NB: Here cycles disappear
         case response of
           Reject (rc, msg) -> Rejected (rc, msg)
           Reply blob -> Replied blob
@@ -599,10 +599,10 @@ processMessage m = case m of
         -- Add refund to balance
         cid <- calleeOfCallID other_ctxt_id
         prev_balance <- getBalance cid
-        setBalance cid $ prev_balance `add_funds` refunded_funds
+        setBalance cid $ prev_balance + refunded_cycles
         enqueueMessage $ CallMessage
           { call_context = other_ctxt_id
-          , entry = Closure callback response refunded_funds
+          , entry = Closure callback response refunded_cycles
           }
 
 performCallActions :: ICM m => CallId -> CallActions -> m ()
@@ -616,29 +616,29 @@ performCanisterActions :: ICM m => CanisterId -> CanisterActions -> m ()
 performCanisterActions cid ca = do
   mapM_ (setCertifiedData cid) (set_certified_data ca)
 
-updateBalances :: ICM m => CallId -> [MethodCall] -> Funds -> m ()
+updateBalances :: ICM m => CallId -> [MethodCall] -> Cycles -> m ()
 updateBalances ctxt_id new_calls accepted = do
   cid <- calleeOfCallID ctxt_id
 
   -- Eventually update when we track cycle consumption
-  let max_cycles = no_funds
-  let cycles_consumed = no_funds
+  let max_cycles = 0
+  let cycles_consumed = 0
 
   prev_balance <- getBalance cid
-  available <- getCallContextFunds ctxt_id
-  if accepted `le_funds` available
+  available <- getCallContextCycles ctxt_id
+  if accepted <= available
   then do
-    let to_spend = prev_balance `add_funds` accepted `sub_funds` max_cycles
-    let transferred = sum_funds [ call_transferred_funds c | c <- new_calls]
-    if transferred `le_funds` to_spend
+    let to_spend = prev_balance + accepted - max_cycles
+    let transferred = sum [ call_transferred_cycles c | c <- new_calls]
+    if transferred <= to_spend
     then do
       setBalance cid $ prev_balance
-        `add_funds` accepted
-        `sub_funds` cycles_consumed
-        `sub_funds` transferred
-      setCallContextFunds ctxt_id $ available `sub_funds` accepted
-    else error "Internal error: More funds transferred than available"
-  else error "Internal error: More funds accepted than available"
+        + accepted
+        - cycles_consumed
+        - transferred
+      setCallContextCycles ctxt_id $ available - accepted
+    else error "Internal error: More cycles transferred than available"
+  else error "Internal error: More cycles accepted than available"
 
 
 managementCanisterId :: EntityId
@@ -650,15 +650,15 @@ invokeManagementCanister ::
 invokeManagementCanister caller ctxt_id (Public method_name arg) =
   case method_name of
       "create_canister" -> atomic $ icCreateCanister caller ctxt_id
-      "dev_create_canister_with_funds" -> atomic $ icCreateCanisterWithFunds caller ctxt_id
-      "dev_set_funds" -> atomic icDevSetFunds
       "install_code" -> atomic $ icInstallCode caller
       "set_controller" -> atomic $ icSetController caller
       "start_canister" -> atomic $ icStartCanister caller
       "stop_canister" -> deferred $ icStopCanister caller ctxt_id
       "canister_status" -> atomic $ icCanisterStatus caller
-      "delete_canister" -> atomic $ icDeleteCanister caller ctxt_id
-      "deposit_funds" -> atomic $ icDepositFunds caller ctxt_id
+      "delete_canister" -> atomic $ icDeleteCanister caller
+      "deposit_cycles" -> atomic $ icDepositCycles caller ctxt_id
+      "provisional_create_canister_with_cycles" -> atomic $ icCreateCanisterWithCycles caller
+      "provisional_top_up_canister" -> atomic icTopUpCanister
       "raw_rand" -> atomic icRawRand
       _ -> reject RC_DESTINATION_INVALID $ "Unsupported management function " ++ method_name
   where
@@ -682,30 +682,28 @@ invokeManagementCanister caller ctxt_id (Public method_name arg) =
 
 invokeManagementCanister _ _ Closure{} = error "closure invoked on management function "
 
-icCreateCanister :: (ICM m, CanReject m) => EntityId -> CallId -> ICManagement m .! "create_canister"
-icCreateCanister caller ctxt_id _r =
-    icCreateCanisterWithFunds caller ctxt_id (#num_cycles .== 0 .+ #num_icpt .== 0)
+icCreateCanister :: ICM m => EntityId -> CallId -> ICManagement m .! "create_canister"
+icCreateCanister caller ctxt_id _r = do
+    -- Here we fill up the canister with the cycles provided by the caller
+    available <- getCallContextCycles ctxt_id
+    setCallContextCycles ctxt_id 0
+    -- Here we fill up the canister with cycles out of thin air
+    icCreateCanisterCommon caller available
 
-icCreateCanisterWithFunds :: (ICM m, CanReject m) => EntityId -> CallId -> ICManagement m .! "dev_create_canister_with_funds"
-icCreateCanisterWithFunds caller ctxt_id r = do
-    -- This is for testing only
-    let fake_funds = cycle_funds (r .! #num_cycles) `add_funds` icpt_funds (r .! #num_icpt)
+icCreateCanisterWithCycles :: ICM m => EntityId -> ICManagement m .! "provisional_create_canister_with_cycles"
+icCreateCanisterWithCycles caller r =
+    icCreateCanisterCommon caller (fromMaybe cMAX_CANISTER_BALANCE (r .! #amount))
+
+icCreateCanisterCommon ::
+  ICM m =>
+  EntityId -> Natural -> m (R.Rec ("canister_id" R..== Principal))
+icCreateCanisterCommon caller amount = do
     new_id <- gets (freshId . M.keys . canisters)
     let currentTime = 0 -- ic-ref lives in the 70ies
     createEmptyCanister new_id caller currentTime
-    -- Here we fill up the canister with the funds provided by the caller
-    real_funds <- getCallContextFunds ctxt_id
-    setBalance new_id (fake_funds `add_funds` real_funds)
-    setCallContextFunds ctxt_id no_funds
+    -- Here we fill up the canister with the cycles provided by the caller
+    setBalance new_id amount
     return (#canister_id .== entityIdToPrincipal new_id)
-
-icDevSetFunds :: (ICM m, CanReject m) => ICManagement m .! "dev_set_funds"
-icDevSetFunds r = do
-    -- This is for testing only
-    let canister_id = principalToEntityId (r .! #canister_id)
-    let fake_funds = cycle_funds (r .! #num_cycles) `add_funds` icpt_funds (r .! #num_icpt)
-    canisterMustExist canister_id
-    setBalance canister_id fake_funds
 
 icInstallCode :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "install_code"
 icInstallCode caller r = do
@@ -818,19 +816,17 @@ icCanisterStatus caller r = do
         IsDeleted -> error "deleted canister encountered"
     controller <- getController canister_id
     hash <- can_hash <$> getCanister canister_id
-    funds <- getBalance canister_id
+    cycles <- getBalance canister_id
     return $ R.empty
       .+ #status .== s
       .+ #controller .== entityIdToPrincipal controller
       .+ #memory_size .== 0 -- not implemented here
       .+ #module_hash .== hash
-      .+ #balance .== Vec.fromList
-        -- no tuple short-hands in haskell-candid yet
-        [ #_0_ .== u .+ #_1_ .== a | (u,a) <- M.toList funds, a > 0]
+      .+ #cycles .== cycles
 
 
-icDeleteCanister :: (ICM m, CanReject m) => EntityId -> CallId -> ICManagement m .! "delete_canister"
-icDeleteCanister caller ctxt_id r = do
+icDeleteCanister :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "delete_canister"
+icDeleteCanister caller r = do
     let canister_id = principalToEntityId (r .! #canister_id)
     canisterMustExist canister_id
     checkController canister_id caller
@@ -840,23 +836,27 @@ icDeleteCanister caller ctxt_id r = do
         IsStopped -> return ()
         IsDeleted -> error "deleted canister encountered"
 
-    funds <- getBalance canister_id
-    available <- getCallContextFunds ctxt_id
-    setCallContextFunds ctxt_id (available `add_funds` funds)
-
     setRunStatus canister_id IsDeleted
 
-icDepositFunds :: (ICM m, CanReject m) => EntityId -> CallId -> ICManagement m .! "deposit_funds"
-icDepositFunds caller ctxt_id r = do
+icDepositCycles :: (ICM m, CanReject m) => EntityId -> CallId -> ICManagement m .! "deposit_cycles"
+icDepositCycles caller ctxt_id r = do
     let canister_id = principalToEntityId (r .! #canister_id)
     canisterMustExist canister_id
     checkController canister_id caller
 
-    funds <- getCallContextFunds ctxt_id
-    available <- getCallContextFunds ctxt_id
-    setCallContextFunds ctxt_id (available `sub_funds` funds)
+    cycles <- getCallContextCycles ctxt_id
+    available <- getCallContextCycles ctxt_id
+    setCallContextCycles ctxt_id (available - cycles)
     prev_balance <- getBalance canister_id
-    setBalance canister_id $ prev_balance `add_funds` funds
+    setBalance canister_id $ prev_balance + cycles
+
+icTopUpCanister :: (ICM m, CanReject m) => ICManagement m .! "provisional_top_up_canister"
+icTopUpCanister r = do
+    let canister_id = principalToEntityId (r .! #canister_id)
+    canisterMustExist canister_id
+
+    prev_balance <- getBalance canister_id
+    setBalance canister_id $ prev_balance + (r .! #amount)
 
 icRawRand :: ICM m => ICManagement m .! "raw_rand"
 icRawRand _r = runRandIC $ BS.pack <$> replicateM 32 getRandom
@@ -871,7 +871,7 @@ invokeEntry :: ICM m =>
     m (TrapOr (WasmState, UpdateResult))
 invokeEntry ctxt_id wasm_state can_mod env entry = do
     responded <- respondedCallID ctxt_id
-    available <- getCallContextFunds ctxt_id
+    available <- getCallContextCycles ctxt_id
     case entry of
       Public method dat -> do
         caller <- callerOfCallID ctxt_id
@@ -895,7 +895,7 @@ newCall from_ctxt_id call = do
     , origin = FromCanister from_ctxt_id (call_callback call)
     , responded = Responded False
     , last_trap = Nothing
-    , available_funds = call_transferred_funds call
+    , available_cycles = call_transferred_cycles call
     }
   enqueueMessage $ CallMessage
     { call_context = new_ctxt_id

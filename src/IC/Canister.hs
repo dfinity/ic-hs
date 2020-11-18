@@ -15,7 +15,6 @@ import qualified Data.Map as M
 import Data.List
 
 import IC.Types
-import IC.Funds
 import IC.Wasm.Winter (parseModule, exportedFunctions, Module)
 
 import IC.Purify
@@ -32,9 +31,9 @@ type QueryFunc = WasmState -> TrapOr Response
 
 data CanisterModule = CanisterModule
   { init_method :: InitFunc
-  , update_methods :: MethodName ↦ (EntityId -> Env -> Responded -> Funds -> Blob -> UpdateFunc)
+  , update_methods :: MethodName ↦ (EntityId -> Env -> Responded -> Cycles -> Blob -> UpdateFunc)
   , query_methods :: MethodName ↦ (EntityId -> Env -> Blob -> QueryFunc)
-  , callbacks :: Callback -> Env -> Responded -> Funds -> Response -> Funds -> UpdateFunc
+  , callbacks :: Callback -> Env -> Responded -> Cycles -> Response -> Cycles -> UpdateFunc
   , pre_upgrade_method :: WasmState -> EntityId -> Env -> TrapOr (CanisterActions, Blob)
   , post_upgrade_method :: EntityId -> Env -> Blob -> Blob -> TrapOr (WasmState, CanisterActions)
   }
@@ -57,8 +56,8 @@ concreteToAbstractModule wasm_mod = CanisterModule
             invoke wasm_state0 (rawInitialize caller env dat)
   , update_methods = M.fromList
     [ (m,
-      \caller env responded funds_available dat wasm_state ->
-      invoke wasm_state (rawUpdate m caller env responded funds_available dat))
+      \caller env responded cycles_available dat wasm_state ->
+      invoke wasm_state (rawUpdate m caller env responded cycles_available dat))
     | n <- exportedFunctions wasm_mod
     , Just m <- return $ stripPrefix "canister_update " n
     ]
@@ -68,8 +67,8 @@ concreteToAbstractModule wasm_mod = CanisterModule
     | n <- exportedFunctions wasm_mod
     , Just m <- return $ stripPrefix "canister_query " n
     ]
-  , callbacks = \cb env responded funds_available res refund wasm_state ->
-    invoke wasm_state (rawCallback cb env responded funds_available res refund)
+  , callbacks = \cb env responded cycles_available res refund wasm_state ->
+    invoke wasm_state (rawCallback cb env responded cycles_available res refund)
   , pre_upgrade_method = \wasm_state caller env ->
         snd <$> invoke wasm_state (rawPreUpgrade caller env)
   , post_upgrade_method = \caller env mem dat ->
@@ -95,8 +94,8 @@ invoke s f =
 -- | Turns a query function into an update function
 asUpdate ::
   (EntityId -> Env -> Blob -> QueryFunc) ->
-  (EntityId -> Env -> Responded -> Funds -> Blob -> UpdateFunc)
-asUpdate f caller env (Responded responded) _funds_available dat wasm_state
+  (EntityId -> Env -> Responded -> Cycles -> Blob -> UpdateFunc)
+asUpdate f caller env (Responded responded) _cycles_available dat wasm_state
   | responded = error "asUpdate: responded == True"
   | otherwise =
     (\res -> (wasm_state, (noCallActions { ca_response = Just res }, noCanisterActions))) <$>

@@ -35,7 +35,7 @@ import Data.Functor
 import Numeric.Natural
 
 import IC.Types
-import IC.Funds
+import IC.Constants
 import IC.Wasm.Winter
 import IC.Wasm.WinterMemory as Mem
 import IC.Wasm.Imports
@@ -47,7 +47,7 @@ data Params = Params
   , param_caller :: Maybe EntityId
   , reject_code :: Maybe Natural
   , reject_message :: Maybe String
-  , funds_refunded :: Maybe Funds
+  , cycles_refunded :: Maybe Cycles
   }
 
 -- The execution state is all information available to the
@@ -59,9 +59,9 @@ data ExecutionState s = ExecutionState
   , params :: Params
   , env :: Env
   -- now the mutable parts
-  , funds_available :: Maybe Funds
-  , funds_accepted :: Funds
-  , balance :: Funds
+  , cycles_available :: Maybe Cycles
+  , cycles_accepted :: Cycles
+  , balance :: Cycles
   , responded :: Responded
   , response :: Maybe Response
   , reply_data :: Blob
@@ -77,9 +77,9 @@ initialExecutionState inst stableMem env responded = ExecutionState
   , stableMem
   , params = Params Nothing Nothing Nothing Nothing Nothing
   , env
-  , funds_available = Nothing
+  , cycles_available = Nothing
   , balance = env_balance env
-  , funds_accepted = no_funds
+  , cycles_accepted = 0
   , responded
   , response = Nothing
   , reply_data = mempty
@@ -136,37 +136,36 @@ appendCall :: ESRef s -> MethodCall -> HostM s ()
 appendCall esref c = modES esref $ \es ->
   es { calls = calls es ++ [c] }
 
-getAvailable :: ESRef s -> HostM s Funds
+getAvailable :: ESRef s -> HostM s Cycles
 getAvailable esref =
-  getsES esref funds_available >>=
-    maybe (throwError "no funds available") return
+  getsES esref cycles_available >>=
+    maybe (throwError "no cycles available") return
 
-getRefunded :: ESRef s -> HostM s Funds
+getRefunded :: ESRef s -> HostM s Cycles
 getRefunded esref =
-  getsES esref (funds_refunded . params)  >>=
-    maybe (throwError "no funds refunded") return
+  getsES esref (cycles_refunded . params)  >>=
+    maybe (throwError "no cycles refunded") return
 
-addBalance :: ESRef s -> Funds -> HostM s ()
+addBalance :: ESRef s -> Cycles -> HostM s ()
 addBalance esref f = modES esref $ \es ->
-  es { balance = balance es `add_funds` f }
+  es { balance = min (balance es + f) cMAX_CANISTER_BALANCE  }
 
-addAccepted :: ESRef s -> Funds -> HostM s ()
+addAccepted :: ESRef s -> Cycles -> HostM s ()
 addAccepted esref f = modES esref $ \es ->
-  es { funds_accepted = funds_accepted es `add_funds` f }
+  es { cycles_accepted = cycles_accepted es + f }
 
-subtractBalance :: ESRef s -> Funds -> HostM s ()
+subtractBalance :: ESRef s -> Cycles -> HostM s ()
 subtractBalance esref f = do
   current_balance <- getsES esref balance
-  if f `le_funds` current_balance
-  then modES esref $ \es -> es { balance = current_balance `sub_funds` f }
-  else throwError "insufficient funds to put on call"
+  if f <= current_balance
+  then modES esref $ \es -> es { balance = current_balance - f }
+  else throwError "insufficient cycles to put on call"
 
-subtractAvailable :: ESRef s -> Funds -> HostM s ()
+subtractAvailable :: ESRef s -> Cycles -> HostM s ()
 subtractAvailable esref f = do
   current <- getAvailable esref
-  if f `le_funds` current
-  then modES esref $ \es -> es { funds_available = Just (current `sub_funds` f) }
-  else throwError "insufficient funds to accept"
+  when (f > current) $ error "internal error: insufficient cycles to accept"
+  modES esref $ \es -> es { cycles_available = Just (current - f) }
 
 -- The System API, with all imports
 
@@ -190,14 +189,14 @@ systemAPI esref =
   , toImport "ic0" "canister_self_size" canister_self_size
   , toImport "ic0" "canister_status" canister_status
 
-  , toImport "ic0" "msg_funds_available" msg_funds_available
-  , toImport "ic0" "msg_funds_refunded" msg_funds_refunded
-  , toImport "ic0" "msg_funds_accept" msg_funds_accept
-  , toImport "ic0" "canister_balance" canister_balance
+  , toImport "ic0" "msg_cycles_available" msg_cycles_available
+  , toImport "ic0" "msg_cycles_refunded" msg_cycles_refunded
+  , toImport "ic0" "msg_cycles_accept" msg_cycles_accept
+  , toImport "ic0" "canister_cycle_balance" canister_cycle_balance
 
   , toImport "ic0" "call_new" call_new
   , toImport "ic0" "call_data_append" call_data_append
-  , toImport "ic0" "call_funds_add" call_funds_add
+  , toImport "ic0" "call_cycles_add" call_cycles_add
   , toImport "ic0" "call_perform" call_perform
 
   , toImport "ic0" "stable_size" stable_size
@@ -315,28 +314,27 @@ systemAPI esref =
         Stopping -> 2
         Stopped -> 3
 
-    msg_funds_refunded :: (Int32, Int32) -> HostM s Word64
-    msg_funds_refunded (unit_src, unit_size) = do
-      unit <- copy_from_canister "msg_funds_refunded" unit_src unit_size
-      fromIntegral . (!$ unit) <$> getRefunded esref
+    msg_cycles_refunded :: () -> HostM s Word64
+    msg_cycles_refunded () = fromIntegral <$> getRefunded esref
 
-    msg_funds_available :: (Int32, Int32) -> HostM s Word64
-    msg_funds_available (unit_src, unit_size) = do
-      unit <- copy_from_canister "msg_funds_available" unit_src unit_size
-      fromIntegral . (!$ unit) <$> getAvailable esref
+    msg_cycles_available :: () -> HostM s Word64
+    msg_cycles_available () = fromIntegral <$> getAvailable esref
 
-    msg_funds_accept :: (Int32, Int32, Word64) -> HostM s ()
-    msg_funds_accept (unit_src, unit_size, amount) = do
-      unit <- copy_from_canister "msg_funds_accept" unit_src unit_size
-      let accepted = unit_funds unit (fromIntegral amount)
-      subtractAvailable esref accepted
-      addBalance esref accepted
-      addAccepted esref accepted
+    msg_cycles_accept :: Word64 -> HostM s Word64
+    msg_cycles_accept max_amount = do
+      available <- fromIntegral <$> getAvailable esref
+      balance <- gets balance
+      let amount = minimum
+            [ fromIntegral max_amount
+            , available
+            , cMAX_CANISTER_BALANCE - balance]
+      subtractAvailable esref amount
+      addBalance esref amount
+      addAccepted esref amount
+      return (fromIntegral amount)
 
-    canister_balance :: (Int32, Int32) -> HostM s Word64
-    canister_balance (unit_src, unit_size) = do
-      unit <- copy_from_canister "canister_balance" unit_src unit_size
-      fromIntegral . (!$ unit) <$> gets balance
+    canister_cycle_balance :: () -> HostM s Word64
+    canister_cycle_balance () = fromIntegral <$> gets balance
 
     call_new :: ( Int32, Int32, Int32, Int32, Int32, Int32, Int32, Int32 ) -> HostM s ()
     call_new ( callee_src, callee_size, name_src, name_size
@@ -351,7 +349,7 @@ systemAPI esref =
         , call_method_name = BSU.toString method_name -- TODO: check for valid UTF8
         , call_arg = mempty
         , call_callback = Callback reply_closure reject_closure
-        , call_transferred_funds = no_funds
+        , call_transferred_cycles = 0
         }
 
     call_data_append :: (Int32, Int32) -> HostM s ()
@@ -359,13 +357,12 @@ systemAPI esref =
       arg <- copy_from_canister "call_data_append" src size
       changePendingCall $ \pc -> return $ pc { call_arg = call_arg pc <> arg }
 
-    call_funds_add :: (Int32, Int32, Word64) -> HostM s ()
-    call_funds_add (unit_src, unit_size, amount) = do
-      unit <- copy_from_canister "call_funds_add" unit_src unit_size
-      let funds = unit_funds unit (fromIntegral amount)
+    call_cycles_add :: Word64 -> HostM s ()
+    call_cycles_add amount = do
+      let cycles = fromIntegral amount
       changePendingCall $ \pc -> do
-        subtractBalance esref funds
-        return $ pc { call_transferred_funds = call_transferred_funds pc `add_funds` funds }
+        subtractBalance esref cycles
+        return $ pc { call_transferred_cycles = call_transferred_cycles pc + cycles }
 
     call_perform :: () -> HostM s Int32
     call_perform () = do
@@ -393,7 +390,7 @@ systemAPI esref =
 
     discard_pending_call = do
       mpc <- gets pending_call
-      forM_ mpc $ \pc -> addBalance esref (call_transferred_funds pc)
+      forM_ mpc $ \pc -> addBalance esref (call_transferred_cycles pc)
       modES esref $ \es -> es { pending_call = Nothing }
 
     stable_size :: () -> HostM s Int32
@@ -502,7 +499,7 @@ rawInitialize caller env dat (ImpState esref inst sm wasm_mod) = do
                   , param_caller = Just caller
                   , reject_code  = Nothing
                   , reject_message = Nothing
-                  , funds_refunded = Nothing
+                  , cycles_refunded = Nothing
                   }
               }
 
@@ -526,7 +523,7 @@ rawPreUpgrade caller env (ImpState esref inst sm wasm_mod) = do
                   , param_caller = Just caller
                   , reject_code  = Nothing
                   , reject_message = Nothing
-                  , funds_refunded = Nothing
+                  , cycles_refunded = Nothing
                   }
               }
 
@@ -551,7 +548,7 @@ rawPostUpgrade caller env mem dat (ImpState esref inst sm wasm_mod) = do
                   , param_caller = Just caller
                   , reject_code  = Nothing
                   , reject_message = Nothing
-                  , funds_refunded = Nothing
+                  , cycles_refunded = Nothing
                   }
               }
     lift $ Mem.imp (stableMem es) mem
@@ -574,7 +571,7 @@ rawQuery method caller env dat (ImpState esref inst sm _) = do
                 , param_caller = Just caller
                 , reject_code  = Nothing
                 , reject_message = Nothing
-                , funds_refunded = Nothing
+                , cycles_refunded = Nothing
                 }
             }
   result <- runExceptT $ withES esref es $
@@ -587,17 +584,17 @@ rawQuery method caller env dat (ImpState esref inst sm _) = do
       | Just r <- response es' -> return $ Return r
       | otherwise -> return $ Trap "No response"
 
-rawUpdate :: MethodName -> EntityId -> Env -> Responded -> Funds -> Blob -> ImpState s -> ST s (TrapOr UpdateResult)
-rawUpdate method caller env responded funds_available dat (ImpState esref inst sm _) = do
+rawUpdate :: MethodName -> EntityId -> Env -> Responded -> Cycles -> Blob -> ImpState s -> ST s (TrapOr UpdateResult)
+rawUpdate method caller env responded cycles_available dat (ImpState esref inst sm _) = do
   let es = (initialExecutionState inst sm env responded)
             { params = Params
                 { param_dat    = Just dat
                 , param_caller = Just caller
                 , reject_code  = Nothing
                 , reject_message = Nothing
-                , funds_refunded = Nothing
+                , cycles_refunded = Nothing
                 }
-            , funds_available = Just funds_available
+            , cycles_available = Just cycles_available
             }
 
   result <- runExceptT $ withES esref es $
@@ -605,20 +602,20 @@ rawUpdate method caller env responded funds_available dat (ImpState esref inst s
   case result of
     Left  err -> return $ Trap err
     Right (_, es') -> return $ Return
-        ( CallActions (calls es') (funds_accepted es') (response es')
+        ( CallActions (calls es') (cycles_accepted es') (response es')
         , canisterActions es'
         )
 
-rawCallback :: Callback -> Env -> Responded -> Funds -> Response -> Funds -> ImpState s -> ST s (TrapOr UpdateResult)
-rawCallback callback env responded funds_available res refund (ImpState esref inst sm _) = do
+rawCallback :: Callback -> Env -> Responded -> Cycles -> Response -> Cycles -> ImpState s -> ST s (TrapOr UpdateResult)
+rawCallback callback env responded cycles_available res refund (ImpState esref inst sm _) = do
   let params = case res of
         Reply dat ->
-          Params { param_dat = Just dat, param_caller = Nothing, reject_code = Just 0, reject_message = Nothing, funds_refunded = Just refund }
+          Params { param_dat = Just dat, param_caller = Nothing, reject_code = Just 0, reject_message = Nothing, cycles_refunded = Just refund }
         Reject (rc, reject_message) ->
-          Params { param_dat = Nothing, param_caller = Nothing, reject_code = Just (rejectCode rc), reject_message = Just reject_message, funds_refunded = Just refund }
+          Params { param_dat = Nothing, param_caller = Nothing, reject_code = Just (rejectCode rc), reject_message = Just reject_message, cycles_refunded = Just refund }
   let es = (initialExecutionState inst sm env responded)
             { params
-            , funds_available = Just funds_available
+            , cycles_available = Just cycles_available
             }
 
   let WasmClosure fun_idx env = case res of
@@ -630,7 +627,7 @@ rawCallback callback env responded funds_available res refund (ImpState esref in
   case result of
     Left  err -> return $ Trap err
     Right (_, es') -> return $ Return
-        ( CallActions (calls es') (funds_accepted es') (response es')
+        ( CallActions (calls es') (cycles_accepted es') (response es')
         , canisterActions es'
         )
 

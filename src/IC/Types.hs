@@ -21,8 +21,6 @@ import Data.List.Split (chunksOf)
 import Numeric.Natural
 import Control.Monad.Except
 
-import IC.Funds
-
 type (↦) = M.Map
 
 -- Basic types
@@ -37,6 +35,7 @@ type SubnetId = EntityId
 type UserId = EntityId
 type MethodName = String
 type RequestID = Blob
+type Cycles = Natural
 
 prettyBlob :: Blob -> String
 prettyBlob b = "0x" ++ T.unpack (T.encodeHex (BS.toStrict b))
@@ -84,7 +83,7 @@ data Status = Running | Stopping | Stopped
 data Env = Env
     { env_self :: CanisterId
     , env_time :: Timestamp
-    , env_balance :: Funds
+    , env_balance :: Cycles
     , env_status :: Status
     , env_certificate :: Maybe Blob
     }
@@ -108,7 +107,7 @@ data MethodCall = MethodCall
   , call_method_name :: MethodName
   , call_arg :: Blob
   , call_callback :: Callback
-  , call_transferred_funds :: Funds
+  , call_transferred_cycles :: Cycles
   }
   deriving Show
 
@@ -131,12 +130,12 @@ noCanisterActions = CanisterActions Nothing
 -- Actions relative to a call context
 data CallActions = CallActions
   { ca_new_calls :: [MethodCall]
-  , ca_accept :: Funds
+  , ca_accept :: Cycles
   , ca_response :: Maybe Response
   }
 
 noCallActions :: CallActions
-noCallActions = CallActions [] no_funds Nothing
+noCallActions = CallActions [] 0 Nothing
 
 type UpdateResult = (CallActions, CanisterActions)
 
