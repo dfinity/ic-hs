@@ -4,15 +4,16 @@
 { mkDerivation
 , pkgs
 , base
-, base16-bytestring
 , base32
 , bytestring
 , cereal
 , constraints
 , containers
 , crc
+, directory
 , dlist
 , doctest
+, filepath
 , hex-text
 , leb128-cereal
 , megaparsec
@@ -30,6 +31,7 @@
 , tasty-smallcheck
 , template-haskell
 , text
+, transformers
 , unordered-containers
 , vector
 }:
@@ -41,7 +43,6 @@ mkDerivation {
   isExecutable = true;
   libraryHaskellDepends = [
     base
-    base16-bytestring
     base32
     bytestring
     cereal
@@ -59,6 +60,7 @@ mkDerivation {
     split
     template-haskell
     text
+    transformers
     unordered-containers
     vector
   ];
@@ -73,7 +75,9 @@ mkDerivation {
   testHaskellDepends = [
     base
     bytestring
+    directory
     doctest
+    filepath
     leb128-cereal
     prettyprinter
     row-types
@@ -82,6 +86,7 @@ mkDerivation {
     tasty-hunit
     tasty-rerun
     tasty-smallcheck
+    template-haskell
     text
     unordered-containers
     vector

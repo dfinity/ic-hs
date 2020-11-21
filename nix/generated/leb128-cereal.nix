@@ -13,7 +13,7 @@
 }:
 mkDerivation {
   pname = "leb128-cereal";
-  version = "1.1";
+  version = "1.2";
   src = pkgs.sources.leb128-cereal;
   libraryHaskellDepends = [ base bytestring cereal ];
   testHaskellDepends = [
