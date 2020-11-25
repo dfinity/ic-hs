@@ -79,13 +79,13 @@ doesn'tExist :: Blob
 doesn'tExist = "\xDE\xAD\xBE\xEF" -- hopefully no such canister/user exists
 
 defaultSK :: SecretKey
-defaultSK = createSecretKeyEd25519Raw "fixed32byteseedfortesting"
+defaultSK = createSecretKeyEd25519 "fixed32byteseedfortesting"
 
 otherSK :: SecretKey
-otherSK = createSecretKeyEd25519Raw "anotherfixed32byteseedfortesting"
+otherSK = createSecretKeyEd25519 "anotherfixed32byteseedfortesting"
 
-ed25519SK :: SecretKey
-ed25519SK = createSecretKeyEd25519 "notarawkey"
+ed25519RawSK :: SecretKey
+ed25519RawSK = createSecretKeyEd25519Raw "arawkey"
 
 webAuthnSK :: SecretKey
 webAuthnSK = createSecretKeyWebAuthn "webauthnseed"
@@ -99,8 +99,8 @@ otherUser :: Blob
 otherUser = mkSelfAuthenticatingId $ toPublicKey otherSK
 webAuthnUser :: Blob
 webAuthnUser = mkSelfAuthenticatingId $ toPublicKey webAuthnSK
-ed25519User :: Blob
-ed25519User = mkSelfAuthenticatingId $ toPublicKey ed25519SK
+ed25519RawUser :: Blob
+ed25519RawUser = mkSelfAuthenticatingId $ toPublicKey ed25519RawSK
 ecdsaUser :: Blob
 ecdsaUser = mkSelfAuthenticatingId $ toPublicKey ecdsaSK
 anonymousUser :: Blob
@@ -161,7 +161,7 @@ envelopeFor u content = envelope key content
     key ::  SecretKey
     key | u == defaultUser = defaultSK
         | u == otherUser = otherSK
-        | u == ed25519User = ed25519SK
+        | u == ed25519RawUser = ed25519RawSK
         | u == webAuthnUser = webAuthnSK
         | u == ecdsaUser = ecdsaSK
         | u == anonymousUser = error "No key for the anonymous user"
@@ -1544,16 +1544,18 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
     let ed25519SK2 = createSecretKeyEd25519 "more keys"
         ed25519SK3 = createSecretKeyEd25519 "yet more keys"
         ed25519SK4 = createSecretKeyEd25519 "even more keys"
-        delEnv sks = delegationEnv ed25519SK (map (, Nothing) sks) -- no targets in these tests
+        delEnv sks = delegationEnv otherSK (map (, Nothing) sks) -- no targets in these tests
     in flip foldMap
-      [ ("Ed25519",            ed25519User,  envelope ed25519SK)
-      , ("Ed25519 (raw)",      defaultUser,  envelope defaultSK)
-      , ("WebAuthn",           webAuthnUser, envelope webAuthnSK)
-      , ("empty delegations",  ed25519User,  delEnv [])
-      , ("same delegations",   ed25519User,  delEnv [ed25519SK])
-      , ("three delegations",  ed25519User,  delEnv [ed25519SK2, ed25519SK3])
-      , ("four delegations",   ed25519User,  delEnv [ed25519SK2, ed25519SK3, ed25519SK4])
-      , ("mixed delegations",  ed25519User,  delEnv [defaultSK, webAuthnSK])
+      [ ("Ed25519",            otherUser,      envelope otherSK)
+      , ("Ed25519 (raw)",      ed25519RawUser, envelope ed25519RawSK)
+      , ("ECDSA",              ecdsaUser,      envelope ecdsaSK)
+      , ("WebAuthn",           webAuthnUser,   envelope webAuthnSK)
+      , ("empty delegations",  otherUser,      delEnv [])
+      , ("same delegations",   otherUser,      delEnv [otherSK])
+      , ("three delegations",  otherUser,      delEnv [ed25519SK2, ed25519SK3])
+      , ("four delegations",   otherUser,      delEnv [ed25519SK2, ed25519SK3, ed25519SK4])
+      , ("mixed delegations",  otherUser,      delEnv [defaultSK, webAuthnSK, ecdsaSK])
+      , ("delegations (raw)",  otherUser,      delEnv [ed25519SK2, ed25519RawSK, ed25519SK4])
       ] $ \ (name, user, env) ->
     [ simpleTestCase (name ++ " in query") $ \cid -> do
       req <- addExpiry $ rec
