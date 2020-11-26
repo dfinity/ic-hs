@@ -1166,7 +1166,7 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
         queryBalance cid = query cid replyBalance >>= asWord64
 
         def_cycles = 1000_000_000_000 :: Word64
-        -- we assume that cycle balances do not change more than one million
+        -- we assume that cycle balances do not change more than this epsilon
         -- while running these tests.
         eps = 20_000_000_000 :: Integer
 
