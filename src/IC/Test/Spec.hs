@@ -393,8 +393,8 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
 
       step "Cannot call (inter-canister)?"
       cid2 <- install noop
-      do call' cid2 $ inter_update cid defArgs
-        >>= isRelayReject [3]
+      do call cid2 $ inter_update cid defArgs
+        >>= isRelay >>= isReject [3]
 
       step "Cannot call (query)?"
       query' cid reply >>= isReject [3]
@@ -432,14 +432,14 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
 
     step "Install again fails"
     ic_install' (ic00via cid) (enum #install) can_id trivialWasmModule ""
-      >>= isRelayReject [3,5]
+      >>= isReject [3,5]
 
     step "Reinstall"
     ic_install (ic00via cid) (enum #reinstall) can_id trivialWasmModule ""
 
     step "Reinstall as wrong user"
     ic_install' (ic00via cid2) (enum #reinstall) can_id trivialWasmModule ""
-      >>= isRelayReject [3,5]
+      >>= isReject [3,5]
 
     step "Upgrade"
     ic_install (ic00via cid) (enum #upgrade) can_id trivialWasmModule ""
@@ -449,7 +449,7 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
 
     step "Change controller (with wrong controller)"
     ic_set_controller' (ic00via cid) can_id cid2
-      >>= isRelayReject [3,5]
+      >>= isReject [3,5]
 
     step "Reinstall as new controller"
     ic_install (ic00via cid2) (enum #reinstall) can_id trivialWasmModule ""
@@ -714,22 +714,22 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
             callNew "foo" "bar" "baz" "quux" >>>
             callDataAppend "hey" >>>
             inter_query cid defArgs
-          >>= is ("Hello " <> cid <> " this is " <> cid)
+          >>= isRelay >>= isReply >>= is ("Hello " <> cid <> " this is " <> cid)
       , simpleTestCase "call_data_append really appends" $ \cid -> do
         do call cid $
             callNew (bytes cid) (bytes "query")
-                    (callback replyArgData) (callback replyRejectData) >>>
+                    (callback relayReply) (callback relayReject) >>>
             callDataAppend (bytes (BS.take 3 (run defaultOtherSide))) >>>
             callDataAppend (bytes (BS.drop 3 (run defaultOtherSide))) >>>
             callPerform
-         >>= is ("Hello " <> cid <> " this is " <> cid)
+         >>= isRelay >>= isReply >>= is ("Hello " <> cid <> " this is " <> cid)
       ]
 
     , simpleTestCase "to nonexistant canister" $ \cid ->
-      call' cid (inter_call "foo" "bar" defArgs) >>= isRelayReject [3]
+      call cid (inter_call "foo" "bar" defArgs) >>= isRelay >>= isReject [3]
 
     , simpleTestCase "to nonexistant method" $ \cid ->
-      call' cid (inter_call cid "bar" defArgs) >>= isRelayReject [3]
+      call cid (inter_call cid "bar" defArgs) >>= isRelay >>= isReject [3]
 
     , simpleTestCase "Call from query method traps (in update call)" $ \cid ->
       callToQuery' cid (inter_query cid defArgs) >>= isReject [5]
@@ -738,46 +738,48 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
       query' cid (inter_query cid defArgs) >>= isReject [5]
 
     , simpleTestCase "Call from query method traps (in inter-canister-call)" $ \cid ->
-      do call' cid $
+      do call cid $
           inter_call cid "query" defArgs {
             other_side = inter_query cid defArgs
           }
-        >>= isRelayReject [5]
+        >>= isRelay >>= isReject [5]
 
     , simpleTestCase "Self-call (to update)" $ \cid ->
       call cid (inter_update cid defArgs)
-        >>= is ("Hello " <> cid <> " this is " <> cid)
+        >>= isRelay >>= isReply >>= is ("Hello " <> cid <> " this is " <> cid)
 
     , simpleTestCase "Self-call (to query)" $ \cid -> do
       call cid (inter_query cid defArgs)
-        >>= is ("Hello " <> cid <> " this is " <> cid)
+        >>= isRelay >>= isReply >>= is ("Hello " <> cid <> " this is " <> cid)
 
     , simpleTestCase "update commits" $ \cid -> do
-      call_ cid $
-        setGlobal "FOO" >>>
-        inter_update cid defArgs{ other_side = setGlobal "BAR" >>> reply }
+      do call cid $
+          setGlobal "FOO" >>>
+          inter_update cid defArgs{ other_side = setGlobal "BAR" >>> reply }
+       >>= isRelay >>= isReply >>= is ""
 
       query cid (replyData getGlobal) >>= is "BAR"
 
     , simpleTestCase "query does not commit" $ \cid -> do
-      call_ cid $
-        setGlobal "FOO" >>>
-        inter_query cid defArgs{ other_side = setGlobal "BAR" >>> reply }
+      do call cid $
+          setGlobal "FOO" >>>
+          inter_query cid defArgs{ other_side = setGlobal "BAR" >>> reply }
+       >>= isRelay >>= isReply >>= is ""
 
       do query cid $ replyData getGlobal
         >>= is "FOO"
 
     , simpleTestCase "query no response" $ \cid ->
-      do call' cid $ inter_query cid defArgs{ other_side = noop }
-        >>= isRelayReject [5]
+      do call cid $ inter_query cid defArgs{ other_side = noop }
+        >>= isRelay >>= isReject [5]
 
     , simpleTestCase "query double reply" $ \cid ->
-      do call' cid $ inter_query cid defArgs{ other_side = reply >>> reply }
-        >>= isRelayReject [5]
+      do call cid $ inter_query cid defArgs{ other_side = reply >>> reply }
+        >>= isRelay >>= isReject [5]
 
     , simpleTestCase "Reject code is 0 in reply" $ \cid ->
-      do call' cid $ inter_query cid defArgs{ on_reply = replyData (i2b reject_code) }
-        >>= isRelayReject [0]
+      do call cid $ inter_query cid defArgs{ on_reply = replyData (i2b reject_code) }
+        >>= asWord32 >>= is 0
 
     , simpleTestCase "Second reply in callback" $ \cid -> do
       do call cid $
@@ -785,7 +787,7 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
           replyData "First reply" >>>
           inter_query cid defArgs{
             on_reply = setGlobal "BAR" >>> replyData "Second reply",
-            on_reject = setGlobal "BAZ" >>> replyRejectData
+            on_reject = setGlobal "BAZ" >>> relayReject
           }
         >>= is "First reply"
 
@@ -825,12 +827,12 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
     , simpleTestCase "Call to other canister (to update)" $ \cid -> do
       cid2 <- install noop
       do call cid $ inter_update cid2 defArgs
-        >>= is ("Hello " <> cid <> " this is " <> cid2)
+        >>= isRelay >>= isReply >>= is ("Hello " <> cid <> " this is " <> cid2)
 
     , simpleTestCase "Call to other canister (to query)" $ \cid -> do
       cid2 <- install noop
       do call cid $ inter_query cid2 defArgs
-        >>= is ("Hello " <> cid <> " this is " <> cid2)
+        >>= isRelay >>= isReply >>= is ("Hello " <> cid <> " this is " <> cid2)
     ]
 
   , testCaseSteps "stable memory" $ \step -> do
@@ -1124,7 +1126,7 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
           inter_call cid "query" defArgs {
             other_side = replyData (i2b getCertificatePresent)
           }
-        >>= is "\0\0\0\0"
+        >>= isRelay >>= isReply >>= is "\0\0\0\0"
     , simpleTestCase "not present in update method" $ \cid -> do
       call cid (replyData (i2b getCertificatePresent))
         >>= is "\0\0\0\0"
@@ -1268,7 +1270,7 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
             reply
           , cycles = def_cycles `div` 4
           }
-        >>= asWord64 >>= isRoughly (def_cycles `div` 4)
+        >>= isRelay >>= isReply >>= asWord64 >>= isRoughly (def_cycles `div` 4)
       queryBalance cid1 >>= isRoughly (def_cycles - def_cycles `div` 4)
       queryBalance cid2 >>= isRoughly (def_cycles + def_cycles `div` 4)
 
@@ -1350,7 +1352,7 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
           , other_side = replyBalance
           , on_reject = trap "unexpected reject"
           }
-        >>= asWord64 >>= isRoughly (def_cycles - def_cycles `div` 4)
+        >>= isRelay >>= isReply >>= asWord64 >>= isRoughly (def_cycles - def_cycles `div` 4)
       queryBalance cid1 >>= isRoughly def_cycles
     , testCase "create and delete canister with cycles" $ do
       cid1 <- create noop
@@ -1371,20 +1373,13 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
         ic_deposit_cycles (ic00viaWithCycles cid1 (def_cycles`div`4)) cid2
         queryBalance cid1 >>= isRoughly (def_cycles `div` 4)
         queryBalance cid2 >>= isRoughly (def_cycles - def_cycles `div` 4)
-      , testCase "deposit cycles (as controller, too much)" $ do
-        cid1 <- create noop
-        cid2 <- create_via cid1 (def_cycles`div`2)
-        queryBalance cid1 >>= isRoughly (def_cycles `div` 2)
-        queryBalance cid2 >>= isRoughly (def_cycles `div` 2)
-        ic_deposit_cycles' (ic00viaWithCycles cid1 def_cycles) cid2 >>= isReject [4,5]
-        queryBalance cid1 >>= isRoughly (def_cycles `div` 2)
-        queryBalance cid2 >>= isRoughly (def_cycles `div` 2)
       , testCase "deposit cycles (as wrong controller)" $ do
         cid1 <- create noop
         cid2 <- create_via cid1 (def_cycles`div`2)
         queryBalance cid1 >>= isRoughly (def_cycles `div` 2)
         queryBalance cid2 >>= isRoughly (def_cycles `div` 2)
-        ic_deposit_cycles' (ic00viaWithCycles cid2 (def_cycles`div`4)) cid1 >>= isRelayReject [4,5]
+        ic_deposit_cycles' (ic00viaWithCycles cid2 (def_cycles`div`4)) cid1
+          >>= isReject [4,5]
         queryBalance cid1 >>= isRoughly (def_cycles `div` 2)
         queryBalance cid2 >>= isRoughly (def_cycles `div` 2)
       , testCase "deposit cycles (as user controller, zero cycles)" $ do
@@ -1858,6 +1853,15 @@ isReply (Reply b) = return b
 isReply (Reject n msg) =
   assertFailure $ "Unexpected reject (code " ++ show n ++ "): " ++ T.unpack msg
 
+-- Predicates to handle the responses from relayReply and relayReject
+isRelay :: HasCallStack => Blob -> IO ReqResponse
+isRelay = runGet $ Get.getWord32le >>= \case
+    0 -> Reply <$> Get.getRemainingLazyByteString
+    0x4c444944 -> fail "Encountered Candid when expectin relayed data. Did you forget to use isRelay?"
+    c -> do
+      msg <- Get.getRemainingLazyByteString
+      return $ Reject (fromIntegral c) (T.decodeUtf8With T.lenientDecode (BS.toStrict msg))
+
 -- Convenience decoders
 asWord32 :: HasCallStack => Blob -> IO Word32
 asWord32 = runGet Get.getWord32le
@@ -1883,14 +1887,6 @@ runGet a b = case  Get.runGetOrFail (a <* done) b of
 
 is :: (HasCallStack, Eq a, Show a) => a -> a -> Assertion
 is exp act = act @?= exp
-
--- A reject forwarded by replyRejectData
-isRelayReject :: HasCallStack => [Word32] -> ReqResponse -> IO ()
-isRelayReject codes r = do
-  b <- isReply r
-  assertBool
-    ("Reject code " ++ show b ++ " not in " ++ show codes ++ "\n")
-    (BS.take 4 b `elem` map (BS.toLazyByteString . BS.word32LE) codes)
 
 data StatusResponse = StatusResponse
     { status_api_version :: T.Text
@@ -1935,13 +1931,14 @@ ic00via cid = ic00viaWithCycles cid 0
 
 ic00viaWithCycles :: HasTestConfig => Blob -> Word64 -> IC00
 ic00viaWithCycles cid cycles method_name arg =
-  call' cid $
-    callNew
-      (bytes "") (bytes (BS.fromStrict (T.encodeUtf8 method_name))) -- aaaaa-aa
-      (callback replyArgData) (callback replyRejectData) >>>
-    callDataAppend (bytes arg) >>>
-    callCyclesAdd (int64 cycles) >>>
-    callPerform
+  do call' cid $
+      callNew
+        (bytes "") (bytes (BS.fromStrict (T.encodeUtf8 method_name))) -- aaaaa-aa
+        (callback relayReply) (callback relayReject) >>>
+      callDataAppend (bytes arg) >>>
+      callCyclesAdd (int64 cycles) >>>
+      callPerform
+   >>= isReply >>= isRelay
 
 managementService :: (HasCallStack, HasTestConfig) => IC00 -> Rec (ICManagement IO)
 managementService ic00 =
