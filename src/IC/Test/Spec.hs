@@ -425,7 +425,7 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
     cid2 <- install noop
 
     step "Create"
-    can_id <- ic_create (ic00via cid)
+    can_id <- ic_create_with_cycles (ic00via cid) Nothing
 
     step "Install"
     ic_install (ic00via cid) (enum #install) can_id trivialWasmModule ""
@@ -455,14 +455,14 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
     ic_install (ic00via cid2) (enum #reinstall) can_id trivialWasmModule ""
 
     step "Create"
-    can_id2 <- ic_create (ic00via cid)
+    can_id2 <- ic_create_with_cycles (ic00via cid) Nothing
 
     step "Reinstall on empty"
     ic_install (ic00via cid) (enum #reinstall) can_id2 trivialWasmModule ""
 
   , simpleTestCase "aaaaa-aa (inter-canister, large)" $ \cid -> do
     universal_wasm <- getTestWasm "universal_canister"
-    can_id <- ic_create (ic00via cid)
+    can_id <- ic_create_with_cycles (ic00via cid) Nothing
     ic_install (ic00via cid) (enum #install) can_id universal_wasm ""
     do call can_id $ replyData "Hi"
       >>= is "Hi"
