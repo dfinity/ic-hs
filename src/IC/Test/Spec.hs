@@ -1167,10 +1167,18 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
         acceptAll = ignore (acceptCycles getAvailableCycles)
         queryBalance cid = query cid replyBalance >>= asWord64
 
-        def_cycles = 1000_000_000_000 :: Word64
-        -- we assume that cycle balances do not change more than this epsilon
-        -- while running these tests.
-        eps = 20_000_000_000 :: Integer
+        -- At the time of writing, the replica’s canister limit is 100T
+        -- but creating a canister needs at least 1T.
+        -- So lets try to stay away from either limit here.
+        def_cycles = 20_000_000_000_000 :: Word64
+
+        -- The system burns cycles at unspecified rates. To cater for such behaviour,
+        -- we make the assumption that no test burns more than the following epsilon.
+        --
+        -- The biggest fee we currenlty deal with is the system deducing 1T
+        -- upon canister creation. So our epsilon needs to allow that and then
+        -- some more.
+        eps = 3_000_000_000_000 :: Integer
 
         isRoughly :: (HasCallStack, Show a, Num a, Integral a) => a -> a -> Assertion
         isRoughly exp act = assertBool
