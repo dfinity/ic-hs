@@ -1950,18 +1950,18 @@ managementService ic00 =
   where
     err s = assertFailure $ "Candid decoding error: " ++ s
 
-ic_create :: HasTestConfig => IC00 -> IO Blob
+ic_create :: (HasCallStack, HasTestConfig) => IC00 -> IO Blob
 ic_create ic00 = do
   r <- managementService ic00 .! #create_canister $ ()
   return (rawPrincipal (r .! #canister_id))
 
-ic_create_with_cycles :: HasTestConfig => IC00 -> Maybe Natural -> IO Blob
+ic_create_with_cycles :: (HasCallStack, HasTestConfig) => IC00 -> Maybe Natural -> IO Blob
 ic_create_with_cycles ic00 cycles = do
   r <- managementService ic00 .! #provisional_create_canister_with_cycles $ empty
     .+ #amount .== cycles
   return (rawPrincipal (r .! #canister_id))
 
-ic_install :: HasTestConfig => IC00 -> InstallMode -> Blob -> Blob -> Blob -> IO ()
+ic_install :: (HasCallStack, HasTestConfig) => IC00 -> InstallMode -> Blob -> Blob -> Blob -> IO ()
 ic_install ic00 mode canister_id wasm_module arg = do
   managementService ic00 .! #install_code $ empty
     .+ #mode .== mode
@@ -2125,7 +2125,7 @@ reinstall cid prog = do
   universal_wasm <- getTestWasm "universal_canister"
   ic_install ic00 (enum #reinstall) cid universal_wasm (run prog)
 
-callRequest :: HasTestConfig => Blob -> Prog -> GenR
+callRequest :: (HasCallStack, HasTestConfig) => Blob -> Prog -> GenR
 callRequest cid prog = rec
     [ "request_type" =: GText "call"
     , "sender" =: GBlob defaultUser
@@ -2172,7 +2172,7 @@ query_ :: (HasCallStack, HasTestConfig) => Blob -> Prog -> IO ()
 query_ cid prog = query cid prog >>= is ""
 
 -- Shortcut for test cases that just need one canister
-simpleTestCase :: HasTestConfig => String -> (Blob -> IO ()) -> TestTree
+simpleTestCase :: (HasCallStack, HasTestConfig) => String -> (Blob -> IO ()) -> TestTree
 simpleTestCase name act = testCase name $ install noop >>= act
 
 -- * Programmatic test generation
