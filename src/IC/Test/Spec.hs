@@ -258,8 +258,8 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
           >>= isReject [3,5]
 
   , testCaseSteps "management requests" $ \step -> do
-      step "Create"
-      can_id <- ic_create ic00
+      step "Create (provisional)"
+      can_id <- create
 
       step "Install"
       ic_install ic00 (enum #install) can_id trivialWasmModule ""
@@ -294,14 +294,14 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
 
   , testCaseSteps "reinstall on empty" $ \step -> do
       step "Create"
-      can_id <- ic_create ic00
+      can_id <- create
 
       step "Reinstall over empty canister"
       ic_install ic00 (enum #reinstall) can_id trivialWasmModule ""
 
   , testCaseSteps "canister_status" $ \step -> do
       step "Create empty"
-      cid <- ic_create ic00
+      cid <- create
       cs <- ic_canister_status ic00 cid
       cs .! #status @?= enum #running
       cs .! #controller @?= Principal defaultUser
@@ -613,7 +613,7 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
       contexts = mconcat
         [ "I" =: twoContexts
           (reqResponse (\prog -> do
-            cid <- ic_create ic00
+            cid <- create
             install' cid prog
           ))
           (reqResponse (\prog -> do
@@ -1007,7 +1007,7 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
   , testGroup "trapping in init" $
     let
       failInInit pgm = do
-        cid <- ic_create ic00
+        cid <- create
         install' cid pgm >>= isReject [5]
         -- canister does not exist
         query' cid noop >>= isReject [3]
@@ -2098,9 +2098,12 @@ installAt cid prog = do
 -- Also calls create, used default 'ic00'
 install :: (HasCallStack, HasTestConfig) => Prog -> IO Blob
 install prog = do
-    cid <- ic_create ic00
+    cid <- create
     installAt cid prog
     return cid
+
+create :: (HasCallStack, HasTestConfig) => IO Blob
+create = ic_create_with_cycles ic00 Nothing
 
 upgrade' :: (HasCallStack, HasTestConfig) => Blob -> Prog -> IO ReqResponse
 upgrade' cid prog = do
