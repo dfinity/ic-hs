@@ -69,10 +69,10 @@ decode bs = case safeDecode bs of
         , BitString ba
         , End Sequence
         ]
-        | algo == ecPublicKeyOID && curve == ecPublicKeyOID
+        | algo == ecPublicKeyOID && curve == secp256r1OID
         -> Right (ECDSA, BS.fromStrict (bitArrayGetData ba))
         | algo == blsAlgoOID && curve == blsCurveOID
         -> Right (BLS, BS.fromStrict (bitArrayGetData ba))
         | otherwise
-        -> Left $ "Unexpected cipher: algo = " ++ show algo
+        -> Left $ "Unexpected cipher: algo = " ++ show algo ++ " curve  = " ++ show curve
       _ -> Left $ "Unexpected DER shape: " ++ show asn

@@ -92,7 +92,7 @@ webAuthnSK :: SecretKey
 webAuthnSK = createSecretKeyWebAuthn "webauthnseed"
 
 ecdsaSK :: SecretKey
-ecdsaSK = createSecretKeyWebAuthn "ecdsaseed"
+ecdsaSK = createSecretKeyECDSA "ecdsaseed"
 
 defaultUser :: Blob
 defaultUser = mkSelfAuthenticatingId $ toPublicKey defaultSK
