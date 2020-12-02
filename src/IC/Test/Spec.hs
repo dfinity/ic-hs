@@ -18,7 +18,7 @@ This module contains a test suite for the Internet Computer
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TupleSections #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
-module IC.Test.Spec (preFlight, TestConfig, icTests) where
+module IC.Test.Spec (preFlight, TestConfig, connect, ReplWrapper(..), icTests) where
 
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
@@ -227,9 +227,8 @@ data TestConfig = TestConfig
     , tc_endPoint :: String
     }
 
-preFlight :: OptionSet -> IO TestConfig
-preFlight os = do
-    let Endpoint ep = lookupOption os
+makeTestConfig :: String -> IO TestConfig
+makeTestConfig ep' = do
     manager <- newManager defaultManagerSettings
     request <- parseRequest $ ep ++ "/api/v1/status"
     putStrLn $ "Fetching endpoint status from " ++ show ep ++ "..."
@@ -244,6 +243,25 @@ preFlight os = do
         , tc_manager = manager
         , tc_endPoint = ep
         }
+  where
+    -- strip trailing slash
+    ep | null ep'        = error "empty endpoint"
+       | last ep' == '/' = init ep'
+       | otherwise       = ep'
+
+preFlight :: OptionSet -> IO TestConfig
+preFlight os = do
+    let Endpoint ep = lookupOption os
+    makeTestConfig ep
+
+
+newtype ReplWrapper = R (forall a. (HasTestConfig => a) -> a)
+-- |  This is for use from the Haskell REPL, see README.md
+connect :: String -> IO ReplWrapper
+connect ep = do
+    testConfig <- makeTestConfig ep
+    let ?testConfig = testConfig
+    return (R id)
 
 
 -- * The actual test suite (see below for helper functions)
@@ -2207,7 +2225,7 @@ getRand8Bytes = BS.pack <$> replicateM 8 randomIO
 
 type HasTestConfig = (?testConfig :: TestConfig)
 
-withTestConfig :: (forall. HasTestConfig => TestTree) -> TestConfig -> TestTree
+withTestConfig :: (forall. HasTestConfig => a) -> TestConfig -> a
 withTestConfig act tc = let ?testConfig = tc in act
 
 testConfig :: HasTestConfig => TestConfig
