@@ -1049,6 +1049,11 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
           >>= envelopeFor anonymousUser
           >>= postCBOR "/api/v1/read"
           >>= okCBOR >>= queryResponse >>= isReject [3]
+
+    , simpleTestCase "does not commit" $ \cid -> do
+        call_ cid (setGlobal "FOO" >>> reply)
+        query cid (setGlobal "BAR" >>> replyData getGlobal) >>= is "BAR"
+        query cid (replyData getGlobal) >>= is "FOO"
     ]
 
   , testGroup "read state" $
