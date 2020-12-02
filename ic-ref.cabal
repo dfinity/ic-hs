@@ -194,6 +194,7 @@ executable ic-ref-test
   build-depends:       tasty-rerun
   build-depends:       optparse-applicative
   build-depends:       http-client
+  build-depends:       http-client-tls
   build-depends:       http-types
   build-depends:       random
   build-depends:       filepath

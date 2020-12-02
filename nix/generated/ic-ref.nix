@@ -23,6 +23,7 @@
 , hashable
 , hex-text
 , http-client
+, http-client-tls
 , http-types
 , leb128-cereal
 , memory
@@ -86,6 +87,7 @@ mkDerivation {
     hashable
     hex-text
     http-client
+    http-client-tls
     http-types
     leb128-cereal
     memory

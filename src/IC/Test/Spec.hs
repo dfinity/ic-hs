@@ -29,6 +29,7 @@ import qualified Data.ByteString.Builder as BS
 import qualified Data.HashMap.Lazy as HM
 import qualified Data.Set as S
 import Network.HTTP.Client
+import Network.HTTP.Client.TLS
 import Network.HTTP.Types
 import Numeric.Natural
 import Data.List
@@ -229,7 +230,7 @@ data TestConfig = TestConfig
 
 makeTestConfig :: String -> IO TestConfig
 makeTestConfig ep' = do
-    manager <- newManager defaultManagerSettings
+    manager <- newTlsManager
     request <- parseRequest $ ep ++ "/api/v1/status"
     putStrLn $ "Fetching endpoint status from " ++ show ep ++ "..."
     s <- (httpLbs request manager >>= okCBOR >>= statusResonse)
