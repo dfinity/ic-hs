@@ -1080,9 +1080,10 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
         cert <- getStateCert defaultUser []
         validateStateCert cert
 
-    , testCase "time is present" $ do
+    , testCaseSteps "time is present" $ \step -> do
         cert <- getStateCert defaultUser []
-        void $ certValue @Natural cert ["time"]
+        time <- certValue @Natural cert ["time"]
+        step $ "Reported time: " ++ show time
 
     , testCase "time can be asked for" $ do
         cert <- getStateCert defaultUser [["time"]]
@@ -1732,11 +1733,11 @@ getStateCert sender paths = do
 
     return cert
 
-verboseVerify :: Blob -> Blob -> Blob -> Blob -> IO ()
-verboseVerify domain_sep pk msg sig =
+verboseVerify :: String -> Blob -> Blob -> Blob -> Blob -> IO ()
+verboseVerify what domain_sep pk msg sig =
     case verify domain_sep pk msg sig of
         Left err -> assertFailure $ unlines
-            [ "Signature verification failed"
+            [ "Signature verification failed on " ++ what
             , T.unpack err
             , "Domain separator:   " ++ prettyBlob domain_sep
             , "Public key (DER):   " ++ asHex pk
@@ -1756,14 +1757,17 @@ validateDelegation (Just del) = do
     case wellFormed (cert_tree cert) of
         Left err -> assertFailure $ "Hash tree not well formed: " ++ err
         Right () -> return ()
-    validateStateCert cert
+    validateStateCert' "certificate delegation" cert
 
     certValue cert ["subnet", del_subnet_id del, "public_key"]
 
-validateStateCert :: (HasCallStack, HasTestConfig) => Certificate -> IO ()
-validateStateCert cert = do
+validateStateCert' :: (HasCallStack, HasTestConfig) => String -> Certificate -> IO ()
+validateStateCert' what cert = do
     pk <- validateDelegation (cert_delegation cert)
-    verboseVerify "ic-state-root" pk (reconstruct (cert_tree cert)) (cert_sig cert)
+    verboseVerify what "ic-state-root" pk (reconstruct (cert_tree cert)) (cert_sig cert)
+
+validateStateCert :: (HasCallStack, HasTestConfig) => Certificate -> IO ()
+validateStateCert = validateStateCert' "certificate"
 
 data ReqResponse = Reply Blob | Reject Natural T.Text
   deriving (Eq, Show)
