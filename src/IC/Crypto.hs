@@ -114,6 +114,7 @@ verify domain_sep der_pk payload sig = unpack der_pk >>= \case
     unless (BLS.verify pk msg sig) $ do
         when (BLS.verify pk payload sig) $
             throwError $ "domain separator " <> T.pack (show domain_sep) <> " missing"
+        throwError "signature verification failed"
 
   where
     msg = BS.singleton (fromIntegral (BS.length domain_sep)) <> domain_sep <> payload
