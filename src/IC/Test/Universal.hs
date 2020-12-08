@@ -235,8 +235,8 @@ inter_query callee = inter_call callee "query"
 -- indicating caller and callee, and the callbacks reply with the response.
 defArgs :: CallArgs
 defArgs = CallArgs
-    { on_reply = replyArgData
-    , on_reject = replyRejectData
+    { on_reply = relayReply
+    , on_reject = relayReject
     , other_side = defaultOtherSide
     , cycles = 0
     , icpts = 0
@@ -250,11 +250,14 @@ defaultOtherSide =
     replyDataAppend self  >>>
     reply
 
-replyArgData :: Prog
-replyArgData = replyData argData
+relayReply :: Prog
+relayReply =
+    replyDataAppend (i2b (int 0)) >>>
+    replyDataAppend argData >>>
+    reply
 
-replyRejectData :: Prog
-replyRejectData =
+relayReject :: Prog
+relayReject =
     replyDataAppend (i2b reject_code) >>>
     replyDataAppend reject_msg >>>
     reply

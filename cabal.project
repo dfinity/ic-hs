@@ -8,4 +8,4 @@ source-repository-package
 source-repository-package
     type: git
     location: https://github.com/nomeata/haskell-candid
-    tag: 36202a9aef4387925c0d0de23a0e3645ed7d2b3e
+    tag: 3b59388dd3548226cdb5544e005ce09b463df8a8

@@ -6,10 +6,10 @@
         "homepage": null,
         "owner": "nomeata",
         "repo": "haskell-candid",
-        "rev": "36202a9aef4387925c0d0de23a0e3645ed7d2b3e",
-        "sha256": "0m5ib1xnfwnx73v0vllnx4nhk77dfgsdn9xri2v22bv7gxampkw6",
+        "rev": "3b59388dd3548226cdb5544e005ce09b463df8a8",
+        "sha256": "0gbkp3jxdrnmxycw6vdj3kgkxbbnw72adhgx4lz74zjjc76klb35",
         "type": "tarball",
-        "url": "https://github.com/nomeata/haskell-candid/archive/36202a9aef4387925c0d0de23a0e3645ed7d2b3e.tar.gz",
+        "url": "https://github.com/nomeata/haskell-candid/archive/3b59388dd3548226cdb5544e005ce09b463df8a8.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "ic-webauthn-cli": {
@@ -25,10 +25,10 @@
         "homepage": null,
         "owner": "nomeata",
         "repo": "haskell-leb128-cereal",
-        "rev": "e8c0878fcdc2540379a02c44f94061bb262a2f8e",
-        "sha256": "1mzxfxdil8ss37jxqschfg3swf64s18bbqgcnbd311653wl8w6ir",
+        "rev": "2c6646e8aea97e3b9a1e801188650ed2ede85d07",
+        "sha256": "1xc3sj1ly3xx65l0h27bd8p367a7jqzx4nfhp4mbbdibys3fbh9n",
         "type": "tarball",
-        "url": "https://github.com/nomeata/haskell-leb128-cereal/archive/e8c0878fcdc2540379a02c44f94061bb262a2f8e.tar.gz",
+        "url": "https://github.com/nomeata/haskell-leb128-cereal/archive/2c6646e8aea97e3b9a1e801188650ed2ede85d07.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "naersk": {

@@ -16,13 +16,9 @@ import Crypto.Error
 import Crypto.Random
 import Crypto.PubKey.ECDSA
 import Crypto.Hash.Algorithms
+import Crypto.Number.Serialize
 import Data.Proxy
-import Data.ASN1.Types
-import Data.ASN1.Encoding
-import Data.ASN1.BinaryEncoding
 import Data.Hashable
-
-import qualified IC.Crypto.DER.Decode as DER
 
 newtype SecretKey = SecretKey (KeyPair Curve_P256R1)
   deriving Show
@@ -44,17 +40,15 @@ sign :: SecretKey -> BS.ByteString -> IO BS.ByteString
 sign (SecretKey kp) msg = do
     (r,s) <- signatureToIntegers Proxy <$>
         Crypto.PubKey.ECDSA.sign (Proxy @Curve_P256R1) (keypairGetPrivate kp) SHA256 (BS.toStrict msg)
-    return $ encodeASN1 DER
-        [ Start Sequence
-        , IntVal r
-        , IntVal s
-        , End Sequence
-        ]
+    return $ BS.fromStrict $ i2ospOf_ 32 r <> i2ospOf_ 32 s
 
 verify :: BS.ByteString -> BS.ByteString -> BS.ByteString -> Bool
 verify pk msg sig
  | CryptoPassed pk <- decodePublic (Proxy @Curve_P256R1) (BS.toStrict pk)
- , Right [Start Sequence, IntVal r, IntVal s, End Sequence] <- DER.safeDecode sig
+ , BS.length sig == 64
+ , (rb,sb) <- BS.splitAt 32 sig
+ , let r = os2ip $ BS.toStrict rb
+ , let s = os2ip $ BS.toStrict sb
  , CryptoPassed sig <- signatureFromIntegers (Proxy @Curve_P256R1) (r, s)
  = Crypto.PubKey.ECDSA.verify
     (Proxy @Curve_P256R1)

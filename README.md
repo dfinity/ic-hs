@@ -152,6 +152,34 @@ Using
 
 The `--version` flag reports the current version.
 
+Interactive use of ic-ref-test
+------------------------------
+
+You can actually use the Haskell REPL to interact with the internet computer:
+```
+~/dfinity/ic-ref/impl $ cabal repl ic-ref-test
+…
+Ok, 27 modules loaded.
+*Main> :m + *IC.Test.Spec
+*IC.Test.Spec *Main> :set -XOverloadedStrings
+*IC.Test.Spec *Main> R r <- connect "http://localhost:34677/"
+Fetching endpoint status from "http://localhost:34677"...
+Spec version tested:  0.14.0
+Spec version claimed: 0.14.0
+*IC.Test.Spec *Main> r $ install noop
+"\NUL\NUL\NUL\NUL\NUL\NUL\NUL\SOH\SOH\SOH"
+*IC.Test.Spec *Main> cid1 <- r $ install noop
+*IC.Test.Spec *Main> prettyBlob cid1
+"00000000000000020101"
+*IC.Test.Spec *Main> r $ call cid1 (setGlobal "Foo" >>> replyData "Hello")
+"Hello"
+*IC.Test.Spec *Main> r $ query cid1 (replyData getGlobal)
+"Foo"
+```
+
+It’s necessary to wrap all lines with the `r $ …` for now; this sets the
+endpoint parameter.
+
 Developing on ic-ref
 ---------------------
 
