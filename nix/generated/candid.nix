@@ -27,6 +27,7 @@
 , stdenv
 , tasty
 , tasty-hunit
+, tasty-quickcheck
 , tasty-rerun
 , tasty-smallcheck
 , template-haskell
@@ -84,6 +85,7 @@ mkDerivation {
     smallcheck
     tasty
     tasty-hunit
+    tasty-quickcheck
     tasty-rerun
     tasty-smallcheck
     template-haskell
@@ -91,5 +93,7 @@ mkDerivation {
     unordered-containers
     vector
   ];
+  homepage = "https://github.com/dfinity/candid";
+  description = "Candid integration";
   license = stdenv.lib.licenses.asl20;
 }

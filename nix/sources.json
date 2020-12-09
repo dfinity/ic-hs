@@ -6,10 +6,10 @@
         "homepage": null,
         "owner": "nomeata",
         "repo": "haskell-candid",
-        "rev": "3b59388dd3548226cdb5544e005ce09b463df8a8",
-        "sha256": "0gbkp3jxdrnmxycw6vdj3kgkxbbnw72adhgx4lz74zjjc76klb35",
+        "rev": "041b1e132180fd382fd9ccf06095a80335c49ab0",
+        "sha256": "01ij47bg9mbvk2pxxnhd1xhcc89yi8x0m6jfkw4azim8v5m6qb11",
         "type": "tarball",
-        "url": "https://github.com/nomeata/haskell-candid/archive/3b59388dd3548226cdb5544e005ce09b463df8a8.tar.gz",
+        "url": "https://github.com/nomeata/haskell-candid/archive/041b1e132180fd382fd9ccf06095a80335c49ab0.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "ic-webauthn-cli": {
