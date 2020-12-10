@@ -2002,7 +2002,7 @@ ic_install ic00 mode canister_id wasm_module arg = do
     .+ #wasm_module .== wasm_module
     .+ #arg .== arg
     .+ #compute_allocation .== Nothing
-    .+ #memory_allocation .== Just (100 * 1024 * 1024)
+    .+ #memory_allocation .== Nothing
 
 ic_set_controller :: HasTestConfig => IC00 -> Blob -> Blob -> IO ()
 ic_set_controller ic00 canister_id new_controller = do
