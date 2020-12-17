@@ -85,9 +85,6 @@ defaultSK = createSecretKeyEd25519 "fixed32byteseedfortesting"
 otherSK :: SecretKey
 otherSK = createSecretKeyEd25519 "anotherfixed32byteseedfortesting"
 
-ed25519RawSK :: SecretKey
-ed25519RawSK = createSecretKeyEd25519Raw "arawkey"
-
 webAuthnSK :: SecretKey
 webAuthnSK = createSecretKeyWebAuthn "webauthnseed"
 
@@ -100,8 +97,6 @@ otherUser :: Blob
 otherUser = mkSelfAuthenticatingId $ toPublicKey otherSK
 webAuthnUser :: Blob
 webAuthnUser = mkSelfAuthenticatingId $ toPublicKey webAuthnSK
-ed25519RawUser :: Blob
-ed25519RawUser = mkSelfAuthenticatingId $ toPublicKey ed25519RawSK
 ecdsaUser :: Blob
 ecdsaUser = mkSelfAuthenticatingId $ toPublicKey ecdsaSK
 anonymousUser :: Blob
@@ -162,7 +157,6 @@ envelopeFor u content = envelope key content
     key ::  SecretKey
     key | u == defaultUser = defaultSK
         | u == otherUser = otherSK
-        | u == ed25519RawUser = ed25519RawSK
         | u == webAuthnUser = webAuthnSK
         | u == ecdsaUser = ecdsaSK
         | u == anonymousUser = error "No key for the anonymous user"
@@ -1575,7 +1569,6 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
         delEnv sks = delegationEnv otherSK (map (, Nothing) sks) -- no targets in these tests
     in flip foldMap
       [ ("Ed25519",            otherUser,      envelope otherSK)
-      , ("Ed25519 (raw)",      ed25519RawUser, envelope ed25519RawSK)
       , ("ECDSA",              ecdsaUser,      envelope ecdsaSK)
       , ("WebAuthn",           webAuthnUser,   envelope webAuthnSK)
       , ("empty delegations",  otherUser,      delEnv [])
@@ -1583,7 +1576,6 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
       , ("three delegations",  otherUser,      delEnv [ed25519SK2, ed25519SK3])
       , ("four delegations",   otherUser,      delEnv [ed25519SK2, ed25519SK3, ed25519SK4])
       , ("mixed delegations",  otherUser,      delEnv [defaultSK, webAuthnSK, ecdsaSK])
-      , ("delegations (raw)",  otherUser,      delEnv [ed25519SK2, ed25519RawSK, ed25519SK4])
       ] $ \ (name, user, env) ->
     [ simpleTestCase (name ++ " in query") $ \cid -> do
       req <- addExpiry $ rec
@@ -1743,7 +1735,7 @@ verboseVerify what domain_sep pk msg sig =
             , "Public key (DER):   " ++ asHex pk
             , "Public key decoded: " ++
                case DER.decode pk of
-                 Left err -> err
+                 Left err -> T.unpack err
                  Right (suite, key) -> asHex key ++ " (" ++ show suite ++ ")"
             , "Signature:          " ++ asHex sig
             , "Checked message:    " ++ prettyBlob msg
