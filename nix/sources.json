@@ -64,10 +64,10 @@
         "homepage": "https://github.com/dfinity-side-projects/winter",
         "owner": "dfinity-side-projects",
         "repo": "winter",
-        "rev": "ab7c1abaee62ff1397580d27ff4b5237f317ba4c",
-        "sha256": "1b0kjwqyz7mz2dwr06ya8arlnml8mf607hw2i311x683vaxcnlwp",
+        "rev": "2cc31576fe029d85c37d21fc9ea4902c5c64b5a9",
+        "sha256": "1mwjvk1a1qi7vw10pmq91psn2glsc25c1smbbxjmf6k767v1l0vf",
         "type": "tarball",
-        "url": "https://github.com/dfinity-side-projects/winter/archive/ab7c1abaee62ff1397580d27ff4b5237f317ba4c.tar.gz",
+        "url": "https://github.com/dfinity-side-projects/winter/archive/2cc31576fe029d85c37d21fc9ea4902c5c64b5a9.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     }
 }
