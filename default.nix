@@ -44,6 +44,62 @@ let
     })
   );
 
+  # This is a static build of the ic-ref tool only,
+  # for distribution independent of nix
+  ic-ref-dist =
+    if nixpkgs.stdenv.isDarwin
+    # on Darwin, use dylibbundler to include non-system libraries
+    then nixpkgs.runCommandNoCC "ic-ref-dist" {
+        buildInputs = [ nixpkgs.macdylibbundler nixpkgs.removeReferencesTo ];
+        allowedRequisites = [];
+      } ''
+        mkdir -p $out/bin
+        cp ${ic-ref}/bin/ic-ref $out/bin
+        chmod u+w $out/bin/ic-ref
+        dylibbundler \
+          -b \
+          -x $out/bin/ic-ref \
+          -d $out/bin \
+          -p '@executable_path' \
+          -i /usr/lib/system \
+          -i ${nixpkgs.darwin.Libsystem}/lib
+
+        # there are still plenty of nix store references
+        # but they should not matter
+        remove-references-to \
+          -t ${nixpkgs.darwin.Libsystem} \
+          -t ${nixpkgs.darwin.CF} \
+          -t ${nixpkgs.libiconv} \
+          $out/bin/*
+
+        # sanity check
+        $out/bin/ic-ref --version
+      ''
+    # on Linux, build statically using musl
+    else
+      let
+        muslHaskellPackages = nixpkgs.pkgsMusl.haskellPackages.override {
+          overrides = import nix/haskell-packages.nix nixpkgs subpath;
+        };
+        ic-ref-musl =
+          muslHaskellPackages.ic-ref.overrideAttrs (
+            old: {
+              configureFlags = [
+                "--ghc-option=-optl=-static"
+                "--extra-lib-dirs=${nixpkgs.pkgsMusl.gmp6.override { withStatic = true; }}/lib"
+                "--extra-lib-dirs=${nixpkgs.pkgsMusl.zlib.static}/lib"
+                "--extra-lib-dirs=${nixpkgs.pkgsMusl.libffi.overrideAttrs (old: { dontDisableStatic = true; })}/lib"
+              ];
+            }
+          );
+        in nixpkgs.runCommandNoCC "ic-ref-dist" {
+          allowedRequisites = [];
+        } ''
+          mkdir -p $out/bin
+          cp ${ic-ref-musl}/bin/ic-ref $out/bin
+        '';
+
+
   # We run the unit test suite only as part of coverage checking (saves time)
   ic-ref-coverage = nixpkgs.haskell.lib.doCheck (nixpkgs.haskell.lib.doCoverage ic-ref);
 in
@@ -52,6 +108,7 @@ in
 
 rec {
   inherit ic-ref;
+  inherit ic-ref-dist;
   inherit ic-ref-coverage;
   inherit universal-canister;
 
@@ -192,6 +249,7 @@ rec {
     name = "all-systems-go";
     constituents = [
       ic-ref
+      ic-ref-dist
       ic-ref-test
       universal-canister
       public-spec
