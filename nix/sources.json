@@ -15,7 +15,7 @@
     "ic-webauthn-cli": {
         "branch": "devel",
         "repo": "ssh://git@github.com/dfinity-lab/ic-webauthn-cli",
-        "rev": "9163edadb59cb60ff99b621283b0bd7999603f59",
+        "rev": "256243dc0ac3875fec8364f223ede917d6cd26c8",
         "type": "git"
     },
     "leb128-cereal": {

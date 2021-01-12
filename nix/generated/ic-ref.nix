@@ -8,6 +8,7 @@
 , asn1-types
 , base
 , base32
+, base64-bytestring
 , binary
 , bindings-DSL
 , bytestring
@@ -72,6 +73,7 @@ mkDerivation {
     asn1-types
     base
     base32
+    base64-bytestring
     binary
     bindings-DSL
     bytestring
@@ -120,9 +122,11 @@ mkDerivation {
     winter
   ];
   testHaskellDepends = [
+    aeson
     asn1-encoding
     asn1-types
     base
+    base64-bytestring
     bindings-DSL
     bytestring
     cborg

@@ -7,6 +7,8 @@ nix: subpath:
   # no base32 in nixos-20.03
   base32 = super.callPackage generated/base32.nix {};
   megaparsec = super.callPackage generated/megaparsec.nix {};
+  # need newer version
+  base64-bytestring = super.callPackage generated/base64-bytestring.nix {};
 
   # Only the test suite of crc is broken
   # https://github.com/MichaelXavier/crc/issues/2

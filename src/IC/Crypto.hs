@@ -73,11 +73,7 @@ sign domain_sep sk payload = case sk of
 
 verify :: BS.ByteString -> BS.ByteString -> BS.ByteString -> BS.ByteString -> Either T.Text ()
 verify domain_sep der_pk payload sig = DER.decode der_pk >>= \case
-  (DER.WebAuthn, pk) -> do
-    unless (WebAuthn.verify pk msg sig) $ do
-        when (WebAuthn.verify pk payload sig) $
-            throwError $ "domain separator " <> T.pack (show domain_sep) <> " missing"
-        throwError "signature verification failed"
+  (DER.WebAuthn, pk) -> WebAuthn.verify pk msg sig
 
   (DER.Ed25519, pk) -> do
     assertLen "Ed25519 public key" 32 pk

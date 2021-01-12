@@ -1,8 +1,8 @@
 { system ? builtins.currentSystem }:
 let
   sourcesnix = builtins.fetchurl {
-    url = https://raw.githubusercontent.com/nmattia/niv/v0.2.18/nix/sources.nix;
-    sha256 = "0vsjk1dj88kb40inlhb9xgfhm5dfhb6g3vyca62glk056sn4504l";
+    url = https://raw.githubusercontent.com/nmattia/niv/v0.2.19/nix/sources.nix;
+    sha256 = "1n92ka2rkdiib6ian6jh2b7fwvklnnwlp5yy5bv6ywm7m1y5hyfl";
   };
   nixpkgs_src = (import sourcesnix { sourcesFile = ./sources.json; inherit pkgs; }).nixpkgs;
 
@@ -40,8 +40,8 @@ let
           });
 
           all-cabal-hashes = self.fetchurl {
-            url = "https://github.com/commercialhaskell/all-cabal-hashes/archive/8c0d6a08431fe1b73c0731a3a0480850a06b7e0a.tar.gz";
-            sha256 = "1v1hiaihgj976383xnjymp21gz52b0j4d9cmms7g3vnbi5mzw269";
+            url = "https://github.com/commercialhaskell/all-cabal-hashes/archive/f18d8ab7adfbd15acfc5e994dfb973577a5aba5c.tar.gz";
+            sha256 = "0kn2wqilpw0nyx54jyz4vp7xrx1893zdv7d54yi9pjl677pnwcs9";
           };
 
           cbor2 = self.python3.pkgs.callPackage ./python-cbor2.nix {};
