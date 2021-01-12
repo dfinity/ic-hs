@@ -98,6 +98,29 @@ let
           mkdir -p $out/bin
           cp ${ic-ref-musl}/bin/ic-ref $out/bin
         '';
+  ic-ref-windows =
+    let
+      pkgs = nixpkgs.pkgsCross.mingwW64;
+      haskellPackages = pkgs.haskellPackages.override {
+        overrides = import nix/haskell-packages.nix pkgs subpath;
+      };
+      ic-ref-win =
+        haskellPackages.ic-ref.overrideAttrs (
+          old: {
+            configureFlags = [
+              "--ghc-option=-optl=-static"
+              "--extra-lib-dirs=${pkgs.gmp6.override { withStatic = true; }}/lib"
+              "--extra-lib-dirs=${pkgs.zlib.static}/lib"
+              "--extra-lib-dirs=${pkgs.libffi.overrideAttrs (old: { dontDisableStatic = true; })}/lib"
+            ];
+          }
+        );
+      in nixpkgs.runCommandNoCC "ic-ref-windows" {
+        allowedRequisites = [];
+      } ''
+        mkdir -p $out/bin
+        cp ${ic-ref-win}/bin/ic-ref $out/bin
+      '';
 
 
   # We run the unit test suite only as part of coverage checking (saves time)
@@ -109,6 +132,7 @@ in
 rec {
   inherit ic-ref;
   inherit ic-ref-dist;
+  inherit ic-ref-windows;
   inherit ic-ref-coverage;
   inherit universal-canister;
 
