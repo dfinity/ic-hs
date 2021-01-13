@@ -69,6 +69,7 @@ let
     ic-ref = localHaskellSrc2nixWithDoc "ic-ref" "impl" "--no-check -frelease";
     base32 = pkgs.haskellPackages.hackage2nix "base32" "0.1.1.2";
     megaparsec = pkgs.haskellPackages.hackage2nix "megaparsec" "8.0.0";
+    base64-bytestring = pkgs.haskellPackages.hackage2nix "base64-bytestring" "1.1.0.0";
   };
 
   allGenerated = pkgs.runCommandNoCC "generated" {

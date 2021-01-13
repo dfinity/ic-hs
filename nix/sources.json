@@ -6,16 +6,16 @@
         "homepage": null,
         "owner": "nomeata",
         "repo": "haskell-candid",
-        "rev": "3b59388dd3548226cdb5544e005ce09b463df8a8",
-        "sha256": "0gbkp3jxdrnmxycw6vdj3kgkxbbnw72adhgx4lz74zjjc76klb35",
+        "rev": "041b1e132180fd382fd9ccf06095a80335c49ab0",
+        "sha256": "01ij47bg9mbvk2pxxnhd1xhcc89yi8x0m6jfkw4azim8v5m6qb11",
         "type": "tarball",
-        "url": "https://github.com/nomeata/haskell-candid/archive/3b59388dd3548226cdb5544e005ce09b463df8a8.tar.gz",
+        "url": "https://github.com/nomeata/haskell-candid/archive/041b1e132180fd382fd9ccf06095a80335c49ab0.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "ic-webauthn-cli": {
         "branch": "devel",
         "repo": "ssh://git@github.com/dfinity-lab/ic-webauthn-cli",
-        "rev": "9163edadb59cb60ff99b621283b0bd7999603f59",
+        "rev": "256243dc0ac3875fec8364f223ede917d6cd26c8",
         "type": "git"
     },
     "leb128-cereal": {
@@ -51,10 +51,10 @@
         "homepage": null,
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "60ec8e5c617f3fef20b85b7b39049dfb786fb1b8",
-        "sha256": "0cfii0hm4qzqzv7flc8myva0zl6mvw5r42i018jkc7r2d1nxfqiy",
+        "rev": "e12d6af863bfb6aa2d68321fd8cd6c08f8f240e6",
+        "sha256": "0wr62zii07s0hmyf3ai3plhgxqn7d4d7mclrq49zv65v4fnlk6ny",
         "type": "tarball",
-        "url": "https://github.com/NixOS/nixpkgs/archive/60ec8e5c617f3fef20b85b7b39049dfb786fb1b8.tar.gz",
+        "url": "https://github.com/NixOS/nixpkgs/archive/e12d6af863bfb6aa2d68321fd8cd6c08f8f240e6.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "winter": {
@@ -64,10 +64,10 @@
         "homepage": "https://github.com/dfinity-side-projects/winter",
         "owner": "dfinity-side-projects",
         "repo": "winter",
-        "rev": "ab7c1abaee62ff1397580d27ff4b5237f317ba4c",
-        "sha256": "1b0kjwqyz7mz2dwr06ya8arlnml8mf607hw2i311x683vaxcnlwp",
+        "rev": "2cc31576fe029d85c37d21fc9ea4902c5c64b5a9",
+        "sha256": "1mwjvk1a1qi7vw10pmq91psn2glsc25c1smbbxjmf6k767v1l0vf",
         "type": "tarball",
-        "url": "https://github.com/dfinity-side-projects/winter/archive/ab7c1abaee62ff1397580d27ff4b5237f317ba4c.tar.gz",
+        "url": "https://github.com/dfinity-side-projects/winter/archive/2cc31576fe029d85c37d21fc9ea4902c5c64b5a9.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     }
 }

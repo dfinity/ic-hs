@@ -1,5 +1,7 @@
+{-# LANGUAGE OverloadedStrings #-}
 module IC.Crypto.DER (Suite(..), encode, decode) where
 
+import qualified Data.Text as T
 import qualified Data.ByteString.Lazy as BS
 import Data.ASN1.Types
 import Data.ASN1.Encoding
@@ -44,9 +46,9 @@ encodeDER oids pk = encodeASN1 DER $
     , End Sequence
     ]
 
-decode :: BS.ByteString -> Either String (Suite, BS.ByteString)
+decode :: BS.ByteString -> Either T.Text (Suite, BS.ByteString)
 decode bs = case safeDecode bs of
-  Left err -> Left $ "Could not decode DER: " ++ show err
+  Left err -> Left $ "Could not decode DER: " <> T.pack err
   Right asn -> case asn of
       [  Start Sequence
         , Start Sequence
@@ -60,7 +62,7 @@ decode bs = case safeDecode bs of
         | algo == ed25519OID
         -> Right (Ed25519, BS.fromStrict (bitArrayGetData ba))
         | otherwise
-        -> Left $ "Unexpected cipher: algo = " ++ show algo
+        -> Left $ "Unexpected cipher: algo = " <> T.pack (show algo)
       [  Start Sequence
         , Start Sequence
         , OID algo
@@ -74,5 +76,5 @@ decode bs = case safeDecode bs of
         | algo == blsAlgoOID && curve == blsCurveOID
         -> Right (BLS, BS.fromStrict (bitArrayGetData ba))
         | otherwise
-        -> Left $ "Unexpected cipher: algo = " ++ show algo ++ " curve  = " ++ show curve
-      _ -> Left $ "Unexpected DER shape: " ++ show asn
+        -> Left $ "Unexpected cipher: algo = " <> T.pack (show algo) <> " curve  = " <> T.pack (show curve)
+      _ -> Left $ "Unexpected DER shape: " <> T.pack (show asn)

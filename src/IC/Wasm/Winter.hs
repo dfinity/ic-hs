@@ -38,6 +38,7 @@ import Control.Monad.ST
 import Data.Binary.Get (runGetOrFail)
 import Data.Default.Class (Default (..))
 import Data.Int
+import Data.Foldable
 
 import qualified Wasm.Binary.Decode as W
 import qualified Wasm.Exec.Eval as W
@@ -94,7 +95,8 @@ initialize mod imps = withExceptT show $ do
           }
         | (_name, funcs) <- by_mod
         ]
-  (ref, inst) <- W.initialize mod names mods
+  (ref, inst, start_err) <- W.initialize mod names mods
+  for_ start_err throwError
   let mods' = IM.insert ref inst mods
   return (mods', ref)
 
