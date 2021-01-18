@@ -40,6 +40,7 @@ module IC.Ref
   , CallOrigin(..)
   , EntryPoint(..)
   , RunStatus(..)
+  , CanisterContent(..)
   )
 where
 
@@ -110,10 +111,14 @@ data RunStatus
   | IsDeleted -- not actually a run state, but convenient in this code
   deriving (Show)
 
+data CanisterContent = CanisterContent
+  { can_mod :: CanisterModule
+  , wasm_state :: WasmState
+  }
+  deriving (Show)
+
 data CanState = CanState
-  { wasm_state :: Maybe WasmState   -- absent when empty
-  , can_mod :: Maybe CanisterModule -- absent when empty
-  , can_hash :: Maybe Blob          -- absent when empty
+  { content :: Maybe CanisterContent -- absent when empty
   , run_status :: RunStatus
   , controller :: EntityId
   , time :: Timestamp
@@ -209,9 +214,7 @@ createEmptyCanister cid controller time = modify $ \ic ->
     ic { canisters = M.insert cid can (canisters ic) }
   where
     can = CanState
-      { wasm_state = Nothing
-      , can_mod = Nothing
-      , can_hash = Nothing
+      { content = Nothing
       , run_status = IsRunning
       , controller = controller
       , time = time
@@ -229,7 +232,7 @@ canisterMustExist cid =
     _ -> return ()
 
 isCanisterEmpty :: (CanReject m, ICM m) => CanisterId -> m Bool
-isCanisterEmpty cid = isNothing . wasm_state <$> getCanister cid
+isCanisterEmpty cid = isNothing . content <$> getCanister cid
 
 
 -- the following functions assume the canister does exist;
@@ -245,13 +248,18 @@ modCanister cid f = do
     void $ getCanister cid
     modify $ \ic -> ic { canisters = M.adjust f cid (canisters ic) }
 
-setCanisterModule :: ICM m => CanisterId -> CanisterModule -> Blob -> m ()
-setCanisterModule cid can_mod can_hash = modCanister cid $
-    \cs -> cs { can_mod = Just can_mod, can_hash = Just can_hash }
+setCanisterContent :: ICM m => CanisterId -> CanisterContent -> m ()
+setCanisterContent cid content = modCanister cid $
+    \cs -> cs { content = Just content }
+
+modCanisterContent :: ICM m => CanisterId -> (CanisterContent -> CanisterContent) -> m ()
+modCanisterContent cid f = do
+    modCanister cid $ \c -> c { content = Just (f (fromMaybe err (content c))) }
+  where err = error ("canister is empty: " ++ prettyID cid)
 
 setCanisterState :: ICM m => CanisterId -> WasmState -> m ()
-setCanisterState cid wasm_state = modCanister cid $
-    \cs -> cs { wasm_state = Just wasm_state }
+setCanisterState cid wasm_state = modCanisterContent cid $
+    \cs -> cs { wasm_state = wasm_state }
 
 getController :: ICM m => CanisterId -> m EntityId
 getController cid = controller <$> getCanister cid
@@ -279,10 +287,10 @@ setRunStatus cid run_status = modCanister cid $
     \cs -> cs { run_status = run_status }
 
 getCanisterState :: ICM m => CanisterId -> m WasmState
-getCanisterState cid = fromJust . wasm_state <$> getCanister cid
+getCanisterState cid = wasm_state . fromJust . content <$> getCanister cid
 
 getCanisterMod :: ICM m => CanisterId -> m CanisterModule
-getCanisterMod cid = fromJust . can_mod <$> getCanister cid
+getCanisterMod cid = can_mod . fromJust . content <$> getCanister cid
 
 getCanisterTime :: ICM m => CanisterId -> m Timestamp
 getCanisterTime cid = time <$> getCanister cid
@@ -720,8 +728,10 @@ icInstallCode caller r = do
       reinstall = do
         (wasm_state, ca) <- return (init_method new_can_mod caller env arg)
           `onTrap` (\msg -> reject RC_CANISTER_ERROR $ "Initialization trapped: " ++ msg)
-        setCanisterModule canister_id new_can_mod (sha256 (r .! #wasm_module))
-        setCanisterState canister_id wasm_state
+        setCanisterContent canister_id $ CanisterContent
+            { can_mod = new_can_mod
+            , wasm_state = wasm_state
+            }
         performCanisterActions canister_id ca
 
       install = do
@@ -742,8 +752,10 @@ icInstallCode caller r = do
         (new_wasm_state, ca2) <- return (post_upgrade_method new_can_mod caller env2 mem arg)
           `onTrap` (\msg -> reject RC_CANISTER_ERROR $ "Post-upgrade trapped: " ++ msg)
 
-        setCanisterModule canister_id new_can_mod (sha256 (r .! #wasm_module))
-        setCanisterState canister_id new_wasm_state
+        setCanisterContent canister_id $ CanisterContent
+            { can_mod = new_can_mod
+            , wasm_state = new_wasm_state
+            }
         performCanisterActions canister_id (ca1 <> ca2)
 
     R.switch (r .! #mode) $ R.empty
@@ -815,7 +827,7 @@ icCanisterStatus caller r = do
         IsStopped -> return (V.IsJust #stopped ())
         IsDeleted -> error "deleted canister encountered"
     controller <- getController canister_id
-    hash <- can_hash <$> getCanister canister_id
+    hash <- fmap (sha256 . raw_wasm . can_mod) . content <$> getCanister canister_id
     cycles <- getBalance canister_id
     return $ R.empty
       .+ #status .== s

@@ -4,8 +4,6 @@ module IC.HTTP where
 
 import Network.Wai
 import Control.Concurrent (forkIO)
-import Control.Concurrent.MVar
-import Data.IORef
 import Network.HTTP.Types
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
@@ -21,17 +19,16 @@ import IC.HTTP.GenR
 import IC.HTTP.Request
 import IC.HTTP.RequestId
 import IC.Debug.JSON ()
+import IC.Serialise ()
+import IC.StateFile
 
-startApp :: IO Application
-startApp = do
-    ic <- initialIC
-    stateVar <- newMVar ic
-    lastState <- newIORef ic
-    return $ handle stateVar lastState
+withApp :: Maybe FilePath -> (Application -> IO a) -> IO a
+withApp backingFile action =
+    withStore initialIC backingFile (action . handle)
 
-handle :: MVar IC -> IORef IC -> Application
-handle stateVar lastState req respond = case (requestMethod req, pathInfo req) of
-    ("GET", []) -> readIORef lastState >>= json status200
+handle :: Store IC -> Application
+handle store req respond = case (requestMethod req, pathInfo req) of
+    ("GET", []) -> peekStore store >>= json status200
     ("GET", ["api","v1","status"]) -> do
         r <- peekIC $ gets IC.HTTP.Status.r
         cbor status200 r
@@ -60,32 +57,21 @@ handle stateVar lastState req respond = case (requestMethod req, pathInfo req) o
                         lift $ cbor status200 (IC.HTTP.Request.response r)
     _ -> notFound
   where
-    -- This modifies state, so must be atomic, so blocks on stateVar
     runIC :: StateT IC IO a -> IO a
     runIC a = do
-      x <- modifyMVar stateVar $ \s -> do
-        (x, s') <- runStateT a s
-        writeIORef lastState s'
-        return (s', x)
+      x <- modifyStore store a
       -- begin processing in the background (it is important that
       -- this thread returns, else warp is blocked somehow)
-      void $ forkIO (loopIC runStep)
+      void $ forkIO loopIC
       return x
 
     -- Not atomic, reads most recent state
     peekIC :: StateT IC IO a -> IO a
-    peekIC a = readIORef lastState >>= evalStateT a
+    peekIC a = peekStore store >>= evalStateT a
 
-    -- This modifies state, so must be atomic, so blocks on stateVar
-    stepIC :: StateT IC IO Bool -> IO Bool
-    stepIC a = modifyMVar stateVar $ \s -> do
-        (changed, s') <- runStateT a s
-        when changed $ writeIORef lastState s'
-        return (if changed then s' else s, changed)
-
-    loopIC :: StateT IC IO Bool -> IO ()
-    loopIC a = stepIC a >>= \case
-        True -> loopIC a
+    loopIC :: IO ()
+    loopIC = modifyStore store runStep >>= \case
+        True -> loopIC
         False -> return ()
 
     cbor status gr = respond $ responseBuilder

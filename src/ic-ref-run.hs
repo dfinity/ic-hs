@@ -18,14 +18,13 @@ import qualified Data.ByteString.Lazy as B
 import qualified Data.ByteString.Lazy.Char8 as BC
 import qualified Data.ByteString.Builder as B
 import qualified Data.Text as T
-import qualified Data.Text.Encoding as T
 import Control.Monad.Trans
 import Control.Monad.Trans.State
 import Text.Printf
 import Data.List
-import Data.IORef
 import Data.Text.Prettyprint.Doc (pretty)
 import Data.Time.Clock.POSIX
+import Control.Monad.Random.Lazy
 
 import GHC.TypeLits (KnownSymbol, symbolVal)
 import Data.Row (empty, (.==), (.+), type (.!), Label)
@@ -44,9 +43,6 @@ type DRun = StateT IC IO
 
 dummyUserId :: CanisterId
 dummyUserId = EntityId $ B.pack [0xCA, 0xFF, 0xEE]
-
-dummyRequestId :: AsyncRequest -> RequestID
-dummyRequestId = B.fromStrict . T.encodeUtf8 . T.pack . show
 
 -- Pretty printing
 
@@ -91,10 +87,10 @@ shorten n s = a ++ (if null b then "" else "…")
   where (a,b) = splitAt n s
 
 
-submitAndRun :: IO RequestID -> AsyncRequest -> DRun ()
-submitAndRun mkRid r = do
+submitAndRun :: AsyncRequest -> DRun ()
+submitAndRun r = do
     lift $ printAsyncRequest r
-    rid <- lift mkRid
+    rid <- lift mkRequestId
     submitRequest rid r
     runToCompletion
     r <- gets (snd . (M.! rid) . requests)
@@ -112,21 +108,16 @@ submitRead r = do
         t <- getPOSIXTime
         return $ Timestamp $ round (t * 1000_000_000)
 
-newRequestIdProvider :: IO (IO RequestID)
-newRequestIdProvider = do
-  ref <- newIORef 0
-  return $ do
-    modifyIORef ref (+1)
-    i <- readIORef ref
-    return $ B.toLazyByteString $ B.word64BE i
+mkRequestId :: IO RequestID
+mkRequestId = B.toLazyByteString . B.word64BE <$> randomIO
 
 callManagement :: forall s a b.
   KnownSymbol s =>
   (a -> IO b) ~ (ICManagement IO .! s) =>
   Candid.CandidArg a =>
-  IO RequestID -> EntityId -> Label s -> a -> StateT IC IO ()
-callManagement getRid user_id l x =
-  submitAndRun getRid $
+  EntityId -> Label s -> a -> StateT IC IO ()
+callManagement user_id l x =
+  submitAndRun $
     UpdateRequest (EntityId mempty) user_id (symbolVal l) (Candid.encode x)
 
 
@@ -135,15 +126,14 @@ work msg_file = do
   msgs <- parseFile msg_file
 
   let user_id = dummyUserId
-  getRid <- newRequestIdProvider
   ic <- initialIC
   flip evalStateT ic $
     forM_ msgs $ \case
       Create ->
-        callManagement getRid user_id #create_canister ()
+        callManagement user_id #create_canister ()
       Install cid filename arg -> do
         wasm <- liftIO $ B.readFile filename
-        callManagement getRid user_id #install_code $ empty
+        callManagement user_id #install_code $ empty
           .+ #mode .== V.IsJust #install ()
           .+ #canister_id .== Candid.Principal cid
           .+ #wasm_module .== wasm
@@ -152,7 +142,7 @@ work msg_file = do
           .+ #memory_allocation .== Nothing
       Reinstall cid filename arg -> do
         wasm <- liftIO $ B.readFile filename
-        callManagement getRid user_id #install_code $ empty
+        callManagement user_id #install_code $ empty
           .+ #mode .== V.IsJust #reinstall ()
           .+ #canister_id .== Candid.Principal cid
           .+ #wasm_module .== wasm
@@ -161,7 +151,7 @@ work msg_file = do
           .+ #memory_allocation .== Nothing
       Upgrade cid filename arg -> do
         wasm <- liftIO $ B.readFile filename
-        callManagement getRid user_id #install_code $ empty
+        callManagement user_id #install_code $ empty
           .+ #mode .== V.IsJust #upgrade ()
           .+ #canister_id .== Candid.Principal cid
           .+ #wasm_module .== wasm
@@ -171,7 +161,7 @@ work msg_file = do
       Query  cid method arg ->
         submitRead  (QueryRequest (EntityId cid) user_id method arg)
       Update cid method arg ->
-        submitAndRun getRid (UpdateRequest (EntityId cid) user_id method arg)
+        submitAndRun (UpdateRequest (EntityId cid) user_id method arg)
 
 main :: IO ()
 main = join . customExecParser (prefs showHelpOnError) $

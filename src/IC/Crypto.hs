@@ -4,7 +4,7 @@ Everything related to signature creation and checking
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
 module IC.Crypto
- ( SecretKey
+ ( SecretKey(..)
  , createSecretKeyEd25519
  , createSecretKeyWebAuthn
  , createSecretKeyECDSA
@@ -31,7 +31,7 @@ data SecretKey
     | ECDSA ECDSA.SecretKey
     | WebAuthn WebAuthn.SecretKey
     | BLS BLS.SecretKey
-  deriving Show
+  deriving (Show)
 
 createSecretKeyEd25519 :: BS.ByteString -> SecretKey
 createSecretKeyEd25519 = Ed25519 . Ed25519.createKey

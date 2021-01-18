@@ -6,6 +6,7 @@
 , aeson
 , asn1-encoding
 , asn1-types
+, atomic-write
 , base
 , base32
 , base64-bytestring
@@ -40,7 +41,9 @@
 , quickcheck-io
 , random
 , row-types
+, serialise
 , split
+, splitmix
 , stdenv
 , tasty
 , tasty-html
@@ -59,6 +62,7 @@
 , wai-extra
 , warp
 , winter
+, zlib
 }:
 mkDerivation {
   pname = "ic-ref";
@@ -71,6 +75,7 @@ mkDerivation {
     aeson
     asn1-encoding
     asn1-types
+    atomic-write
     base
     base32
     base64-bytestring
@@ -103,7 +108,9 @@ mkDerivation {
     process-extras
     random
     row-types
+    serialise
     split
+    splitmix
     tasty
     tasty-html
     tasty-hunit
@@ -120,34 +127,56 @@ mkDerivation {
     wai-extra
     warp
     winter
+    zlib
   ];
   testHaskellDepends = [
     aeson
     asn1-encoding
     asn1-types
+    atomic-write
     base
+    base32
     base64-bytestring
+    binary
     bindings-DSL
     bytestring
+    candid
     cborg
     containers
+    crc
     cryptonite
+    data-default-class
+    directory
     ed25519
+    filepath
     hashable
     hex-text
     leb128-cereal
     memory
+    MonadRandom
     mtl
     parallel
+    primitive
     process-extras
     QuickCheck
     quickcheck-io
+    random
+    row-types
+    serialise
+    split
+    splitmix
     tasty
     tasty-hunit
     tasty-quickcheck
     temporary
     text
+    time
+    transformers
     unordered-containers
+    utf8-string
+    vector
+    winter
+    zlib
   ];
   doCheck = false;
   license = "unknown";

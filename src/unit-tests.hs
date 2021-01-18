@@ -1,11 +1,22 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE NamedFieldPuns #-}
 module Main (main) where
 
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.QuickCheck
 
+
+import System.IO
+import System.IO.Temp
+import System.Directory
+import qualified Data.Map as M
+
 import qualified IC.Crypto.BLS as BLS
+import IC.Ref
+import IC.Types
+import IC.Serialise ()
+import IC.StateFile
 import IC.Test.HashTree
 import IC.Test.BLS
 import IC.Test.WebAuthn
@@ -33,4 +44,31 @@ tests = testGroup "ic-ref unit tests"
   -- These are slow, make sure to run only a few of them
   , adjustOption (\(QuickCheckTests n) -> QuickCheckTests (n`div`20)) webAuthnTests
   , ecdsaTests
+  , testGroup "State serialization"
+    [ testCase "with file" $
+      withSystemTempFile "ic-ref-unit-test.state" $ \fn h -> do
+        -- start with an empty file
+        hClose h
+        removeFile fn
+
+        -- Create the state
+        withStore initialIC (Just fn) $ \store -> do
+          modifyStore store $ submitRequest "dummyrequestid" $
+            UpdateRequest (EntityId mempty) (EntityId "yay") "create_canister" "DIDL\0\0"
+
+        -- now the file should exist
+        doesFileExist fn  >>= assertBool "File exists"
+
+        withStore initialIC (Just fn) $ \store -> do
+          ic <- peekStore store
+          assertBool "No canisters yet expected" (null (canisters ic))
+          modifyStore store runToCompletion
+
+        withStore initialIC (Just fn) $ \store -> do
+          ic <- peekStore store
+          case M.elems (canisters ic) of
+            [] -> assertFailure "No canisters created"
+            [CanState {controller}] -> controller @?= EntityId "yay"
+            _ -> assertFailure "Too many canisters?"
+    ]
   ]
