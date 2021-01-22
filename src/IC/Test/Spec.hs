@@ -1484,15 +1484,11 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
         , "arg" =: GBlob (Candid.encode (#canister_id .== Principal cid))
         ]
 
-      env dels req =
-        delegationEnv defaultSK
-          (zip [createSecretKeyEd25519 (BS.singleton n) | n <- [0..]] dels) req
-
       good req dels = do
         req <- addExpiry req
         let rid = requestId req
         -- sign request with delegations
-        env dels req >>= postCBOR "/api/v1/submit" >>= code2xx
+        delegationEnv defaultSK dels req >>= postCBOR "/api/v1/submit" >>= code2xx
         -- wait for it
         void $ awaitStatus defaultUser rid >>= isReply
         -- also read status with delegation
@@ -1501,12 +1497,12 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
           , "sender" =: GBlob defaultUser
           , "paths" =: GList [GList [GBlob "request_status", GBlob rid]]
           ]
-        env dels sreq >>= postCBOR "/api/v1/read" >>= void . code2xx
+        delegationEnv defaultSK dels sreq >>= postCBOR "/api/v1/read" >>= void . code2xx
 
       badSubmit req dels = do
         req <- addExpiry req
         -- sign request with delegations (should fail)
-        env dels req >>= postCBOR "/api/v1/submit" >>= code4xx
+        delegationEnv defaultSK dels req >>= postCBOR "/api/v1/submit" >>= code4xx
 
       badRead req dels = do
         req <- addExpiry req
@@ -1521,7 +1517,7 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
           , "sender" =: GBlob defaultUser
           , "paths" =: GList [GList [GBlob "request_status", GBlob rid]]
           ]
-        env dels sreq >>= postCBOR "/api/v1/read" >>= void . code4xx
+        delegationEnv defaultSK dels sreq >>= postCBOR "/api/v1/read" >>= void . code4xx
 
       goodTestCase name mkReq mkDels =
         simpleTestCase name $ \cid -> good (mkReq cid) (mkDels cid)
@@ -1531,35 +1527,40 @@ icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
         , simpleTestCase "in read_state" $ \cid -> badRead (mkReq cid) (mkDels cid)
         ]
 
+      withEd25519 = zip [createSecretKeyEd25519 (BS.singleton n) | n <- [0..]]
+      withWebAuthn = zip [createSecretKeyWebAuthn (BS.singleton n) | n <- [0..]]
+
     in
     [ goodTestCase "one delegation, singleton target" callReq $ \cid ->
-      [Just [cid]]
+      withEd25519 [Just [cid]]
     , badTestCase "one delegation, wrong singleton target" callReq $ \_cid ->
-      [Just [doesn'tExist]]
+      withEd25519 [Just [doesn'tExist]]
     , goodTestCase "one delegation, two targets" callReq $ \cid ->
-      [Just [cid, doesn'tExist]]
+      withEd25519 [Just [cid, doesn'tExist]]
+    , goodTestCase "two delegations, two targets, webauthn" callReq $ \cid ->
+      withWebAuthn [Just [cid, doesn'tExist], Just [cid, doesn'tExist]]
     , goodTestCase "one delegation, redundant targets" callReq $ \cid ->
-      [Just [cid, cid, doesn'tExist]]
+      withEd25519 [Just [cid, cid, doesn'tExist]]
     , goodTestCase "two delegations, singletons" callReq $ \cid ->
-      [Just [cid], Just [cid] ]
+      withEd25519 [Just [cid], Just [cid] ]
     , goodTestCase "two delegations, first restricted" callReq $ \cid ->
-      [Just [cid], Nothing ]
+      withEd25519 [Just [cid], Nothing ]
     , goodTestCase "two delegations, second restricted" callReq $ \cid ->
-      [Nothing, Just [cid]]
+      withEd25519 [Nothing, Just [cid]]
     , badTestCase "two delegations, empty intersection" callReq $ \cid ->
-      [Just [cid], Just [doesn'tExist]]
+      withEd25519 [Just [cid], Just [doesn'tExist]]
     , badTestCase "two delegations, first empty target set" callReq $ \cid ->
-      [Just [], Just [cid]]
+      withEd25519 [Just [], Just [cid]]
     , badTestCase "two delegations, second empty target set" callReq $ \cid ->
-      [Just [cid], Just []]
+      withEd25519 [Just [cid], Just []]
     , goodTestCase "management canister: correct target" mgmtReq $ \_cid ->
-      [Just [""]]
+      withEd25519 [Just [""]]
     , badTestCase "management canister: empty target set" mgmtReq $ \_cid ->
-      [Just []]
+      withEd25519 [Just []]
     , badTestCase "management canister: bogus target" mgmtReq $ \_cid ->
-      [Just [doesn'tExist]]
+      withEd25519 [Just [doesn'tExist]]
     , badTestCase "management canister: bogus target (using target canister)" mgmtReq $ \cid ->
-      [Just [cid]]
+      withEd25519 [Just [cid]]
     ]
 
   , testGroup "Authentication schemes" $
