@@ -12,7 +12,6 @@ table of a wasm instance is immutable.
 -}
 module IC.Wasm.Winter.Persist
   ( PInstance(..)
-  , PExtern(..)
   , PModuleInst(..)
   , persistInstance
   , resumeInstance
@@ -26,7 +25,6 @@ import Control.Monad.ST
 import Data.Primitive.MutVar
 import qualified Data.IntMap as IM
 import qualified Data.Map.Lazy as M
-import qualified Data.Text.Lazy as T
 import qualified Data.Vector as V
 import Data.ByteString.Lazy (ByteString)
 
@@ -40,10 +38,6 @@ import IC.Wasm.Winter (Instance)
 
 -- |
 -- This stores data read from an instance.
---
--- Note that an 'Instance' has aliasing, the same global may appear in various
--- spots. We don’t worry about that for now and just de-alias on reading, at the
--- expense of writing the corresponding mutable values more than once.
 newtype PInstance = PInstance (Persisted (Instance ()))
   deriving Show
 
@@ -77,28 +71,9 @@ instance Persistable (W.GlobalInst (ST s)) where
   persist m = readMutVar (W._giContent m)
   resume m = writeMutVar (W._giContent m)
 
-data PExtern
-  = PExternMemory (Persisted (W.MemoryInst (ST ())))
-  | PExternGlobal (Persisted (W.GlobalInst (ST ())))
-  | PExternOther
-  deriving Show
-
-instance Persistable (W.Extern f (ST s)) where
-  type Persisted (W.Extern f (ST s)) = PExtern
-  type M (W.Extern f (ST s)) = ST s
-
-  persist (W.ExternGlobal g) = PExternGlobal <$> persist g
-  persist (W.ExternMemory m) = PExternMemory <$> persist m
-  persist _ = return PExternOther
-
-  resume (W.ExternGlobal g) (PExternGlobal pg) = resume g pg
-  resume (W.ExternMemory m) (PExternMemory pm) = resume m pm
-  resume _ _ = return ()
-
 data PModuleInst = PModuleInst
   { memories :: V.Vector (Persisted (W.MemoryInst (ST ())))
   , globals :: V.Vector (Persisted (W.GlobalInst (ST ())))
-  , exports :: M.Map T.Text (Persisted (W.Extern W.Phrase (ST ())))
   }
   deriving Show
 
@@ -108,11 +83,9 @@ instance Persistable (W.ModuleInst W.Phrase (ST s)) where
   persist inst = PModuleInst
     <$> persist (W._miMemories inst)
     <*> persist (W._miGlobals inst)
-    <*> persist (W._miExports inst)
   resume inst pinst = do
     resume (W._miMemories inst) (memories pinst)
     resume (W._miGlobals inst) (globals pinst)
-    resume (W._miExports inst) (exports pinst)
 
 
 instance Persistable a => Persistable [a] where

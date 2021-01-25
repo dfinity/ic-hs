@@ -1,7 +1,7 @@
 {-# OPTIONS_GHC -fno-warn-unused-imports -Wno-unused-top-binds #-}
+{-# LANGUAGE DeriveGeneric #-}
 #include <bindings.dsl.h>
 #include <bls_BLS12381.h>
-
 module IC.Crypto.BLS
  ( init
  , SecretKey
@@ -18,6 +18,7 @@ import Control.Monad
 import Foreign.Ptr
 import Foreign.Marshal.Alloc
 import System.IO.Unsafe
+import GHC.Generics
 
 #strict_import
 
@@ -45,7 +46,7 @@ init = do
 
 -- Cache the public key as well
 data SecretKey = SecretKey BS.ByteString BS.ByteString
-  deriving Show
+  deriving (Show, Generic)
 
 toPublicKey :: SecretKey -> BS.ByteString
 toPublicKey (SecretKey _ pk) = pk

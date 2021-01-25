@@ -106,11 +106,6 @@ instance ToJSON PModuleInst where
     toJSON     = genericToJSON customOptions
     toEncoding = genericToEncoding customOptions
 
-deriving instance Generic PExtern
-instance ToJSON PExtern where
-    toJSON     = genericToJSON customOptions
-    toEncoding = genericToEncoding customOptions
-
 deriving instance Generic (Snapshot a)
 instance ToJSON a => ToJSON (Snapshot a) where
     toJSON     = genericToJSON customOptions
@@ -159,6 +154,11 @@ instance ToJSON RunStatus where
 
 deriving instance Generic CanState
 instance ToJSON CanState where
+    toJSON     = genericToJSON customOptions
+    toEncoding = genericToEncoding customOptions
+
+deriving instance Generic CanisterContent
+instance ToJSON CanisterContent where
     toJSON     = genericToJSON customOptions
     toEncoding = genericToEncoding customOptions
 

@@ -100,7 +100,6 @@ common cbor
   build-depends:       leb128-cereal
 
 common logic
-  import cbor
   hs-source-dirs:      src
   other-modules:       IC.Ref
   other-modules:       IC.Types
@@ -120,6 +119,7 @@ common logic
   other-modules:       IC.Wasm.Imports
   build-depends:       base >=4.12 && <5
   build-depends:       filepath
+  build-depends:       split
   build-depends:       hex-text
   build-depends:       crc
   build-depends:       text
@@ -143,7 +143,16 @@ common logic
   build-depends:       MonadRandom
   build-depends:       ed25519
 
-
+common serialise
+  hs-source-dirs:      src
+  other-modules:       IC.Serialise
+  other-modules:       IC.StateFile
+  build-depends:       serialise
+  build-depends:       random >= 1.2
+  build-depends:       splitmix
+  build-depends:       directory
+  build-depends:       atomic-write
+  build-depends:       zlib
 
 common ghc-flags
   default-language:    Haskell2010
@@ -153,7 +162,7 @@ common ghc-flags
     ghc-options:       -Werror
 
 executable ic-ref-run
-  import: version, logic, crypto, cbor, certificates, ghc-flags
+  import: version, logic, serialise, crypto, cbor, certificates, ghc-flags
   main-is:             ic-ref-run.hs
   hs-source-dirs:      src
   other-modules:       IC.DRun.Parse
@@ -161,7 +170,7 @@ executable ic-ref-run
   build-depends:       prettyprinter
 
 executable ic-ref
-  import: version, logic, crypto, cbor, certificates, ghc-flags
+  import: version, logic, serialise, crypto, cbor, certificates, ghc-flags
   main-is:             ic-ref.hs
   other-modules:       IC.HTTP
   other-modules:       IC.HTTP.Status
@@ -212,7 +221,7 @@ executable ic-ref-test
   build-depends:       vector
 
 test-suite unit-test
-  import: cbor, crypto, ghc-flags
+  import: logic, certificates, serialise, cbor, crypto, ghc-flags
   type: exitcode-stdio-1.0
   main-is: unit-tests.hs
   other-modules:       IC.CBORPatterns
@@ -229,3 +238,5 @@ test-suite unit-test
   build-depends: QuickCheck
   build-depends: quickcheck-io
   build-depends: hex-text
+  build-depends: temporary
+  build-depends: directory
