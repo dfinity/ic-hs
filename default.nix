@@ -195,6 +195,23 @@ rec {
       touch $out
     '';
 
+  # A simple license check: Check that all used Haskell packages
+  # declare a liberal (non-GPL) license.
+  # This does not necessarily cover imported C libraries!
+  license-check = haskellPackages.ic-ref.overrideAttrs(old: {
+      name = "ic-ref-license-check";
+      phases = [ "unpackPhase" "setupCompilerEnvironmentPhase" "buildPhase" "installPhase" ];
+      buildPhase = ''
+        cd $packageConfDir
+        ! grep -i '^license:' *.conf | grep -v 'BSD\|Apache\|MIT\|ISC'
+      '';
+      outputs = ["out"]; # no docs
+      installPhase = ''
+        touch $out
+      '';
+    });
+
+
   public-spec =
     nixpkgs.stdenv.mkDerivation {
     name = "public-spec";
