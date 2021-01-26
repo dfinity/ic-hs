@@ -75,18 +75,30 @@ let
         # sanity check
         $out/bin/ic-ref --version
       ''
+
     # on Linux, build statically using musl
+    # and until we are open source, also using integer-simple
+    # (once we can use ghc-9.0 we can maybe use ghc-bignum native, which should be faster)
     else
       let
-        muslHaskellPackages = nixpkgs.pkgsMusl.haskellPackages.override {
-          overrides = import nix/haskell-packages.nix nixpkgs subpath;
+        muslHaskellPackages = nixpkgs.pkgsMusl.haskell.packages.integer-simple.ghc884.override {
+          overrides = self: super:
+            import nix/haskell-packages.nix nixpkgs subpath self super
+            // {
+              cryptonite = super.cryptonite.overrideAttrs(old: {
+                configureFlags = "-f-integer-gmp";
+                doCheck = false; # test suite too slow without integer-gmp
+              });
+              # more test suites too slow withour integer-gmp
+              scientific = nixpkgs.haskell.lib.dontCheck super.scientific;
+              math-functions = nixpkgs.haskell.lib.dontCheck super.math-functions;
+            };
         };
         ic-ref-musl =
           muslHaskellPackages.ic-ref.overrideAttrs (
             old: {
               configureFlags = [
                 "--ghc-option=-optl=-static"
-                "--extra-lib-dirs=${nixpkgs.pkgsMusl.gmp6.override { withStatic = true; }}/lib"
                 "--extra-lib-dirs=${nixpkgs.pkgsMusl.zlib.static}/lib"
                 "--extra-lib-dirs=${nixpkgs.pkgsMusl.libffi.overrideAttrs (old: { dontDisableStatic = true; })}/lib"
               ];
