@@ -45,6 +45,7 @@
 , splitmix
 , stdenv
 , tasty
+, tasty-ant-xml
 , tasty-html
 , tasty-hunit
 , tasty-quickcheck
@@ -110,6 +111,7 @@ mkDerivation {
     split
     splitmix
     tasty
+    tasty-ant-xml
     tasty-html
     tasty-hunit
     tasty-rerun

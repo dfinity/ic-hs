@@ -201,6 +201,7 @@ executable ic-ref-test
   build-depends:       tasty
   build-depends:       tasty-hunit
   build-depends:       tasty-html
+  build-depends:       tasty-ant-xml
   build-depends:       tasty-rerun
   build-depends:       optparse-applicative
   build-depends:       http-client
