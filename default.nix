@@ -37,8 +37,6 @@ let
         rm -f $out/test-data/universal_canister.wasm
         cp ${universal-canister}/universal_canister.wasm $out/test-data
       '';
-      propagatedBuildInputs = (old.propagatedBuildInputs or []) ++
-        [ nixpkgs.ic-webauthn-cli ];
       # variant of justStaticExecutables that retains propagatedBuildInputs
       postFixup = "rm -rf $out/lib $out/share/doc";
     })

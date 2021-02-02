@@ -52,8 +52,6 @@ common crypto
   build-depends: bindings-DSL
   build-depends: asn1-types
   build-depends: asn1-encoding
-  build-depends: process-extras
-  build-depends: temporary
   build-depends: hashable
   build-depends: parallel
   build-depends: base64-bytestring >= 1.1

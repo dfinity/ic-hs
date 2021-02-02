@@ -43,13 +43,6 @@ let
             url = "https://github.com/commercialhaskell/all-cabal-hashes/archive/f18d8ab7adfbd15acfc5e994dfb973577a5aba5c.tar.gz";
             sha256 = "0kn2wqilpw0nyx54jyz4vp7xrx1893zdv7d54yi9pjl677pnwcs9";
           };
-
-          cbor2 = self.python3.pkgs.callPackage ./python-cbor2.nix {};
-
-          ic-webauthn-cli = self.callPackage ./ic-webauthn-cli.nix {
-            inherit (self.python3.pkgs) buildPythonPackage fido2 pynacl;
-            inherit (self) cbor2;
-          };
         })
       ];
     };

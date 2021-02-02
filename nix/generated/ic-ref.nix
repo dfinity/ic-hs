@@ -36,7 +36,6 @@
 , prettyprinter
 , primitive
 , process
-, process-extras
 , QuickCheck
 , quickcheck-io
 , random
@@ -105,7 +104,6 @@ mkDerivation {
     prettyprinter
     primitive
     process
-    process-extras
     random
     row-types
     serialise
@@ -116,7 +114,6 @@ mkDerivation {
     tasty-hunit
     tasty-rerun
     template-haskell
-    temporary
     text
     time
     transformers
@@ -157,7 +154,6 @@ mkDerivation {
     mtl
     parallel
     primitive
-    process-extras
     QuickCheck
     quickcheck-io
     random
