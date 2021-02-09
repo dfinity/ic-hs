@@ -222,9 +222,9 @@ rec {
     });
 
 
-  public-spec =
+  interface-spec =
     nixpkgs.stdenv.mkDerivation {
-    name = "public-spec";
+    name = "interface-spec";
     src = subpath ./spec;
     phases = [ "unpackPhase" "buildPhase" "checkPhase" ];
     buildInputs = with nixpkgs;
@@ -279,7 +279,7 @@ rec {
       ic-ref-dist
       ic-ref-test
       universal-canister
-      public-spec
+      interface-spec
       check-generated
     ];
   };

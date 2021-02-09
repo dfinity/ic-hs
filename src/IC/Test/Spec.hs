@@ -262,7 +262,7 @@ connect ep = do
 -- * The actual test suite (see below for helper functions)
 
 icTests :: TestConfig -> TestTree
-icTests = withTestConfig $ testGroup "Public Spec acceptance tests"
+icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
   [ simpleTestCase "create and install" $ \_ ->
       return ()
 

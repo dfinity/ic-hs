@@ -29,7 +29,7 @@ main = do
 
 tests :: TestTree
 tests = testGroup "ic-ref unit tests"
-  [ testCase "Request id calculation from public spec" $
+  [ testCase "Request id calculation from interface spec" $
      let gr = GRec $ mconcat
           [ "request_type" =: GText "call"
           , "canister_id" =: GBlob "\x00\x00\x00\x00\x00\x00\x04\xD2"
