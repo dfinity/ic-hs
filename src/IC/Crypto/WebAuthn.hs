@@ -1,21 +1,6 @@
 {-|
 This module implements WebAuthN crypto. WebauthN is a big mess, involving
 nesting of CBOR, DER and JSON…
-
-For signature _checking_, we implement the necessary steps directly here, in
-pure Haskell. This means that `ic-ref` can run independent of external tools.
-
-We do not use the `webauthn` library from hackage (it does additional checks),
-although some of the code here is based on that.
-
-For signature _creation_, we use the Python implementation in
-https://github.com/dfinity-lab/ic-webauthn-cli, purely out of laziness. This
-could be changed.
-
-Until then, `ic-ref-test` will expect `ic-webauthn-cli` on
-the `PATH`, but that’s ok, because `ic-ref-test` is only used in nixified
-environment where this can be ensured seamlessly.
-
 -}
 
 {-# LANGUAGE OverloadedStrings #-}
@@ -34,11 +19,6 @@ module IC.Crypto.WebAuthn
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.ByteString.Lazy.Char8 as BS
-import System.IO.Temp
-import System.IO.Unsafe
-import System.IO
-import System.Exit
-import System.Process.ByteString.Lazy
 import Data.Bifunctor
 import Control.Monad
 import Data.Hashable
@@ -48,49 +28,21 @@ import qualified Data.Aeson.Types as JSON
 import qualified IC.HTTP.CBOR as CBOR
 import Codec.CBOR.Term
 import Codec.CBOR.Read
+import Codec.CBOR.Write (toLazyByteString)
 import IC.CBORPatterns
 import qualified Data.Map as M
 import IC.HTTP.GenR.Parse
 import IC.Hash
 import Control.Monad.Except
 import qualified Crypto.PubKey.ECC.ECDSA as EC
+import qualified Crypto.PubKey.ECC.Generate as EC
 import qualified Crypto.PubKey.ECC.Types as EC
 import qualified Crypto.Number.Serialize as EC
 import Crypto.Hash.Algorithms (SHA256(..))
 import Data.ASN1.Types
+import Data.ASN1.Encoding
+import Data.ASN1.BinaryEncoding
 import IC.Crypto.DER.Decode
-
-newtype SecretKey = SecretKey BS.ByteString
-  deriving Show
-
-withSecretKey :: SecretKey -> (FilePath -> IO a) -> IO a
-withSecretKey (SecretKey sk) act =
-  withSystemTempFile "webauthn-seckey.pem" $ \fn h -> BS.hPut h sk >> hClose h >> act fn
-
-toPublicKey :: SecretKey -> BS.ByteString
-toPublicKey sk = unsafePerformIO $ do
-  (code, out, err) <- withSecretKey sk $ \fn ->
-     readProcessWithExitCode "ic-webauthn-cli" [ "get_public_key", fn ] mempty
-  unless (code == ExitSuccess) $
-    die $ "ic-webauthn-cli create failed: " ++ show code ++ "\n" ++ BS.unpack err
-  return out
-
-createKey :: BS.ByteString -> SecretKey
-createKey seed = unsafePerformIO $ do
-  -- seed is actually hex, but hey, decimal is also hex
-  (code, out, err) <- readProcessWithExitCode
-    "ic-webauthn-cli" [ "create" ] (BS.pack $ show (abs (hash seed) + 1) ++ "\n")
-  unless (code == ExitSuccess) $
-    die $ "ic-webauthn-cli create failed: " ++ show code ++ "\n" ++ BS.unpack err
-  return (SecretKey out)
-
-sign :: SecretKey -> BS.ByteString -> IO BS.ByteString
-sign sk msg = do
-  (code, out, err) <- withSecretKey sk $ \fn ->
-    readProcessWithExitCode "ic-webauthn-cli" [ "sign", fn ] msg
-  unless (code == ExitSuccess) $
-    die $ "ic-webauthn-cli sign failed: " ++ show code ++ "\n" ++ BS.unpack err
-  return out
 
 parseSig :: BS.ByteString -> Either T.Text (BS.ByteString, BS.ByteString, BS.ByteString)
 parseSig = CBOR.decode >=> record do
@@ -99,6 +51,14 @@ parseSig = CBOR.decode >=> record do
       sig <- field blob "signature"
       return (ad, cdj, sig)
 
+genSig :: (BS.ByteString, BS.ByteString, BS.ByteString) -> BS.ByteString
+genSig (ad, cdj, sig) =
+  toLazyByteString $ encodeTerm $ TTagged 55799 $ TMap
+    [ (TString "authenticator_data", TBytes (BS.toStrict ad))
+    , (TString "client_data_json", TString (T.decodeUtf8 (BS.toStrict cdj)))
+    , (TString "signature", TBytes (BS.toStrict sig))
+    ]
+
 parseClientDataJson :: BS.ByteString -> Either T.Text BS.ByteString
 parseClientDataJson blob = first T.pack $
     JSON.eitherDecode blob >>= JSON.parseEither p
@@ -106,6 +66,12 @@ parseClientDataJson blob = first T.pack $
     p = JSON.withObject "clientData" $ \o -> do
       x <- o JSON..: "challenge"
       either JSON.parseFail return $ Base64.decodeUnpadded (BS.pack x)
+
+genClientDataJson :: BS.ByteString -> BS.ByteString
+genClientDataJson challenge = JSON.encode $ JSON.Object $
+    "challenge" JSON..= BS.unpack (Base64.encodeUnpadded challenge)
+    <> "type" JSON..= ("webauthn.get" :: T.Text)
+    <> "origin" JSON..= ("ic-ref-test" :: T.Text)
 
 parseCOSEKey :: BS.ByteString -> Either T.Text EC.PublicKey
 parseCOSEKey s =
@@ -125,6 +91,9 @@ parseCOSEKey s =
               TBytes b -> pure b
               _ -> throwError $ "COSE field " <> T.pack (show n) <> " not bytes"
 
+      ty <- intField 1
+      unless (ty == 2) $
+          throwError "COSE: Only key type 2 (EC2) supported"
       ty <- intField 3
       unless (ty == -7) $
           throwError "COSE: Only type -7 (ECDSA) supported"
@@ -135,7 +104,7 @@ parseCOSEKey s =
       yb <- bytesField (-3)
       let x = EC.os2ip xb
       let y = EC.os2ip yb
-      return $ EC.PublicKey (EC.getCurveByName EC.SEC_p256r1) (EC.Point x y)
+      return $ EC.PublicKey curve (EC.Point x y)
 
     go _ = throwError "COSE key not a CBOR map"
 
@@ -143,11 +112,53 @@ parseCOSEKey s =
     keyVal (TInteger k,v) = pure (k,v)
     keyVal _ = throwError "Non-integer key in CBOR map"
 
+genCOSEKey :: EC.PublicKey -> BS.ByteString
+genCOSEKey (EC.PublicKey _curve (EC.Point x y)) =
+  toLazyByteString $ encodeTerm $ TMap
+    [ (TInt 1, TInt 2)
+    , (TInt 3, TInt (-7))
+    , (TInt (-1), TInt 1)
+    , (TInt (-2), TBytes (EC.i2ospOf_ 32 x))
+    , (TInt (-3), TBytes (EC.i2ospOf_ 32 y))
+    ]
+genCOSEKey (EC.PublicKey _ EC.PointO) = error "genCOSEKey: Point at infinity"
+
+
+
 parseCOSESig :: BS.ByteString -> Either T.Text EC.Signature
 parseCOSESig s =
   first T.pack (safeDecode s) >>= \case
-    Start Sequence:IntVal r:IntVal s:End Sequence:_ -> pure $ EC.Signature r s
+    [Start Sequence,IntVal r,IntVal s,End Sequence] -> pure $ EC.Signature r s
     a -> throwError $ "Unexpected DER encoding for COSE sig: " <> T.pack (show a)
+
+genCOSESig :: EC.Signature -> BS.ByteString
+genCOSESig (EC.Signature r s) = encodeASN1 DER
+    [Start Sequence,IntVal r,IntVal s,End Sequence]
+
+data SecretKey = SecretKey EC.PrivateKey EC.PublicKey
+  deriving Show
+
+curve :: EC.Curve
+curve = EC.getCurveByName EC.SEC_p256r1
+
+createKey :: BS.ByteString -> SecretKey
+createKey seed =
+    SecretKey (EC.PrivateKey curve d) (EC.PublicKey curve q)
+  where
+    n = EC.ecc_n $ EC.common_curve curve
+    d = fromIntegral (hash seed) `mod` (n-2) + 1
+    q = EC.generateQ curve d
+
+toPublicKey :: SecretKey -> BS.ByteString
+toPublicKey (SecretKey _ pk) = genCOSEKey pk
+
+
+sign :: SecretKey -> BS.ByteString -> IO BS.ByteString
+sign (SecretKey sk _) msg = do
+  let cdj = genClientDataJson msg
+  let ad = "arbitrary?"
+  sig <- EC.sign sk SHA256 (BS.toStrict (ad <> sha256 cdj))
+  return $ genSig (ad, cdj, genCOSESig sig)
 
 verify :: BS.ByteString -> BS.ByteString -> BS.ByteString -> Either T.Text ()
 verify pk msg sig = do

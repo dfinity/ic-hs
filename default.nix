@@ -37,8 +37,6 @@ let
         rm -f $out/test-data/universal_canister.wasm
         cp ${universal-canister}/universal_canister.wasm $out/test-data
       '';
-      propagatedBuildInputs = (old.propagatedBuildInputs or []) ++
-        [ nixpkgs.ic-webauthn-cli ];
       # variant of justStaticExecutables that retains propagatedBuildInputs
       postFixup = "rm -rf $out/lib $out/share/doc";
     })
@@ -224,9 +222,9 @@ rec {
     });
 
 
-  public-spec =
+  interface-spec =
     nixpkgs.stdenv.mkDerivation {
-    name = "public-spec";
+    name = "interface-spec";
     src = subpath ./spec;
     phases = [ "unpackPhase" "buildPhase" "checkPhase" ];
     buildInputs = with nixpkgs;
@@ -281,7 +279,7 @@ rec {
       ic-ref-dist
       ic-ref-test
       universal-canister
-      public-spec
+      interface-spec
       check-generated
     ];
   };

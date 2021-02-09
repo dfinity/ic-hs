@@ -52,8 +52,6 @@ common crypto
   build-depends: bindings-DSL
   build-depends: asn1-types
   build-depends: asn1-encoding
-  build-depends: process-extras
-  build-depends: temporary
   build-depends: hashable
   build-depends: parallel
   build-depends: base64-bytestring >= 1.1
@@ -203,6 +201,7 @@ executable ic-ref-test
   build-depends:       tasty
   build-depends:       tasty-hunit
   build-depends:       tasty-html
+  build-depends:       tasty-ant-xml
   build-depends:       tasty-rerun
   build-depends:       optparse-applicative
   build-depends:       http-client

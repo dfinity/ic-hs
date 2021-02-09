@@ -36,7 +36,6 @@
 , prettyprinter
 , primitive
 , process
-, process-extras
 , QuickCheck
 , quickcheck-io
 , random
@@ -46,6 +45,7 @@
 , splitmix
 , stdenv
 , tasty
+, tasty-ant-xml
 , tasty-html
 , tasty-hunit
 , tasty-quickcheck
@@ -105,18 +105,17 @@ mkDerivation {
     prettyprinter
     primitive
     process
-    process-extras
     random
     row-types
     serialise
     split
     splitmix
     tasty
+    tasty-ant-xml
     tasty-html
     tasty-hunit
     tasty-rerun
     template-haskell
-    temporary
     text
     time
     transformers
@@ -157,7 +156,6 @@ mkDerivation {
     mtl
     parallel
     primitive
-    process-extras
     QuickCheck
     quickcheck-io
     random
