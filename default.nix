@@ -272,6 +272,9 @@ rec {
 
   };
 
+  # for compatibility with the deployment to https://docs.dfinity.systems/public/v
+  public-spec = interface-spec;
+
   all-systems-go = nixpkgs.releaseTools.aggregate {
     name = "all-systems-go";
     constituents = [
