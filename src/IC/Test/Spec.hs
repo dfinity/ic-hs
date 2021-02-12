@@ -224,7 +224,9 @@ data TestConfig = TestConfig
 
 makeTestConfig :: String -> IO TestConfig
 makeTestConfig ep' = do
-    manager <- newTlsManager
+    manager <- newTlsManagerWith $ defaultManagerSettings
+      { managerResponseTimeout = responseTimeoutMicro 60_000_000 -- 60s
+      }
     request <- parseRequest $ ep ++ "/api/v1/status"
     putStrLn $ "Fetching endpoint status from " ++ show ep ++ "..."
     s <- (httpLbs request manager >>= okCBOR >>= statusResonse)
