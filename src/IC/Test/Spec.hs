@@ -17,6 +17,7 @@ This module contains a test suite for the Internet Computer
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE MultiWayIf #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 module IC.Test.Spec (preFlight, TestConfig, connect, ReplWrapper(..), icTests) where
 
@@ -269,8 +270,8 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
       return ()
 
   , testCase "create_canister necessary" $
-      ic_install' ic00 (enum #install) doesn'tExist trivialWasmModule ""
-          >>= isReject [3,5]
+      ic_install'' defaultUser (enum #install) doesn'tExist trivialWasmModule ""
+          >>= isHTTPErrorOrReject [3,5]
 
   , testCaseSteps "management requests" $ \step -> do
       step "Create (provisional)"
@@ -280,29 +281,29 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
       ic_install ic00 (enum #install) can_id trivialWasmModule ""
 
       step "Install again fails"
-      ic_install' ic00 (enum #install) can_id trivialWasmModule ""
-        >>= isReject [3,5]
+      ic_install'' defaultUser (enum #install) can_id trivialWasmModule ""
+        >>= isHTTPErrorOrReject [3,5]
 
       step "Reinstall"
       ic_install ic00 (enum #reinstall) can_id trivialWasmModule ""
 
       step "Reinstall as wrong user"
-      ic_install' (ic00as otherUser) (enum #reinstall) can_id trivialWasmModule ""
-        >>= isReject [3,5]
+      ic_install'' otherUser (enum #reinstall) can_id trivialWasmModule ""
+        >>= isHTTPErrorOrReject [3,5]
 
       step "Upgrade"
       ic_install ic00 (enum #upgrade) can_id trivialWasmModule ""
 
       step "Upgrade as wrong user"
-      ic_install'  (ic00as otherUser) (enum #upgrade) can_id trivialWasmModule ""
-        >>= isReject [3,5]
+      ic_install'' otherUser (enum #upgrade) can_id trivialWasmModule ""
+        >>= isHTTPErrorOrReject [3,5]
 
       step "Change controller"
       ic_set_controller ic00 can_id otherUser
 
       step "Change controller (with wrong controller)"
-      ic_set_controller' ic00 can_id otherUser
-        >>= isReject [3,5]
+      ic_set_controller'' defaultUser can_id otherUser
+        >>= isHTTPErrorOrReject [3,5]
 
       step "Reinstall as new controller"
       ic_install (ic00as otherUser) (enum #reinstall) can_id trivialWasmModule ""
@@ -415,23 +416,23 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
       query' cid reply >>= isReject [3]
 
       step "Cannot query canister_status"
-      ic_canister_status' ic00 cid >>= isReject [3,5]
+      ic_canister_status'' defaultUser cid >>= isHTTPErrorOrReject [3,5]
 
       step "Deletion fails"
-      ic_delete_canister' ic00 cid >>= isReject [3,5]
+      ic_delete_canister'' defaultUser cid >>= isHTTPErrorOrReject [3,5]
 
 
   , testCaseSteps "canister lifecycle (wrong controller)" $ \step -> do
       cid <- install noop
 
       step "Start as wrong user"
-      ic_start_canister' (ic00as otherUser) cid >>= isReject [3,5]
+      ic_start_canister'' otherUser cid >>= isHTTPErrorOrReject [3,5]
       step "Stop as wrong user"
-      ic_stop_canister' (ic00as otherUser) cid >>= isReject [3,5]
+      ic_stop_canister'' otherUser cid >>= isHTTPErrorOrReject [3,5]
       step "Canister Status as wrong user"
-      ic_canister_status' (ic00as otherUser) cid >>= isReject [3,5]
+      ic_canister_status'' otherUser cid >>= isHTTPErrorOrReject [3,5]
       step "Delete as wrong user"
-      ic_delete_canister' (ic00as otherUser) cid >>= isReject [3,5]
+      ic_delete_canister'' otherUser cid >>= isHTTPErrorOrReject [3,5]
 
 
   , testCaseSteps "aaaaa-aa (inter-canister)" $ \step -> do
@@ -1681,16 +1682,31 @@ readCBOR req = do
   req <- addExpiry req
   envelopeFor (senderOf req) req >>= postCBOR "/api/v1/read" >>= okCBOR
 
+
+-- | Add envelope to CBOR, and a nonce and expiry if not there, post to
+-- "submit". Returns either a HTTP Error code, or if the status is 2xx, poll
+-- for the request response, and return decoded CBOR
+type HTTPErrOrReqResponse = Either (Int,String) ReqResponse
+submitCBOR' :: (HasCallStack, HasTestConfig) => GenR -> IO HTTPErrOrReqResponse
+submitCBOR' req = do
+  req <- addNonce req
+  req <- addExpiry req
+  res <- envelopeFor (senderOf req) req >>= postCBOR "/api/v1/submit"
+  let code = statusCode (responseStatus res)
+  if | 200 <= code && code < 300 -> do
+         assertBool "Response body not empty" (BS.null (responseBody res))
+         Right <$> awaitStatus (senderOf req) (requestId req)
+     | otherwise -> do
+        let msg = T.unpack (T.decodeUtf8With T.lenientDecode (BS.toStrict (BS.take 200 (responseBody res))))
+        pure $ Left (code, msg)
+
 -- | Add envelope to CBOR, and a nonce and expiry if not there, post to
 -- "submit", poll for the request response, and return decoded CBOR
 submitCBOR :: (HasCallStack, HasTestConfig) => GenR -> IO ReqResponse
 submitCBOR req = do
-  req <- addNonce req
-  req <- addExpiry req
-  res <- envelopeFor (senderOf req) req >>= postCBOR "/api/v1/submit"
-  code202 res
-  assertBool "Response body not empty" (BS.null (responseBody res))
-  awaitStatus (senderOf req) (requestId req)
+  submitCBOR' req >>= \case
+    Left (c,msg) -> assertFailure $ "Status " ++ show c ++ " is not 2xx\n:" ++ msg
+    Right res -> pure res
 
 -- | Submits twice
 submitCBORTwice :: HasTestConfig => GenR -> IO ReqResponse
@@ -1936,17 +1952,21 @@ statusResonse = record $ do
 
 -- * Interacting with aaaaa-aa (via HTTP)
 
+{-
+The code below has some repetition. That’s because we have
+
+ A) multiple ways of _calling_ the Management Canister
+    (as default user, as specific user, via canister, with or without cycles),
+ B) different things we want to know
+    (just the Candid-decoded reply, or the response, or even the HTTP error)
+ C) and then of course different methods (which affect response decoding)
+
+So far, there is some duplication here because of that. Eventually, this should
+be refactored so that the test can declarative pick A, B and C separately.
+-}
+
 -- how to reach the management canister
 type IC00 = T.Text -> Blob -> IO ReqResponse
-
-ic00 :: HasTestConfig => IC00
-ic00 method_name arg = submitCBOR $ rec
-      [ "request_type" =: GText "call"
-      , "sender" =: GBlob defaultUser
-      , "canister_id" =: GBlob ""
-      , "method_name" =: GText method_name
-      , "arg" =: GBlob arg
-      ]
 
 ic00as :: HasTestConfig => Blob -> IC00
 ic00as user method_name arg = submitCBOR $ rec
@@ -1956,6 +1976,9 @@ ic00as user method_name arg = submitCBOR $ rec
       , "method_name" =: GText method_name
       , "arg" =: GBlob arg
       ]
+
+ic00 :: HasTestConfig => IC00
+ic00 method_name arg = ic00as defaultUser method_name arg
 
 ic00via :: HasTestConfig => Blob -> IC00
 ic00via cid = ic00viaWithCycles cid 0
@@ -1970,6 +1993,17 @@ ic00viaWithCycles cid cycles method_name arg =
       callCyclesAdd (int64 cycles) >>>
       callPerform
    >>= isReply >>= isRelay
+
+-- A variant that allows non-200 responses to submit
+ic00as' :: HasTestConfig => Blob -> T.Text -> Blob -> IO HTTPErrOrReqResponse
+ic00as' user method_name arg = submitCBOR' $ rec
+      [ "request_type" =: GText "call"
+      , "sender" =: GBlob user
+      , "canister_id" =: GBlob ""
+      , "method_name" =: GText method_name
+      , "arg" =: GBlob arg
+      ]
+
 
 managementService :: (HasCallStack, HasTestConfig) => IC00 -> Rec (ICManagement IO)
 managementService ic00 =
@@ -2041,7 +2075,7 @@ ic_delete_canister ic00 canister_id = do
 ic_raw_rand :: HasTestConfig => IC00 -> IO Blob
 ic_raw_rand ic00 = managementService ic00 .! #raw_rand $ ()
 
--- Primed variants return the request
+-- Primed variants return the response (reply or reject)
 callIC' :: forall s a b.
   HasTestConfig =>
   KnownSymbol s =>
@@ -2066,21 +2100,6 @@ ic_set_controller' ic00 canister_id new_controller = do
     .+ #canister_id .== Principal canister_id
     .+ #new_controller .== Principal new_controller
 
-ic_start_canister' :: HasTestConfig => IC00 -> Blob -> IO ReqResponse
-ic_start_canister' ic00 canister_id = do
-  callIC' ic00 #start_canister $ empty
-    .+ #canister_id .== Principal canister_id
-
-ic_stop_canister' :: HasTestConfig => IC00 -> Blob -> IO ReqResponse
-ic_stop_canister' ic00 canister_id = do
-  callIC' ic00 #stop_canister $ empty
-    .+ #canister_id .== Principal canister_id
-
-ic_canister_status' :: HasTestConfig => IC00 -> Blob -> IO ReqResponse
-ic_canister_status' ic00 canister_id = do
-  callIC' ic00 #canister_status $ empty
-    .+ #canister_id .== Principal canister_id
-
 ic_delete_canister' :: HasTestConfig => IC00 -> Blob -> IO ReqResponse
 ic_delete_canister' ic00 canister_id = do
   callIC' ic00 #delete_canister $ empty
@@ -2096,6 +2115,62 @@ ic_top_up' ic00 canister_id amount = do
   callIC' ic00 #provisional_top_up_canister $ empty
     .+ #canister_id .== Principal canister_id
     .+ #amount .== amount
+
+-- Double primed variants are only for requests from users (so they take the user,
+-- not a generic ic00 thing), and return the HTTP error code
+-- creturn the response (reply or reject)
+
+callIC'' :: forall s a b.
+  HasTestConfig =>
+  KnownSymbol s =>
+  (a -> IO b) ~ (ICManagement IO .! s) =>
+  Candid.CandidArg a =>
+  Blob -> Label s -> a -> IO HTTPErrOrReqResponse
+callIC'' user l x = ic00as' user (T.pack (symbolVal l)) (Candid.encode x)
+
+ic_install'' :: HasTestConfig => Blob -> InstallMode -> Blob -> Blob -> Blob -> IO HTTPErrOrReqResponse
+ic_install'' user mode canister_id wasm_module arg =
+  callIC'' user #install_code $ empty
+    .+ #mode .== mode
+    .+ #canister_id .== Principal canister_id
+    .+ #wasm_module .== wasm_module
+    .+ #arg .== arg
+    .+ #compute_allocation .== Nothing
+    .+ #memory_allocation .== Just (100 * 1024 * 1024)
+
+ic_set_controller'' :: HasTestConfig => Blob -> Blob -> Blob -> IO HTTPErrOrReqResponse
+ic_set_controller'' user canister_id new_controller = do
+  callIC'' user #set_controller $ empty
+    .+ #canister_id .== Principal canister_id
+    .+ #new_controller .== Principal new_controller
+
+ic_start_canister'' :: HasTestConfig => Blob -> Blob -> IO HTTPErrOrReqResponse
+ic_start_canister'' user canister_id = do
+  callIC'' user #start_canister $ empty
+    .+ #canister_id .== Principal canister_id
+
+ic_stop_canister'' :: HasTestConfig => Blob -> Blob -> IO HTTPErrOrReqResponse
+ic_stop_canister'' user canister_id = do
+  callIC'' user #stop_canister $ empty
+    .+ #canister_id .== Principal canister_id
+
+ic_canister_status'' :: HasTestConfig => Blob -> Blob -> IO HTTPErrOrReqResponse
+ic_canister_status'' user canister_id = do
+  callIC'' user #canister_status $ empty
+    .+ #canister_id .== Principal canister_id
+
+ic_delete_canister'' :: HasTestConfig => Blob -> Blob -> IO HTTPErrOrReqResponse
+ic_delete_canister'' user canister_id = do
+  callIC'' user #delete_canister $ empty
+    .+ #canister_id .== Principal canister_id
+
+
+isHTTPErrorOrReject :: HasCallStack => [Natural] -> HTTPErrOrReqResponse -> IO ()
+isHTTPErrorOrReject _codes (Left (c, msg))
+    | 400 <= c && c < 600 = return ()
+    | otherwise = assertFailure $
+        "Status " ++ show c ++ " is not 4xx or 5xx:\n" ++ msg
+isHTTPErrorOrReject codes (Right res) = isReject codes res
 
 -- A barrier
 
