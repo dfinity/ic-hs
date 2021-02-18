@@ -974,7 +974,7 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
             stableWrite (int 0) "FOO______"
       query cid (replyData getGlobal) >>= is "FOO"
       query cid (replyData (stableRead (int 0) (int 9))) >>= is "FOO______"
-      query cid (replyData (i2b stableSize)) >>= is "\1\0\0\0"
+      query cid (replyData (i2b stableSize)) >>= asWord32 >>= is 1
 
       reinstall cid $
         setGlobal "BAR" >>>
@@ -983,7 +983,12 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
 
       query cid (replyData getGlobal) >>= is "BAR"
       query cid (replyData (stableRead (int 0) (int 9))) >>= is "BAR______"
-      query cid (replyData (i2b stableSize)) >>= is "\2\0\0\0"
+      query cid (replyData (i2b stableSize)) >>= asWord32 >>= is 2
+
+      reinstall cid noop
+
+      query cid (replyData getGlobal) >>= is ""
+      query cid (replyData (i2b stableSize)) >>= asWord32 >>= is 0
 
     , testCase "trapping" $ do
       cid <- install $
