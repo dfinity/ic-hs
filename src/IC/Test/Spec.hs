@@ -225,7 +225,7 @@ data TestConfig = TestConfig
 
 makeTestConfig :: String -> IO TestConfig
 makeTestConfig ep' = do
-    manager <- newTlsManagerWith $ defaultManagerSettings
+    manager <- newTlsManagerWith $ tlsManagerSettings
       { managerResponseTimeout = responseTimeoutMicro 60_000_000 -- 60s
       }
     request <- parseRequest $ ep ++ "/api/v1/status"
