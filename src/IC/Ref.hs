@@ -295,6 +295,10 @@ getCanisterMod cid = can_mod . fromJust . content <$> getCanister cid
 getCanisterTime :: ICM m => CanisterId -> m Timestamp
 getCanisterTime cid = time <$> getCanister cid
 
+
+module_hash :: CanState -> Maybe Blob
+module_hash = fmap (sha256 . raw_wasm . can_mod) . content
+
 -- Authentication and authorization of requests
 
 -- This is monadic, as authentication may depend on the state of the system
@@ -323,6 +327,8 @@ authSyncRequest t ev = \case
     forM_ paths $ \case
       ["time"] -> return ()
       ("subnet":_) -> return ()
+      ("canister":_:"module_hash":_) -> return ()
+      ("canister":_:"controller":_) -> return ()
       ("request_status" :rid: _) ->
         gets (findRequest rid) >>= \case
           Just (ar,_) -> do
@@ -402,7 +408,12 @@ stateTree (Timestamp t) ic = node
     | (rid, (_, rs)) <- M.toList (requests ic)
     ]
   , "canister" =: node
-    [ cid =: node [ "certified_data" =: val (certified_data cs) ]
+    [ cid =: node (
+      [ "certified_data" =: val (certified_data cs)
+      , "controller" =: val (rawEntityId (controller cs))
+      ] ++
+      [ "module_hash" =: val h | Just h <- pure $ module_hash cs ]
+    )
     | (EntityId cid, cs) <- M.toList (canisters ic)
     ]
   ]
@@ -827,7 +838,7 @@ icCanisterStatus caller r = do
         IsStopped -> return (V.IsJust #stopped ())
         IsDeleted -> error "deleted canister encountered"
     controller <- getController canister_id
-    hash <- fmap (sha256 . raw_wasm . can_mod) . content <$> getCanister canister_id
+    hash <- module_hash <$> getCanister canister_id
     cycles <- getBalance canister_id
     return $ R.empty
       .+ #status .== s

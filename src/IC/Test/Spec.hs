@@ -1091,6 +1091,28 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
         cert <- getStateCert defaultUser [["time"]]
         void $ certValue @Natural cert ["time"]
 
+    , testCase "controller of empty canister" $ do
+        cid <- create
+        cert <- getStateCert defaultUser [["canister", cid, "controller"]]
+        certValue @Blob cert ["canister", cid, "controller"] >>= is defaultUser
+
+    , testCase "module_hash of empty canister" $ do
+        cid <- create
+        cert <- getStateCert defaultUser [["canister", cid, "module_hash"]]
+        lookupPath (cert_tree cert) ["canister", cid, "module_hash"] @?= Absent
+
+    , testCase "controller of installed canister" $ do
+        cid <- install noop
+        -- also vary user, just for good measure
+        cert <- getStateCert anonymousUser [["canister", cid, "controller"]]
+        certValue @Blob cert ["canister", cid, "controller"] >>= is defaultUser
+
+    , testCase "module_hash of empty canister" $ do
+        cid <- install noop
+        universal_wasm <- getTestWasm "universal_canister"
+        cert <- getStateCert anonymousUser [["canister", cid, "module_hash"]]
+        certValue @Blob cert ["canister", cid, "module_hash"] >>= is (sha256 universal_wasm)
+
     , testGroup "non-existence proofs for non-existing request id"
         [ testCase ("rid \"" ++ shorten 8 (asHex rid) ++ "\"") $ do
             cert <- getStateCert defaultUser [["request_status", rid]]
