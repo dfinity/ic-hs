@@ -234,6 +234,24 @@ fn eval(ops : Ops) {
         // canister_status
         39 => stack.push_int(api::status()),
 
+        // accept_message
+        40 => api::accept_message(),
+
+        // the pre-upgrade script
+        41 => set_inspect_message(stack.pop_blob()),
+
+        42 => stack.push_blob(api::method_name()),
+
+        // trap if blob equal
+        43 => {
+            let c = stack.pop_blob();
+            let b = stack.pop_blob();
+            let a = stack.pop_blob();
+            if a == b {
+                api::trap_with_blob(&c)
+            }
+        }
+
         _ => api::trap_with(&format!("unknown op {}", op)),
       }
   }
@@ -268,6 +286,12 @@ fn post_upgrade() {
   eval(&api::arg_data());
 }
 
+#[export_name = "canister_inspect_message"]
+fn inspect_message() {
+  setup();
+  eval(&get_inspect_message());
+}
+
 /* A global variable */
 lazy_static! {
   static ref GLOBAL : Mutex<Vec<u8>> = Mutex::new(Vec::new());
@@ -289,6 +313,19 @@ fn set_pre_upgrade(data : Vec<u8>) {
 fn get_pre_upgrade() -> Vec<u8> {
   PRE_UPGRADE.lock().unwrap().clone()
 }
+
+/* A variable to store what to execute in canister_inspect_message */
+/* (By default allows all) */
+lazy_static! {
+    static ref INSPECT_MESSAGE: Mutex<Vec<u8>> = Mutex::new(vec![40]);
+}
+fn set_inspect_message(data: Vec<u8>) {
+    *INSPECT_MESSAGE.lock().unwrap() = data;
+}
+fn get_inspect_message() -> Vec<u8> {
+    INSPECT_MESSAGE.lock().unwrap().clone()
+}
+
 
 /* Callback handling */
 

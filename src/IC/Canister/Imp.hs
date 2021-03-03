@@ -18,9 +18,12 @@ module IC.Canister.Imp
  , rawCallback
  , rawPreUpgrade
  , rawPostUpgrade
+ , rawInspectMessage
  )
 where
 
+import qualified Data.Text as T
+import qualified Data.Text.Encoding as T
 import qualified Data.ByteString.Lazy as BS
 import qualified Data.ByteString.Lazy.Char8 as BSC
 import qualified Data.ByteString.Lazy.UTF8 as BSU
@@ -57,6 +60,7 @@ data ExecutionState s = ExecutionState
   { inst :: Instance s
   , stableMem :: Memory s
   , params :: Params
+  , method_name :: Maybe MethodName
   , env :: Env
   -- now the mutable parts
   , cycles_available :: Maybe Cycles
@@ -68,6 +72,7 @@ data ExecutionState s = ExecutionState
   , pending_call :: Maybe MethodCall
   , calls :: [MethodCall]
   , new_certified_data :: Maybe Blob
+  , accepted :: Bool -- for canister_inspect_message
   }
 
 
@@ -76,6 +81,7 @@ initialExecutionState inst stableMem env responded = ExecutionState
   { inst
   , stableMem
   , params = Params Nothing Nothing Nothing Nothing Nothing
+  , method_name = Nothing
   , env
   , cycles_available = Nothing
   , balance = env_balance env
@@ -86,6 +92,7 @@ initialExecutionState inst stableMem env responded = ExecutionState
   , pending_call = Nothing
   , calls = mempty
   , new_certified_data = Nothing
+  , accepted = False
   }
 
 -- Some bookkeeping to access the ExecutionState
@@ -208,6 +215,10 @@ systemAPI esref =
   , toImport "ic0" "data_certificate_present" data_certificate_present
   , toImport "ic0" "data_certificate_size" data_certificate_size
   , toImport "ic0" "data_certificate_copy" data_certificate_copy
+
+  , toImport "ic0" "msg_method_name_size" msg_method_name_size
+  , toImport "ic0" "msg_method_name_copy" msg_method_name_copy
+  , toImport "ic0" "accept_message" accept_message
 
   , toImport "ic0" "time" get_time
 
@@ -436,6 +447,19 @@ systemAPI esref =
         Just b -> return b
         Nothing -> throwError "no certificate available"
 
+    msg_method_name_size :: () -> HostM s Int32
+    msg_method_name_copy :: (Int32, Int32, Int32) -> HostM s ()
+    (msg_method_name_size, msg_method_name_copy) = size_and_copy $
+      gets method_name >>=
+        maybe (throwError "Cannot query method name here")
+              (return . BS.fromStrict . T.encodeUtf8 . T.pack)
+
+    accept_message :: () -> HostM s ()
+    accept_message () = do
+      a <- gets accepted
+      when a $ throwError "Message already accepted"
+      modES esref $ \es -> es { accepted = True }
+
     get_time :: () -> HostM s Word64
     get_time () = do
         Timestamp ns <- gets (env_time . env)
@@ -511,8 +535,9 @@ rawInitialize caller env dat (ImpState esref inst sm wasm_mod) = do
   case result of
     Left  err -> return $ Trap err
     Right (_, es')
-        | null (calls es') -> return $ Return $ canisterActions es'
-        | otherwise        -> return $ Trap "cannot call from init"
+        | accepted es' -> return $ Trap "cannot accept_message here"
+        | not (null (calls es')) -> return $ Trap "cannot call from init"
+        | otherwise        -> return $ Return $ canisterActions es'
 
 rawPreUpgrade :: EntityId -> Env -> ImpState s -> ST s (TrapOr (CanisterActions, Blob))
 rawPreUpgrade caller env (ImpState esref inst sm wasm_mod) = do
@@ -534,10 +559,11 @@ rawPreUpgrade caller env (ImpState esref inst sm wasm_mod) = do
   case result of
     Left  err -> return $ Trap err
     Right (_, es')
-        | null (calls es') -> do
+        | accepted es' -> return $ Trap "cannot accept_message here"
+        | not (null (calls es')) -> return $ Trap "cannot call from pre_upgrade"
+        | otherwise -> do
             stable_mem <- Mem.export (stableMem es')
             return $ Return (canisterActions es', stable_mem)
-        | otherwise        -> return $ Trap "cannot call from pre_upgrade"
 
 rawPostUpgrade :: EntityId -> Env -> Blob -> Blob -> ImpState s -> ST s (TrapOr CanisterActions)
 rawPostUpgrade caller env mem dat (ImpState esref inst sm wasm_mod) = do
@@ -560,8 +586,9 @@ rawPostUpgrade caller env mem dat (ImpState esref inst sm wasm_mod) = do
   case result of
     Left  err -> return $ Trap err
     Right (_, es')
-        | null (calls es') -> return $ Return (canisterActions es')
-        | otherwise        -> return $ Trap "cannot call from post_upgrade"
+        | accepted es' -> return $ Trap "cannot accept_message here"
+        | not (null (calls es')) -> return $ Trap "cannot call from post_upgrade"
+        | otherwise -> return $ Return (canisterActions es')
 
 rawQuery :: MethodName -> EntityId -> Env -> Blob -> ImpState s -> ST s (TrapOr Response)
 rawQuery method caller env dat (ImpState esref inst sm _) = do
@@ -583,6 +610,7 @@ rawQuery method caller env dat (ImpState esref inst sm _) = do
       | Just _ <- new_certified_data es'
         -> return $ Trap "Cannot set certified data from a query method"
       | not (null (calls es')) -> return $ Trap "cannot call from query"
+      | accepted es' -> return $ Trap "cannot accept_message here"
       | Just r <- response es' -> return $ Return r
       | otherwise -> return $ Trap "No response"
 
@@ -603,7 +631,9 @@ rawUpdate method caller env responded cycles_available dat (ImpState esref inst 
     invokeExport inst ("canister_update " ++ method) []
   case result of
     Left  err -> return $ Trap err
-    Right (_, es') -> return $ Return
+    Right (_, es')
+      | accepted es' -> return $ Trap "cannot accept_message here"
+      | otherwise    -> return $ Return
         ( CallActions (calls es') (cycles_accepted es') (response es')
         , canisterActions es'
         )
@@ -628,8 +658,37 @@ rawCallback callback env responded cycles_available res refund (ImpState esref i
     invokeTable inst fun_idx [I32 env]
   case result of
     Left  err -> return $ Trap err
-    Right (_, es') -> return $ Return
+    Right (_, es')
+      | accepted es' -> return $ Trap "cannot accept_message here"
+      | otherwise    -> return $ Return
         ( CallActions (calls es') (cycles_accepted es') (response es')
         , canisterActions es'
         )
 
+rawInspectMessage :: MethodName -> EntityId -> Env -> Blob -> ImpState s -> ST s (TrapOr ())
+rawInspectMessage method caller env dat (ImpState esref inst sm wasm_mod) = do
+  result <- runExceptT $ do
+    let es = (initialExecutionState inst sm env cantRespond)
+              { params = Params
+                  { param_dat    = Just dat
+                  , param_caller = Just caller
+                  , reject_code  = Nothing
+                  , reject_message = Nothing
+                  , cycles_refunded = Nothing
+                  }
+              , method_name = Just method
+              }
+
+    if "canister_inspect_message" `elem` exportedFunctions wasm_mod
+    then withES esref es $ void $ invokeExport inst "canister_inspect_message" []
+    else return ((), es)
+
+  case result of
+    Left err -> return $ Trap err
+    Right (_, es')
+      | Just _ <- new_certified_data es'
+        -> return $ Trap "Cannot set certified data from a query method"
+      | not (null (calls es'))  -> return $ Trap "cannot call from inspect_message"
+      | isJust (response es')   -> return $ Trap "cannot respond from inspect_message"
+      | not (accepted es')      -> return $ Trap "message not accepted by inspect_message"
+      | otherwise -> return $ Return ()

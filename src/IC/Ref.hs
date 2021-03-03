@@ -230,7 +230,7 @@ canisterMustExist cid =
       reject RC_DESTINATION_INVALID ("canister no longer exists: " ++ prettyID cid)
     _ -> return ()
 
-isCanisterEmpty :: (CanReject m, ICM m) => CanisterId -> m Bool
+isCanisterEmpty :: ICM m => CanisterId -> m Bool
 isCanisterEmpty cid = isNothing . content <$> getCanister cid
 
 
@@ -300,19 +300,17 @@ module_hash = fmap (raw_wasm_hash . can_mod) . content
 
 -- Authentication and authorization of requests
 
--- This is monadic, as authentication may depend on the state of the system
--- for request status: Whether the request exists and who owns it
--- in general: eventually there will be user key management
+type RequestValidation m = (MonadError T.Text m, ICM m)
 
-type AuthValidation m = (MonadError T.Text m, ICM m)
-
-authAsyncRequest :: AuthValidation m => Timestamp -> EnvValidity -> AsyncRequest -> m ()
-authAsyncRequest t ev (UpdateRequest canister_id user_id _ _) = do
+authAsyncRequest :: RequestValidation m => Timestamp -> EnvValidity -> AsyncRequest -> m ()
+authAsyncRequest t ev r@(UpdateRequest canister_id user_id _ _) = do
     valid_when ev t
     valid_for ev user_id
     valid_where ev canister_id
+    inspectIngress r
 
-authSyncRequest :: AuthValidation m => Timestamp -> EnvValidity -> SyncRequest -> m ()
+
+authSyncRequest :: RequestValidation m => Timestamp -> EnvValidity -> SyncRequest -> m ()
 authSyncRequest t ev = \case
   QueryRequest canister_id user_id _ _ -> do
     valid_when ev t
@@ -383,6 +381,25 @@ readRequest time (ReadStateRequest _sender paths) = do
     -- NB: Already authorized in authSyncRequest
     cert <- getPrunedCertificate time (["time"] : paths)
     return $ ReadStateResponse cert
+
+inspectIngress :: RequestValidation m => AsyncRequest -> m ()
+inspectIngress (UpdateRequest canister_id user_id method arg)
+  | canister_id == managementCanisterId = pure ()
+  | otherwise = do
+    onReject (throwError . T.pack . snd) $
+        canisterMustExist canister_id
+    getRunStatus canister_id >>= \case
+       IsRunning -> return ()
+       _ -> throwError "canister is stopped"
+    empty <- isCanisterEmpty canister_id
+    when empty $ throwError "canister is empty"
+    wasm_state <- getCanisterState canister_id
+    can_mod <- getCanisterMod canister_id
+    env <- canisterEnv canister_id
+
+    case inspect_message can_mod method user_id env arg wasm_state of
+      Trap msg -> throwError $ "canister trapped in inspect_message: " <> T.pack msg
+      Return () -> return ()
 
 -- The state tree
 

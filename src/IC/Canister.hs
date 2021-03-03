@@ -39,6 +39,7 @@ data CanisterModule = CanisterModule
   , callbacks :: Callback -> Env -> Responded -> Cycles -> Response -> Cycles -> UpdateFunc
   , pre_upgrade_method :: WasmState -> EntityId -> Env -> TrapOr (CanisterActions, Blob)
   , post_upgrade_method :: EntityId -> Env -> Blob -> Blob -> TrapOr (WasmState, CanisterActions)
+  , inspect_message :: MethodName -> EntityId -> Env -> Blob -> WasmState -> TrapOr ()
   }
 
 instance Show CanisterModule where
@@ -78,6 +79,8 @@ parseCanister bytes =
               Trap err -> Trap err
               Return wasm_state0 ->
                 invoke wasm_state0 (rawPostUpgrade caller env mem dat)
+      , inspect_message = \method_name caller env arg wasm_state ->
+            snd <$> invoke wasm_state (rawInspectMessage method_name caller env arg)
       }
 
 instantiate :: Module -> TrapOr WasmState
