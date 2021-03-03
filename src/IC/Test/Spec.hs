@@ -92,6 +92,9 @@ webAuthnSK = createSecretKeyWebAuthn "webauthnseed"
 ecdsaSK :: SecretKey
 ecdsaSK = createSecretKeyECDSA "ecdsaseed"
 
+secp256k1SK :: SecretKey
+secp256k1SK = createSecretKeySecp256k1 "secp256k1seed"
+
 defaultUser :: Blob
 defaultUser = mkSelfAuthenticatingId $ toPublicKey defaultSK
 otherUser :: Blob
@@ -100,6 +103,8 @@ webAuthnUser :: Blob
 webAuthnUser = mkSelfAuthenticatingId $ toPublicKey webAuthnSK
 ecdsaUser :: Blob
 ecdsaUser = mkSelfAuthenticatingId $ toPublicKey ecdsaSK
+secp256k1User :: Blob
+secp256k1User = mkSelfAuthenticatingId $ toPublicKey secp256k1SK
 anonymousUser :: Blob
 anonymousUser = "\x04"
 
@@ -160,6 +165,7 @@ envelopeFor u content = envelope key content
         | u == otherUser = otherSK
         | u == webAuthnUser = webAuthnSK
         | u == ecdsaUser = ecdsaSK
+        | u == secp256k1User = secp256k1SK
         | u == anonymousUser = error "No key for the anonymous user"
         | otherwise = error $ "Don't know key for user " ++ show u
 
@@ -1680,12 +1686,13 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
     in flip foldMap
       [ ("Ed25519",            otherUser,      envelope otherSK)
       , ("ECDSA",              ecdsaUser,      envelope ecdsaSK)
+      , ("secp256k1",          secp256k1User,  envelope secp256k1SK)
       , ("WebAuthn",           webAuthnUser,   envelope webAuthnSK)
       , ("empty delegations",  otherUser,      delEnv [])
       , ("same delegations",   otherUser,      delEnv [otherSK])
       , ("three delegations",  otherUser,      delEnv [ed25519SK2, ed25519SK3])
       , ("four delegations",   otherUser,      delEnv [ed25519SK2, ed25519SK3, ed25519SK4])
-      , ("mixed delegations",  otherUser,      delEnv [defaultSK, webAuthnSK, ecdsaSK])
+      , ("mixed delegations",  otherUser,      delEnv [defaultSK, webAuthnSK, ecdsaSK, secp256k1SK])
       ] $ \ (name, user, env) ->
     [ simpleTestCase (name ++ " in query") $ \cid -> do
       req <- addExpiry $ rec

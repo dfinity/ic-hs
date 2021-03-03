@@ -44,10 +44,12 @@ common crypto
   other-modules: IC.Crypto.DER
   other-modules: IC.Crypto.Ed25519
   other-modules: IC.Crypto.ECDSA
+  other-modules: IC.Crypto.Secp256k1
   other-modules: IC.Crypto.BLS
   other-modules: IC.Crypto.WebAuthn
   build-depends: ed25519
   build-depends: cryptonite
+  build-depends: cereal
   build-depends: memory
   build-depends: bindings-DSL
   build-depends: asn1-types
@@ -229,6 +231,7 @@ test-suite unit-test
   other-modules:       IC.Test.HashTree
   other-modules:       IC.Test.BLS
   other-modules:       IC.Test.WebAuthn
+  other-modules:       IC.Test.Secp256k1
   other-modules:       IC.Test.ECDSA
   build-depends: base >= 4 && < 5
   build-depends: tasty >= 0.7
