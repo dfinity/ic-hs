@@ -15,6 +15,7 @@
 , bytestring
 , candid
 , cborg
+, cereal
 , containers
 , crc
 , cryptonite
@@ -84,6 +85,7 @@ mkDerivation {
     bytestring
     candid
     cborg
+    cereal
     containers
     crc
     cryptonite
@@ -141,6 +143,7 @@ mkDerivation {
     bytestring
     candid
     cborg
+    cereal
     containers
     crc
     cryptonite
