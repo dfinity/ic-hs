@@ -66,7 +66,6 @@ import IC.Constants
 import IC.Canister
 import IC.Id.Fresh
 import IC.Utils
-import IC.Hash
 import IC.Management
 import IC.HashTree hiding (Blob)
 import IC.Certificate
@@ -297,7 +296,7 @@ getCanisterTime cid = time <$> getCanister cid
 
 
 module_hash :: CanState -> Maybe Blob
-module_hash = fmap (sha256 . raw_wasm . can_mod) . content
+module_hash = fmap (raw_wasm_hash . can_mod) . content
 
 -- Authentication and authorization of requests
 
