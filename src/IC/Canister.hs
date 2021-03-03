@@ -20,6 +20,7 @@ import IC.Wasm.Winter (parseModule, exportedFunctions, Module)
 import IC.Purify
 import IC.Canister.Snapshot
 import IC.Canister.Imp
+import IC.Hash
 
 -- Here we can swap out the purification machinery
 type WasmState = CanisterSnapshot
@@ -31,6 +32,7 @@ type QueryFunc = WasmState -> TrapOr Response
 
 data CanisterModule = CanisterModule
   { raw_wasm :: Blob
+  , raw_wasm_hash :: Blob -- just caching, it’s worth it
   , init_method :: InitFunc
   , update_methods :: MethodName ↦ (EntityId -> Env -> Responded -> Cycles -> Blob -> UpdateFunc)
   , query_methods :: MethodName ↦ (EntityId -> Env -> Blob -> QueryFunc)
@@ -48,6 +50,7 @@ parseCanister bytes =
     Left  err -> Left err
     Right wasm_mod -> Right $ CanisterModule
       { raw_wasm = bytes
+      , raw_wasm_hash = sha256 bytes
       , init_method = \caller env dat ->
             case instantiate wasm_mod of
               Trap err -> Trap err

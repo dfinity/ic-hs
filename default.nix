@@ -243,6 +243,9 @@ rec {
       doc_path="spec"
       mkdir -p $out/$doc_path
       asciidoctor $asciidoctor_args --failure-level WARN -v \
+        -a toc2 -a toclevels=3 \
+        -a example -a partial \
+        -a attachmentsdir=. \
         -R $PWD -D $out/$doc_path/ index.adoc
       find . -type f -name '*.png' | cpio -pdm $out/$doc_path/
       cp *.cddl $out/$doc_path
@@ -271,6 +274,9 @@ rec {
     '';
 
   };
+
+  # for compatibility with the deployment to https://docs.dfinity.systems/public/v
+  public-spec = interface-spec;
 
   all-systems-go = nixpkgs.releaseTools.aggregate {
     name = "all-systems-go";

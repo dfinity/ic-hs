@@ -32,9 +32,14 @@ decode s =
         (deserialiseFromBytes decodeTerm s)
     >>= begin
   where
-    begin (leftOver, _) | not (BS.null leftOver) = Left "Left-over bytes"
+    begin (leftOver, _)
+      | not (BS.null leftOver) = Left $ "Left-over bytes: " <> shorten 20 (T.pack (show leftOver))
     begin (_, TTagged 55799 t) = go t
     begin _ = Left "Expected CBOR request to begin with tag 55799"
+
+    shorten :: Int -> T.Text -> T.Text
+    shorten n s = a <> (if T.null b then "" else "…")
+        where (a,b) = T.splitAt n s
 
     go (TInt n) | n < 0 = Left "Negative integer"
     go (TInt n) = return $ GNat (fromIntegral n)
