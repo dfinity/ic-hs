@@ -640,14 +640,28 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
             cid <- install (onPreUpgrade (callback prog))
             upgrade' cid noop
           )
-        , "U" =: reqResponse (\prog -> do
+        , "U" =: twoContexts
+          (reqResponse (\prog -> do
             cid <- install noop
             call' cid (prog >>> reply)
-          )
-        , "Q" =: reqResponse (\prog -> do
+          ))
+          (reqResponse (\prog -> do
+            cid <- install noop
+            call cid >=> isRelay $ inter_update cid defArgs{
+              other_side = prog >>> reply
+            }
+          ))
+        , "Q" =: twoContexts
+          (reqResponse (\prog -> do
             cid <- install noop
             query' cid (prog >>> reply)
-          )
+          ))
+          (reqResponse (\prog -> do
+            cid <- install noop
+            call cid >=> isRelay $ inter_query cid defArgs{
+              other_side = prog >>> reply
+            }
+          ))
         , "Ry" =: reqResponse (\prog -> do
             cid <- install noop
             call' cid $ inter_query cid defArgs{
@@ -683,33 +697,35 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
       never = ""
 
     in concat
-    [ t "msg_arg_data"           "I U Q Ry"  $ ignore argData
-    , t "msg_caller"             "I G U Q"   $ ignore caller
-    , t "msg_reject_code"        "Ry Rt"     $ ignore reject_code
-    , t "msg_reject_msg"         "Rt"        $ ignore reject_msg
-    , t "msg_reply_data_append"  "U Q Ry Rt" $ replyDataAppend "Hey!"
-    , t "msg_reply"              never         reply -- due to double reply
-    , t "msg_reject"             never       $ reject "rejecting" -- due to double reply
-    , t "msg_cycles_available"   "U Rt Ry"   $ ignore getAvailableCycles
-    , t "msg_cycles_refunded"    "Rt Ry"     $ ignore getRefund
-    , t "msg_cycles_accept"      "U Rt Ry"   $ ignore (acceptCycles (int64 0))
-    , t "canister_self"          star        $ ignore self
-    , t "canister_cycle_balance" star        $ ignore getBalance
+    [ t "msg_arg_data"             "I U Q Ry"    $ ignore argData
+    , t "msg_caller"               "I G U Q"     $ ignore caller
+    , t "msg_reject_code"          "Ry Rt"       $ ignore reject_code
+    , t "msg_reject_msg"           "Rt"          $ ignore reject_msg
+    , t "msg_reply_data_append"    "U Q Ry Rt"   $ replyDataAppend "Hey!"
+    , t "msg_reply"                never           reply -- due to double reply
+    , t "msg_reject"               never         $ reject "rejecting" -- due to double reply
+    , t "msg_cycles_available"     "U Rt Ry"     $ ignore getAvailableCycles
+    , t "msg_cycles_refunded"      "Rt Ry"       $ ignore getRefund
+    , t "msg_cycles_accept"        "U Rt Ry"     $ ignore (acceptCycles (int64 0))
+    , t "canister_self"            star          $ ignore self
+    , t "canister_cycle_balance"   star          $ ignore getBalance
     , t "call_new…call_perform" "U Rt Ry"   $
         callNew "foo" "bar" "baz" "quux" >>>
         callDataAppend "foo" >>>
         callCyclesAdd (int64 0) >>>
         callPerform
-    , t "call_data_append"       never       $ callDataAppend (bytes "foo")
-    , t "call_cycles_add"        never       $ callCyclesAdd (int64 0)
-    , t "call_perform"           never         callPerform
-    , t "stable_size"            star        $ ignore stableSize
-    , t "stable_grow"            star        $ ignore $ stableGrow (int 1)
-    , t "stable_read"            star        $ ignore $ stableRead (int 0) (int 0)
-    , t "stable_write"           star        $ stableWrite (int 0) ""
-    , t "time"                   star        $ ignore getTime
-    , t "debug_print"            star        $ debugPrint "hello"
-    , t "trap"                   never       $ trap "this better traps"
+    , t "call_data_append"         never         $ callDataAppend "foo"
+    , t "call_cycles_add"          never         $ callCyclesAdd (int64 0)
+    , t "call_perform"             never           callPerform
+    , t "stable_size"              star          $ ignore stableSize
+    , t "stable_grow"              star          $ ignore $ stableGrow (int 1)
+    , t "stable_write"             star          $ stableWrite (int 0) ""
+    , t "stable_read"              star          $ ignore $ stableRead (int 0) (int 0)
+    , t "certified_data_set"       "I G U Ry Rt" $ setCertifiedData "foo"
+    , t "data_certificate_present" star          $ ignore getCertificatePresent
+    , t "time"                     star          $ ignore getTime
+    , t "debug_print"              star          $ debugPrint "hello"
+    , t "trap"                     never         $ trap "this better traps"
     ]
 
   , simpleTestCase "self" $ \cid ->

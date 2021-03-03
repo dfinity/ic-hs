@@ -580,6 +580,8 @@ rawQuery method caller env dat (ImpState esref inst sm _) = do
   case result of
     Left err -> return $ Trap err
     Right (_, es')
+      | Just _ <- new_certified_data es'
+        -> return $ Trap "Cannot set certified data from a query method"
       | not (null (calls es')) -> return $ Trap "cannot call from query"
       | Just r <- response es' -> return $ Return r
       | otherwise -> return $ Trap "No response"
