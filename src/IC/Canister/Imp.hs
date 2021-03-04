@@ -681,13 +681,13 @@ rawInspectMessage method caller env dat (ImpState esref inst sm wasm_mod) = do
 
     if "canister_inspect_message" `elem` exportedFunctions wasm_mod
     then withES esref es $ void $ invokeExport inst "canister_inspect_message" []
-    else return ((), es)
+    else return ((), es { accepted = True } )
 
   case result of
     Left err -> return $ Trap err
     Right (_, es')
       | Just _ <- new_certified_data es'
-        -> return $ Trap "Cannot set certified data from a query method"
+        -> return $ Trap "Cannot set certified data from inspect_message"
       | not (null (calls es'))  -> return $ Trap "cannot call from inspect_message"
       | isJust (response es')   -> return $ Trap "cannot respond from inspect_message"
       | not (accepted es')      -> return $ Trap "message not accepted by inspect_message"
