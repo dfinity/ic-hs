@@ -691,7 +691,7 @@ invokeManagementCanister caller ctxt_id (Public method_name arg) =
       "stop_canister" -> deferred $ icStopCanister caller ctxt_id
       "canister_status" -> atomic $ icCanisterStatus caller
       "delete_canister" -> atomic $ icDeleteCanister caller
-      "deposit_cycles" -> atomic $ icDepositCycles caller ctxt_id
+      "deposit_cycles" -> atomic $ icDepositCycles ctxt_id
       "provisional_create_canister_with_cycles" -> atomic $ icCreateCanisterWithCycles caller
       "provisional_top_up_canister" -> atomic icTopUpCanister
       "raw_rand" -> atomic icRawRand
@@ -877,11 +877,10 @@ icDeleteCanister caller r = do
 
     setRunStatus canister_id IsDeleted
 
-icDepositCycles :: (ICM m, CanReject m) => EntityId -> CallId -> ICManagement m .! "deposit_cycles"
-icDepositCycles caller ctxt_id r = do
+icDepositCycles :: (ICM m, CanReject m) => CallId -> ICManagement m .! "deposit_cycles"
+icDepositCycles ctxt_id r = do
     let canister_id = principalToEntityId (r .! #canister_id)
     canisterMustExist canister_id
-    checkController canister_id caller
 
     cycles <- getCallContextCycles ctxt_id
     available <- getCallContextCycles ctxt_id

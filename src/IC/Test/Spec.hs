@@ -1452,7 +1452,7 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
       queryBalance cid1 >>= isRoughly (def_cycles`div`2)
 
     , testGroup "deposit_cycles"
-      [ testCase "deposit cycles (as controller)" $ do
+      [ testCase "as controller" $ do
         cid1 <- create noop
         cid2 <- create_via cid1 (def_cycles`div`2)
         queryBalance cid1 >>= isRoughly (def_cycles `div` 2)
@@ -1460,19 +1460,24 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
         ic_deposit_cycles (ic00viaWithCycles cid1 (def_cycles`div`4)) cid2
         queryBalance cid1 >>= isRoughly (def_cycles `div` 4)
         queryBalance cid2 >>= isRoughly (def_cycles - def_cycles `div` 4)
-      , testCase "deposit cycles (as wrong controller)" $ do
+      , testCase "as other non-controlling canister" $ do
         cid1 <- create noop
         cid2 <- create_via cid1 (def_cycles`div`2)
         queryBalance cid1 >>= isRoughly (def_cycles `div` 2)
         queryBalance cid2 >>= isRoughly (def_cycles `div` 2)
-        ic_deposit_cycles' (ic00viaWithCycles cid2 (def_cycles`div`4)) cid1
-          >>= isReject [4,5]
-        queryBalance cid1 >>= isRoughly (def_cycles `div` 2)
-        queryBalance cid2 >>= isRoughly (def_cycles `div` 2)
-      , testCase "deposit cycles (as user controller, zero cycles)" $ do
+        ic_deposit_cycles (ic00viaWithCycles cid2 (def_cycles`div`4)) cid1
+        queryBalance cid1 >>= isRoughly (def_cycles - def_cycles `div` 4)
+        queryBalance cid2 >>= isRoughly (def_cycles `div` 4)
+      , testCase "as user controller, zero cycles" $ do
         cid1 <- create noop
         queryBalance cid1 >>= isRoughly def_cycles
         ic_deposit_cycles ic00 cid1
+        queryBalance cid1 >>= isRoughly def_cycles
+      , testCase "to non-existing canister" $ do
+        cid1 <- create noop
+        queryBalance cid1 >>= isRoughly def_cycles
+        ic_deposit_cycles' (ic00viaWithCycles cid1 (def_cycles`div`4)) doesn'tExist
+          >>= isReject [3,4,5]
         queryBalance cid1 >>= isRoughly def_cycles
       ]
 
