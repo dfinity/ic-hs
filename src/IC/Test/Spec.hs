@@ -17,7 +17,6 @@ This module contains a test suite for the Internet Computer
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TupleSections #-}
-{-# LANGUAGE MultiWayIf #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 module IC.Test.Spec (preFlight, TestConfig, connect, ReplWrapper(..), icTests) where
 
@@ -1533,7 +1532,12 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
     ]
 
   , testGroup "canister_inspect_message"
-    [ testCase "accept all" $ do
+    [ testCase "empty canister" $ do
+      cid <- create
+      call'' cid reply >>= isErrOrReject []
+      callToQuery'' cid reply >>= isErrOrReject []
+
+    , testCase "accept all" $ do
       cid <- install $ onInspectMessage $ callback acceptMessage
       call_ cid reply
       callToQuery'' cid reply >>= is2xx >>= isReply >>= is ""
