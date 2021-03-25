@@ -51,7 +51,7 @@ import System.Environment
 import System.Random
 import System.Exit
 import Data.Time.Clock.POSIX
-import Codec.Candid (Principal(..))
+import Codec.Candid (Principal(..), prettyPrincipal)
 import qualified Data.Binary.Get as Get
 import qualified Codec.Candid as Candid
 import Data.Row
@@ -122,7 +122,6 @@ readStateEmpty = rec
     , "sender" =: GBlob defaultUser
     , "paths" =: GList []
     ]
-
 
 trivialWasmModule :: Blob
 trivialWasmModule = "\0asm\1\0\0\0"
@@ -199,6 +198,10 @@ senderOf :: GenR -> Blob
 senderOf (GRec hm) | Just (GBlob id) <- HM.lookup "sender" hm = id
 senderOf _ = anonymousUser
 
+addNonceExpiryEnv :: GenR -> IO GenR
+addNonceExpiryEnv req = do
+  addNonce req >>= addExpiry >>= envelopeFor (senderOf req)
+
 badEnvelope :: GenR -> GenR
 badEnvelope content = rec
     [ "sender_pubkey" =: GBlob (toPublicKey defaultSK)
@@ -233,7 +236,7 @@ makeTestConfig ep' = do
     manager <- newTlsManagerWith $ tlsManagerSettings
       { managerResponseTimeout = responseTimeoutMicro 60_000_000 -- 60s
       }
-    request <- parseRequest $ ep ++ "/api/v1/status"
+    request <- parseRequest $ ep ++ "/api/v2/status"
     putStrLn $ "Fetching endpoint status from " ++ show ep ++ "..."
     s <- (httpLbs request manager >>= okCBOR >>= statusResonse)
         `catch` (\(HUnitFailure _ r) -> putStrLn r >> exitFailure)
@@ -503,7 +506,7 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
       query cid (replyData "ABCD") >>= is "ABCD"
 
     , simpleTestCase "Call no non-existant update method" $ \cid ->
-      do submitCBOR' $ rec
+      do awaitCall' cid $ rec
           [ "request_type" =: GText "call"
           , "sender" =: GBlob defaultUser
           , "canister_id" =: GBlob cid
@@ -513,7 +516,7 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
         >>= isErrOrReject [3]
 
     , simpleTestCase "Call no non-existant query method" $ \cid ->
-      do readCBOR $ rec
+      do queryCBOR cid $ rec
           [ "request_type" =: GText "query"
           , "sender" =: GBlob defaultUser
           , "canister_id" =: GBlob cid
@@ -565,7 +568,7 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
           , "method_name" =: GText "update"
           , "arg" =: GBlob (run (replyData caller))
           ]
-        >>= postCBOR "/api/v1/submit" >>= code4xx
+        >>= postCallCBOR cid >>= code4xx
     , simpleTestCase "query, sender absent fails" $ \cid ->
       do envelopeFor anonymousUser $ rec
           [ "request_type" =: GText "query"
@@ -573,9 +576,9 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
           , "method_name" =: GText "query"
           , "arg" =: GBlob (run (replyData caller))
           ]
-        >>= postCBOR "/api/v1/read" >>= code4xx
+        >>= postQueryCBOR cid >>= code4xx
     , simpleTestCase "update, sender explicit" $ \cid ->
-      do submitCBOR $ rec
+      do awaitCall cid $ rec
           [ "request_type" =: GText "call"
           , "canister_id" =: GBlob cid
           , "sender" =: GBlob anonymousUser
@@ -584,7 +587,7 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
           ]
         >>= isReply >>= is anonymousUser
     , simpleTestCase "query, sender explicit" $ \cid ->
-      do readCBOR $ rec
+      do queryCBOR cid $ rec
           [ "request_type" =: GText "query"
           , "canister_id" =: GBlob cid
           , "sender" =: GBlob anonymousUser
@@ -739,6 +742,99 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
 
   , simpleTestCase "self" $ \cid ->
     query cid (replyData self) >>= is cid
+
+  , testGroup "wrong url path"
+    [ simpleTestCase "call request to query" $ \cid -> do
+      let req = rec
+            [ "request_type" =: GText "call"
+            , "sender" =: GBlob defaultUser
+            , "canister_id" =: GBlob cid
+            , "method_name" =: GText "update"
+            , "arg" =: GBlob (run reply)
+            ]
+      addNonceExpiryEnv req >>= postQueryCBOR cid >>= code4xx
+
+    , simpleTestCase "query request to call" $ \cid -> do
+      let req = rec
+            [ "request_type" =: GText "query"
+            , "sender" =: GBlob defaultUser
+            , "canister_id" =: GBlob cid
+            , "method_name" =: GText "query"
+            , "arg" =: GBlob (run reply)
+            ]
+      addNonceExpiryEnv req >>= postCallCBOR cid >>= code4xx
+
+    , simpleTestCase "query request to read_state" $ \cid -> do
+      let req = rec
+            [ "request_type" =: GText "query"
+            , "sender" =: GBlob defaultUser
+            , "canister_id" =: GBlob cid
+            , "method_name" =: GText "query"
+            , "arg" =: GBlob (run reply)
+            ]
+      addNonceExpiryEnv req >>= postReadStateCBOR cid >>= code4xx
+
+    , simpleTestCase "read_state request to query" $ \cid -> do
+      addNonceExpiryEnv readStateEmpty >>= postQueryCBOR cid >>= code4xx
+    ]
+
+  , testGroup "wrong effective canister id"
+    [ simpleTestCase "in call" $ \cid1 -> do
+      cid2 <- create
+      let req = rec
+            [ "request_type" =: GText "call"
+            , "sender" =: GBlob defaultUser
+            , "canister_id" =: GBlob cid1
+            , "method_name" =: GText "update"
+            , "arg" =: GBlob (run reply)
+            ]
+      addNonceExpiryEnv req >>= postCallCBOR cid2 >>= code4xx
+
+    , simpleTestCase "in query" $ \cid1 -> do
+      cid2 <- create
+      let req = rec
+            [ "request_type" =: GText "query"
+            , "sender" =: GBlob defaultUser
+            , "canister_id" =: GBlob cid1
+            , "method_name" =: GText "query"
+            , "arg" =: GBlob (run reply)
+            ]
+      addNonceExpiryEnv req >>= postQueryCBOR cid2 >>= code4xx
+
+    -- read_state tested in read_state group
+    --
+    , simpleTestCase "in mangement call" $ \cid1 -> do
+      cid2 <- create
+      let req = rec
+            [ "request_type" =: GText "call"
+            , "sender" =: GBlob defaultUser
+            , "canister_id" =: GBlob ""
+            , "method_name" =: GText "canister_status"
+            , "arg" =: GBlob (Candid.encode (#canister_id .== Principal cid1))
+            ]
+      addNonceExpiryEnv req >>= postCallCBOR cid2 >>= code4xx
+
+    , simpleTestCase "non-existing (and likely invalid)" $ \cid1 -> do
+      let req = rec
+            [ "request_type" =: GText "call"
+            , "sender" =: GBlob defaultUser
+            , "canister_id" =: GBlob cid1
+            , "method_name" =: GText "update"
+            , "arg" =: GBlob (run reply)
+            ]
+      addNonceExpiryEnv req >>= postCallCBOR "foobar" >>= code4xx
+
+    , simpleTestCase "invalid textual represenation" $ \cid1 -> do
+      let req = rec
+            [ "request_type" =: GText "call"
+            , "sender" =: GBlob defaultUser
+            , "canister_id" =: GBlob cid1
+            , "method_name" =: GText "update"
+            , "arg" =: GBlob (run reply)
+            ]
+      let path = "/api/v2/canister/" ++ filter (/= '-') (textual cid1) ++ "/call"
+      addNonceExpiryEnv req >>= postCBOR path >>= code4xx
+    ]
 
   , testGroup "inter-canister calls"
     [ testGroup "builder interface"
@@ -1068,14 +1164,16 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
 
   , testGroup "query"
     [ testGroup "required fields" $ do
+        -- TODO: Begin with a succeeding request to a real canister, to rule
+        -- out other causes of failure than missing fields
         omitFields queryToNonExistant $ \req -> do
-          addExpiry req >>= envelope defaultSK >>= postCBOR "/api/v1/read" >>= code4xx
+          cid <- create
+          addExpiry req >>= envelope defaultSK >>= postQueryCBOR cid >>= code4xx
 
-    , testCase "non-existing canister" $ do
-        addExpiry queryToNonExistant
-          >>= envelopeFor anonymousUser
-          >>= postCBOR "/api/v1/read"
-          >>= okCBOR >>= queryResponse >>= isReject [3]
+    , simpleTestCase "non-existing (deleted) canister" $ \cid -> do
+        ic_stop_canister ic00 cid
+        ic_delete_canister ic00 cid
+        query' cid reply >>= isReject [3]
 
     , simpleTestCase "does not commit" $ \cid -> do
         call_ cid (setGlobal "FOO" >>> reply)
@@ -1092,87 +1190,96 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
             , "method_name" =: GText "query"
             , "arg" =: GBlob (run (replyData "\xff\xff"))
             ]
-          submitCBOR req >>= isReply >>= is "\xff\xff"
+          awaitCall cid req >>= isReply >>= is "\xff\xff"
 
           -- check that the request is there
-          getRequestStatus user (requestId req) >>= is (Responded (Reply "\xff\xff"))
+          getRequestStatus user cid (requestId req) >>= is (Responded (Reply "\xff\xff"))
 
           return (requestId req)
     in
     [ testGroup "required fields" $
-        omitFields readStateEmpty $ \req ->
-          addExpiry req >>= envelope defaultSK >>= postCBOR "/api/v1/read" >>= code4xx
+        omitFields readStateEmpty $ \req -> do
+          cid <- create
+          addExpiry req >>= envelope defaultSK >>= postReadStateCBOR cid >>= code4xx
 
-    , testCase "certificate validates" $ do
-        cert <- getStateCert defaultUser []
+    , simpleTestCase "certificate validates" $ \cid -> do
+        cert <- getStateCert defaultUser cid []
         validateStateCert cert
 
     , testCaseSteps "time is present" $ \step -> do
-        cert <- getStateCert defaultUser []
+        cid <- create
+        cert <- getStateCert defaultUser cid []
         time <- certValue @Natural cert ["time"]
         step $ "Reported time: " ++ show time
 
     , testCase "time can be asked for" $ do
-        cert <- getStateCert defaultUser [["time"]]
+        cid <- create
+        cert <- getStateCert defaultUser cid [["time"]]
         void $ certValue @Natural cert ["time"]
 
     , testCase "controller of empty canister" $ do
         cid <- create
-        cert <- getStateCert defaultUser [["canister", cid, "controller"]]
+        cert <- getStateCert defaultUser cid [["canister", cid, "controller"]]
         certValue @Blob cert ["canister", cid, "controller"] >>= is defaultUser
 
     , testCase "module_hash of empty canister" $ do
         cid <- create
-        cert <- getStateCert defaultUser [["canister", cid, "module_hash"]]
+        cert <- getStateCert defaultUser cid [["canister", cid, "module_hash"]]
         lookupPath (cert_tree cert) ["canister", cid, "module_hash"] @?= Absent
 
     , testCase "controller of installed canister" $ do
         cid <- install noop
         -- also vary user, just for good measure
-        cert <- getStateCert anonymousUser [["canister", cid, "controller"]]
+        cert <- getStateCert anonymousUser cid [["canister", cid, "controller"]]
         certValue @Blob cert ["canister", cid, "controller"] >>= is defaultUser
 
     , testCase "module_hash of empty canister" $ do
         cid <- install noop
         universal_wasm <- getTestWasm "universal_canister"
-        cert <- getStateCert anonymousUser [["canister", cid, "module_hash"]]
+        cert <- getStateCert anonymousUser cid [["canister", cid, "module_hash"]]
         certValue @Blob cert ["canister", cid, "module_hash"] >>= is (sha256 universal_wasm)
 
     , testGroup "non-existence proofs for non-existing request id"
-        [ testCase ("rid \"" ++ shorten 8 (asHex rid) ++ "\"") $ do
-            cert <- getStateCert defaultUser [["request_status", rid]]
+        [ simpleTestCase ("rid \"" ++ shorten 8 (asHex rid) ++ "\"") $ \cid -> do
+            cert <- getStateCert defaultUser cid [["request_status", rid]]
             certValueAbsent cert ["request_status", rid, "status"]
         | rid <- [ "", BS.replicate 32 0, BS.replicate 32 8, BS.replicate 32 255 ]
         ]
 
     , simpleTestCase "can ask for portion of request status " $ \cid -> do
         rid <- ensure_request_exists cid defaultUser
-        cert <- getStateCert defaultUser
+        cert <- getStateCert defaultUser cid
           [["request_status", rid, "status"], ["request_status", rid, "reply"]]
         void $ certValue @T.Text cert ["request_status", rid, "status"]
         void $ certValue @Blob cert ["request_status", rid, "reply"]
 
     , simpleTestCase "access denied for other users request" $ \cid -> do
         rid <- ensure_request_exists cid defaultUser
-        getStateCert' otherUser [["request_status", rid]] >>= code4xx
+        getStateCert' otherUser cid [["request_status", rid]] >>= code4xx
 
-    , simpleTestCase "reading two statuses in one go" $ \cid -> do
+    , simpleTestCase "reading two statuses to same canister in one go" $ \cid -> do
         rid1 <- ensure_request_exists cid defaultUser
         rid2 <- ensure_request_exists cid defaultUser
-        cert <- getStateCert defaultUser [["request_status", rid1], ["request_status", rid2]]
+        cert <- getStateCert defaultUser cid [["request_status", rid1], ["request_status", rid2]]
         void $ certValue @T.Text cert ["request_status", rid1, "status"]
         void $ certValue @T.Text cert ["request_status", rid2, "status"]
 
     , simpleTestCase "access denied for other users request (mixed request)" $ \cid -> do
         rid1 <- ensure_request_exists cid defaultUser
         rid2 <- ensure_request_exists cid otherUser
-        getStateCert' defaultUser [["request_status", rid1], ["request_status", rid2]] >>= code4xx
+        getStateCert' defaultUser cid [["request_status", rid1], ["request_status", rid2]] >>= code4xx
 
-    , testCase "access denied for bogus path" $ do
-        getStateCert' otherUser [["hello", "world"]] >>= code4xx
+    , simpleTestCase "access denied two status to different canisters" $ \cid -> do
+        cid2 <- install noop
+        rid1 <- ensure_request_exists cid defaultUser
+        rid2 <- ensure_request_exists cid2 defaultUser
+        getStateCert' defaultUser cid [["request_status", rid1], ["request_status", rid2]] >>= code4xx
 
-    , testCase "access denied for fetching full state tree" $ do
-        getStateCert' otherUser [[]] >>= code4xx
+    , simpleTestCase "access denied for bogus path" $ \cid -> do
+        getStateCert' otherUser cid [["hello", "world"]] >>= code4xx
+
+    , simpleTestCase "access denied for fetching full state tree" $ \cid -> do
+        getStateCert' otherUser cid [[]] >>= code4xx
     ]
 
   , testGroup "certified variables" $
@@ -1566,9 +1673,9 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
       call'' cid reply >>= isErrOrReject []
       callToQuery'' cid reply >>= isErrOrReject []
 
-      submitCBOR' (callRequestAs otherUser cid reply)
+      awaitCall' cid (callRequestAs otherUser cid reply)
         >>= is2xx >>= isReply >>= is ""
-      submitCBOR' (callToQueryRequestAs otherUser cid reply)
+      awaitCall' cid (callToQueryRequestAs otherUser cid reply)
         >>= is2xx >>= isReply >>= is ""
 
     , testCase "arg correct" $ do
@@ -1608,47 +1715,47 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
         , "arg" =: GBlob (Candid.encode (#canister_id .== Principal cid))
         ]
 
-      good req dels = do
+      good cid req dels = do
         req <- addExpiry req
         let rid = requestId req
         -- sign request with delegations
-        delegationEnv defaultSK dels req >>= postCBOR "/api/v1/submit" >>= code2xx
+        delegationEnv defaultSK dels req >>= postCallCBOR cid >>= code2xx
         -- wait for it
-        void $ awaitStatus defaultUser rid >>= isReply
+        void $ awaitStatus defaultUser cid rid >>= isReply
         -- also read status with delegation
         sreq <- addExpiry $ rec
           [ "request_type" =: GText "read_state"
           , "sender" =: GBlob defaultUser
           , "paths" =: GList [GList [GBlob "request_status", GBlob rid]]
           ]
-        delegationEnv defaultSK dels sreq >>= postCBOR "/api/v1/read" >>= void . code2xx
+        delegationEnv defaultSK dels sreq >>= postReadStateCBOR cid >>= void . code2xx
 
-      badSubmit req dels = do
+      badSubmit cid req dels = do
         req <- addExpiry req
         -- sign request with delegations (should fail)
-        delegationEnv defaultSK dels req >>= postCBOR "/api/v1/submit" >>= code4xx
+        delegationEnv defaultSK dels req >>= postCallCBOR cid >>= code4xx
 
-      badRead req dels = do
+      badRead cid req dels = do
         req <- addExpiry req
         let rid = requestId req
         -- submit with plain signature
-        envelope defaultSK req >>= postCBOR "/api/v1/submit" >>= code202
+        envelope defaultSK req >>= postCallCBOR cid >>= code202
         -- wait for it
-        void $ awaitStatus defaultUser rid >>= isReply
+        void $ awaitStatus defaultUser cid rid >>= isReply
         -- also read status with delegation
         sreq <- addExpiry $ rec
           [ "request_type" =: GText "read_state"
           , "sender" =: GBlob defaultUser
           , "paths" =: GList [GList [GBlob "request_status", GBlob rid]]
           ]
-        delegationEnv defaultSK dels sreq >>= postCBOR "/api/v1/read" >>= void . code4xx
+        delegationEnv defaultSK dels sreq >>= postReadStateCBOR cid >>= void . code4xx
 
       goodTestCase name mkReq mkDels =
-        simpleTestCase name $ \cid -> good (mkReq cid) (mkDels cid)
+        simpleTestCase name $ \cid -> good cid (mkReq cid) (mkDels cid)
 
       badTestCase name mkReq mkDels = testGroup name
-        [ simpleTestCase "in submit" $ \cid -> badSubmit (mkReq cid) (mkDels cid)
-        , simpleTestCase "in read_state" $ \cid -> badRead (mkReq cid) (mkDels cid)
+        [ simpleTestCase "in submit" $ \cid -> badSubmit cid (mkReq cid) (mkDels cid)
+        , simpleTestCase "in read_state" $ \cid -> badRead cid (mkReq cid) (mkDels cid)
         ]
 
       withEd25519 = zip [createSecretKeyEd25519 (BS.singleton n) | n <- [0..]]
@@ -1712,7 +1819,7 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
             , "arg" =: GBlob (run reply)
             ]
       signed_req <- env req
-      postCBOR "/api/v1/read" signed_req >>= okCBOR >>= queryResponse >>= isReply >>= is ""
+      postQueryCBOR cid signed_req >>= okCBOR >>= queryResponse >>= isReply >>= is ""
 
     , simpleTestCase (name ++ " in update") $ \cid -> do
       req <- addExpiry $ rec
@@ -1723,9 +1830,9 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
             , "arg" =: GBlob (run reply)
             ]
       signed_req <- env req
-      postCBOR "/api/v1/submit" signed_req >>= code2xx
+      postCallCBOR cid signed_req >>= code2xx
 
-      awaitStatus user (requestId req) >>= isReply >>= is ""
+      awaitStatus user cid (requestId req) >>= isReply >>= is ""
     ]
 
   , testGroup "signature checking" $
@@ -1744,13 +1851,13 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
               , "method_name" =: GText "query"
               , "arg" =: GBlob (run reply)
               ]
-        readCBOR good_req >>= queryResponse >>= isReply >>= is ""
-        env (mod_req good_req) >>= postCBOR "/api/v1/read" >>= code4xx
+        queryCBOR cid good_req >>= queryResponse >>= isReply >>= is ""
+        env (mod_req good_req) >>= postQueryCBOR cid >>= code4xx
 
-      , testCase "in empty read state request" $ do
+      , simpleTestCase "in empty read state request" $ \cid -> do
           good_req <- addNonce >=> addExpiry $ readStateEmpty
-          envelope defaultSK good_req >>= postCBOR "/api/v1/read" >>= code2xx
-          env (mod_req good_req) >>= postCBOR "/api/v1/read"  >>= code4xx
+          envelope defaultSK good_req >>= postReadStateCBOR cid >>= code2xx
+          env (mod_req good_req) >>= postReadStateCBOR cid >>= code4xx
 
       , simpleTestCase "in call" $ \cid -> do
           good_req <- addNonce >=> addExpiry $ rec
@@ -1761,14 +1868,14 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
                 , "arg" =: GBlob (run reply)
                 ]
           let req = mod_req good_req
-          env req >>= postCBOR "/api/v1/submit" >>= code202_or_4xx
+          env req >>= postCallCBOR cid >>= code202_or_4xx
 
           -- Also check that the request was not created
           ingressDelay
-          getRequestStatus defaultUser (requestId req) >>= is UnknownStatus
+          getRequestStatus defaultUser cid (requestId req) >>= is UnknownStatus
 
           -- check that with a valid signature, this would have worked
-          submitCBOR good_req >>= isReply >>= is ""
+          awaitCall cid good_req >>= isReply >>= is ""
       ]
   ]
 
@@ -1796,70 +1903,73 @@ postCBOR path gr = do
       }
     httpLbs request testManager
 
+-- | postCBOR with url based on effective canister id
+postCallCBOR, postQueryCBOR, postReadStateCBOR :: (HasCallStack, HasTestConfig) => Blob -> GenR -> IO (Response BS.ByteString)
+postCallCBOR cid      = postCBOR $ "/api/v2/canister/" ++ textual cid ++ "/call"
+postQueryCBOR cid     = postCBOR $ "/api/v2/canister/" ++ textual cid ++ "/query"
+postReadStateCBOR cid = postCBOR $ "/api/v2/canister/" ++ textual cid ++ "/read_state"
+
 -- | Add envelope to CBOR request, add a nonce and expiry if it is not there,
 -- post to "read", return decoded CBOR
-readCBOR :: (HasCallStack, HasTestConfig) => GenR -> IO GenR
-readCBOR req = do
-  req <- addNonce req
-  req <- addExpiry req
-  envelopeFor (senderOf req) req >>= postCBOR "/api/v1/read" >>= okCBOR
-
+queryCBOR :: (HasCallStack, HasTestConfig) => Blob -> GenR -> IO GenR
+queryCBOR cid req = do
+  addNonceExpiryEnv req >>= postQueryCBOR cid >>= okCBOR
 
 -- | Add envelope to CBOR, and a nonce and expiry if not there, post to
 -- "submit". Returns either a HTTP Error code, or if the status is 2xx, poll
 -- for the request response, and return decoded CBOR
 type HTTPErrOrReqResponse = Either (Int,String) ReqResponse
-submitCBOR' :: (HasCallStack, HasTestConfig) => GenR -> IO HTTPErrOrReqResponse
-submitCBOR' req = do
+awaitCall' :: (HasCallStack, HasTestConfig) => Blob -> GenR -> IO HTTPErrOrReqResponse
+awaitCall' cid req = do
   req <- addNonce req
   req <- addExpiry req
-  res <- envelopeFor (senderOf req) req >>= postCBOR "/api/v1/submit"
+  res <- envelopeFor (senderOf req) req >>= postCallCBOR cid
   let code = statusCode (responseStatus res)
   if 200 <= code && code < 300
   then do
      assertBool "Response body not empty" (BS.null (responseBody res))
-     Right <$> awaitStatus (senderOf req) (requestId req)
+     Right <$> awaitStatus (senderOf req) cid (requestId req)
   else do
     let msg = T.unpack (T.decodeUtf8With T.lenientDecode (BS.toStrict (BS.take 200 (responseBody res))))
     pure $ Left (code, msg)
 
 -- | Add envelope to CBOR, and a nonce and expiry if not there, post to
 -- "submit", poll for the request response, and return decoded CBOR
-submitCBOR :: (HasCallStack, HasTestConfig) => GenR -> IO ReqResponse
-submitCBOR req = submitCBOR' req >>= is2xx
+awaitCall :: (HasCallStack, HasTestConfig) => Blob -> GenR -> IO ReqResponse
+awaitCall cid req = awaitCall' cid req >>= is2xx
 
-is2xx :: HTTPErrOrReqResponse -> IO ReqResponse
+is2xx :: HasCallStack => HTTPErrOrReqResponse -> IO ReqResponse
 is2xx = \case
-    Left (c,msg) -> assertFailure $ "Status " ++ show c ++ " is not 2xx\n:" ++ msg
+    Left (c,msg) -> assertFailure $ "Status " ++ show c ++ " is not 2xx:\n" ++ msg
     Right res -> pure res
 
 -- | Submits twice
-submitCBORTwice :: HasTestConfig => GenR -> IO ReqResponse
-submitCBORTwice req = do
+awaitCallTwice :: HasTestConfig => Blob -> GenR -> IO ReqResponse
+awaitCallTwice cid req = do
   req <- addNonce req
   req <- addExpiry req
-  res <- envelopeFor (senderOf req) req >>= postCBOR "/api/v1/submit"
+  res <- envelopeFor (senderOf req) req >>= postCallCBOR cid
   code202 res
-  res <- envelopeFor (senderOf req) req >>= postCBOR "/api/v1/submit"
+  res <- envelopeFor (senderOf req) req >>= postCallCBOR cid
   code202 res
   assertBool "Response body not empty" (BS.null (responseBody res))
-  awaitStatus (senderOf req) (requestId req)
+  awaitStatus (senderOf req) cid (requestId req)
 
-getStateCert' :: (HasCallStack, HasTestConfig) => Blob -> [[Blob]] -> IO (Response Blob)
-getStateCert' sender paths = do
+getStateCert' :: (HasCallStack, HasTestConfig) => Blob -> Blob -> [[Blob]] -> IO (Response Blob)
+getStateCert' sender ecid paths = do
     req <- addExpiry $ rec
       [ "request_type" =: GText "read_state"
       , "sender" =: GBlob sender
       , "paths" =: GList (map (GList . map GBlob) paths)
       ]
-    envelopeFor (senderOf req) req >>= postCBOR "/api/v1/read"
+    envelopeFor (senderOf req) req >>= postReadStateCBOR ecid
 
 decodeStateCert :: HasCallStack => Blob -> IO Certificate
 decodeStateCert b = either assertFailure return $ decodeCert b
 
-getStateCert :: (HasCallStack, HasTestConfig) => Blob -> [[Blob]] -> IO Certificate
-getStateCert sender paths = do
-    gr <- getStateCert' sender paths >>= okCBOR
+getStateCert :: (HasCallStack, HasTestConfig) => Blob -> Blob -> [[Blob]] -> IO Certificate
+getStateCert sender ecid paths = do
+    gr <- getStateCert' sender ecid paths >>= okCBOR
     b <- record (field blob "certificate") gr
     cert <- decodeStateCert b
 
@@ -1930,9 +2040,9 @@ certValueAbsent cert path = case lookupPath (cert_tree cert) path of
     Absent -> return ()
     x -> assertFailure $ "Path " ++ prettyPath path ++ " should be absent, but got " ++ show x
 
-getRequestStatus :: (HasCallStack, HasTestConfig) => Blob -> Blob -> IO ReqStatus
-getRequestStatus sender rid = do
-    cert <- getStateCert sender [["request_status", rid]]
+getRequestStatus :: (HasCallStack, HasTestConfig) => Blob -> Blob -> Blob -> IO ReqStatus
+getRequestStatus sender cid rid = do
+    cert <- getStateCert sender cid [["request_status", rid]]
 
     case lookupPath (cert_tree cert) ["request_status", rid, "status"] of
       Absent -> return UnknownStatus
@@ -1954,8 +2064,8 @@ getRequestStatus sender rid = do
       Unknown -> return UnknownStatus
       x -> assertFailure $ "Unexpected request status, got " ++ show x
 
-awaitStatus :: HasTestConfig => Blob -> Blob -> IO ReqResponse
-awaitStatus sender rid = loop $ pollDelay >> getRequestStatus sender rid >>= \case
+awaitStatus :: HasTestConfig => Blob -> Blob -> Blob -> IO ReqResponse
+awaitStatus sender cid rid = loop $ pollDelay >> getRequestStatus sender cid rid >>= \case
     Responded x -> return $ Just x
     _ -> return Nothing
   where
@@ -2100,10 +2210,10 @@ be refactored so that the test can declarative pick A, B and C separately.
 -}
 
 -- how to reach the management canister
-type IC00 = T.Text -> Blob -> IO ReqResponse
+type IC00 = Blob -> T.Text -> Blob -> IO ReqResponse
 
 ic00as :: HasTestConfig => Blob -> IC00
-ic00as user method_name arg = submitCBOR $ rec
+ic00as user ecid method_name arg = awaitCall ecid $ rec
       [ "request_type" =: GText "call"
       , "sender" =: GBlob user
       , "canister_id" =: GBlob ""
@@ -2112,13 +2222,13 @@ ic00as user method_name arg = submitCBOR $ rec
       ]
 
 ic00 :: HasTestConfig => IC00
-ic00 method_name arg = ic00as defaultUser method_name arg
+ic00 = ic00as defaultUser
 
 ic00via :: HasTestConfig => Blob -> IC00
 ic00via cid = ic00viaWithCycles cid 0
 
 ic00viaWithCycles :: HasTestConfig => Blob -> Word64 -> IC00
-ic00viaWithCycles cid cycles method_name arg =
+ic00viaWithCycles cid cycles _ecid method_name arg =
   do call' cid $
       callNew
         (bytes "") (bytes (BS.fromStrict (T.encodeUtf8 method_name))) -- aaaaa-aa
@@ -2129,8 +2239,8 @@ ic00viaWithCycles cid cycles method_name arg =
    >>= isReply >>= isRelay
 
 -- A variant that allows non-200 responses to submit
-ic00as' :: HasTestConfig => Blob -> T.Text -> Blob -> IO HTTPErrOrReqResponse
-ic00as' user method_name arg = submitCBOR' $ rec
+ic00as' :: HasTestConfig => Blob -> Blob -> T.Text -> Blob -> IO HTTPErrOrReqResponse
+ic00as' user cid method_name arg = awaitCall' cid $ rec
       [ "request_type" =: GText "call"
       , "sender" =: GBlob user
       , "canister_id" =: GBlob ""
@@ -2138,28 +2248,35 @@ ic00as' user method_name arg = submitCBOR' $ rec
       , "arg" =: GBlob arg
       ]
 
-
-managementService :: (HasCallStack, HasTestConfig) => IC00 -> Rec (ICManagement IO)
-managementService ic00 =
-  Candid.toCandidService err $ \method_name arg ->
-    ic00 method_name arg >>= isReply
-  where
-    err s = assertFailure $ "Candid decoding error: " ++ s
+-- Now wrapping the concrete calls
+-- (using Candid.toCandidService is tricky because of all stuff like passing through the effective canister id)
+--
+callIC :: forall s a b.
+  (HasCallStack, HasTestConfig) =>
+  KnownSymbol s =>
+  (a -> IO b) ~ (ICManagement IO .! s) =>
+  (Candid.CandidArg a, Candid.CandidArg b) =>
+  IC00 -> Blob -> Label s -> a -> IO b
+callIC ic00 ecid l x = do
+    r <- ic00 ecid (T.pack (symbolVal l)) (Candid.encode x) >>= isReply
+    case Candid.decode r of
+        Left err -> assertFailure $ "Candid decoding error: " ++ err
+        Right y -> pure y
 
 ic_create :: (HasCallStack, HasTestConfig) => IC00 -> IO Blob
 ic_create ic00 = do
-  r <- managementService ic00 .! #create_canister $ ()
+  r <- callIC ic00 "" #create_canister ()
   return (rawPrincipal (r .! #canister_id))
 
 ic_create_with_cycles :: (HasCallStack, HasTestConfig) => IC00 -> Maybe Natural -> IO Blob
 ic_create_with_cycles ic00 cycles = do
-  r <- managementService ic00 .! #provisional_create_canister_with_cycles $ empty
+  r <- callIC ic00 "" #provisional_create_canister_with_cycles $ empty
     .+ #amount .== cycles
   return (rawPrincipal (r .! #canister_id))
 
 ic_install :: (HasCallStack, HasTestConfig) => IC00 -> InstallMode -> Blob -> Blob -> Blob -> IO ()
 ic_install ic00 mode canister_id wasm_module arg = do
-  managementService ic00 .! #install_code $ empty
+  callIC ic00 canister_id #install_code $ empty
     .+ #mode .== mode
     .+ #canister_id .== Principal canister_id
     .+ #wasm_module .== wasm_module
@@ -2169,45 +2286,46 @@ ic_install ic00 mode canister_id wasm_module arg = do
 
 ic_set_controller :: HasTestConfig => IC00 -> Blob -> Blob -> IO ()
 ic_set_controller ic00 canister_id new_controller = do
-  managementService ic00 .! #set_controller $ empty
+  callIC ic00 canister_id #set_controller $ empty
     .+ #canister_id .== Principal canister_id
     .+ #new_controller .== Principal new_controller
 
 ic_start_canister :: HasTestConfig => IC00 -> Blob -> IO ()
 ic_start_canister ic00 canister_id = do
-  managementService ic00 .! #start_canister $ empty
+  callIC ic00 canister_id #start_canister $ empty
     .+ #canister_id .== Principal canister_id
 
 ic_stop_canister :: HasTestConfig => IC00 -> Blob -> IO ()
 ic_stop_canister ic00 canister_id = do
-  managementService ic00 .! #stop_canister $ empty
+  callIC ic00 canister_id #stop_canister $ empty
     .+ #canister_id .== Principal canister_id
 
 ic_canister_status ::
     forall a b. (a -> IO b) ~ (ICManagement IO .! "canister_status") =>
     HasTestConfig => IC00 -> Blob -> IO b
 ic_canister_status ic00 canister_id = do
-  managementService ic00 .! #canister_status $ empty
+  callIC ic00 canister_id #canister_status $ empty
     .+ #canister_id .== Principal canister_id
 
 ic_deposit_cycles :: HasTestConfig => IC00 -> Blob -> IO ()
 ic_deposit_cycles ic00 canister_id = do
-  managementService ic00 .! #deposit_cycles $ empty
+  callIC ic00 canister_id #deposit_cycles $ empty
     .+ #canister_id .== Principal canister_id
 
 ic_top_up :: HasTestConfig => IC00 -> Blob -> Natural -> IO ()
 ic_top_up ic00 canister_id amount = do
-  managementService ic00 .! #provisional_top_up_canister $ empty
+  callIC ic00 canister_id #provisional_top_up_canister $ empty
     .+ #canister_id .== Principal canister_id
     .+ #amount .== amount
 
 ic_delete_canister :: HasTestConfig => IC00 -> Blob -> IO ()
 ic_delete_canister ic00 canister_id = do
-  managementService ic00 .! #delete_canister $ empty
+  callIC ic00 canister_id #delete_canister $ empty
     .+ #canister_id .== Principal canister_id
 
 ic_raw_rand :: HasTestConfig => IC00 -> IO Blob
-ic_raw_rand ic00 = managementService ic00 .! #raw_rand $ ()
+ic_raw_rand ic00 =
+  callIC ic00 "" #raw_rand ()
 
 -- Primed variants return the response (reply or reject)
 callIC' :: forall s a b.
@@ -2215,12 +2333,12 @@ callIC' :: forall s a b.
   KnownSymbol s =>
   (a -> IO b) ~ (ICManagement IO .! s) =>
   Candid.CandidArg a =>
-  IC00 -> Label s -> a -> IO ReqResponse
-callIC' ic00 l x = ic00 (T.pack (symbolVal l)) (Candid.encode x)
+  IC00 -> Blob -> Label s -> a -> IO ReqResponse
+callIC' ic00 ecid l x = ic00 ecid (T.pack (symbolVal l)) (Candid.encode x)
 
 ic_install' :: HasTestConfig => IC00 -> InstallMode -> Blob -> Blob -> Blob -> IO ReqResponse
 ic_install' ic00 mode canister_id wasm_module arg =
-  callIC' ic00 #install_code $ empty
+  callIC' ic00 canister_id #install_code $ empty
     .+ #mode .== mode
     .+ #canister_id .== Principal canister_id
     .+ #wasm_module .== wasm_module
@@ -2230,23 +2348,23 @@ ic_install' ic00 mode canister_id wasm_module arg =
 
 ic_set_controller' :: HasTestConfig => IC00 -> Blob -> Blob -> IO ReqResponse
 ic_set_controller' ic00 canister_id new_controller = do
-  callIC' ic00 #set_controller $ empty
+  callIC' ic00 canister_id #set_controller $ empty
     .+ #canister_id .== Principal canister_id
     .+ #new_controller .== Principal new_controller
 
 ic_delete_canister' :: HasTestConfig => IC00 -> Blob -> IO ReqResponse
 ic_delete_canister' ic00 canister_id = do
-  callIC' ic00 #delete_canister $ empty
+  callIC' ic00 canister_id #delete_canister $ empty
     .+ #canister_id .== Principal canister_id
 
 ic_deposit_cycles' :: HasTestConfig => IC00 -> Blob -> IO ReqResponse
 ic_deposit_cycles' ic00 canister_id = do
-  callIC' ic00 #deposit_cycles $ empty
+  callIC' ic00 canister_id #deposit_cycles $ empty
     .+ #canister_id .== Principal canister_id
 
 ic_top_up' :: HasTestConfig => IC00 -> Blob -> Natural -> IO ReqResponse
 ic_top_up' ic00 canister_id amount = do
-  callIC' ic00 #provisional_top_up_canister $ empty
+  callIC' ic00 canister_id #provisional_top_up_canister $ empty
     .+ #canister_id .== Principal canister_id
     .+ #amount .== amount
 
@@ -2259,12 +2377,12 @@ callIC'' :: forall s a b.
   KnownSymbol s =>
   (a -> IO b) ~ (ICManagement IO .! s) =>
   Candid.CandidArg a =>
-  Blob -> Label s -> a -> IO HTTPErrOrReqResponse
-callIC'' user l x = ic00as' user (T.pack (symbolVal l)) (Candid.encode x)
+  Blob -> Blob -> Label s -> a -> IO HTTPErrOrReqResponse
+callIC'' user ecid l x = ic00as' user ecid (T.pack (symbolVal l)) (Candid.encode x)
 
 ic_install'' :: (HasCallStack, HasTestConfig) => Blob -> InstallMode -> Blob -> Blob -> Blob -> IO HTTPErrOrReqResponse
 ic_install'' user mode canister_id wasm_module arg =
-  callIC'' user #install_code $ empty
+  callIC'' user canister_id #install_code $ empty
     .+ #mode .== mode
     .+ #canister_id .== Principal canister_id
     .+ #wasm_module .== wasm_module
@@ -2274,38 +2392,38 @@ ic_install'' user mode canister_id wasm_module arg =
 
 ic_set_controller'' :: HasTestConfig => Blob -> Blob -> Blob -> IO HTTPErrOrReqResponse
 ic_set_controller'' user canister_id new_controller = do
-  callIC'' user #set_controller $ empty
+  callIC'' user canister_id #set_controller $ empty
     .+ #canister_id .== Principal canister_id
     .+ #new_controller .== Principal new_controller
 
 ic_start_canister'' :: HasTestConfig => Blob -> Blob -> IO HTTPErrOrReqResponse
 ic_start_canister'' user canister_id = do
-  callIC'' user #start_canister $ empty
+  callIC'' user canister_id #start_canister $ empty
     .+ #canister_id .== Principal canister_id
 
 ic_stop_canister'' :: HasTestConfig => Blob -> Blob -> IO HTTPErrOrReqResponse
 ic_stop_canister'' user canister_id = do
-  callIC'' user #stop_canister $ empty
+  callIC'' user canister_id #stop_canister $ empty
     .+ #canister_id .== Principal canister_id
 
 ic_canister_status'' :: HasTestConfig => Blob -> Blob -> IO HTTPErrOrReqResponse
 ic_canister_status'' user canister_id = do
-  callIC'' user #canister_status $ empty
+  callIC'' user canister_id #canister_status $ empty
     .+ #canister_id .== Principal canister_id
 
 ic_delete_canister'' :: HasTestConfig => Blob -> Blob -> IO HTTPErrOrReqResponse
 ic_delete_canister'' user canister_id = do
-  callIC'' user #delete_canister $ empty
+  callIC'' user canister_id #delete_canister $ empty
     .+ #canister_id .== Principal canister_id
 
 ic_deposit_cycles'' :: HasTestConfig => Blob -> Blob -> IO HTTPErrOrReqResponse
 ic_deposit_cycles'' user canister_id = do
-  callIC'' user #deposit_cycles $ empty
+  callIC'' user canister_id #deposit_cycles $ empty
     .+ #canister_id .== Principal canister_id
 
 ic_raw_rand'' :: HasTestConfig => Blob -> IO HTTPErrOrReqResponse
 ic_raw_rand'' user = do
-  callIC'' user #raw_rand ()
+  callIC'' user "" #raw_rand ()
 
 
 -- A barrier
@@ -2386,7 +2504,7 @@ callRequest :: (HasCallStack, HasTestConfig) => Blob -> Prog -> GenR
 callRequest cid prog = callRequestAs defaultUser cid prog
 
 callToQuery'' :: (HasCallStack, HasTestConfig) => Blob -> Prog -> IO HTTPErrOrReqResponse
-callToQuery'' cid prog = submitCBOR' $ callToQueryRequestAs defaultUser cid prog
+callToQuery'' cid prog = awaitCall' cid $ callToQueryRequestAs defaultUser cid prog
 
 -- The following variants of the call combinator differ in how much failure they allow:
 --
@@ -2396,7 +2514,7 @@ callToQuery'' cid prog = submitCBOR' $ callToQueryRequestAs defaultUser cid prog
 --   call_  requires a reply response with an empty blob (a common case)
 
 call'' :: (HasCallStack, HasTestConfig) => Blob -> Prog -> IO HTTPErrOrReqResponse
-call'' cid prog = submitCBOR' (callRequest cid prog)
+call'' cid prog = awaitCall' cid (callRequest cid prog)
 
 call' :: (HasCallStack, HasTestConfig) => Blob -> Prog -> IO ReqResponse
 call' cid prog = call'' cid prog >>= is2xx
@@ -2408,12 +2526,12 @@ call_ :: (HasCallStack, HasTestConfig) => Blob -> Prog -> IO ()
 call_ cid prog = call cid prog >>= is ""
 
 callTwice' :: (HasCallStack, HasTestConfig) => Blob -> Prog -> IO ReqResponse
-callTwice' cid prog = submitCBORTwice (callRequest cid prog)
+callTwice' cid prog = awaitCallTwice cid (callRequest cid prog)
 
 
 query' :: (HasCallStack, HasTestConfig) => Blob -> Prog -> IO ReqResponse
 query' cid prog =
-  readCBOR >=> queryResponse $ rec
+  queryCBOR cid >=> queryResponse $ rec
     [ "request_type" =: GText "query"
     , "sender" =: GBlob defaultUser
     , "canister_id" =: GBlob cid
@@ -2503,6 +2621,10 @@ enum l = V.IsJust l ()
 
 asHex :: Blob -> String
 asHex = T.unpack . H.encodeHex . BS.toStrict
+
+textual :: Blob -> String
+textual = T.unpack . prettyPrincipal . Principal
+
 
 shorten :: Int -> String -> String
 shorten n s = a ++ (if null b then "" else "…")

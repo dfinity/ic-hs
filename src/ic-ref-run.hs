@@ -46,14 +46,16 @@ dummyUserId = EntityId $ B.pack [0xCA, 0xFF, 0xEE]
 
 -- Pretty printing
 
-printAsyncRequest :: AsyncRequest -> IO ()
-printAsyncRequest (UpdateRequest _ _ method arg) =
+printCallRequest :: CallRequest -> IO ()
+printCallRequest (CallRequest _ _ method arg) =
     printf "→ update %s%s\n" method (shorten 60 (candidOrPretty arg))
 
-printSyncRequest :: SyncRequest -> IO ()
-printSyncRequest (ReadStateRequest _ paths) =
+printReadStateRequest :: ReadStateRequest -> IO ()
+printReadStateRequest (ReadStateRequest _ paths) =
     printf "→ state? %s\n" (intercalate ", " $ map (intercalate "/" . map show) paths)
-printSyncRequest (QueryRequest _ _ method arg) =
+
+printQueryRequest :: QueryRequest -> IO ()
+printQueryRequest (QueryRequest _ _ method arg) =
     printf "→ query %s%s\n" method (shorten 60 (candidOrPretty arg))
 
 printCallResponse :: CallResponse -> IO ()
@@ -87,20 +89,20 @@ shorten n s = a ++ (if null b then "" else "…")
   where (a,b) = splitAt n s
 
 
-submitAndRun :: AsyncRequest -> DRun ()
+submitAndRun :: CallRequest -> DRun ()
 submitAndRun r = do
-    lift $ printAsyncRequest r
+    lift $ printCallRequest r
     rid <- lift mkRequestId
     submitRequest rid r
     runToCompletion
     r <- gets (snd . (M.! rid) . requests)
     lift $ printReqStatus r
 
-submitRead :: SyncRequest -> DRun ()
-submitRead r = do
-    lift $ printSyncRequest r
+submitQuery :: QueryRequest -> DRun ()
+submitQuery r = do
+    lift $ printQueryRequest r
     t <- lift getTimestamp
-    r <- readRequest t r
+    r <- handleQuery t r
     lift $ printReqResponse r
   where
     getTimestamp :: IO Timestamp
@@ -118,8 +120,7 @@ callManagement :: forall s a b.
   EntityId -> Label s -> a -> StateT IC IO ()
 callManagement user_id l x =
   submitAndRun $
-    UpdateRequest (EntityId mempty) user_id (symbolVal l) (Candid.encode x)
-
+    CallRequest (EntityId mempty) user_id (symbolVal l) (Candid.encode x)
 
 work :: FilePath -> IO ()
 work msg_file = do
@@ -159,9 +160,9 @@ work msg_file = do
           .+ #compute_allocation .== Nothing
           .+ #memory_allocation .== Nothing
       Query  cid method arg ->
-        submitRead  (QueryRequest (EntityId cid) user_id method arg)
+        submitQuery  (QueryRequest (EntityId cid) user_id method arg)
       Update cid method arg ->
-        submitAndRun (UpdateRequest (EntityId cid) user_id method arg)
+        submitAndRun (CallRequest (EntityId cid) user_id method arg)
 
 main :: IO ()
 main = join . customExecParser (prefs showHelpOnError) $

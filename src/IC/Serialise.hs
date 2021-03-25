@@ -81,8 +81,8 @@ instance Serialise RequestStatus where
 deriving instance Generic CallResponse
 instance Serialise CallResponse where
 
-deriving instance Generic AsyncRequest
-instance Serialise AsyncRequest where
+deriving instance Generic CallRequest
+instance Serialise CallRequest where
 
 deriving instance Generic RunStatus
 instance Serialise RunStatus where

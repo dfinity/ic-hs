@@ -53,7 +53,7 @@ tests = testGroup "ic-ref unit tests"
         -- Create the state
         withStore initialIC (Just fn) $ \store -> do
           modifyStore store $ submitRequest "dummyrequestid" $
-            UpdateRequest (EntityId mempty) (EntityId "yay") "create_canister" "DIDL\0\0"
+            CallRequest (EntityId mempty) (EntityId "yay") "create_canister" "DIDL\0\0"
 
         -- now the file should exist
         doesFileExist fn  >>= assertBool "File exists"
