@@ -142,8 +142,8 @@ instance ToJSON CallResponse where
     toEncoding = genericToEncoding customOptions
 
 
-deriving instance Generic AsyncRequest
-instance ToJSON AsyncRequest where
+deriving instance Generic CallRequest
+instance ToJSON CallRequest where
     toJSON     = genericToJSON customOptions
     toEncoding = genericToEncoding customOptions
 

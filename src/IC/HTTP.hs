@@ -10,6 +10,7 @@ import qualified Data.Text.Encoding as T
 import Control.Monad.State
 import Control.Monad.Except
 import Data.Aeson as JSON
+import Codec.Candid (Principal(..), parsePrincipal)
 
 import IC.Types
 import IC.Ref
@@ -29,32 +30,46 @@ withApp backingFile action =
 handle :: Store IC -> Application
 handle store req respond = case (requestMethod req, pathInfo req) of
     ("GET", []) -> peekStore store >>= json status200
-    ("GET", ["api","v1","status"]) -> do
+    ("GET", ["api","v2","status"]) -> do
         r <- peekIC $ gets IC.HTTP.Status.r
         cbor status200 r
-    ("POST", ["api","v1","submit"]) ->
-        withSignedCBOR $ \(gr, ev) -> case asyncRequest gr of
-            Left err -> invalidRequest err
-            Right ar -> runIC $ do
-                t <- lift getTimestamp
-                runExceptT (authAsyncRequest t ev ar) >>= \case
-                    Left err ->
-                        lift $ invalidRequest err
-                    Right () -> do
-                        submitRequest (requestId gr) ar
-                        lift $ empty status202
-    ("POST", ["api","v1","read"]) ->
-        withSignedCBOR $ \(gr, ev) -> case syncRequest gr of
-            Left err -> invalidRequest err
-            Right sr -> peekIC $ do
-                t <- lift getTimestamp
-                runExceptT (authSyncRequest t ev sr) >>= \case
-                    Left err ->
-                        lift $ invalidRequest err
-                    Right () -> do
+    ("POST", ["api","v2","canister",textual_ecid,verb]) ->
+        case parsePrincipal textual_ecid of
+            Left err -> invalidRequest $ "cannot parse effective canister id: " <> T.pack err
+            Right (Principal ecid) -> case verb of
+                "call" -> withSignedCBOR $ \(gr, ev) -> case callRequest gr of
+                    Left err -> invalidRequest err
+                    Right cr -> runIC $ do
                         t <- lift getTimestamp
-                        r <- readRequest t sr
-                        lift $ cbor status200 (IC.HTTP.Request.response r)
+                        runExceptT (authCallRequest t (EntityId ecid) ev cr) >>= \case
+                            Left err ->
+                                lift $ invalidRequest err
+                            Right () -> do
+                                submitRequest (requestId gr) cr
+                                lift $ empty status202
+                "query" -> withSignedCBOR $ \(gr, ev) -> case queryRequest gr of
+                    Left err -> invalidRequest err
+                    Right qr -> peekIC $ do
+                        t <- lift getTimestamp
+                        runExceptT (authQueryRequest t (EntityId ecid) ev qr) >>= \case
+                            Left err ->
+                                lift $ invalidRequest err
+                            Right () -> do
+                                t <- lift getTimestamp
+                                r <- handleQuery t qr
+                                lift $ cbor status200 (IC.HTTP.Request.response r)
+                "read_state" -> withSignedCBOR $ \(gr, ev) -> case readStateRequest gr of
+                    Left err -> invalidRequest err
+                    Right rsr -> peekIC $ do
+                        t <- lift getTimestamp
+                        runExceptT (authReadStateRequest t (EntityId ecid) ev rsr) >>= \case
+                            Left err ->
+                                lift $ invalidRequest err
+                            Right () -> do
+                                t <- lift getTimestamp
+                                r <- handleReadState t rsr
+                                lift $ cbor status200 (IC.HTTP.Request.response r)
+                _ -> notFound
     _ -> notFound
   where
     runIC :: StateT IC IO a -> IO a
