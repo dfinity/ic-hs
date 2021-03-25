@@ -17,7 +17,6 @@ This module contains a test suite for the Internet Computer
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TupleSections #-}
-{-# LANGUAGE MultiWayIf #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 module IC.Test.Spec (preFlight, TestConfig, connect, ReplWrapper(..), icTests) where
 
@@ -490,15 +489,11 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
       >>= is "Hi"
 
   , simpleTestCase "randomness" $ \cid -> do
-    r1 <- ic_raw_rand ic00
-    r2 <- ic_raw_rand ic00
-    r3 <- ic_raw_rand (ic00via cid)
+    r1 <- ic_raw_rand (ic00via cid)
+    r2 <- ic_raw_rand (ic00via cid)
     BS.length r1 @?= 32
     BS.length r2 @?= 32
-    BS.length r3 @?= 32
     assertBool "random blobs are different" $ r1 /= r2
-    assertBool "random blobs are different" $ r1 /= r3
-    assertBool "random blobs are different" $ r2 /= r3
 
   , testGroup "simple calls"
     [ simpleTestCase "Call" $ \cid ->
@@ -1468,11 +1463,6 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
         ic_deposit_cycles (ic00viaWithCycles cid2 (def_cycles`div`4)) cid1
         queryBalance cid1 >>= isRoughly (def_cycles - def_cycles `div` 4)
         queryBalance cid2 >>= isRoughly (def_cycles `div` 4)
-      , testCase "as user controller, zero cycles" $ do
-        cid1 <- create noop
-        queryBalance cid1 >>= isRoughly def_cycles
-        ic_deposit_cycles ic00 cid1
-        queryBalance cid1 >>= isRoughly def_cycles
       , testCase "to non-existing canister" $ do
         cid1 <- create noop
         queryBalance cid1 >>= isRoughly def_cycles
@@ -1533,7 +1523,12 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
     ]
 
   , testGroup "canister_inspect_message"
-    [ testCase "accept all" $ do
+    [ testCase "empty canister" $ do
+      cid <- create
+      call'' cid reply >>= isErrOrReject []
+      callToQuery'' cid reply >>= isErrOrReject []
+
+    , testCase "accept all" $ do
       cid <- install $ onInspectMessage $ callback acceptMessage
       call_ cid reply
       callToQuery'' cid reply >>= is2xx >>= isReply >>= is ""
@@ -1585,6 +1580,15 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
 
       call cid (replyData "foo") >>= is "foo"
       callToQuery'' cid (replyData "foo") >>= is2xx >>= isReply >>= is "foo"
+
+    , testCase "management canister: raw_rand not accepted" $ do
+      ic_raw_rand'' defaultUser >>= isErrOrReject []
+
+    , simpleTestCase "management canister: deposit_cycles not accepted" $ \cid -> do
+      ic_deposit_cycles'' defaultUser cid >>= isErrOrReject []
+
+    , simpleTestCase "management canister: wrong sender not accepted" $ \cid -> do
+      ic_canister_status'' otherUser cid >>= isErrOrReject []
     ]
 
   , testGroup "Delegation targets" $ let
@@ -2021,6 +2025,7 @@ isErrOrReject _codes (Left (c, msg))
     | 400 <= c && c < 600 = return ()
     | otherwise = assertFailure $
         "Status " ++ show c ++ " is not 4xx or 5xx:\n" ++ msg
+isErrOrReject [] (Right _) = assertFailure "Got HTTP response, expected HTTP error"
 isErrOrReject codes (Right res) = isReject codes res
 
 
@@ -2292,6 +2297,15 @@ ic_delete_canister'' :: HasTestConfig => Blob -> Blob -> IO HTTPErrOrReqResponse
 ic_delete_canister'' user canister_id = do
   callIC'' user #delete_canister $ empty
     .+ #canister_id .== Principal canister_id
+
+ic_deposit_cycles'' :: HasTestConfig => Blob -> Blob -> IO HTTPErrOrReqResponse
+ic_deposit_cycles'' user canister_id = do
+  callIC'' user #deposit_cycles $ empty
+    .+ #canister_id .== Principal canister_id
+
+ic_raw_rand'' :: HasTestConfig => Blob -> IO HTTPErrOrReqResponse
+ic_raw_rand'' user = do
+  callIC'' user #raw_rand ()
 
 
 -- A barrier
