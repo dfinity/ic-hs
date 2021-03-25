@@ -11,6 +11,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE MultiWayIf #-}
 
 {-|
 This module implements the main abstract logic of the Internet Computer. It
@@ -384,7 +385,24 @@ readRequest time (ReadStateRequest _sender paths) = do
 
 inspectIngress :: RequestValidation m => AsyncRequest -> m ()
 inspectIngress (UpdateRequest canister_id user_id method arg)
-  | canister_id == managementCanisterId = pure ()
+  | canister_id == managementCanisterId =
+    if| method `elem` ["provisional_create_canister_with_cycles", "provisional_top_up_canister"]
+      -> return ()
+      | method `elem` [ "install_code", "set_controller", "start_canister"
+                       , "stop_canister", "canister_status", "delete_canister" ]
+      -> case decode @(R.Rec ("canister_id" R..== Principal)) arg of
+        Left msg -> throwError $ "Candid failed to decode: " <> T.pack msg
+        Right r -> do
+            let canister_id = principalToEntityId $ r .! #canister_id
+            onReject (throwError . T.pack . snd) $
+                canisterMustExist canister_id
+            controller <- getController canister_id
+            unless (controller == user_id) $
+                throwError "Wrong sender"
+      | method `elem` [ "raw_rand", "deposit_cycles" ]
+      -> throwError $ "Management method " <> T.pack method <> " cannot be invoked via an ingress call"
+      | otherwise
+      -> throwError $ "Unknown management method " <> T.pack method
   | otherwise = do
     onReject (throwError . T.pack . snd) $
         canisterMustExist canister_id
