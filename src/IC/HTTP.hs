@@ -7,6 +7,7 @@ import Control.Concurrent (forkIO)
 import Network.HTTP.Types
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
+import Data.ByteString.Builder (stringUtf8)
 import Control.Monad.State
 import Control.Monad.Except
 import Data.Aeson as JSON
@@ -55,7 +56,7 @@ handle store req respond = case (requestMethod req, pathInfo req) of
                         t <- lift getTimestamp
                         r <- readRequest t sr
                         lift $ cbor status200 (IC.HTTP.Request.response r)
-    _ -> notFound
+    _ -> notFound req
   where
     runIC :: StateT IC IO a -> IO a
     runIC a = do
@@ -96,7 +97,10 @@ handle store req respond = case (requestMethod req, pathInfo req) of
         -- ^ When testing against dfx, and until it prints error messages
         -- this can be enabled
         plain status400 (T.encodeUtf8Builder msg)
-    notFound = plain status404 "Not found\n"
+
+    notFound req = plain status404 $ stringUtf8 $
+        "ic-ref does not know how to handle a " ++ show (requestMethod req) ++
+        " request to " ++ show (rawPathInfo req)
 
 
     withCBOR k = case lookup hContentType (requestHeaders req) of
