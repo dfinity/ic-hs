@@ -7,6 +7,7 @@ import Control.Concurrent (forkIO)
 import Network.HTTP.Types
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
+import Data.ByteString.Builder (stringUtf8)
 import Control.Monad.State
 import Control.Monad.Except
 import Data.Aeson as JSON
@@ -30,6 +31,7 @@ withApp backingFile action =
 handle :: Store IC -> Application
 handle store req respond = case (requestMethod req, pathInfo req) of
     ("GET", []) -> peekStore store >>= json status200
+    ("GET", ["api","v1",_]) -> noV1 req
     ("GET", ["api","v2","status"]) -> do
         r <- peekIC $ gets IC.HTTP.Status.r
         cbor status200 r
@@ -69,8 +71,8 @@ handle store req respond = case (requestMethod req, pathInfo req) of
                                 t <- lift getTimestamp
                                 r <- handleReadState t rsr
                                 lift $ cbor status200 (IC.HTTP.Request.response r)
-                _ -> notFound
-    _ -> notFound
+                _ -> notFound req
+    _ -> notFound req
   where
     runIC :: StateT IC IO a -> IO a
     runIC a = do
@@ -111,8 +113,13 @@ handle store req respond = case (requestMethod req, pathInfo req) of
         -- ^ When testing against dfx, and until it prints error messages
         -- this can be enabled
         plain status400 (T.encodeUtf8Builder msg)
-    notFound = plain status404 "Not found\n"
 
+    notFound req = plain status404 $ stringUtf8 $
+        "ic-ref does not know how to handle a " ++ show (requestMethod req) ++
+        " request to " ++ show (rawPathInfo req)
+
+    noV1 req = plain status404 $ stringUtf8 $
+        "ic-ref no longer supports the v1 HTTP API at " ++ show (rawPathInfo req)
 
     withCBOR k = case lookup hContentType (requestHeaders req) of
         Just "application/cbor" -> do
