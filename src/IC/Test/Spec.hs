@@ -1241,10 +1241,12 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
         acceptAll = ignore (acceptCycles getAvailableCycles)
         queryBalance cid = query cid replyBalance >>= asWord64
 
-        -- At the time of writing, the replica’s canister limit is 100T
-        -- but creating a canister needs at least 1T.
-        -- So lets try to stay away from either limit here.
-        def_cycles = 20_000_000_000_000 :: Word64
+        -- At the time of writing, creating a canister needs at least 1T
+        -- and the freezing limit is 5T
+        -- (At some point, the max was 100T, but that is no longer the case)
+        -- So lets try to stay away from these limits.
+        -- The lowest denomination we deal with below is def_cycles`div`4
+        def_cycles = 80_000_000_000_000 :: Word64
 
         -- The system burns cycles at unspecified rates. To cater for such behaviour,
         -- we make the assumption that no test burns more than the following epsilon.
