@@ -15,23 +15,32 @@ nix: subpath:
   QuickCheck = super.callPackage generated/QuickCheck.nix {};
   megaparsec = super.callPackage generated/megaparsec.nix {};
 
+  # need older version (for now)
+  row-types = super.callPackage generated/row-types.nix {};
+
   # Only the test suite of crc is broken
   # https://github.com/MichaelXavier/crc/issues/2
   crc = nix.haskell.lib.markUnbroken (nix.haskell.lib.dontCheck super.crc);
+
+  # test
+  hex-text = nix.haskell.lib.markUnbroken (nix.haskell.lib.dontCheck super.hex-text);
+  tasty-html = nix.haskell.lib.markUnbroken (nix.haskell.lib.dontCheck super.tasty-html);
+  #base16-bytestring = nix.haskell.lib.dontCheck super.base16-bytestring;
 
   # We want random-1.2, but a lot of packages do not like that yet,
   # luckily mostly in the test suite. Hence this set of fix-ups:
   # (Remove when going to a nipxkgs that has random-1.2)
 
   # Wants testing-framework, not compatible with random-1.2
-  test-framework-quickcheck2 = nix.haskell.lib.markBroken super.test-framework-quickcheck2;
+  #test-framework-quickcheck2 = nix.haskell.lib.markBroken super.test-framework-quickcheck2;
+
   Glob = nix.haskell.lib.dontCheck super.Glob;
   SHA = nix.haskell.lib.dontCheck super.SHA;
   blaze-builder = nix.haskell.lib.dontCheck super.blaze-builder;
   blaze-html = nix.haskell.lib.dontCheck super.blaze-html;
   cereal = nix.haskell.lib.dontCheck super.cereal;
   either = nix.haskell.lib.dontCheck super.either;
-  exceptions = nix.haskell.lib.dontCheck super.exceptions;
+  #exceptions = nix.haskell.lib.dontCheck super.exceptions;
   hashable = nix.haskell.lib.dontCheck super.hashable;
   unordered-containers = nix.haskell.lib.dontCheck super.unordered-containers;
   monad-par = nix.haskell.lib.dontCheck super.monad-par;

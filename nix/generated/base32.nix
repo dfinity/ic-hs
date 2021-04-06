@@ -3,9 +3,9 @@
 , bytestring
 , criterion
 , deepseq
+, lib
 , memory
 , random-bytestring
-, stdenv
 , tasty
 , tasty-hunit
 , text
@@ -35,5 +35,5 @@ mkDerivation {
   ];
   homepage = "https://github.com/emilypi/base32";
   description = "RFC 4648-compliant Base32 encodings/decodings";
-  license = stdenv.lib.licenses.bsd3;
+  license = lib.licenses.bsd3;
 }

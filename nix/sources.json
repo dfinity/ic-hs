@@ -1,15 +1,15 @@
 {
     "haskell-candid": {
-        "branch": "master",
+        "branch": "smallcheck-1.2",
         "builtin": false,
         "description": "A candid library for Haskell",
         "homepage": null,
         "owner": "nomeata",
         "repo": "haskell-candid",
-        "rev": "26b6aacbe04fa59b977a0e8e3038e9ddb8f5196c",
-        "sha256": "0fx11q57q90f20akx5r3mizd0n326p293km69vr9kd43ab9vbxqv",
+        "rev": "feb56dc36e87789370ca2afd889afaf2173a7956",
+        "sha256": "13vmvgiqghz6z4xl24rc4cj3m8lmcaazlqrrqail49f4jrrd9lk8",
         "type": "tarball",
-        "url": "https://github.com/nomeata/haskell-candid/archive/26b6aacbe04fa59b977a0e8e3038e9ddb8f5196c.tar.gz",
+        "url": "https://github.com/nomeata/haskell-candid/archive/feb56dc36e87789370ca2afd889afaf2173a7956.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "leb128-cereal": {
@@ -39,29 +39,29 @@
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "nixpkgs": {
-        "branch": "release-20.09",
+        "branch": "master",
         "builtin": true,
         "description": "Nixpkgs/NixOS branches that track the Nixpkgs/NixOS channels",
         "homepage": null,
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "e12d6af863bfb6aa2d68321fd8cd6c08f8f240e6",
-        "sha256": "0wr62zii07s0hmyf3ai3plhgxqn7d4d7mclrq49zv65v4fnlk6ny",
+        "rev": "4b59c62682bd03d52ca5cecc3b720ac2278bd195",
+        "sha256": "0yh0j9i4rkq0k7kdfbg4qjzd5c0a3z32l6qxzpag0sps2w61zjfd",
         "type": "tarball",
-        "url": "https://github.com/NixOS/nixpkgs/archive/e12d6af863bfb6aa2d68321fd8cd6c08f8f240e6.tar.gz",
+        "url": "https://github.com/NixOS/nixpkgs/archive/4b59c62682bd03d52ca5cecc3b720ac2278bd195.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "winter": {
-        "branch": "master",
+        "branch": "joachim/data-fix-0.3",
         "builtin": false,
         "description": "Haskell port of the WebAssembly OCaml reference interpreter",
         "homepage": "https://github.com/dfinity-side-projects/winter",
         "owner": "dfinity-side-projects",
         "repo": "winter",
-        "rev": "2cc31576fe029d85c37d21fc9ea4902c5c64b5a9",
-        "sha256": "1mwjvk1a1qi7vw10pmq91psn2glsc25c1smbbxjmf6k767v1l0vf",
+        "rev": "73187b3bc675c0960c6903210c69d8f588285483",
+        "sha256": "0fcz5bhnphk3ng697l5z3n28a6kw8wpm5xmkl6vmnyfhpx0ni88i",
         "type": "tarball",
-        "url": "https://github.com/dfinity-side-projects/winter/archive/2cc31576fe029d85c37d21fc9ea4902c5c64b5a9.tar.gz",
+        "url": "https://github.com/dfinity-side-projects/winter/archive/73187b3bc675c0960c6903210c69d8f588285483.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     }
 }

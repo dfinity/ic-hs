@@ -9,10 +9,10 @@
 , criterion
 , deepseq
 , HUnit
+, lib
 , math-functions
 , process
 , random
-, stdenv
 , test-framework
 , test-framework-hunit
 , tf-random
@@ -49,5 +49,5 @@ mkDerivation {
     tf-random
   ];
   description = "Fast Splittable PRNG";
-  license = stdenv.lib.licenses.bsd3;
+  license = lib.licenses.bsd3;
 }

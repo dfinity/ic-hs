@@ -5,10 +5,10 @@
 , containers
 , criterion
 , deepseq
+, lib
 , mtl
 , parser-combinators
 , scientific
-, stdenv
 , text
 , transformers
 , weigh
@@ -39,5 +39,5 @@ mkDerivation {
   ];
   homepage = "https://github.com/mrkkrp/megaparsec";
   description = "Monadic parser combinators";
-  license = stdenv.lib.licenses.bsd2;
+  license = lib.licenses.bsd2;
 }

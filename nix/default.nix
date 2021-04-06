@@ -14,9 +14,6 @@ let
     name = "nixpkgs-patched";
     src = nixpkgs_src;
     patches = [
-      ./patches/0001-ghc865-binary-Use-binary-distribution-which-links-ag.patch
-      ./patches/0002-openblas-0.3.10-0.3.13.patch
-      ./patches/fb063991b26b2b93dece6d09f37041451a5ef4cb.patch
     ];
   };
 
@@ -35,8 +32,10 @@ let
             configureFlags = self.lib.lists.forEach old.configureFlags (flag:
               if self.lib.strings.hasPrefix "--target=" flag
               then flag + ",wasm32-unknown-unknown"
-              else flag
-            );
+              else flag) ++ [
+                # https://github.com/rust-lang/rust/issues/76526
+		"--set=build.docs=false"
+	      ];
           });
 
           all-cabal-hashes = self.fetchurl {
