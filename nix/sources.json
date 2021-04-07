@@ -14,6 +14,7 @@
     },
     "haskellNix": {
         "branch": "master",
+        "builtin": false,
         "description": "Alternative Haskell Infrastructure for Nixpkgs",
         "homepage": "https://input-output-hk.github.io/haskell.nix",
         "owner": "input-output-hk",
