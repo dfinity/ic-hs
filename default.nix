@@ -122,6 +122,7 @@ let
         src = subpath ./impl;
         compiler-nix-name = "ghc8104";
         index-state = "2021-03-20T00:00:00Z";
+        plan-sha256 = "05m6mkvhdhfk5bag4d1pz8p1hs0l87gyk8kaqzl6276kx30rkc1s";
         modules = [{
           # smaller files
           packages.tttool.dontStrip = false;
