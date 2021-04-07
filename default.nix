@@ -304,6 +304,7 @@ rec {
       ic-ref
       ic-ref-dist
       ic-ref-test
+      ic-ref-windows
       universal-canister
       public-spec
       check-generated
