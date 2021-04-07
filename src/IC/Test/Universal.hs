@@ -195,6 +195,18 @@ getCertificate = op 38
 getStatus :: Exp 'I
 getStatus = op 39
 
+acceptMessage :: Prog
+acceptMessage = op 40
+
+onInspectMessage :: Exp 'B -> Prog
+onInspectMessage = op 41
+
+methodName :: Exp 'B
+methodName = op 42
+
+trapIfEq :: Exp 'B -> Exp 'B -> Exp 'B -> Prog
+trapIfEq = op 43
+
 -- Some convenience combinators
 
 -- This allows us to write byte expressions as plain string literals

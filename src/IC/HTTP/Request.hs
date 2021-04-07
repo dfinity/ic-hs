@@ -16,7 +16,7 @@ import Data.Bifunctor
 
 import IC.Types
 import IC.Crypto
-import IC.Ref (AsyncRequest(..), SyncRequest(..),
+import IC.Ref (CallRequest(..), QueryRequest(..), ReadStateRequest(..),
   ReqResponse(..), CallResponse(..))
 import IC.Id.Forms hiding (Blob)
 import IC.Certificate.CBOR
@@ -102,40 +102,43 @@ getTimestamp = do
     t <- getPOSIXTime
     return $ Timestamp $ round (t * 1000_000_000)
 
--- Parsing requests to /submit
-asyncRequest :: GenR -> Either T.Text AsyncRequest
-asyncRequest = record $ do
+-- Parsing requests
+callRequest :: GenR -> Either T.Text CallRequest
+callRequest = record $ do
     t <- field text "request_type"
+    unless (t == "call") $
+        throwError $ "Expected request_type to be \"call\", got \"" <> t <> "\""
     _ <- optionalField blob "nonce"
     _ <- field nat "ingress_expiry"
-    case t of
-        "call" -> do
-            cid <- field entitiyId "canister_id"
-            sender <- field entitiyId "sender"
-            method_name <- field text "method_name"
-            arg <- field blob "arg"
-            return $ UpdateRequest cid sender (T.unpack method_name) arg
-        _ -> throwError $ "Unknown request type \"" <> t <> "\""
+    cid <- field entitiyId "canister_id"
+    sender <- field entitiyId "sender"
+    method_name <- field text "method_name"
+    arg <- field blob "arg"
+    return $ CallRequest cid sender (T.unpack method_name) arg
 
--- Parsing requests to /response
-syncRequest :: GenR -> Either T.Text SyncRequest
-syncRequest = record $ do
+queryRequest :: GenR -> Either T.Text QueryRequest
+queryRequest = record $ do
     t <- field text "request_type"
+    unless (t == "query") $
+        throwError $ "Expected request_type to be \"query\", got \"" <> t <> "\""
     _ <- optionalField blob "nonce"
     _ <- field nat "ingress_expiry"
-    case t of
-        "query" -> do
-            cid <- field entitiyId "canister_id"
-            sender <- field entitiyId "sender"
-            method_name <- field text "method_name"
-            arg <- field blob "arg"
-            return $ QueryRequest cid sender (T.unpack method_name) arg
-        "read_state" -> do
-            sender <- field entitiyId "sender"
-            paths <- field (listOf (listOf blob)) "paths"
-            return $ ReadStateRequest sender paths
-        _ -> throwError $ "Unknown request type \"" <> t <> "\""
+    cid <- field entitiyId "canister_id"
+    sender <- field entitiyId "sender"
+    method_name <- field text "method_name"
+    arg <- field blob "arg"
+    return $ QueryRequest cid sender (T.unpack method_name) arg
 
+readStateRequest :: GenR -> Either T.Text ReadStateRequest
+readStateRequest = record $ do
+    t <- field text "request_type"
+    unless (t == "read_state") $
+        throwError $ "Expected request_type to be \"read_state\", got \"" <> t <> "\""
+    _ <- optionalField blob "nonce"
+    _ <- field nat "ingress_expiry"
+    sender <- field entitiyId "sender"
+    paths <- field (listOf (listOf blob)) "paths"
+    return $ ReadStateRequest sender paths
 
 entitiyId :: Field EntityId
 entitiyId = fmap EntityId <$> blob

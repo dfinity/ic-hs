@@ -37,8 +37,6 @@ let
         rm -f $out/test-data/universal_canister.wasm
         cp ${universal-canister}/universal_canister.wasm $out/test-data
       '';
-      propagatedBuildInputs = (old.propagatedBuildInputs or []) ++
-        [ nixpkgs.ic-webauthn-cli ];
       # variant of justStaticExecutables that retains propagatedBuildInputs
       postFixup = "rm -rf $out/lib $out/share/doc";
     })
@@ -75,18 +73,30 @@ let
         # sanity check
         $out/bin/ic-ref --version
       ''
+
     # on Linux, build statically using musl
+    # and until we are open source, also using integer-simple
+    # (once we can use ghc-9.0 we can maybe use ghc-bignum native, which should be faster)
     else
       let
-        muslHaskellPackages = nixpkgs.pkgsMusl.haskellPackages.override {
-          overrides = import nix/haskell-packages.nix nixpkgs subpath;
+        muslHaskellPackages = nixpkgs.pkgsMusl.haskell.packages.integer-simple.ghc884.override {
+          overrides = self: super:
+            import nix/haskell-packages.nix nixpkgs subpath self super
+            // {
+              cryptonite = super.cryptonite.overrideAttrs(old: {
+                configureFlags = "-f-integer-gmp";
+                doCheck = false; # test suite too slow without integer-gmp
+              });
+              # more test suites too slow withour integer-gmp
+              scientific = nixpkgs.haskell.lib.dontCheck super.scientific;
+              math-functions = nixpkgs.haskell.lib.dontCheck super.math-functions;
+            };
         };
         ic-ref-musl =
           muslHaskellPackages.ic-ref.overrideAttrs (
             old: {
               configureFlags = [
                 "--ghc-option=-optl=-static"
-                "--extra-lib-dirs=${nixpkgs.pkgsMusl.gmp6.override { withStatic = true; }}/lib"
                 "--extra-lib-dirs=${nixpkgs.pkgsMusl.zlib.static}/lib"
                 "--extra-lib-dirs=${nixpkgs.pkgsMusl.libffi.overrideAttrs (old: { dontDisableStatic = true; })}/lib"
               ];
@@ -109,13 +119,13 @@ let
       (pkgsWin.haskell-nix.cabalProject {
         src = subpath ./impl;
         compiler-nix-name = "ghc8104";
-        index-state = "2021-03-01T00:00:00Z";
+        index-state = "2021-03-20T00:00:00Z";
         modules = [{
           # smaller files
           packages.tttool.dontStrip = false;
         }];
       }).ic-ref.components.exes.ic-ref;
-      
+
       # pkgs = nixpkgs.pkgsCross.mingwW64;
       # haskellPackages = pkgs.haskellPackages.override {
       #   ghc = pkgs.buildPackages.haskell-nix.compiler.ghc884;
@@ -248,9 +258,26 @@ rec {
       touch $out
     '';
 
-  public-spec =
+  # A simple license check: Check that all used Haskell packages
+  # declare a liberal (non-GPL) license.
+  # This does not necessarily cover imported C libraries!
+  license-check = haskellPackages.ic-ref.overrideAttrs(old: {
+      name = "ic-ref-license-check";
+      phases = [ "unpackPhase" "setupCompilerEnvironmentPhase" "buildPhase" "installPhase" ];
+      buildPhase = ''
+        cd $packageConfDir
+        ! grep -i '^license:' *.conf | grep -v 'BSD\|Apache\|MIT\|ISC'
+      '';
+      outputs = ["out"]; # no docs
+      installPhase = ''
+        touch $out
+      '';
+    });
+
+
+  interface-spec =
     nixpkgs.stdenv.mkDerivation {
-    name = "public-spec";
+    name = "interface-spec";
     src = subpath ./spec;
     phases = [ "unpackPhase" "buildPhase" "checkPhase" ];
     buildInputs = with nixpkgs;
@@ -269,6 +296,9 @@ rec {
       doc_path="spec"
       mkdir -p $out/$doc_path
       asciidoctor $asciidoctor_args --failure-level WARN -v \
+        -a toc2 -a toclevels=3 \
+        -a example -a partial \
+        -a attachmentsdir=. \
         -R $PWD -D $out/$doc_path/ index.adoc
       find . -type f -name '*.png' | cpio -pdm $out/$doc_path/
       cp *.cddl $out/$doc_path
@@ -298,6 +328,9 @@ rec {
 
   };
 
+  # for compatibility with the deployment to https://docs.dfinity.systems/public/v
+  public-spec = interface-spec;
+
   all-systems-go = nixpkgs.releaseTools.aggregate {
     name = "all-systems-go";
     constituents = [
@@ -306,7 +339,7 @@ rec {
       ic-ref-test
       ic-ref-windows
       universal-canister
-      public-spec
+      interface-spec
       check-generated
     ];
   };

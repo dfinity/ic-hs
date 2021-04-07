@@ -1,11 +1,15 @@
 packages: .
 
+allow-newer: candid:doctest
+
 source-repository-package
     type: git
     location: https://github.com/dfinity-side-projects/winter
     tag: 2cc31576fe029d85c37d21fc9ea4902c5c64b5a9
+    --sha256: 1mwjvk1a1qi7vw10pmq91psn2glsc25c1smbbxjmf6k767v1l0vf
 
 source-repository-package
     type: git
     location: https://github.com/nomeata/haskell-candid
-    tag: 041b1e132180fd382fd9ccf06095a80335c49ab0
+    tag: ce835b6
+    --sha256: 14pjminindljzzsbijpbgbc03a0dg03bfa7ga16wha4anxrf1lz9

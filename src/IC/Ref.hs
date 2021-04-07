@@ -11,26 +11,30 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE MultiWayIf #-}
 
 {-|
 This module implements the main abstract logic of the Internet Computer. It
 assumes a pure and abstracted view on Canisters (provided by "IC.Canister"),
-and deals with abstract requests ('AsyncRequest', 'SyncRequest'), so HTTP and
-CBOR-level processing has already happened.
+and deals with abstract requests ('CallRequest', 'QueryRequest', ...), so HTTP
+and CBOR-level processing has already happened.
 -}
 module IC.Ref
   ( IC(..)
-  , AsyncRequest(..)
-  , callerOfAsync
-  , SyncRequest(..)
+  , CallRequest(..)
+  , callerOfCallRequest
+  , QueryRequest(..)
+  , ReadStateRequest(..)
   , RequestStatus(..)
   , ReqResponse(..)
   , CallResponse(..)
   , initialIC
-  , authSyncRequest
-  , authAsyncRequest
+  , authCallRequest
+  , authQueryRequest
+  , authReadStateRequest
   , submitRequest
-  , readRequest
+  , handleQuery
+  , handleReadState
   , runStep
   , runToCompletion
   -- $ Exported merely for debug introspection
@@ -40,6 +44,7 @@ module IC.Ref
   , CallOrigin(..)
   , EntryPoint(..)
   , RunStatus(..)
+  , CanisterContent(..)
   )
 where
 
@@ -65,7 +70,6 @@ import IC.Constants
 import IC.Canister
 import IC.Id.Fresh
 import IC.Utils
-import IC.Hash
 import IC.Management
 import IC.HashTree hiding (Blob)
 import IC.Certificate
@@ -75,13 +79,12 @@ import IC.Crypto
 
 -- Abstract HTTP Interface
 
-data AsyncRequest
-    = UpdateRequest CanisterId UserId MethodName Blob
+data CallRequest
+    = CallRequest CanisterId UserId MethodName Blob
   deriving (Eq, Ord, Show)
 
-data SyncRequest
-    = QueryRequest CanisterId UserId MethodName Blob
-    | ReadStateRequest UserId [Path]
+data QueryRequest = QueryRequest CanisterId UserId MethodName Blob
+data ReadStateRequest = ReadStateRequest UserId [Path]
 
 data RequestStatus
   = Received
@@ -110,10 +113,14 @@ data RunStatus
   | IsDeleted -- not actually a run state, but convenient in this code
   deriving (Show)
 
+data CanisterContent = CanisterContent
+  { can_mod :: CanisterModule
+  , wasm_state :: WasmState
+  }
+  deriving (Show)
+
 data CanState = CanState
-  { wasm_state :: Maybe WasmState   -- absent when empty
-  , can_mod :: Maybe CanisterModule -- absent when empty
-  , can_hash :: Maybe Blob          -- absent when empty
+  { content :: Maybe CanisterContent -- absent when empty
   , run_status :: RunStatus
   , controller :: EntityId
   , time :: Timestamp
@@ -161,7 +168,7 @@ data Message
 
 data IC = IC
   { canisters :: CanisterId ↦ CanState
-  , requests :: RequestID ↦ (AsyncRequest, RequestStatus)
+  , requests :: RequestID ↦ (CallRequest, RequestStatus)
   , messages :: Seq Message
   , call_contexts :: CallId ↦ CallContext
   , rng :: StdGen
@@ -181,24 +188,24 @@ initialIC = do
 
 -- Request handling
 
-findRequest :: RequestID -> IC -> Maybe (AsyncRequest, RequestStatus)
+findRequest :: RequestID -> IC -> Maybe (CallRequest, RequestStatus)
 findRequest rid ic = M.lookup rid (requests ic)
 
 setReqStatus :: ICM m => RequestID -> RequestStatus -> m ()
 setReqStatus rid s = modify $ \ic ->
   ic { requests = M.adjust (\(r,_) -> (r,s)) rid (requests ic) }
 
-calleeOfAsync :: AsyncRequest -> EntityId
-calleeOfAsync = \case
-    UpdateRequest canister_id _ _ _ -> canister_id
+calleeOfCallRequest :: CallRequest -> EntityId
+calleeOfCallRequest = \case
+    CallRequest canister_id _ _ _ -> canister_id
 
-callerOfAsync :: AsyncRequest -> EntityId
-callerOfAsync = \case
-    UpdateRequest _ user_id _ _ -> user_id
+callerOfCallRequest :: CallRequest -> EntityId
+callerOfCallRequest = \case
+    CallRequest _ user_id _ _ -> user_id
 
 callerOfRequest :: ICM m => RequestID -> m EntityId
 callerOfRequest rid = gets (M.lookup rid . requests) >>= \case
-    Just (ar,_) -> return (callerOfAsync ar)
+    Just (ar,_) -> return (callerOfCallRequest ar)
     Nothing -> error "callerOfRequest"
 
 
@@ -209,9 +216,7 @@ createEmptyCanister cid controller time = modify $ \ic ->
     ic { canisters = M.insert cid can (canisters ic) }
   where
     can = CanState
-      { wasm_state = Nothing
-      , can_mod = Nothing
-      , can_hash = Nothing
+      { content = Nothing
       , run_status = IsRunning
       , controller = controller
       , time = time
@@ -228,8 +233,8 @@ canisterMustExist cid =
       reject RC_DESTINATION_INVALID ("canister no longer exists: " ++ prettyID cid)
     _ -> return ()
 
-isCanisterEmpty :: (CanReject m, ICM m) => CanisterId -> m Bool
-isCanisterEmpty cid = isNothing . wasm_state <$> getCanister cid
+isCanisterEmpty :: ICM m => CanisterId -> m Bool
+isCanisterEmpty cid = isNothing . content <$> getCanister cid
 
 
 -- the following functions assume the canister does exist;
@@ -245,13 +250,18 @@ modCanister cid f = do
     void $ getCanister cid
     modify $ \ic -> ic { canisters = M.adjust f cid (canisters ic) }
 
-setCanisterModule :: ICM m => CanisterId -> CanisterModule -> Blob -> m ()
-setCanisterModule cid can_mod can_hash = modCanister cid $
-    \cs -> cs { can_mod = Just can_mod, can_hash = Just can_hash }
+setCanisterContent :: ICM m => CanisterId -> CanisterContent -> m ()
+setCanisterContent cid content = modCanister cid $
+    \cs -> cs { content = Just content }
+
+modCanisterContent :: ICM m => CanisterId -> (CanisterContent -> CanisterContent) -> m ()
+modCanisterContent cid f = do
+    modCanister cid $ \c -> c { content = Just (f (fromMaybe err (content c))) }
+  where err = error ("canister is empty: " ++ prettyID cid)
 
 setCanisterState :: ICM m => CanisterId -> WasmState -> m ()
-setCanisterState cid wasm_state = modCanister cid $
-    \cs -> cs { wasm_state = Just wasm_state }
+setCanisterState cid wasm_state = modCanisterContent cid $
+    \cs -> cs { wasm_state = wasm_state }
 
 getController :: ICM m => CanisterId -> m EntityId
 getController cid = controller <$> getCanister cid
@@ -279,48 +289,63 @@ setRunStatus cid run_status = modCanister cid $
     \cs -> cs { run_status = run_status }
 
 getCanisterState :: ICM m => CanisterId -> m WasmState
-getCanisterState cid = fromJust . wasm_state <$> getCanister cid
+getCanisterState cid = wasm_state . fromJust . content <$> getCanister cid
 
 getCanisterMod :: ICM m => CanisterId -> m CanisterModule
-getCanisterMod cid = fromJust . can_mod <$> getCanister cid
+getCanisterMod cid = can_mod . fromJust . content <$> getCanister cid
 
 getCanisterTime :: ICM m => CanisterId -> m Timestamp
 getCanisterTime cid = time <$> getCanister cid
 
+
+module_hash :: CanState -> Maybe Blob
+module_hash = fmap (raw_wasm_hash . can_mod) . content
+
 -- Authentication and authorization of requests
+--
+-- The envelope has already been validated. So this includes
+--  * Comparing the envelope validity with the contents
+--  * Authorization of the sender
+--  * ingress message inspection
+--  * checking the correct effective id
 
--- This is monadic, as authentication may depend on the state of the system
--- for request status: Whether the request exists and who owns it
--- in general: eventually there will be user key management
+type RequestValidation m = (MonadError T.Text m, ICM m)
 
-type AuthValidation m = (MonadError T.Text m, ICM m)
+authCallRequest :: RequestValidation m => Timestamp -> CanisterId -> EnvValidity -> CallRequest -> m ()
+authCallRequest t ecid ev r@(CallRequest canister_id user_id meth arg) = do
+    checkEffectiveCanisterID ecid canister_id meth arg
+    valid_when ev t
+    valid_for ev user_id
+    valid_where ev canister_id
+    inspectIngress r
 
-authAsyncRequest :: AuthValidation m => Timestamp -> EnvValidity -> AsyncRequest -> m ()
-authAsyncRequest t ev (UpdateRequest canister_id user_id _ _) = do
+authQueryRequest :: RequestValidation m => Timestamp -> CanisterId -> EnvValidity -> QueryRequest -> m ()
+authQueryRequest t ecid ev (QueryRequest canister_id user_id meth arg) = do
+    checkEffectiveCanisterID ecid canister_id meth arg
+    valid_when ev t
     valid_when ev t
     valid_for ev user_id
     valid_where ev canister_id
 
-authSyncRequest :: AuthValidation m => Timestamp -> EnvValidity -> SyncRequest -> m ()
-authSyncRequest t ev = \case
-  QueryRequest canister_id user_id _ _ -> do
-    valid_when ev t
-    valid_for ev user_id
-    valid_where ev canister_id
-
-  ReadStateRequest user_id paths -> do
+authReadStateRequest :: RequestValidation m => Timestamp -> CanisterId -> EnvValidity -> ReadStateRequest -> m ()
+authReadStateRequest t ecid ev (ReadStateRequest user_id paths) = do
     valid_when ev t
     valid_for ev user_id
     -- Implement ACL for read requests here
     forM_ paths $ \case
       ["time"] -> return ()
       ("subnet":_) -> return ()
+      ("canister":cid:"module_hash":_) ->
+        assertEffeciveCaniserId ecid (EntityId cid)
+      ("canister":cid:"controller":_) ->
+        assertEffeciveCaniserId ecid (EntityId cid)
       ("request_status" :rid: _) ->
         gets (findRequest rid) >>= \case
-          Just (ar,_) -> do
-            unless (user_id == callerOfAsync ar) $
+          Just (ar@(CallRequest cid _ meth arg),_) -> do
+            checkEffectiveCanisterID ecid cid meth arg
+            unless (user_id == callerOfCallRequest ar) $
               throwError "User is not authorized to read this request status"
-            valid_where ev (calleeOfAsync ar)
+            valid_where ev (calleeOfCallRequest ar)
           Nothing -> return ()
       _ -> throwError "User is not authorized to read unspecified state paths"
 
@@ -343,8 +368,8 @@ canisterEnv canister_id = do
 
 -- Synchronous requests
 
-readRequest :: ICM m => Timestamp -> SyncRequest -> m ReqResponse
-readRequest time (QueryRequest canister_id user_id method arg) =
+handleQuery :: ICM m => Timestamp -> QueryRequest -> m ReqResponse
+handleQuery time (QueryRequest canister_id user_id method arg) =
   fmap QueryResponse $ onReject (return . Rejected) $ do
     canisterMustExist canister_id
     getRunStatus canister_id >>= \case
@@ -366,10 +391,64 @@ readRequest time (QueryRequest canister_id user_id method arg) =
       Return (Reject (rc,rm)) -> reject rc rm
       Return (Reply res) -> return $ Replied res
 
-readRequest time (ReadStateRequest _sender paths) = do
+handleReadState :: ICM m => Timestamp -> ReadStateRequest -> m ReqResponse
+handleReadState time (ReadStateRequest _sender paths) = do
     -- NB: Already authorized in authSyncRequest
     cert <- getPrunedCertificate time (["time"] : paths)
     return $ ReadStateResponse cert
+
+checkEffectiveCanisterID :: RequestValidation m => CanisterId -> CanisterId -> MethodName -> Blob -> m ()
+checkEffectiveCanisterID ecid cid method arg
+  | cid == managementCanisterId = case method of
+    "provisional_create_canister_with_cycles" -> pure ()
+    "raw_rand" -> throwError "raw_rand() cannot be invoked via ingress calls"
+    _ -> case Codec.Candid.decode @(R.Rec ("canister_id" R..== Principal)) arg of
+        Left err ->
+            throwError $ "call to management canister is not valid candid: " <> T.pack err
+        Right r ->
+            assertEffeciveCaniserId ecid (principalToEntityId (r .! #canister_id))
+  | otherwise = assertEffeciveCaniserId ecid cid
+
+assertEffeciveCaniserId :: RequestValidation m => CanisterId -> CanisterId -> m ()
+assertEffeciveCaniserId ecid cid = do
+  unless (ecid == cid) $ do
+    throwError $ "expected effective canister_id " <> T.pack (prettyID cid) <> ", got " <> T.pack (prettyID ecid)
+
+inspectIngress :: RequestValidation m => CallRequest -> m ()
+inspectIngress (CallRequest canister_id user_id method arg)
+  | canister_id == managementCanisterId =
+    if| method `elem` ["provisional_create_canister_with_cycles", "provisional_top_up_canister"]
+      -> return ()
+      | method `elem` [ "install_code", "set_controller", "start_canister"
+                       , "stop_canister", "canister_status", "delete_canister" ]
+      -> case decode @(R.Rec ("canister_id" R..== Principal)) arg of
+        Left msg -> throwError $ "Candid failed to decode: " <> T.pack msg
+        Right r -> do
+            let canister_id = principalToEntityId $ r .! #canister_id
+            onReject (throwError . T.pack . snd) $
+                canisterMustExist canister_id
+            controller <- getController canister_id
+            unless (controller == user_id) $
+                throwError "Wrong sender"
+      | method `elem` [ "raw_rand", "deposit_cycles" ]
+      -> throwError $ "Management method " <> T.pack method <> " cannot be invoked via an ingress call"
+      | otherwise
+      -> throwError $ "Unknown management method " <> T.pack method
+  | otherwise = do
+    onReject (throwError . T.pack . snd) $
+        canisterMustExist canister_id
+    getRunStatus canister_id >>= \case
+       IsRunning -> return ()
+       _ -> throwError "canister is stopped"
+    empty <- isCanisterEmpty canister_id
+    when empty $ throwError "canister is empty"
+    wasm_state <- getCanisterState canister_id
+    can_mod <- getCanisterMod canister_id
+    env <- canisterEnv canister_id
+
+    case inspect_message can_mod method user_id env arg wasm_state of
+      Trap msg -> throwError $ "canister trapped in inspect_message: " <> T.pack msg
+      Return () -> return ()
 
 -- The state tree
 
@@ -394,7 +473,12 @@ stateTree (Timestamp t) ic = node
     | (rid, (_, rs)) <- M.toList (requests ic)
     ]
   , "canister" =: node
-    [ cid =: node [ "certified_data" =: val (certified_data cs) ]
+    [ cid =: node (
+      [ "certified_data" =: val (certified_data cs)
+      , "controller" =: val (rawEntityId (controller cs))
+      ] ++
+      [ "module_hash" =: val h | Just h <- pure $ module_hash cs ]
+    )
     | (EntityId cid, cs) <- M.toList (canisters ic)
     ]
   ]
@@ -460,7 +544,7 @@ getDataCertificate t cid = do
 
 -- | Submission simply enqueues requests
 
-submitRequest :: ICM m => RequestID -> AsyncRequest -> m ()
+submitRequest :: ICM m => RequestID -> CallRequest -> m ()
 submitRequest rid r = modify $ \ic ->
   if M.member rid (requests ic)
   then ic
@@ -469,10 +553,10 @@ submitRequest rid r = modify $ \ic ->
 
 -- | Eventually, they are processed
 
-processRequest :: ICM m => (RequestID, AsyncRequest) -> m ()
+processRequest :: ICM m => (RequestID, CallRequest) -> m ()
 processRequest (rid, req) = onReject (setReqStatus rid . CallResponse .  Rejected) $
   case req of
-  UpdateRequest canister_id _user_id method arg -> do
+  CallRequest canister_id _user_id method arg -> do
     ctxt_id <- newCallContext $ CallContext
       { canister = canister_id
       , origin = FromUser rid
@@ -656,7 +740,7 @@ invokeManagementCanister caller ctxt_id (Public method_name arg) =
       "stop_canister" -> deferred $ icStopCanister caller ctxt_id
       "canister_status" -> atomic $ icCanisterStatus caller
       "delete_canister" -> atomic $ icDeleteCanister caller
-      "deposit_cycles" -> atomic $ icDepositCycles caller ctxt_id
+      "deposit_cycles" -> atomic $ icDepositCycles ctxt_id
       "provisional_create_canister_with_cycles" -> atomic $ icCreateCanisterWithCycles caller
       "provisional_top_up_canister" -> atomic icTopUpCanister
       "raw_rand" -> atomic icRawRand
@@ -720,8 +804,10 @@ icInstallCode caller r = do
       reinstall = do
         (wasm_state, ca) <- return (init_method new_can_mod caller env arg)
           `onTrap` (\msg -> reject RC_CANISTER_ERROR $ "Initialization trapped: " ++ msg)
-        setCanisterModule canister_id new_can_mod (sha256 (r .! #wasm_module))
-        setCanisterState canister_id wasm_state
+        setCanisterContent canister_id $ CanisterContent
+            { can_mod = new_can_mod
+            , wasm_state = wasm_state
+            }
         performCanisterActions canister_id ca
 
       install = do
@@ -742,8 +828,10 @@ icInstallCode caller r = do
         (new_wasm_state, ca2) <- return (post_upgrade_method new_can_mod caller env2 mem arg)
           `onTrap` (\msg -> reject RC_CANISTER_ERROR $ "Post-upgrade trapped: " ++ msg)
 
-        setCanisterModule canister_id new_can_mod (sha256 (r .! #wasm_module))
-        setCanisterState canister_id new_wasm_state
+        setCanisterContent canister_id $ CanisterContent
+            { can_mod = new_can_mod
+            , wasm_state = new_wasm_state
+            }
         performCanisterActions canister_id (ca1 <> ca2)
 
     R.switch (r .! #mode) $ R.empty
@@ -815,7 +903,7 @@ icCanisterStatus caller r = do
         IsStopped -> return (V.IsJust #stopped ())
         IsDeleted -> error "deleted canister encountered"
     controller <- getController canister_id
-    hash <- can_hash <$> getCanister canister_id
+    hash <- module_hash <$> getCanister canister_id
     cycles <- getBalance canister_id
     return $ R.empty
       .+ #status .== s
@@ -838,11 +926,10 @@ icDeleteCanister caller r = do
 
     setRunStatus canister_id IsDeleted
 
-icDepositCycles :: (ICM m, CanReject m) => EntityId -> CallId -> ICManagement m .! "deposit_cycles"
-icDepositCycles caller ctxt_id r = do
+icDepositCycles :: (ICM m, CanReject m) => CallId -> ICManagement m .! "deposit_cycles"
+icDepositCycles ctxt_id r = do
     let canister_id = principalToEntityId (r .! #canister_id)
     canisterMustExist canister_id
-    checkController canister_id caller
 
     cycles <- getCallContextCycles ctxt_id
     available <- getCallContextCycles ctxt_id
@@ -905,7 +992,7 @@ newCall from_ctxt_id call = do
 -- Scheduling
 
 -- | Pick next request in state `received`
-nextReceived :: ICM m => m (Maybe (RequestID, AsyncRequest))
+nextReceived :: ICM m => m (Maybe (RequestID, CallRequest))
 nextReceived = gets $ \ic -> listToMaybe
   [ (rid,r) | (rid, (r, Received)) <- M.toList (requests ic) ]
 
