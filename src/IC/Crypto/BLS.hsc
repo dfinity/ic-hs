@@ -1,5 +1,4 @@
 {-# OPTIONS_GHC -fno-warn-unused-imports -Wno-unused-top-binds #-}
-#include <bindings.dsl.h>
 #include <bls_BLS12381.h>
 
 module IC.Crypto.BLS
@@ -18,24 +17,35 @@ import Control.Monad
 import Foreign.Ptr
 import Foreign.Marshal.Alloc
 import System.IO.Unsafe
+import Foreign
+import Foreign.Ptr
+import Foreign.C.String
+import Foreign.C.Types
 
-#strict_import
+data C'octet = C'octet CInt CInt CString
+
+instance Storable C'octet where
+    sizeOf    _ = (#size octet)
+    alignment _ = alignment (undefined :: CInt)
+    peek ptr = do
+        len <- (#peek octet, len) ptr
+        max <- (#peek octet, max) ptr
+        val <- (#peek octet, val) ptr
+        return  (C'octet len max val)
+    poke ptr (C'octet len max val) = do
+        (#poke octet, len) ptr len
+        (#poke octet, max) ptr max
+        (#poke octet, val) ptr val
 
 
-{- typedef struct {
-            int len; int max; char * val;
-        } octet; -}
-#starttype octet
-#field len , CInt
-#field max , CInt
-#field val , CString
-#stoptype
-
-
-#ccall BLS_BLS12381_INIT , IO CInt
-#ccall BLS_BLS12381_KEY_PAIR_GENERATE , Ptr <octet> -> Ptr <octet> -> Ptr <octet> -> IO CInt
-#ccall BLS_BLS12381_CORE_SIGN , Ptr <octet> -> Ptr <octet> -> Ptr <octet> -> IO CInt
-#ccall BLS_BLS12381_CORE_VERIFY , Ptr <octet> -> Ptr <octet> -> Ptr <octet> -> IO CInt
+foreign import ccall unsafe "bls_BLS12381.h BLS_BLS12381_INIT"
+     c'BLS_BLS12381_INIT :: IO CInt
+foreign import ccall unsafe "bls_BLS12381.h BLS_BLS12381_KEY_PAIR_GENERATE"
+     c'BLS_BLS12381_KEY_PAIR_GENERATE :: Ptr C'octet -> Ptr C'octet -> Ptr C'octet -> IO CInt
+foreign import ccall unsafe "bls_BLS12381.h BLS_BLS12381_CORE_SIGN"
+     c'BLS_BLS12381_CORE_SIGN :: Ptr C'octet -> Ptr C'octet -> Ptr C'octet -> IO CInt
+foreign import ccall unsafe "bls_BLS12381.h BLS_BLS12381_CORE_VERIFY"
+     c'BLS_BLS12381_CORE_VERIFY :: Ptr C'octet -> Ptr C'octet -> Ptr C'octet -> IO CInt
 
 init :: IO ()
 init = do

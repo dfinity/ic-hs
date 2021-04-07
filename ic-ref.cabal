@@ -49,7 +49,6 @@ common crypto
   build-depends: ed25519
   build-depends: cryptonite
   build-depends: memory
-  build-depends: bindings-DSL
   build-depends: asn1-types
   build-depends: asn1-encoding
   build-depends: process-extras
