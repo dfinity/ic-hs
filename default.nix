@@ -110,7 +110,9 @@ let
         '';
   ic-ref-windows =
     let
-      haskellNix = import nixpkgs.sources.haskellNix {};
+      haskellNix = import nixpkgs.sources.haskellNix {
+        sourcesOverride = { hackage = nixpkgs.sources.hackageNix; };
+      };
       nixpkgsSrc = haskellNix.sources.nixpkgs-2009;
       nixpkgsArgs = haskellNix.nixpkgsArgs;
       pkgs = import nixpkgsSrc nixpkgsArgs;
