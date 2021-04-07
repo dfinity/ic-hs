@@ -109,13 +109,13 @@ let
       (pkgsWin.haskell-nix.cabalProject {
         src = subpath ./impl;
         compiler-nix-name = "ghc8104";
-        index-state = "2021-03-01T00:00:00Z";
+        index-state = "2021-03-20T00:00:00Z";
         modules = [{
           # smaller files
           packages.tttool.dontStrip = false;
         }];
       }).ic-ref.components.exes.ic-ref;
-      
+
       # pkgs = nixpkgs.pkgsCross.mingwW64;
       # haskellPackages = pkgs.haskellPackages.override {
       #   ghc = pkgs.buildPackages.haskell-nix.compiler.ghc884;
