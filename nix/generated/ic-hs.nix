@@ -11,7 +11,6 @@
 , base32
 , base64-bytestring
 , binary
-, bindings-DSL
 , bytestring
 , candid
 , case-insensitive
@@ -85,7 +84,6 @@ mkDerivation {
     base32
     base64-bytestring
     binary
-    bindings-DSL
     bytestring
     candid
     case-insensitive
@@ -151,7 +149,6 @@ mkDerivation {
     base32
     base64-bytestring
     binary
-    bindings-DSL
     bytestring
     candid
     case-insensitive
@@ -214,7 +211,6 @@ mkDerivation {
     base32
     base64-bytestring
     binary
-    bindings-DSL
     bytestring
     candid
     case-insensitive
