@@ -1,29 +1,29 @@
 The IC reference implementation
 ===============================
 
-`ic-ref` is a partial implementation of the public interface of the DFINITY
-Internet Computer, as specified in the [Public Spec].
+`ic-ref` is a partial implementation of the external interface of the DFINITY
+Internet Computer, as specified in the [Interface Spec].
 
-[Public Spec]: https://docs.dfinity.systems/spec/public/
+[Interface Spec]: https://docs.dfinity.systems/public/
 
 Goals
 -----
 
 The goals of the reference implementation are
 
- * It evolves in lock-step with the Public Spec. At least versioned releases of
-   the Public Spec come with a complete implementation of `ic-stub`.
+ * It evolves in lock-step with the Interface Spec. At least versioned releases of
+   the Interface Spec come with a complete implementation of `ic-ref`.
 
- * Supplement the prose and pseudo-code in the Public Spec for additional and
+ * Supplement the prose and pseudo-code in the Interface Spec for additional and
    concrete clarity.
 
- * Ideally, relevant code pieces of `ic-stub` are as easy to understand as
+ * Ideally, relevant code pieces of `ic-ref` are as easy to understand as
    carefully written pseudo-code.
 
- * Increase weight of and confidence in the Public Spec, by demonstrating
+ * Increase weight of and confidence in the Interface Spec, by demonstrating
    implementability.
 
- * Aid in the development of the Public Spec by uncovering omissions,
+ * Aid in the development of the Interface Spec by uncovering omissions,
    inconsistencies or unexpected complexity.
 
  * Allow testing of external clients (like `dfx`) directly against the
@@ -39,20 +39,29 @@ The goals of the reference implementation are
    to probe the reference implementation to better understand intended
    behaviour and by comparing the behaviour of the two.
 
- * Using `ic-ref` is simple: Completely self-contained, no on-disk state.
-
  * Performance is good enough to run small examples.
 
  * The primary focus is describing the happy path execution, and not
    necessarily the precise error reporting behaviour upon bad usage (e.g. bad
    canisters, resource exhaustion, module validation).
 
+Additionally, we want `ic-ref` to be a useful tool for Canister developers to
+run their canisters locally. This adds additional goals:
+
+ * The state of `ic-ref` can be persisted and picked up later.
+
+ * Debugging/logging/trace features that aid understanding the behaviour and/or
+   help debug canisters.
+
+Should these goals eventually conflict with the goals for a reference
+implementation, e.g. becauese they impose complexity that is not easy to contain in auxillary modules, a project split might be considered.
+
 There are also explicit non-goals to keep in mind:
 
  * `ic-ref` does not need to support canisters that are large or very
    long-running.
 
- * No persistence across runs of `ic-ref`.
+ * No persistence across different versions of `ic-ref`.
 
  * It is explicitly not desirable to share code between reference and
    production implementation, to achieve the multi-version cross-checking
@@ -69,15 +78,12 @@ Furthermore there are some stretch goals that would be nice to have, but not if
 requires compromising the main goals.
 
  * The reference implementation describes _one_ possible execution, but not
-   _all_ possible behaviours of the Public Spec. If this can be changed (e.g.
+   _all_ possible behaviours of the Interface Spec. If this can be changed (e.g.
    using non-deterministic modeling of computation) without compromising
    readability and normal execution, then this would be nice.
 
  * A deep or type-level embedding of the interfaces (HTTP, System) that can be
    used separately to  generation of production code (“interface stubs”).
-
- * Debugging/logging/trace features that aid understanding the behaviour and/or
-   help debug canisters.
 
  * It could serve as a starting point for applying formal verification to this
    part of the system, e.g. by converting the (non-plumbing) modules to Coq
@@ -124,12 +130,16 @@ You can also pass arguments, e.g.
 Using
 -----
 
-* The `ic-ref` program starts a webserver at `http://0.0.0.0:8001/` that implements the public
+* The `ic-ref` program starts a webserver at `http://0.0.0.0:8001/` that implements the
   Internet Computer interface, and can be used with `dfx --client http://0.0.0.0:8001/`.
 
   If you point your browser to `http://0.0.0.0:8001/` you get the evolution of
   the IC state as JSON. Recommended to use Firefox, as it provides a nice UI for
   browsing JSON.
+
+  If the `--state-file FILE` argument is given, `ic-ref` will persist its state
+  in this file. Note that if that file cannot be read (e.g. because it is from
+  an incompatible version of `ic-ref`), starting `ic-ref` will fail.
 
 * The `ic-ref-test` acceptance test.
 

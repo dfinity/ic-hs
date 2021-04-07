@@ -7,6 +7,7 @@ import Test.Tasty
 import Test.Tasty.Ingredients
 import Test.Tasty.Ingredients.Basic
 import Test.Tasty.Ingredients.Rerun
+import Test.Tasty.Runners.AntXML
 import Test.Tasty.Runners.Html
 import Test.Tasty.Runners
 
@@ -25,6 +26,6 @@ main = do
       [ rerunningTests
         [ listingTests
         , includingOptions [endpointOption]
-        , htmlRunner `composeReporters` consoleTestReporter
+        , antXMLRunner `composeReporters` htmlRunner `composeReporters` consoleTestReporter
         ]
       ]

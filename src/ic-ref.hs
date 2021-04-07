@@ -14,23 +14,21 @@ defaultPort :: Port
 defaultPort = 8001
 
 
-work :: Maybe Int -> Maybe FilePath -> Bool ->  IO ()
-work portToUse writePortTo log = do
+work :: Maybe Int -> Maybe FilePath -> Maybe FilePath -> Bool ->  IO ()
+work portToUse writePortTo backingFile log = do
     putStrLn "Starting ic-ref..."
     BLS.init
-    case portToUse of
-      Nothing ->
-        withApplicationSettings settings start $ \port -> do
-          greet port
-          forever (threadDelay maxBound)
-      Just port -> do
-        app <- start
-        greet port
-        runSettings (setPort port settings) app
+    withApp backingFile $ \app -> do
+        let app' = if log then logStdoutDev app else app
+        case portToUse of
+          Nothing ->
+            withApplicationSettings settings (pure app') $ \port -> do
+              greet port
+              forever (threadDelay maxBound)
+          Just port -> do
+            greet port
+            runSettings (setPort port settings) app'
   where
-
-    start = (if log then logStdoutDev else id) <$> IC.HTTP.startApp
-
     greet port = do
        putStrLn $ "Running at http://127.0.0.1:" ++ show port ++ "/"
        for_ writePortTo $ \fn -> writeFile fn (show port)
@@ -71,6 +69,11 @@ main = join . customExecParser (prefs showHelpOnError) $
       <*> optional (strOption
           (  long "write-port-to"
           <> help "write port to the given file"
+        ))
+      <*> optional (strOption
+          (  long "state-file"
+          <> metavar "FILE"
+          <> help "file to persist IC state in"
         ))
       <*> switch
           (  long "http-log"

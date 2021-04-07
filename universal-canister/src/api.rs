@@ -7,6 +7,8 @@ static ALLOC: wee_alloc::WeeAlloc<'_> = wee_alloc::WeeAlloc::INIT;
 mod ic0 {
     #[link(wasm_import_module = "ic0")]
     extern "C" {
+        pub fn accept_message() -> ();
+        pub fn canister_cycle_balance() -> u64;
         pub fn canister_self_copy(dst: u32, offset: u32, size: u32) -> ();
         pub fn canister_self_size() -> u32;
         pub fn canister_status() -> u32;
@@ -15,16 +17,17 @@ mod ic0 {
         pub fn msg_arg_data_size() -> u32;
         pub fn msg_caller_copy(dst: u32, offset: u32, size: u32) -> ();
         pub fn msg_caller_size() -> u32;
-        pub fn msg_reject(src: u32, size: u32) -> ();
+        pub fn msg_cycles_accept( max_amount : u64 ) -> u64;
+        pub fn msg_cycles_available() -> u64;
+        pub fn msg_cycles_refunded() -> u64;
+        pub fn msg_method_name_copy(dst: u32, offset: u32, size: u32) -> ();
+        pub fn msg_method_name_size() -> u32;
         pub fn msg_reject_code() -> u32;
         pub fn msg_reject_msg_copy(dst: u32, offset: u32, size: u32) -> ();
         pub fn msg_reject_msg_size() -> u32;
+        pub fn msg_reject(src: u32, size: u32) -> ();
         pub fn msg_reply() -> ();
         pub fn msg_reply_data_append(offset: u32, size: u32) -> ();
-        pub fn msg_cycles_available() -> u64;
-        pub fn msg_cycles_refunded() -> u64;
-        pub fn msg_cycles_accept( max_amount : u64 ) -> u64;
-        pub fn canister_cycle_balance() -> u64;
         pub fn trap(offset: u32, size: u32) -> !;
         pub fn call_new(
             callee_src: u32,
@@ -218,6 +221,20 @@ pub fn time() -> u64 {
     unsafe {
         ic0::time()
     }
+}
+
+
+pub fn accept_message() {
+    unsafe { ic0::accept_message() }
+}
+
+pub fn method_name() -> Vec<u8> {
+    let len: u32 = unsafe { ic0::msg_method_name_size() };
+    let mut bytes = vec![0; len as usize];
+    unsafe {
+        ic0::msg_method_name_copy(bytes.as_mut_ptr() as u32, 0, len);
+    }
+    bytes
 }
 
 /// Prints the given message.

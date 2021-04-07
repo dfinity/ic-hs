@@ -44,17 +44,19 @@ common crypto
   other-modules: IC.Crypto.DER
   other-modules: IC.Crypto.Ed25519
   other-modules: IC.Crypto.ECDSA
+  other-modules: IC.Crypto.Secp256k1
   other-modules: IC.Crypto.BLS
   other-modules: IC.Crypto.WebAuthn
   build-depends: ed25519
   build-depends: cryptonite
+  build-depends: cereal
   build-depends: memory
   build-depends: asn1-types
   build-depends: asn1-encoding
-  build-depends: process-extras
-  build-depends: temporary
   build-depends: hashable
   build-depends: parallel
+  build-depends: base64-bytestring >= 1.1
+  build-depends: aeson
   include-dirs: cbits
   c-sources: cbits/aes.c
   c-sources: cbits/rom_curve_BLS12381.c
@@ -77,6 +79,25 @@ common crypto
   c-sources: cbits/rand.c
   c-sources: cbits/share.c
 
+common cbor
+  hs-source-dirs:      src
+  other-modules:       IC.HTTP.GenR
+  other-modules:       IC.HTTP.CBOR
+  other-modules:       IC.HTTP.GenR.Parse
+  other-modules:       IC.HTTP.RequestId
+  other-modules:       IC.Hash
+  other-modules:       IC.Id.Forms
+  build-depends:       base >=4.12 && <5
+  build-depends:       text
+  build-depends:       bytestring
+  build-depends:       containers
+  build-depends:       unordered-containers
+  build-depends:       mtl
+  build-depends:       cborg
+  build-depends:       cryptonite
+  build-depends:       memory
+  build-depends:       leb128-cereal
+
 common logic
   hs-source-dirs:      src
   other-modules:       IC.Ref
@@ -97,6 +118,7 @@ common logic
   other-modules:       IC.Wasm.Imports
   build-depends:       base >=4.12 && <5
   build-depends:       filepath
+  build-depends:       split
   build-depends:       hex-text
   build-depends:       crc
   build-depends:       text
@@ -120,26 +142,16 @@ common logic
   build-depends:       MonadRandom
   build-depends:       ed25519
 
-
-
-common cbor
+common serialise
   hs-source-dirs:      src
-  other-modules:       IC.HTTP.GenR
-  other-modules:       IC.HTTP.CBOR
-  other-modules:       IC.HTTP.GenR.Parse
-  other-modules:       IC.HTTP.RequestId
-  other-modules:       IC.Hash
-  other-modules:       IC.Id.Forms
-  build-depends:       base >=4.12 && <5
-  build-depends:       text
-  build-depends:       bytestring
-  build-depends:       containers
-  build-depends:       unordered-containers
-  build-depends:       mtl
-  build-depends:       cborg
-  build-depends:       cryptonite
-  build-depends:       memory
-  build-depends:       leb128-cereal
+  other-modules:       IC.Serialise
+  other-modules:       IC.StateFile
+  build-depends:       serialise
+  build-depends:       random >= 1.2
+  build-depends:       splitmix
+  build-depends:       directory
+  build-depends:       atomic-write
+  build-depends:       zlib
 
 common ghc-flags
   default-language:    Haskell2010
@@ -149,7 +161,7 @@ common ghc-flags
     ghc-options:       -Werror
 
 executable ic-ref-run
-  import: version, logic, crypto, certificates, ghc-flags
+  import: version, logic, serialise, crypto, cbor, certificates, ghc-flags
   main-is:             ic-ref-run.hs
   hs-source-dirs:      src
   other-modules:       IC.DRun.Parse
@@ -157,7 +169,7 @@ executable ic-ref-run
   build-depends:       prettyprinter
 
 executable ic-ref
-  import: version, logic, crypto, certificates, cbor, ghc-flags
+  import: version, logic, serialise, crypto, cbor, certificates, ghc-flags
   main-is:             ic-ref.hs
   other-modules:       IC.HTTP
   other-modules:       IC.HTTP.Status
@@ -179,7 +191,7 @@ executable ic-request-id
   build-depends:       optparse-applicative
 
 executable ic-ref-test
-  import: version, crypto, certificates, cbor, ghc-flags
+  import: version, crypto, cbor, certificates, ghc-flags
   main-is:             ic-ref-test.hs
   other-modules:       IC.Test.Spec
   other-modules:       IC.Test.Options
@@ -190,6 +202,7 @@ executable ic-ref-test
   build-depends:       tasty
   build-depends:       tasty-hunit
   build-depends:       tasty-html
+  build-depends:       tasty-ant-xml
   build-depends:       tasty-rerun
   build-depends:       optparse-applicative
   build-depends:       http-client
@@ -208,7 +221,7 @@ executable ic-ref-test
   build-depends:       vector
 
 test-suite unit-test
-  import: cbor, crypto, ghc-flags
+  import: logic, certificates, serialise, cbor, crypto, ghc-flags
   type: exitcode-stdio-1.0
   main-is: unit-tests.hs
   other-modules:       IC.CBORPatterns
@@ -217,6 +230,7 @@ test-suite unit-test
   other-modules:       IC.Test.HashTree
   other-modules:       IC.Test.BLS
   other-modules:       IC.Test.WebAuthn
+  other-modules:       IC.Test.Secp256k1
   other-modules:       IC.Test.ECDSA
   build-depends: base >= 4 && < 5
   build-depends: tasty >= 0.7
@@ -225,3 +239,5 @@ test-suite unit-test
   build-depends: QuickCheck
   build-depends: quickcheck-io
   build-depends: hex-text
+  build-depends: temporary
+  build-depends: directory
