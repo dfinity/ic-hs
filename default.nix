@@ -100,27 +100,56 @@ let
         '';
   ic-ref-windows =
     let
-      pkgs = nixpkgs.pkgsCross.mingwW64;
-      haskellPackages = pkgs.haskellPackages.override {
-        overrides = import nix/haskell-packages.nix pkgs subpath;
-      };
-      ic-ref-win =
-        haskellPackages.ic-ref.overrideAttrs (
-          old: {
-            configureFlags = [
-              "--ghc-option=-optl=-static"
-              "--extra-lib-dirs=${pkgs.gmp6.override { withStatic = true; }}/lib"
-              "--extra-lib-dirs=${pkgs.zlib.static}/lib"
-              "--extra-lib-dirs=${pkgs.libffi.overrideAttrs (old: { dontDisableStatic = true; })}/lib"
-            ];
-          }
-        );
-      in nixpkgs.runCommandNoCC "ic-ref-windows" {
-        allowedRequisites = [];
-      } ''
-        mkdir -p $out/bin
-        cp ${ic-ref-win}/bin/ic-ref $out/bin
-      '';
+      haskellNix = import nixpkgs.sources.haskellNix {};
+      nixpkgsSrc = haskellNix.sources.nixpkgs-2009;
+      nixpkgsArgs = haskellNix.nixpkgsArgs;
+      pkgs = import nixpkgsSrc nixpkgsArgs;
+      pkgsWin = pkgs.pkgsCross.mingwW64;
+    in
+      (pkgsWin.haskell-nix.cabalProject {
+        src = subpath ./impl;
+        compiler-nix-name = "ghc8104";
+        index-state = "2021-03-01T00:00:00Z";
+        modules = [{
+          # smaller files
+          packages.tttool.dontStrip = false;
+        }];
+      }).ic-ref.components.exes.ic-ref;
+      
+      # pkgs = nixpkgs.pkgsCross.mingwW64;
+      # haskellPackages = pkgs.haskellPackages.override {
+      #   ghc = pkgs.buildPackages.haskell-nix.compiler.ghc884;
+      #   overrides = self: super:
+      #     #pkgs.lib.mapAttrs (n: v: pkgs.haskell.lib.dontHaddock v)
+      #       (import nix/haskell-packages.nix pkgs subpath self super);
+      #   packageSetConfig = self: super: {
+      #     mkDerivation = drv: super.mkDerivation (drv // {
+      #       # doCheck = false;
+      #       doHaddock = false;
+      #       # enableExecutableProfiling = false;
+      #       # enableLibraryProfiling = false;
+      #       # enableSharedExecutables = false;
+      #       # enableSharedLibraries = false;
+      #     });
+      #   };
+      # };
+      # ic-ref-win =
+      #   haskellPackages.ic-ref.overrideAttrs (
+      #     old: {
+      #       configureFlags = [
+      #         "--ghc-option=-optl=-static"
+      #         "--extra-lib-dirs=${pkgs.gmp6.override { withStatic = true; }}/lib"
+      #         "--extra-lib-dirs=${pkgs.zlib.static}/lib"
+      #         "--extra-lib-dirs=${pkgs.libffi.overrideAttrs (old: { dontDisableStatic = true; })}/lib"
+      #       ];
+      #     }
+      #   );
+      # in nixpkgs.runCommandNoCC "ic-ref-windows" {
+      #   allowedRequisites = [];
+      # } ''
+      #   mkdir -p $out/bin
+      #   cp ${ic-ref-win}/bin/ic-ref $out/bin
+      # '';
 
 
   # We run the unit test suite only as part of coverage checking (saves time)

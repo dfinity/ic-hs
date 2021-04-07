@@ -5,6 +5,7 @@ let
     sha256 = "0vsjk1dj88kb40inlhb9xgfhm5dfhb6g3vyca62glk056sn4504l";
   };
   nixpkgs_src = (import sourcesnix { sourcesFile = ./sources.json; inherit pkgs; }).nixpkgs;
+  #nixpkgs_src = builtins.fetchGit ../../nixpkgs;
 
   bootstrap-pkgs = import nixpkgs_src {
     system = builtins.currentSystem;
@@ -23,7 +24,14 @@ let
   pkgs =
     import nixpkgs-patched {
       inherit system;
-      overlays = [
+      overlays =
+        let allOverlays = (import ../../haskell.nix/overlays {}).combined; in
+	[ 
+        # allOverlays
+	# (self: super: {
+        #   haskell-nix = super.haskell-nix // { overlays = [ allOverlays ]; };
+        # })
+         
         (self: super: {
           sources = import sourcesnix { sourcesFile = ./sources.json; pkgs = super; };
 

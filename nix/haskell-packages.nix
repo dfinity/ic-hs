@@ -8,6 +8,10 @@ nix: subpath:
   base32 = super.callPackage generated/base32.nix {};
   megaparsec = super.callPackage generated/megaparsec.nix {};
 
+  #ansi-terminal = super.ansi-terminal.override(old: {
+  #  libraryHaskellDepends = old.libraryHaskellDepends ++ [ super.mintty ];
+  #});
+
   # Only the test suite of crc is broken
   # https://github.com/MichaelXavier/crc/issues/2
   crc = nix.haskell.lib.markUnbroken (nix.haskell.lib.dontCheck super.crc);

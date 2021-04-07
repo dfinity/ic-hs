@@ -12,6 +12,18 @@
         "url": "https://github.com/nomeata/haskell-candid/archive/041b1e132180fd382fd9ccf06095a80335c49ab0.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
+    "haskellNix": {
+        "branch": "master",
+        "description": "Alternative Haskell Infrastructure for Nixpkgs",
+        "homepage": "https://input-output-hk.github.io/haskell.nix",
+        "owner": "input-output-hk",
+        "repo": "haskell.nix",
+        "rev": "1b9b05beed75a1be98405501fbb33ac1f080069e",
+        "sha256": "0679ymbjm7z3qbiv9wf7f22rxdwzkpk0jlh1by0rswdmbwqi5786",
+        "type": "tarball",
+        "url": "https://github.com/input-output-hk/haskell.nix/archive/1b9b05beed75a1be98405501fbb33ac1f080069e.tar.gz",
+        "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
+    },
     "ic-webauthn-cli": {
         "branch": "devel",
         "repo": "ssh://git@github.com/dfinity-lab/ic-webauthn-cli",
