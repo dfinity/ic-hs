@@ -16,6 +16,7 @@ module IC.Canister.Imp
  , rawQuery
  , rawUpdate
  , rawCallback
+ , rawCleanup
  , rawPreUpgrade
  , rawPostUpgrade
  , rawInspectMessage
@@ -202,6 +203,7 @@ systemAPI esref =
   , toImport "ic0" "canister_cycle_balance" canister_cycle_balance
 
   , toImport "ic0" "call_new" call_new
+  , toImport "ic0" "call_on_cleanup" call_on_cleanup
   , toImport "ic0" "call_data_append" call_data_append
   , toImport "ic0" "call_cycles_add" call_cycles_add
   , toImport "ic0" "call_perform" call_perform
@@ -359,9 +361,18 @@ systemAPI esref =
         { call_callee = EntityId callee
         , call_method_name = BSU.toString method_name -- TODO: check for valid UTF8
         , call_arg = mempty
-        , call_callback = Callback reply_closure reject_closure
+        , call_callback = Callback reply_closure reject_closure Nothing
         , call_transferred_cycles = 0
         }
+
+    call_on_cleanup :: (Int32, Int32) -> HostM s ()
+    call_on_cleanup (fun, env) = do
+      let cleanup_closure = WasmClosure fun env
+      changePendingCall $ \pc -> do
+        let callback = call_callback pc
+        when (isJust (cleanup_callback callback)) $
+            throwError "call_on_cleanup invoked twice"
+        return $ pc { call_callback = callback { cleanup_callback = Just cleanup_closure } }
 
     call_data_append :: (Int32, Int32) -> HostM s ()
     call_data_append (src, size) = do
@@ -664,6 +675,23 @@ rawCallback callback env responded cycles_available res refund (ImpState esref i
         ( CallActions (calls es') (cycles_accepted es') (response es')
         , canisterActions es'
         )
+
+-- Needs to be separate from rawCallback, as it is its own transaction
+rawCleanup :: WasmClosure -> Env -> ImpState s -> ST s (TrapOr ())
+rawCleanup (WasmClosure fun_idx cb_env) env (ImpState esref inst sm _) = do
+  let es = initialExecutionState inst sm env cantRespond
+
+  result <- runExceptT $ withES esref es $
+    invokeTable inst fun_idx [I32 cb_env]
+  case result of
+    Left  err -> return $ Trap err
+    Right (_, es')
+      | Just _ <- new_certified_data es'
+        -> return $ Trap "Cannot set certified data from inspect_message"
+      | not (null (calls es'))  -> return $ Trap "cannot call from inspect_message"
+      | isJust (response es')   -> return $ Trap "cannot respond from inspect_message"
+      | accepted es' -> return $ Trap "cannot accept_message here"
+      | otherwise    -> return $ Return ()
 
 rawInspectMessage :: MethodName -> EntityId -> Env -> Blob -> ImpState s -> ST s (TrapOr ())
 rawInspectMessage method caller env dat (ImpState esref inst sm wasm_mod) = do

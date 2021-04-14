@@ -207,6 +207,9 @@ methodName = op 42
 trapIfEq :: Exp 'B -> Exp 'B -> Exp 'B -> Prog
 trapIfEq = op 43
 
+callOnCleanup :: Exp 'B -> Prog
+callOnCleanup = op 44
+
 -- Some convenience combinators
 
 -- This allows us to write byte expressions as plain string literals
@@ -224,6 +227,7 @@ replyData a = replyDataAppend a >>> reply
 data CallArgs = CallArgs
     { on_reply :: Prog
     , on_reject :: Prog
+    , on_cleanup :: Maybe Prog
     , other_side :: Prog
     , cycles :: Word64
     , icpts :: Word64
@@ -233,6 +237,7 @@ inter_call :: BS.ByteString -> BS.ByteString -> CallArgs -> Prog
 inter_call callee method_name ca =
     callNew (bytes callee) (bytes method_name)
             (callback (on_reply ca)) (callback (on_reject ca)) >>>
+    maybe noop (callOnCleanup . callback) (on_cleanup ca) >>>
     callDataAppend (callback (other_side ca)) >>>
     (if cycles ca > 0 then callCyclesAdd (int64 (cycles ca)) else noop) >>>
     callPerform
@@ -249,6 +254,7 @@ defArgs :: CallArgs
 defArgs = CallArgs
     { on_reply = relayReply
     , on_reject = relayReject
+    , on_cleanup = Nothing
     , other_side = defaultOtherSide
     , cycles = 0
     , icpts = 0
