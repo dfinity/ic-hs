@@ -679,6 +679,16 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
               other_side = trap "trap!"
             }
           )
+        , "C" =: boolTest (\prog -> do
+            cid <- install noop
+            call' cid >=> isReject [5] $ inter_query cid defArgs
+              { other_side = reply
+              , on_reply = trap "Trapping in on_reply"
+              , on_cleanup = Just $ prog >>> setGlobal "Did not trap"
+              }
+            g <- query cid $ replyData getGlobal
+            return (g == "Did not trap")
+          )
         , "F" =: httpResponse (\prog -> do
             cid <- install (onInspectMessage (callback (prog >>> acceptMessage)))
             call'' cid reply
@@ -688,6 +698,7 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
       -- context builder helpers
       httpResponse act = (act >=> is2xx >=> void . isReply, act >=> isErrOrReject [5])
       reqResponse act = (act >=> void . isReply, act >=> isReject [5])
+      boolTest act = (act >=> is True, act >=> is False)
       twoContexts (aNT1, aT1) (aNT2, aT2) = (\p -> aNT1 p >> aNT2 p,\p -> aT1 p >> aT2 p)
 
       -- assembling it all
@@ -702,7 +713,7 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
         ]
         where s = S.fromList (T.words trapping)
 
-      star = "I G U Q Ry Rt F"
+      star = "I G U Q Ry Rt C F"
       never = ""
 
     in concat
@@ -719,11 +730,12 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
     , t "msg_cycles_accept"            "U Rt Ry"     $ ignore (acceptCycles (int64 0))
     , t "canister_self"                star          $ ignore self
     , t "canister_cycle_balance"       star          $ ignore getBalance
-    , t "call_new…call_perform" "U Rt Ry"   $
+    , t "call_new…call_perform"        "U Rt Ry"     $
         callNew "foo" "bar" "baz" "quux" >>>
         callDataAppend "foo" >>>
         callCyclesAdd (int64 0) >>>
         callPerform
+    , t "call_set_cleanup"             never         $ callOnCleanup (callback noop)
     , t "call_data_append"             never         $ callDataAppend "foo"
     , t "call_cycles_add"              never         $ callCyclesAdd (int64 0)
     , t "call_perform"                 never           callPerform
@@ -841,6 +853,8 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
       [ testGroup "traps without call_new"
         [ simpleTestCase "call_data_append" $ \cid ->
           call' cid (callDataAppend "Foo" >>> reply) >>= isReject [5]
+        , simpleTestCase "call_on_cleanup" $ \cid ->
+          call' cid (callOnCleanup (callback noop) >>> reply) >>= isReject [5]
         , simpleTestCase "call_cycles_add" $ \cid ->
           call' cid (callCyclesAdd (int64 0) >>> reply) >>= isReject [5]
         , simpleTestCase "call_perform" $ \cid ->
@@ -860,6 +874,14 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
             callDataAppend (bytes (BS.drop 3 (run defaultOtherSide))) >>>
             callPerform
          >>= isRelay >>= isReply >>= is ("Hello " <> cid <> " this is " <> cid)
+      , simpleTestCase "call_on_cleanup traps if called twice" $ \cid ->
+        do call' cid $
+            callNew (bytes cid) (bytes "query")
+                    (callback relayReply) (callback relayReject) >>>
+            callOnCleanup (callback noop) >>>
+            callOnCleanup (callback noop) >>>
+            reply
+         >>= isReject [5]
       ]
 
     , simpleTestCase "to nonexistant canister" $ \cid ->
@@ -940,6 +962,21 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
           replyDataAppend "FOO" >>>
           inter_query cid defArgs{ on_reply = replyDataAppend "BAR" >>> reply }
         >>= is "BAR" -- check that the FOO is silently dropped
+
+    , simpleTestCase "cleanup not executed when reply callback does not trap" $ \cid -> do
+      call_ cid $ inter_query cid defArgs
+        { on_reply = reply
+        , on_cleanup = Just (setGlobal "BAD")
+        }
+      query cid (replyData getGlobal) >>= is ""
+
+    , simpleTestCase "cleanup not executed when reject callback does not trap" $ \cid -> do
+      call_ cid $ inter_query cid defArgs
+        { other_side = reject "meh"
+        , on_reject = reply
+        , on_cleanup = Just (setGlobal "BAD")
+        }
+      query cid (replyData getGlobal) >>= is ""
 
     , testGroup "two callbacks"
       [ simpleTestCase "reply after trap" $ \cid ->

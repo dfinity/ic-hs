@@ -967,8 +967,15 @@ invokeEntry ctxt_id wasm_state can_mod env entry = do
           Nothing -> do
             let reject = Reject (RC_DESTINATION_INVALID, "method does not exist: " ++ method)
             return $ Return (wasm_state, (noCallActions { ca_response = Just reject}, noCanisterActions))
-      Closure cb r refund ->
-        return $ callbacks can_mod cb env responded available r refund wasm_state
+      Closure cb r refund -> return $ do
+        case callbacks can_mod cb env responded available r refund wasm_state of
+            Trap err -> case cleanup_callback cb of
+                Just closure -> case cleanup can_mod closure env wasm_state of
+                    Trap err' -> Trap err'
+                    Return (wasm_state', ()) ->
+                        Return (wasm_state', (noCallActions, noCanisterActions))
+                Nothing -> Trap err
+            Return (wasm_state, actions) -> Return (wasm_state, actions)
   where
     lookupUpdate method can_mod
         | Just f <- M.lookup method (update_methods can_mod) = Just f

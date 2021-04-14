@@ -252,6 +252,15 @@ fn eval(ops : Ops) {
             }
         }
 
+        // on_cleanup
+        44 => {
+          // pop in reverse order!
+          let cleanup_code = stack.pop_blob();
+          let cleanup_env = add_callback(cleanup_code);
+          api::call_on_cleanup(callback, cleanup_env);
+        }
+
+
         _ => api::trap_with(&format!("unknown op {}", op)),
       }
   }
