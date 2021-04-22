@@ -27,9 +27,8 @@ import qualified Data.Aeson as JSON
 import qualified Data.Aeson.Types as JSON
 import qualified IC.HTTP.CBOR as CBOR
 import Codec.CBOR.Term
-import Codec.CBOR.Read
 import Codec.CBOR.Write (toLazyByteString)
-import IC.CBORPatterns
+import IC.CBOR.Parser
 import qualified Data.Map as M
 import IC.HTTP.GenR.Parse
 import IC.Hash
@@ -74,40 +73,34 @@ genClientDataJson challenge = JSON.encode $ JSON.Object $
     <> "origin" JSON..= ("ic-ref-test" :: T.Text)
 
 parseCOSEKey :: BS.ByteString -> Either T.Text EC.PublicKey
-parseCOSEKey s =
-    first (\(DeserialiseFailure _ s) -> "CBOR decoding failure: " <> T.pack s)
-        (deserialiseFromBytes decodeTerm s)
-    >>= go
+parseCOSEKey s = do
+    kv <- decodeWithoutTag s >>= parseMap "COSE key"
+    m <- M.fromList <$> mapM keyVal kv
+    let field n = case M.lookup n m of
+            Just x -> return x
+            Nothing -> throwError $ "COSE: missing entry " <> T.pack (show n)
+    let intField n = field n >>= \case
+            TInt i -> pure i
+            _ -> throwError $ "COSE field " <> T.pack (show n) <> " not an int"
+    let bytesField n = field n >>= \case
+            TBytes b -> pure b
+            _ -> throwError $ "COSE field " <> T.pack (show n) <> " not bytes"
+
+    ty <- intField 1
+    unless (ty == 2) $
+        throwError "COSE: Only key type 2 (EC2) supported"
+    ty <- intField 3
+    unless (ty == -7) $
+        throwError "COSE: Only type -7 (ECDSA) supported"
+    crv <- intField (-1)
+    unless (crv == 1) $
+        throwError $ "parsePublicKey: unknown curve: " <> T.pack (show crv)
+    xb <- bytesField (-2)
+    yb <- bytesField (-3)
+    let x = EC.os2ip xb
+    let y = EC.os2ip yb
+    return $ EC.PublicKey curve (EC.Point x y)
   where
-    go (_, TMap_ kv) = do
-      m <- M.fromList <$> mapM keyVal kv
-      let field n = case M.lookup n m of
-              Just x -> return x
-              Nothing -> throwError $ "COSE: missing entry " <> T.pack (show n)
-      let intField n = field n >>= \case
-              TInt i -> pure i
-              _ -> throwError $ "COSE field " <> T.pack (show n) <> " not an int"
-      let bytesField n = field n >>= \case
-              TBytes b -> pure b
-              _ -> throwError $ "COSE field " <> T.pack (show n) <> " not bytes"
-
-      ty <- intField 1
-      unless (ty == 2) $
-          throwError "COSE: Only key type 2 (EC2) supported"
-      ty <- intField 3
-      unless (ty == -7) $
-          throwError "COSE: Only type -7 (ECDSA) supported"
-      crv <- intField (-1)
-      unless (crv == 1) $
-          throwError $ "parsePublicKey: unknown curve: " <> T.pack (show crv)
-      xb <- bytesField (-2)
-      yb <- bytesField (-3)
-      let x = EC.os2ip xb
-      let y = EC.os2ip yb
-      return $ EC.PublicKey curve (EC.Point x y)
-
-    go _ = throwError "COSE key not a CBOR map"
-
     keyVal (TInt k,v) = pure (fromIntegral k,v)
     keyVal (TInteger k,v) = pure (k,v)
     keyVal _ = throwError "Non-integer key in CBOR map"

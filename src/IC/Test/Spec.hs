@@ -17,6 +17,9 @@ This module contains a test suite for the Internet Computer
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE QuantifiedConstraints #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 module IC.Test.Spec (preFlight, TestConfig, connect, ReplWrapper(..), icTests) where
 
@@ -27,6 +30,7 @@ import qualified Text.Hex as H
 import qualified Data.ByteString.Lazy as BS
 import qualified Data.ByteString.Builder as BS
 import qualified Data.HashMap.Lazy as HM
+import qualified Data.Map.Lazy as M
 import qualified Data.Set as S
 import Network.HTTP.Client
 import Network.HTTP.Client.TLS
@@ -55,8 +59,11 @@ import Codec.Candid (Principal(..), prettyPrincipal)
 import qualified Data.Binary.Get as Get
 import qualified Codec.Candid as Candid
 import Data.Row
+import qualified Data.Row.Records as R
 import qualified Data.Row.Variants as V
+import qualified Data.Row.Internal as R
 
+import IC.Types (EntityId(..))
 import IC.Version
 import IC.HTTP.GenR
 import IC.HTTP.GenR.Parse
@@ -64,7 +71,9 @@ import IC.HTTP.CBOR (decode, encode)
 import IC.HTTP.RequestId
 import IC.Management
 import IC.Crypto
+import qualified IC.Crypto.CanisterSig as CanisterSig
 import qualified IC.Crypto.DER as DER
+import qualified IC.Crypto.DER_BLS as DER_BLS
 import IC.Id.Forms hiding (Blob)
 import IC.Test.Options
 import IC.Test.Universal
@@ -328,7 +337,7 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
       cid <- create
       cs <- ic_canister_status ic00 cid
       cs .! #status @?= enum #running
-      cs .! #controller @?= Principal defaultUser
+      cs .! #settings .! #controller @?= Principal defaultUser
       cs .! #module_hash @?= Nothing
 
       step "Install"
@@ -449,7 +458,7 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
     cid2 <- install noop
 
     step "Create"
-    can_id <- ic_create_with_cycles (ic00via cid) Nothing
+    can_id <- ic_provisional_create (ic00via cid) Nothing empty
 
     step "Install"
     ic_install (ic00via cid) (enum #install) can_id trivialWasmModule ""
@@ -479,14 +488,14 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
     ic_install (ic00via cid2) (enum #reinstall) can_id trivialWasmModule ""
 
     step "Create"
-    can_id2 <- ic_create_with_cycles (ic00via cid) Nothing
+    can_id2 <- ic_provisional_create (ic00via cid) Nothing empty
 
     step "Reinstall on empty"
     ic_install (ic00via cid) (enum #reinstall) can_id2 trivialWasmModule ""
 
   , simpleTestCase "aaaaa-aa (inter-canister, large)" $ \cid -> do
     universal_wasm <- getTestWasm "universal_canister"
-    can_id <- ic_create_with_cycles (ic00via cid) Nothing
+    can_id <- ic_provisional_create (ic00via cid) Nothing empty
     ic_install (ic00via cid) (enum #install) can_id universal_wasm ""
     do call can_id $ replyData "Hi"
       >>= is "Hi"
@@ -558,7 +567,80 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
 
     , simpleTestCase "Caller (query)" $ \cid ->
       query cid (replyData caller) >>= is defaultUser
-  ]
+    ]
+
+  , testGroup "Settings"
+    [ testCase "Create with controller set (provisional)" $ do
+        cid <- ic_provisional_create ic00 Nothing (#controller .== Principal otherUser)
+        cs <- ic_canister_status (ic00as otherUser) cid
+        cs .! #settings .! #controller @?= Principal otherUser
+        ic_set_controller'' defaultUser cid defaultUser >>= isErrOrReject [3,5]
+        ic_set_controller (ic00as otherUser) cid defaultUser
+        cs <- ic_canister_status (ic00as defaultUser) cid
+        cs .! #settings .! #controller @?= Principal defaultUser
+
+    , simpleTestCase "Create with controller set (aaaaa-aa)" $ \cid -> do
+        cid2 <- ic_create (ic00viaWithCycles cid 20_000_000_000_000) empty
+        cs <- ic_canister_status (ic00via cid) cid2
+        cs .! #settings .! #controller @?= Principal cid
+        ic_set_controller'' defaultUser cid2 defaultUser >>= isErrOrReject [3,5]
+        ic_set_controller (ic00via cid) cid2 defaultUser
+        cs <- ic_canister_status (ic00as defaultUser) cid2
+        cs .! #settings .! #controller @?= Principal defaultUser
+
+    , simpleTestCase "Valid allocations" $ \cid -> do
+        cid2 <- ic_create (ic00viaWithCycles cid 20_000_000_000_000) $ empty
+          .+ #compute_allocation .== (1::Natural)
+          .+ #memory_allocation .== (1024*1024::Natural)
+          .+ #freezing_threshold .== 1000_000
+        cs <- ic_canister_status (ic00via cid) cid2
+        cs .! #settings .! #compute_allocation @?= 1
+        cs .! #settings .! #memory_allocation @?= 1024*1024
+        cs .! #settings .! #freezing_threshold @?= 1000_000
+
+    , testGroup "via provisional_create_canister_with_cycles:"
+        [ testCase "Invalid compute allocation" $ do
+            ic_provisional_create' ic00 Nothing (#compute_allocation .== 101)
+               >>= isReject [3,5]
+        , testCase "Invalid memory allocation (2^49)" $ do
+            ic_provisional_create' ic00 Nothing (#compute_allocation .== 2^(49::Int))
+               >>= isReject [3,5]
+        , testCase "Invalid memory allocation (2^70)" $ do
+            ic_provisional_create' ic00 Nothing (#compute_allocation .== 2^(70::Int))
+               >>= isReject [3,5]
+        , testCase "Invalid freezing threshold (2^70)" $ do
+            ic_provisional_create' ic00 Nothing (#freezing_threshold .== 2^(70::Int))
+               >>= isReject [3,5]
+        ]
+    , testGroup "via create_canister:"
+        [ simpleTestCase "Invalid compute allocation" $ \cid -> do
+            ic_create' (ic00via cid) (#compute_allocation .== 101)
+               >>= isReject [3,5]
+        , simpleTestCase "Invalid memory allocation (2^49)" $ \cid -> do
+            ic_create' (ic00via cid) (#compute_allocation .== 2^(49::Int))
+               >>= isReject [3,5]
+        , simpleTestCase "Invalid memory allocation (2^70)" $ \cid -> do
+            ic_create' (ic00via cid) (#compute_allocation .== 2^(70::Int))
+               >>= isReject [3,5]
+        , simpleTestCase "Invalid freezing threshold (2^70)" $ \cid -> do
+            ic_create' (ic00via cid) (#freezing_threshold .== 2^(70::Int))
+               >>= isReject [3,5]
+        ]
+    , testGroup "via update_settings"
+        [ simpleTestCase "Invalid compute allocation" $ \cid -> do
+            ic_update_settings' ic00 cid (#compute_allocation .== 101)
+               >>= isReject [3,5]
+        , simpleTestCase "Invalid memory allocation (2^49)" $ \cid -> do
+            ic_update_settings' ic00 cid (#compute_allocation .== 2^(49::Int))
+               >>= isReject [3,5]
+        , simpleTestCase "Invalid memory allocation (2^70)" $ \cid -> do
+            ic_update_settings' ic00 cid (#compute_allocation .== 2^(70::Int))
+               >>= isReject [3,5]
+        , simpleTestCase "Invalid freezing threshold (2^70)" $ \cid -> do
+            ic_update_settings' ic00 cid (#freezing_threshold .== 2^(70::Int))
+               >>= isReject [3,5]
+        ]
+    ]
 
   , testGroup "anonymous user"
     [ simpleTestCase "update, sender absent fails" $ \cid ->
@@ -1164,6 +1246,163 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
       query cid (replyData (i2b stableSize)) >>= is "\1\0\0\0"
     ]
 
+  , testGroup "uninstall" $
+    let inter_management method_name cid on_reply =
+          callNew "" method_name (callback on_reply) (callback relayReject) >>>
+          callDataAppend (bytes (Candid.encode (#canister_id .== Principal cid))) >>>
+          callPerform
+
+        inter_install_code cid wasm_module on_reply =
+          callNew "" "install_code" (callback on_reply) (callback relayReject) >>>
+          callDataAppend (bytes (Candid.encode (empty
+            .+ #canister_id .== Principal cid
+            .+ #mode .== (enum #install :: InstallMode)
+            .+ #wasm_module .== wasm_module
+            .+ #arg .== run (setGlobal "NONE")
+          ))) >>>
+          callPerform
+    in
+    [ testCase "uninstall empty canister" $ do
+      cid <- create
+      cs <- ic_canister_status ic00 cid
+      cs .! #status @?= enum #running
+      cs .! #settings .! #controller @?= Principal defaultUser
+      cs .! #module_hash @?= Nothing
+      ic_uninstall ic00 cid
+      cs <- ic_canister_status ic00 cid
+      cs .! #status @?= enum #running
+      cs .! #settings .! #controller @?= Principal defaultUser
+      cs .! #module_hash @?= Nothing
+
+    , testCase "uninstall as wrong user" $ do
+      cid <- create
+      ic_uninstall'' otherUser cid >>= isErrOrReject [3,5]
+
+    , testCase "uninstall and reinstall wipes state" $ do
+      cid <- install (setGlobal "FOO")
+      ic_uninstall ic00 cid
+      universal_wasm <- getTestWasm "universal_canister"
+      ic_install ic00 (enum #install) cid universal_wasm (run (setGlobal "BAR"))
+      query cid (replyData getGlobal) >>= is "BAR"
+
+    , testCase "uninstall and reinstall wipes stable memory" $ do
+      cid <- install (ignore (stableGrow (int 1)) >>> stableWrite (int 0) "FOO")
+      ic_uninstall ic00 cid
+      universal_wasm <- getTestWasm "universal_canister"
+      ic_install ic00 (enum #install) cid universal_wasm (run (setGlobal "BAR"))
+      query cid (replyData (i2b stableSize)) >>= asWord32 >>= is 0
+      do query cid $
+          ignore (stableGrow (int 1)) >>>
+          replyData (stableRead (int 0) (int 3))
+       >>= is "\0\0\0"
+      do call cid $
+          ignore (stableGrow (int 1)) >>>
+          replyData (stableRead (int 0) (int 3))
+       >>= is "\0\0\0"
+
+    , testCase "uninstall and reinstall wipes certified data" $ do
+      cid <- install $ setCertifiedData "FOO"
+      query cid (replyData getCertificate) >>= extractCertData cid >>= is "FOO"
+      ic_uninstall ic00 cid
+      universal_wasm <- getTestWasm "universal_canister"
+      ic_install ic00 (enum #install) cid universal_wasm (run noop)
+      query cid (replyData getCertificate) >>= extractCertData cid >>= is ""
+
+    , simpleTestCase "uninstalled rejects calls" $ \cid -> do
+      call cid (replyData "Hi") >>= is "Hi"
+      query cid (replyData "Hi") >>= is "Hi"
+      ic_uninstall ic00 cid
+      -- should be http error, due to inspection
+      call'' cid (replyData "Hi") >>= isErrOrReject []
+      query' cid (replyData "Hi") >>= isReject [3]
+
+    , testCase "open call contexts are rejected" $ do
+      cid1 <- install noop
+      cid2 <- install noop
+      ic_set_controller ic00 cid1 cid2
+      -- Step A: 2 calls 1
+      -- Step B: 1 calls 2. Now 2 is waiting on a call from 1
+      -- Step C: 2 uninstalls 1
+      -- Step D: 2 replies "FOO"
+      -- What should happen: The system rejects the call from step A
+      -- What should not happen: The reply "FOO" makes it to canister 2
+      -- (This is not a great test, because even if the call context is
+      -- not rejected by the system during uninstallation it will somehow be rejected
+      -- later when the callback is delivered to the empty canister. Maybe the reject
+      -- code will catch it.)
+      do call cid2 $ inter_update cid1 defArgs
+          { other_side =
+            inter_update cid2 defArgs
+              { other_side =
+                  inter_management "uninstall_code" cid1 $
+                  replyData "FOO"
+              }
+          }
+       >>= isRelay >>= isReject [4]
+
+    , testCase "deleted call contexts do not prevent stopping" $ do
+      -- Similar to above, but 2, after uninstalling, imediatelly
+      -- stops and deletes 1. This can only work if the call
+      -- contexts at 1 are indeed deleted
+      cid1 <- install noop
+      cid2 <- install noop
+      ic_set_controller ic00 cid1 cid2
+      do call cid2 $ inter_update cid1 defArgs
+          { other_side =
+            inter_update cid2 defArgs
+              { other_side =
+                  inter_management "uninstall_code" cid1 $
+                  inter_management "stop_canister" cid1 $
+                  inter_management "delete_canister" cid1 $
+                  replyData "FOO"
+              }
+          }
+       >>= isRelay >>= isReject [4]
+
+      -- wait for cid2 to finish its stuff
+      barrier [cid2]
+
+      -- check that cid1 is deleted
+      query' cid1 reply >>= isReject [3]
+
+    , testCase "deleted call contexts are not delivered" $ do
+      -- This is a very tricky one:
+      -- Like above, but before replying, 2 installs code,
+      -- calls into 1, so that 1 can call back to 2. This
+      -- creates a new callback at 1, presumably with the same
+      -- internal `env` as the one from step B.
+      -- 2 rejects the new call, and replies to the original one.
+      -- Only the on_reject callback at 1 should be called, not the on_reply
+      -- We observe that using the “global”
+      cid1 <- install noop
+      cid2 <- install noop
+      universal_wasm <- getTestWasm "universal_canister"
+      ic_set_controller ic00 cid1 cid2
+      do call cid2 $ inter_update cid1 defArgs
+          { other_side =
+            inter_update cid2 defArgs
+              { other_side =
+                  inter_management "uninstall_code" cid1 $
+                  inter_install_code cid1 universal_wasm $
+                  inter_update cid1 defArgs {
+                    other_side =
+                      inter_update cid2 defArgs
+                      { other_side = reject "FOO"
+                      , on_reply = setGlobal "REPLY" >>> reply
+                      , on_reject = setGlobal "REJECT" >>> reply
+                      }
+                  }
+              }
+          }
+       >>= isRelay >>= isReject [4]
+
+      -- wait for cid2 to finish its stuff
+      barrier [cid2]
+
+      -- check cid1’s global
+      query cid1 (replyData getGlobal) >>= is "REJECT"
+    ]
+
   , testGroup "debug facilities"
     [ simpleTestCase "Using debug_print" $ \cid ->
       call_ cid (debugPrint "ic-ref-test print" >>> reply)
@@ -1319,20 +1558,12 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
         getStateCert' otherUser cid [[]] >>= code4xx
     ]
 
-  , testGroup "certified variables" $
-    let extract :: Blob -> Blob -> IO Blob
-        extract cid b = do
-          cert <- decodeStateCert b
-          case wellFormed (cert_tree cert) of
-              Left err -> assertFailure $ "Hash tree not well formed: " ++ err
-              Right () -> return ()
-          certValue cert ["canister", cid, "certified_data"]
-    in
+  , testGroup "certified variables"
     [ simpleTestCase "initially empty" $ \cid -> do
-      query cid (replyData getCertificate) >>= extract cid >>= is ""
+      query cid (replyData getCertificate) >>= extractCertData cid >>= is ""
     , simpleTestCase "validates" $ \cid -> do
       query cid (replyData getCertificate)
-        >>= decodeStateCert >>= validateStateCert
+        >>= decodeCert' >>= validateStateCert
     , simpleTestCase "present in query method (query call)" $ \cid -> do
       query cid (replyData (i2b getCertificatePresent))
         >>= is "\1\0\0\0"
@@ -1351,29 +1582,29 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
 
     , simpleTestCase "set and get" $ \cid -> do
       call_ cid $ setCertifiedData "FOO" >>> reply
-      query cid (replyData getCertificate) >>= extract cid >>= is "FOO"
+      query cid (replyData getCertificate) >>= extractCertData cid >>= is "FOO"
     , simpleTestCase "set twice" $ \cid -> do
       call_ cid $ setCertifiedData "FOO" >>> setCertifiedData "BAR" >>> reply
-      query cid (replyData getCertificate) >>= extract cid >>= is "BAR"
+      query cid (replyData getCertificate) >>= extractCertData cid >>= is "BAR"
     , simpleTestCase "set then trap" $ \cid -> do
       call_ cid $ setCertifiedData "FOO" >>> reply
       call' cid (setCertifiedData "BAR" >>> trap "Trapped") >>= isReject [5]
-      query cid (replyData getCertificate) >>= extract cid >>= is "FOO"
+      query cid (replyData getCertificate) >>= extractCertData cid >>= is "FOO"
     , simpleTestCase "too large traps, old value retained" $ \cid -> do
       call_ cid $ setCertifiedData "FOO" >>> reply
       call' cid (setCertifiedData (bytes (BS.replicate 33 0x42)) >>> reply)
         >>= isReject [5]
-      query cid (replyData getCertificate) >>= extract cid >>= is "FOO"
+      query cid (replyData getCertificate) >>= extractCertData cid >>= is "FOO"
     , testCase "set in init" $ do
       cid <- install $ setCertifiedData "FOO"
-      query cid (replyData getCertificate) >>= extract cid >>= is "FOO"
+      query cid (replyData getCertificate) >>= extractCertData cid >>= is "FOO"
     , testCase "set in pre-upgrade" $ do
       cid <- install $ onPreUpgrade (callback $ setCertifiedData "FOO")
       upgrade cid noop
-      query cid (replyData getCertificate) >>= extract cid >>= is "FOO"
+      query cid (replyData getCertificate) >>= extractCertData cid >>= is "FOO"
     , simpleTestCase "set in post-upgrade" $ \cid -> do
       upgrade cid $ setCertifiedData "FOO"
-      query cid (replyData getCertificate) >>= extract cid >>= is "FOO"
+      query cid (replyData getCertificate) >>= extractCertData cid >>= is "FOO"
     ]
 
   , testGroup "cycles" $
@@ -1406,11 +1637,11 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
            (abs (fromIntegral exp - fromIntegral act) < eps)
 
         create prog = do
-          cid <- ic_create_with_cycles ic00 (Just (fromIntegral def_cycles))
+          cid <- ic_provisional_create ic00 (Just (fromIntegral def_cycles)) empty
           installAt cid prog
           return cid
         create_via cid initial_cycles = do
-          cid2 <- ic_create (ic00viaWithCycles cid initial_cycles)
+          cid2 <- ic_create (ic00viaWithCycles cid initial_cycles) empty
           universal_wasm <- getTestWasm "universal_canister"
           ic_install (ic00via cid) (enum #install) cid2 universal_wasm (run noop)
           return cid2
@@ -1451,13 +1682,13 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
         queryBalance cid >>= isRoughly def_cycles
 
       , testCaseSteps "default (i.e. max) balance" $ \step -> do
-        cid <- ic_create_with_cycles ic00 Nothing
+        cid <- ic_provisional_create ic00 Nothing empty
         installAt cid noop
         cycles <- queryBalance cid
         step $ "Cycle balance now at " ++ show cycles
 
       , testCaseSteps "> 2^128 succeeds" $ \step -> do
-        cid <- ic_create_with_cycles ic00 (Just (10 * 2^(128::Int)))
+        cid <- ic_provisional_create ic00 (Just (10 * 2^(128::Int))) empty
         installAt cid noop
         cycles <- queryBalance cid
         step $ "Cycle balance now at " ++ show cycles
@@ -1916,6 +2147,135 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
           -- check that with a valid signature, this would have worked
           awaitCall cid good_req >>= isReply >>= is ""
       ]
+
+  , testGroup "Canister signatures" $
+    let genId cid seed =
+          DER.encode DER.CanisterSig $ CanisterSig.genPublicKey (EntityId cid) seed
+
+        genSig cid seed msg = do
+          -- Create the tree
+          let tree = construct $
+                SubTrees $ M.singleton "sig" $
+                SubTrees $ M.singleton (sha256 seed) $
+                SubTrees $ M.singleton (sha256 msg) $
+                Value ""
+          -- Store it as certified data
+          call_ cid (setCertifiedData (bytes (reconstruct tree)) >>> reply)
+          -- Get certificate
+          cert <- query cid (replyData getCertificate) >>= decodeCert'
+          -- double check it certifies
+          validateStateCert cert
+          certValue cert ["canister", cid, "certified_data"] >>= is (reconstruct tree)
+
+          return $ CanisterSig.genSig cert tree
+
+        exampleQuery cid userKey = addExpiry $ rec
+          [ "request_type" =: GText "query"
+          , "sender" =: GBlob (mkSelfAuthenticatingId userKey)
+          , "canister_id" =: GBlob cid
+          , "method_name" =: GText "query"
+          , "arg" =: GBlob (run (replyData "It works!"))
+          ]
+        simpleEnv userKey sig req delegations = rec $
+          [ "sender_pubkey" =: GBlob userKey
+          , "sender_sig" =: GBlob sig
+          , "content" =: req
+          ] ++
+          [ "sender_delegation" =: GList delegations | not (null delegations) ]
+    in
+    [ simpleTestCase "direct signature" $ \cid -> do
+      let userKey = genId cid "Hello!"
+      req <- exampleQuery cid userKey
+      sig <- genSig cid "Hello!" $ "\x0Aic-request" <> requestId req
+      let env = simpleEnv userKey sig req []
+      postQueryCBOR cid env >>= okCBOR >>= queryResponse >>= isReply >>= is "It works!"
+
+    , simpleTestCase "direct signature (empty seed)" $ \cid -> do
+      let userKey = genId cid ""
+      req <- exampleQuery cid userKey
+      sig <- genSig cid "" $ "\x0Aic-request" <> requestId req
+      let env = simpleEnv userKey sig req []
+      postQueryCBOR cid env >>= okCBOR >>= queryResponse >>= isReply >>= is "It works!"
+
+    , simpleTestCase "direct signature (wrong seed)" $ \cid -> do
+      let userKey = genId cid "Hello"
+      req <- exampleQuery cid userKey
+      sig <- genSig cid "Hullo" $ "\x0Aic-request" <> requestId req
+      let env = simpleEnv userKey sig req []
+      postQueryCBOR cid env >>= code4xx
+
+    , simpleTestCase "direct signature (wrong cid)" $ \cid -> do
+      let userKey = genId doesn'tExist "Hello"
+      req <- exampleQuery cid userKey
+      sig <- genSig cid "Hello" $ "\x0Aic-request" <> requestId req
+      let env = simpleEnv userKey sig req []
+      postQueryCBOR cid env >>= code4xx
+
+    , simpleTestCase "direct signature (wrong root key)" $ \cid -> do
+      let seed = "Hello"
+      let userKey = genId cid seed
+      req <- exampleQuery cid userKey
+      let msg = "\x0Aic-request" <> requestId req
+      -- Create the tree
+      let tree = construct $
+            SubTrees $ M.singleton "sig" $
+            SubTrees $ M.singleton (sha256 seed) $
+            SubTrees $ M.singleton (sha256 msg) $
+            Value ""
+      -- Create a fake certificate
+      let cert_tree = construct $
+            SubTrees $ M.singleton "canister" $
+            SubTrees $ M.singleton cid $
+            SubTrees $ M.singleton "certified_data" $
+            Value (reconstruct tree)
+      let fake_root_key = createSecretKeyBLS "not the root key"
+      cert_sig <- sign "ic-state-root" fake_root_key (reconstruct cert_tree)
+      let cert = Certificate { cert_tree, cert_sig, cert_delegation = Nothing }
+      let sig = CanisterSig.genSig cert tree
+      let env = simpleEnv userKey sig req []
+      postQueryCBOR cid env >>= code4xx
+
+    , simpleTestCase "delegation to Ed25519" $ \cid -> do
+      let userKey = genId cid "Hello!"
+
+      t <- getPOSIXTime
+      let expiry = round ((t + 60) * 1000_000_000)
+      let delegation = rec
+            [ "pubkey" =: GBlob (toPublicKey otherSK)
+            , "expiration" =: GNat expiry
+            ]
+      sig <- genSig cid "Hello!" $ "\x1Aic-request-auth-delegation" <> requestId delegation
+      let signed_delegation = rec [ "delegation" =: delegation, "signature" =: GBlob sig ]
+
+      req <- exampleQuery cid userKey
+      sig <- sign "ic-request" otherSK (requestId req)
+      let env = simpleEnv userKey sig req [signed_delegation]
+      postQueryCBOR cid env >>= okCBOR >>= queryResponse >>= isReply >>= is "It works!"
+
+    , simpleTestCase "delegation from Ed25519" $ \cid -> do
+      let userKey = genId cid "Hello!"
+
+      t <- getPOSIXTime
+      let expiry = round ((t + 60) * 1000_000_000)
+      let delegation = rec
+            [ "pubkey" =: GBlob userKey
+            , "expiration" =: GNat expiry
+            ]
+      sig <- sign "ic-request-auth-delegation" otherSK (requestId delegation)
+      let signed_delegation = rec [ "delegation" =: delegation, "signature" =: GBlob sig ]
+
+      req <- addExpiry $ rec
+          [ "request_type" =: GText "query"
+          , "sender" =: GBlob otherUser
+          , "canister_id" =: GBlob cid
+          , "method_name" =: GText "query"
+          , "arg" =: GBlob (run (replyData "It works!"))
+          ]
+      sig <- genSig cid "Hello!" $ "\x0Aic-request" <> requestId req
+      let env = simpleEnv (toPublicKey otherSK) sig req [signed_delegation]
+      postQueryCBOR cid env >>= okCBOR >>= queryResponse >>= isReply >>= is "It works!"
+
+    ]
   ]
 
 type Blob = BS.ByteString
@@ -2003,14 +2363,14 @@ getStateCert' sender ecid paths = do
       ]
     envelopeFor (senderOf req) req >>= postReadStateCBOR ecid
 
-decodeStateCert :: HasCallStack => Blob -> IO Certificate
-decodeStateCert b = either assertFailure return $ decodeCert b
+decodeCert' :: HasCallStack => Blob -> IO Certificate
+decodeCert' b = either (assertFailure . T.unpack) return $ decodeCert b
 
 getStateCert :: (HasCallStack, HasTestConfig) => Blob -> Blob -> [[Blob]] -> IO Certificate
 getStateCert sender ecid paths = do
     gr <- getStateCert' sender ecid paths >>= okCBOR
     b <- record (field blob "certificate") gr
-    cert <- decodeStateCert b
+    cert <- decodeCert' b
 
     case wellFormed (cert_tree cert) of
         Left err -> assertFailure $ "Hash tree not well formed: " ++ err
@@ -2018,9 +2378,17 @@ getStateCert sender ecid paths = do
 
     return cert
 
+extractCertData :: Blob -> Blob -> IO Blob
+extractCertData cid b = do
+  cert <- decodeCert' b
+  case wellFormed (cert_tree cert) of
+      Left err -> assertFailure $ "Hash tree not well formed: " ++ err
+      Right () -> return ()
+  certValue cert ["canister", cid, "certified_data"]
+
 verboseVerify :: String -> Blob -> Blob -> Blob -> Blob -> IO ()
 verboseVerify what domain_sep pk msg sig =
-    case verify domain_sep pk msg sig of
+    case DER_BLS.verify domain_sep pk msg sig of
         Left err -> assertFailure $ unlines
             [ "Signature verification failed on " ++ what
             , T.unpack err
@@ -2038,7 +2406,7 @@ verboseVerify what domain_sep pk msg sig =
 validateDelegation :: (HasCallStack, HasTestConfig) => Maybe Delegation -> IO Blob
 validateDelegation Nothing = return (tc_root_key testConfig)
 validateDelegation (Just del) = do
-    cert <- either assertFailure return $ decodeCert (del_certificate del)
+    cert <- decodeCert' (del_certificate del)
     case wellFormed (cert_tree cert) of
         Left err -> assertFailure $ "Hash tree not well formed: " ++ err
         Right () -> return ()
@@ -2163,7 +2531,8 @@ queryResponse = record $ do
       _ -> lift $ assertFailure $ "Unexpected status " ++ show s
 
 isReject :: HasCallStack => [Natural] -> ReqResponse -> IO ()
-isReject _ (Reply _) = assertFailure "Expected reject, got reply"
+isReject _ (Reply r) =
+  assertFailure $ "Expected reject, got reply:" ++ prettyBlob r
 isReject codes (Reject n msg) = do
   assertBool
     ("Reject code " ++ show n ++ " not in " ++ show codes ++ "\n" ++ T.unpack msg)
@@ -2251,7 +2620,7 @@ be refactored so that the test can declarative pick A, B and C separately.
 -- how to reach the management canister
 type IC00 = Blob -> T.Text -> Blob -> IO ReqResponse
 
-ic00as :: HasTestConfig => Blob -> IC00
+ic00as :: (HasTestConfig, HasCallStack) => Blob -> IC00
 ic00as user ecid method_name arg = awaitCall ecid $ rec
       [ "request_type" =: GText "call"
       , "sender" =: GBlob user
@@ -2302,15 +2671,32 @@ callIC ic00 ecid l x = do
         Left err -> assertFailure $ "Candid decoding error: " ++ err
         Right y -> pure y
 
-ic_create :: (HasCallStack, HasTestConfig) => IC00 -> IO Blob
-ic_create ic00 = do
-  r <- callIC ic00 "" #create_canister ()
+-- The following line noise is me getting out of my way
+-- to be able to use `ic_create` etc. by passing a record that contains
+-- a subset of settings, without Maybe
+type family UnRec r where UnRec (R.Rec r) = r
+type PartialSettings r = (R.Forall r R.Unconstrained1, R.Map Maybe r .// UnRec Settings ≈ UnRec Settings)
+fromPartialSettings :: PartialSettings r => R.Rec r -> Settings
+fromPartialSettings r =
+    R.map' Just r .//
+    R.default' @(R.IsA R.Unconstrained1 Maybe) @(UnRec Settings) d
+  where
+    d :: forall a. R.IsA R.Unconstrained1 Maybe a => a
+    d = case R.as @R.Unconstrained1 @Maybe @a of R.As -> Nothing
+
+ic_create :: (HasCallStack, HasTestConfig, PartialSettings r) => IC00 -> Rec r -> IO Blob
+ic_create ic00 ps = do
+  r <- callIC ic00 "" #create_canister $ empty
+    .+ #settings .== Just (fromPartialSettings ps)
   return (rawPrincipal (r .! #canister_id))
 
-ic_create_with_cycles :: (HasCallStack, HasTestConfig) => IC00 -> Maybe Natural -> IO Blob
-ic_create_with_cycles ic00 cycles = do
+ic_provisional_create ::
+    (HasCallStack, HasTestConfig, PartialSettings r) =>
+    IC00 -> Maybe Natural -> Rec r -> IO Blob
+ic_provisional_create ic00 cycles ps = do
   r <- callIC ic00 "" #provisional_create_canister_with_cycles $ empty
     .+ #amount .== cycles
+    .+ #settings .== Just (fromPartialSettings ps)
   return (rawPrincipal (r .! #canister_id))
 
 ic_install :: (HasCallStack, HasTestConfig) => IC00 -> InstallMode -> Blob -> Blob -> Blob -> IO ()
@@ -2320,14 +2706,17 @@ ic_install ic00 mode canister_id wasm_module arg = do
     .+ #canister_id .== Principal canister_id
     .+ #wasm_module .== wasm_module
     .+ #arg .== arg
-    .+ #compute_allocation .== Nothing
-    .+ #memory_allocation .== Nothing
+
+ic_uninstall :: (HasCallStack, HasTestConfig) => IC00 -> Blob -> IO ()
+ic_uninstall ic00 canister_id = do
+  callIC ic00 canister_id #uninstall_code $ empty
+    .+ #canister_id .== Principal canister_id
 
 ic_set_controller :: HasTestConfig => IC00 -> Blob -> Blob -> IO ()
 ic_set_controller ic00 canister_id new_controller = do
-  callIC ic00 canister_id #set_controller $ empty
+  callIC ic00 canister_id #update_settings $ empty
     .+ #canister_id .== Principal canister_id
-    .+ #new_controller .== Principal new_controller
+    .+ #settings .== fromPartialSettings (#controller .== Principal new_controller)
 
 ic_start_canister :: HasTestConfig => IC00 -> Blob -> IO ()
 ic_start_canister ic00 canister_id = do
@@ -2375,6 +2764,21 @@ callIC' :: forall s a b.
   IC00 -> Blob -> Label s -> a -> IO ReqResponse
 callIC' ic00 ecid l x = ic00 ecid (T.pack (symbolVal l)) (Candid.encode x)
 
+ic_create' ::
+    (HasCallStack, HasTestConfig, PartialSettings r) =>
+    IC00 -> Rec r -> IO ReqResponse
+ic_create' ic00 ps = do
+  callIC' ic00 "" #create_canister $ empty
+    .+ #settings .== Just (fromPartialSettings ps)
+
+ic_provisional_create' ::
+    (HasCallStack, HasTestConfig, PartialSettings r) =>
+    IC00 -> Maybe Natural -> Rec r -> IO ReqResponse
+ic_provisional_create' ic00 cycles ps = do
+  callIC' ic00 "" #provisional_create_canister_with_cycles $ empty
+    .+ #amount .== cycles
+    .+ #settings .== Just (fromPartialSettings ps)
+
 ic_install' :: HasTestConfig => IC00 -> InstallMode -> Blob -> Blob -> Blob -> IO ReqResponse
 ic_install' ic00 mode canister_id wasm_module arg =
   callIC' ic00 canister_id #install_code $ empty
@@ -2382,14 +2786,16 @@ ic_install' ic00 mode canister_id wasm_module arg =
     .+ #canister_id .== Principal canister_id
     .+ #wasm_module .== wasm_module
     .+ #arg .== arg
-    .+ #compute_allocation .== Nothing
-    .+ #memory_allocation .== Just (100 * 1024 * 1024)
+
+ic_update_settings' :: (HasTestConfig, PartialSettings r) => IC00 -> Blob -> Rec r -> IO ReqResponse
+ic_update_settings' ic00 canister_id r = do
+  callIC' ic00 canister_id #update_settings $ empty
+    .+ #canister_id .== Principal canister_id
+    .+ #settings .== fromPartialSettings r
 
 ic_set_controller' :: HasTestConfig => IC00 -> Blob -> Blob -> IO ReqResponse
 ic_set_controller' ic00 canister_id new_controller = do
-  callIC' ic00 canister_id #set_controller $ empty
-    .+ #canister_id .== Principal canister_id
-    .+ #new_controller .== Principal new_controller
+  ic_update_settings' ic00 canister_id (#controller .== Principal new_controller)
 
 ic_delete_canister' :: HasTestConfig => IC00 -> Blob -> IO ReqResponse
 ic_delete_canister' ic00 canister_id = do
@@ -2426,14 +2832,18 @@ ic_install'' user mode canister_id wasm_module arg =
     .+ #canister_id .== Principal canister_id
     .+ #wasm_module .== wasm_module
     .+ #arg .== arg
-    .+ #compute_allocation .== Nothing
-    .+ #memory_allocation .== Just (100 * 1024 * 1024)
+
+ic_uninstall'' :: HasTestConfig => Blob -> Blob -> IO HTTPErrOrReqResponse
+ic_uninstall'' user canister_id =
+  callIC'' user canister_id #uninstall_code $ empty
+    .+ #canister_id .== Principal canister_id
+
 
 ic_set_controller'' :: HasTestConfig => Blob -> Blob -> Blob -> IO HTTPErrOrReqResponse
 ic_set_controller'' user canister_id new_controller = do
-  callIC'' user canister_id #set_controller $ empty
+  callIC'' user canister_id #update_settings $ empty
     .+ #canister_id .== Principal canister_id
-    .+ #new_controller .== Principal new_controller
+    .+ #settings .== fromPartialSettings (#controller .== Principal new_controller)
 
 ic_start_canister'' :: HasTestConfig => Blob -> Blob -> IO HTTPErrOrReqResponse
 ic_start_canister'' user canister_id = do
@@ -2499,7 +2909,7 @@ install prog = do
     return cid
 
 create :: (HasCallStack, HasTestConfig) => IO Blob
-create = ic_create_with_cycles ic00 Nothing
+create = ic_provisional_create ic00 Nothing empty
 
 upgrade' :: (HasCallStack, HasTestConfig) => Blob -> Prog -> IO ReqResponse
 upgrade' cid prog = do

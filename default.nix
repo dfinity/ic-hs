@@ -299,6 +299,6 @@ rec {
     ]; in
 
     haskellPackages.ic-ref.env.overrideAttrs (old: {
-      nativeBuildInputs = (old.nativeBuildInputs or []) ++ extra-pkgs ;
+      propagatedBuildInputs = (old.propagatedBuildInputs or []) ++ extra-pkgs ;
     });
 }

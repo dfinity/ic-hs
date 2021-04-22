@@ -25,6 +25,7 @@ import qualified IC.Crypto.WebAuthn as WebAuthn
 import qualified IC.Crypto.ECDSA as ECDSA
 import qualified IC.Crypto.Secp256k1 as Secp256k1
 import qualified IC.Crypto.BLS as BLS
+import qualified IC.Crypto.CanisterSig as CanisterSig
 import Data.Int
 import Control.Monad.Except
 
@@ -80,8 +81,8 @@ sign domain_sep sk payload = case sk of
     msg | BS.null domain_sep = payload
         | otherwise = BS.singleton (fromIntegral (BS.length domain_sep)) <> domain_sep <> payload
 
-verify :: BS.ByteString -> BS.ByteString -> BS.ByteString -> BS.ByteString -> Either T.Text ()
-verify domain_sep der_pk payload sig = DER.decode der_pk >>= \case
+verify :: BS.ByteString -> BS.ByteString -> BS.ByteString -> BS.ByteString -> BS.ByteString -> Either T.Text ()
+verify root_key domain_sep der_pk payload sig = DER.decode der_pk >>= \case
   (DER.WebAuthn, pk) -> WebAuthn.verify pk msg sig
 
   (DER.Ed25519, pk) -> do
@@ -109,6 +110,8 @@ verify domain_sep der_pk payload sig = DER.decode der_pk >>= \case
         when (BLS.verify pk payload sig) $
             throwError $ "domain separator " <> T.pack (show domain_sep) <> " missing"
         throwError "signature verification failed"
+
+  (DER.CanisterSig, pk) -> CanisterSig.verify root_key pk msg sig
 
   where
     msg = BS.singleton (fromIntegral (BS.length domain_sep)) <> domain_sep <> payload
