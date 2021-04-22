@@ -123,6 +123,9 @@ data CanState = CanState
   { content :: Maybe CanisterContent -- absent when empty
   , run_status :: RunStatus
   , controller :: EntityId
+  , memory_allocation :: Natural
+  , compute_allocation :: Natural
+  , freezing_threshold :: Natural
   , time :: Timestamp
   , cycle_balance :: Natural
   , certified_data :: Blob
@@ -141,6 +144,7 @@ data CallContext = CallContext
   { canister :: CanisterId
   , origin :: CallOrigin
   , responded :: Responded
+  , deleted :: Bool
   , available_cycles :: Cycles
   , last_trap :: Maybe String
       -- ^ non-normative, but yields better reject messages
@@ -219,6 +223,9 @@ createEmptyCanister cid controller time = modify $ \ic ->
       { content = Nothing
       , run_status = IsRunning
       , controller = controller
+      , memory_allocation = 0
+      , compute_allocation = 0
+      , freezing_threshold = 2592000
       , time = time
       , cycle_balance = 0
       , certified_data = ""
@@ -269,6 +276,18 @@ getController cid = controller <$> getCanister cid
 setController :: ICM m => CanisterId -> EntityId -> m ()
 setController cid controller = modCanister cid $
     \cs -> cs { controller = controller }
+
+setComputeAllocation :: ICM m => CanisterId -> Natural -> m ()
+setComputeAllocation cid n = modCanister cid $
+    \cs -> cs { compute_allocation = n }
+
+setMemoryAllocation :: ICM m => CanisterId -> Natural -> m ()
+setMemoryAllocation cid n = modCanister cid $
+    \cs -> cs { memory_allocation = n }
+
+setFreezingThreshold :: ICM m => CanisterId -> Natural -> m ()
+setFreezingThreshold cid n = modCanister cid $
+    \cs -> cs { freezing_threshold = n }
 
 getBalance :: ICM m => CanisterId -> m Natural
 getBalance cid = cycle_balance <$> getCanister cid
@@ -322,7 +341,6 @@ authCallRequest t ecid ev r@(CallRequest canister_id user_id meth arg) = do
 authQueryRequest :: RequestValidation m => Timestamp -> CanisterId -> EnvValidity -> QueryRequest -> m ()
 authQueryRequest t ecid ev (QueryRequest canister_id user_id meth arg) = do
     checkEffectiveCanisterID ecid canister_id meth arg
-    valid_when ev t
     valid_when ev t
     valid_for ev user_id
     valid_where ev canister_id
@@ -419,8 +437,9 @@ inspectIngress (CallRequest canister_id user_id method arg)
   | canister_id == managementCanisterId =
     if| method `elem` ["provisional_create_canister_with_cycles", "provisional_top_up_canister"]
       -> return ()
-      | method `elem` [ "install_code", "set_controller", "start_canister"
-                       , "stop_canister", "canister_status", "delete_canister" ]
+      | method `elem` [ "raw_rand", "deposit_cycles" ]
+      -> throwError $ "Management method " <> T.pack method <> " cannot be invoked via an ingress call"
+      | method `elem` managementMethods
       -> case decode @(R.Rec ("canister_id" R..== Principal)) arg of
         Left msg -> throwError $ "Candid failed to decode: " <> T.pack msg
         Right r -> do
@@ -430,8 +449,6 @@ inspectIngress (CallRequest canister_id user_id method arg)
             controller <- getController canister_id
             unless (controller == user_id) $
                 throwError "Wrong sender"
-      | method `elem` [ "raw_rand", "deposit_cycles" ]
-      -> throwError $ "Management method " <> T.pack method <> " cannot be invoked via an ingress call"
       | otherwise
       -> throwError $ "Unknown management method " <> T.pack method
   | otherwise = do
@@ -561,6 +578,7 @@ processRequest (rid, req) = onReject (setReqStatus rid . CallResponse .  Rejecte
       { canister = canister_id
       , origin = FromUser rid
       , responded = Responded False
+      , deleted = False
       , last_trap = Nothing
       , available_cycles = 0
       }
@@ -594,6 +612,8 @@ setCallContextCycles ctxt_id cycles = modifyCallContext ctxt_id $ \ctxt ->
 respondCallContext :: ICM m => CallId -> Response -> m ()
 respondCallContext ctxt_id response = do
   ctxt <- getCallContext ctxt_id
+  when (deleted ctxt) $
+    error "Internal error: response to deleted call context"
   when (responded ctxt == Responded True) $
     error "Internal error: Double response"
   modifyCallContext ctxt_id $ \ctxt -> ctxt
@@ -614,6 +634,15 @@ rejectCallContext :: ICM m => CallId -> (RejectCode, String) -> m ()
 rejectCallContext ctxt_id r =
   respondCallContext ctxt_id (Reject r)
 
+deleteCallContext :: ICM m => CallId -> m ()
+deleteCallContext ctxt_id =
+  modifyCallContext ctxt_id $ \ctxt ->
+    if responded ctxt == Responded False
+    then error "Internal error: deleteCallContext on non-responded call context"
+    else if deleted ctxt
+    then error "Internal error: deleteCallContext on deleted call context"
+    else ctxt { deleted = True }
+
 rememberTrap :: ICM m => CallId -> String -> m ()
 rememberTrap ctxt_id msg =
   modifyCallContext ctxt_id $ \ctxt -> ctxt { last_trap = Just msg }
@@ -630,6 +659,9 @@ calleeOfCallID ctxt_id = canister <$> getCallContext ctxt_id
 
 respondedCallID :: ICM m => CallId -> m Responded
 respondedCallID ctxt_id = responded <$> getCallContext ctxt_id
+
+deletedCallID :: ICM m => CallId -> m Bool
+deletedCallID ctxt_id = deleted <$> getCallContext ctxt_id
 
 starveCallContext :: ICM m => CallId -> m ()
 starveCallContext ctxt_id = do
@@ -684,10 +716,14 @@ processMessage m = case m of
         cid <- calleeOfCallID other_ctxt_id
         prev_balance <- getBalance cid
         setBalance cid $ prev_balance + refunded_cycles
-        enqueueMessage $ CallMessage
-          { call_context = other_ctxt_id
-          , entry = Closure callback response refunded_cycles
-          }
+        -- Unless deleted
+        d <- deletedCallID other_ctxt_id
+        unless d $
+          -- Enqueue execution
+          enqueueMessage $ CallMessage
+            { call_context = other_ctxt_id
+            , entry = Closure callback response refunded_cycles
+            }
 
 performCallActions :: ICM m => CallId -> CallActions -> m ()
 performCallActions ctxt_id ca = do
@@ -734,12 +770,13 @@ invokeManagementCanister ::
 invokeManagementCanister caller ctxt_id (Public method_name arg) =
   case method_name of
       "create_canister" -> atomic $ icCreateCanister caller ctxt_id
-      "install_code" -> atomic $ icInstallCode caller
-      "set_controller" -> atomic $ icSetController caller
-      "start_canister" -> atomic $ icStartCanister caller
-      "stop_canister" -> deferred $ icStopCanister caller ctxt_id
-      "canister_status" -> atomic $ icCanisterStatus caller
-      "delete_canister" -> atomic $ icDeleteCanister caller
+      "install_code" -> atomic $ onlyController caller $ icInstallCode caller
+      "uninstall_code" -> atomic $ onlyController caller $ icUninstallCode
+      "update_settings" -> atomic $ onlyController caller icUpdateCanisterSettings
+      "start_canister" -> atomic $ onlyController caller icStartCanister
+      "stop_canister" -> deferred $ onlyController caller $ icStopCanister ctxt_id
+      "canister_status" -> atomic $ onlyController caller icCanisterStatus
+      "delete_canister" -> atomic $ onlyController caller icDeleteCanister
       "deposit_cycles" -> atomic $ icDepositCycles ctxt_id
       "provisional_create_canister_with_cycles" -> atomic $ icCreateCanisterWithCycles caller
       "provisional_top_up_canister" -> atomic icTopUpCanister
@@ -766,28 +803,62 @@ invokeManagementCanister caller ctxt_id (Public method_name arg) =
 
 invokeManagementCanister _ _ Closure{} = error "closure invoked on management function "
 
-icCreateCanister :: ICM m => EntityId -> CallId -> ICManagement m .! "create_canister"
-icCreateCanister caller ctxt_id _r = do
-    -- Here we fill up the canister with the cycles provided by the caller
+icCreateCanister :: (ICM m, CanReject m) => EntityId -> CallId -> ICManagement m .! "create_canister"
+icCreateCanister caller ctxt_id r = do
+    forM_ (r .! #settings) validateSettings
     available <- getCallContextCycles ctxt_id
     setCallContextCycles ctxt_id 0
-    -- Here we fill up the canister with cycles out of thin air
-    icCreateCanisterCommon caller available
+    cid <- icCreateCanisterCommon caller available
+    forM_ (r .! #settings) $ applySettings cid
+    return (#canister_id .== entityIdToPrincipal cid)
 
-icCreateCanisterWithCycles :: ICM m => EntityId -> ICManagement m .! "provisional_create_canister_with_cycles"
-icCreateCanisterWithCycles caller r =
-    icCreateCanisterCommon caller (fromMaybe cMAX_CANISTER_BALANCE (r .! #amount))
+icCreateCanisterWithCycles :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "provisional_create_canister_with_cycles"
+icCreateCanisterWithCycles caller r = do
+    forM_ (r .! #settings) validateSettings
+    cid <- icCreateCanisterCommon caller (fromMaybe cMAX_CANISTER_BALANCE (r .! #amount))
+    forM_ (r .! #settings) $ applySettings cid
+    return (#canister_id .== entityIdToPrincipal cid)
 
-icCreateCanisterCommon ::
-  ICM m =>
-  EntityId -> Natural -> m (R.Rec ("canister_id" R..== Principal))
-icCreateCanisterCommon caller amount = do
+icCreateCanisterCommon :: (ICM m, CanReject m) => EntityId -> Natural -> m EntityId
+icCreateCanisterCommon controller amount = do
     new_id <- gets (freshId . M.keys . canisters)
     let currentTime = 0 -- ic-ref lives in the 70ies
-    createEmptyCanister new_id caller currentTime
+    createEmptyCanister new_id controller currentTime
     -- Here we fill up the canister with the cycles provided by the caller
     setBalance new_id amount
-    return (#canister_id .== entityIdToPrincipal new_id)
+    return new_id
+
+validateSettings :: CanReject m => Settings -> m ()
+validateSettings r = do
+    forM_ (r .! #compute_allocation) $ \n -> do
+        unless (n <= 100) $
+            reject RC_SYS_FATAL  "Compute allocation not <= 100"
+    forM_ (r .! #memory_allocation) $ \n -> do
+        unless (n <= 2^(48::Int)) $
+            reject RC_SYS_FATAL  "Memory allocation not <= 2^48"
+    forM_ (r .! #freezing_threshold) $ \n -> do
+        unless (n < 2^(64::Int)) $
+            reject RC_SYS_FATAL  "Memory allocation not < 2^64"
+
+applySettings :: ICM m => EntityId -> Settings -> m ()
+applySettings cid r = do
+    forM_ (r .! #controller) $ setController cid . principalToEntityId
+    forM_ (r .! #compute_allocation) $ setComputeAllocation cid
+    forM_ (r .! #memory_allocation) $ setMemoryAllocation cid
+    forM_ (r .! #freezing_threshold) $ setFreezingThreshold cid
+
+onlyController ::
+  (ICM m, CanReject m, (r .! "canister_id") ~ Principal) =>
+  EntityId -> (R.Rec r -> m a) -> (R.Rec r -> m a)
+onlyController caller act r = do
+    let canister_id = principalToEntityId (r .! #canister_id)
+    canisterMustExist canister_id
+    controller <- getController canister_id
+    if controller == caller
+    then act r
+    else reject RC_SYS_FATAL $
+        prettyID caller <> " is not authorized to manage canister " <>
+        prettyID canister_id <> ", only " <> prettyID controller <> " is"
 
 icInstallCode :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "install_code"
 icInstallCode caller r = do
@@ -795,8 +866,6 @@ icInstallCode caller r = do
     let arg = r .! #arg
     new_can_mod <- return (parseCanister (r .! #wasm_module))
       `onErr` (\err -> reject RC_SYS_FATAL $ "Parsing failed: " ++ err)
-    canisterMustExist canister_id
-    checkController canister_id caller
     was_empty <- isCanisterEmpty canister_id
     env <- canisterEnv canister_id
 
@@ -839,27 +908,30 @@ icInstallCode caller r = do
       .+ #reinstall .== (\() -> reinstall)
       .+ #upgrade .== (\() -> upgrade)
 
-icSetController :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "set_controller"
-icSetController caller r = do
+icUninstallCode :: (ICM m, CanReject m) => ICManagement m .! "uninstall_code"
+icUninstallCode r = do
     let canister_id = principalToEntityId (r .! #canister_id)
-    let new_controller = principalToEntityId (r .! #new_controller)
-    canisterMustExist canister_id
-    checkController canister_id caller
-    setController canister_id new_controller
+    -- empty canister, resetting selected state
+    modCanister canister_id $ \can_state -> can_state
+      { content = Nothing
+      , certified_data = ""
+      }
+    -- reject all call open contexts of this canister
+    gets (M.toList . call_contexts) >>= mapM_ (\(ctxt_id, ctxt) ->
+        when (canister ctxt == canister_id && responded ctxt == Responded False) $ do
+            rejectCallContext ctxt_id (RC_CANISTER_REJECT, "Canister has been uninstalled")
+            deleteCallContext ctxt_id
+        )
 
-checkController :: (ICM m, CanReject m) => CanisterId -> EntityId -> m ()
-checkController canister_id user_id = do
-    controller <- getController canister_id
-    unless (controller == user_id) $
-      reject RC_SYS_FATAL $
-        prettyID user_id <> " is not authorized to manage canister " <>
-        prettyID canister_id <> ", only " <> prettyID controller <> " is"
-
-icStartCanister :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "start_canister"
-icStartCanister caller r = do
+icUpdateCanisterSettings :: (ICM m, CanReject m) => ICManagement m .! "update_settings"
+icUpdateCanisterSettings r = do
     let canister_id = principalToEntityId (r .! #canister_id)
-    canisterMustExist canister_id
-    checkController canister_id caller
+    validateSettings (r .! #settings)
+    applySettings canister_id (r .! #settings)
+
+icStartCanister :: (ICM m, CanReject m) => ICManagement m .! "start_canister"
+icStartCanister r = do
+    let canister_id = principalToEntityId (r .! #canister_id)
     getRunStatus canister_id >>= \case
         IsRunning -> return ()
         IsStopping pending -> forM_ pending $ \ctxt_id ->
@@ -870,11 +942,9 @@ icStartCanister caller r = do
 icStopCanister ::
   (ICM m, CanReject m) =>
   (a -> m b) ~ (ICManagement m .! "stop_canister") =>
-  EntityId -> CallId -> a -> m ()
-icStopCanister caller ctxt_id r = do
+  CallId -> a -> m ()
+icStopCanister ctxt_id r = do
     let canister_id = principalToEntityId (r .! #canister_id)
-    canisterMustExist canister_id
-    checkController canister_id caller
     getRunStatus canister_id >>= \case
         IsRunning -> setRunStatus canister_id (IsStopping [ctxt_id])
         IsStopping pending -> setRunStatus canister_id (IsStopping (pending ++ [ctxt_id]))
@@ -892,32 +962,33 @@ actuallyStopCanister canister_id =
         IsStopped -> error "unexpected canister status"
         IsDeleted -> error "deleted canister encountered"
 
-icCanisterStatus :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "canister_status"
-icCanisterStatus caller r = do
+icCanisterStatus :: (ICM m, CanReject m) => ICManagement m .! "canister_status"
+icCanisterStatus r = do
     let canister_id = principalToEntityId (r .! #canister_id)
-    canisterMustExist canister_id
-    checkController canister_id caller
     s <- getRunStatus canister_id >>= \case
         IsRunning -> return (V.IsJust #running ())
         IsStopping _pending -> return (V.IsJust #stopping ())
         IsStopped -> return (V.IsJust #stopped ())
         IsDeleted -> error "deleted canister encountered"
-    controller <- getController canister_id
+    can_state <- getCanister canister_id
     hash <- module_hash <$> getCanister canister_id
     cycles <- getBalance canister_id
     return $ R.empty
       .+ #status .== s
-      .+ #controller .== entityIdToPrincipal controller
+      .+ #settings .== (R.empty
+        .+ #controller .== entityIdToPrincipal (controller can_state)
+        .+ #memory_allocation .== memory_allocation can_state
+        .+ #compute_allocation .== compute_allocation can_state
+        .+ #freezing_threshold .== freezing_threshold can_state
+      )
       .+ #memory_size .== 0 -- not implemented here
       .+ #module_hash .== hash
       .+ #cycles .== cycles
 
 
-icDeleteCanister :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "delete_canister"
-icDeleteCanister caller r = do
+icDeleteCanister :: (ICM m, CanReject m) => ICManagement m .! "delete_canister"
+icDeleteCanister r = do
     let canister_id = principalToEntityId (r .! #canister_id)
-    canisterMustExist canister_id
-    checkController canister_id caller
     getRunStatus canister_id >>= \case
         IsRunning -> reject RC_SYS_FATAL "Cannot delete running canister"
         IsStopping _pending -> reject RC_SYS_FATAL "Cannot delete stopping canister"
@@ -988,6 +1059,7 @@ newCall from_ctxt_id call = do
     { canister = call_callee call
     , origin = FromCanister from_ctxt_id (call_callback call)
     , responded = Responded False
+    , deleted = False
     , last_trap = Nothing
     , available_cycles = call_transferred_cycles call
     }
@@ -1008,7 +1080,7 @@ willReceiveResponse :: IC -> CallId -> Bool
 willReceiveResponse ic c = c `elem`
   -- there is another call context promising to respond to this
   [ c'
-  | CallContext { responded = Responded False, origin = FromCanister c' _}
+  | CallContext { responded = Responded False, deleted = False, origin = FromCanister c' _}
       <- M.elems (call_contexts ic)
   ] ++
   -- there is an in-flight call or response message:
@@ -1034,10 +1106,11 @@ nextStoppedCanister :: ICM m => m (Maybe CanisterId)
 nextStoppedCanister = gets $ \ic -> listToMaybe
   [ cid
   | (cid, CanState { run_status = IsStopping _ }) <- M.toList (canisters ic)
-  -- no open call context
+  -- no call context still waiting for a response
   , null [ ()
     | (c, ctxt) <- M.toList (call_contexts ic)
     , canister ctxt == cid
+    , not (deleted ctxt)
     , willReceiveResponse ic c
     ]
   ]
