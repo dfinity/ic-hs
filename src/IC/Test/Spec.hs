@@ -17,6 +17,7 @@ This module contains a test suite for the Internet Computer
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 module IC.Test.Spec (preFlight, TestConfig, connect, ReplWrapper(..), icTests) where
 
@@ -27,6 +28,7 @@ import qualified Text.Hex as H
 import qualified Data.ByteString.Lazy as BS
 import qualified Data.ByteString.Builder as BS
 import qualified Data.HashMap.Lazy as HM
+import qualified Data.Map.Lazy as M
 import qualified Data.Set as S
 import Network.HTTP.Client
 import Network.HTTP.Client.TLS
@@ -57,6 +59,7 @@ import qualified Codec.Candid as Candid
 import Data.Row
 import qualified Data.Row.Variants as V
 
+import IC.Types (EntityId(..))
 import IC.Version
 import IC.HTTP.GenR
 import IC.HTTP.GenR.Parse
@@ -64,7 +67,9 @@ import IC.HTTP.CBOR (decode, encode)
 import IC.HTTP.RequestId
 import IC.Management
 import IC.Crypto
+import qualified IC.Crypto.CanisterSig as CanisterSig
 import qualified IC.Crypto.DER as DER
+import qualified IC.Crypto.DER_BLS as DER_BLS
 import IC.Id.Forms hiding (Blob)
 import IC.Test.Options
 import IC.Test.Universal
@@ -1322,7 +1327,7 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
   , testGroup "certified variables" $
     let extract :: Blob -> Blob -> IO Blob
         extract cid b = do
-          cert <- decodeStateCert b
+          cert <- decodeCert' b
           case wellFormed (cert_tree cert) of
               Left err -> assertFailure $ "Hash tree not well formed: " ++ err
               Right () -> return ()
@@ -1332,7 +1337,7 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
       query cid (replyData getCertificate) >>= extract cid >>= is ""
     , simpleTestCase "validates" $ \cid -> do
       query cid (replyData getCertificate)
-        >>= decodeStateCert >>= validateStateCert
+        >>= decodeCert' >>= validateStateCert
     , simpleTestCase "present in query method (query call)" $ \cid -> do
       query cid (replyData (i2b getCertificatePresent))
         >>= is "\1\0\0\0"
@@ -1916,6 +1921,135 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
           -- check that with a valid signature, this would have worked
           awaitCall cid good_req >>= isReply >>= is ""
       ]
+
+  , testGroup "Canister signatures" $
+    let genId cid seed =
+          DER.encode DER.CanisterSig $ CanisterSig.genPublicKey (EntityId cid) seed
+
+        genSig cid seed msg = do
+          -- Create the tree
+          let tree = construct $
+                SubTrees $ M.singleton "sig" $
+                SubTrees $ M.singleton (sha256 seed) $
+                SubTrees $ M.singleton (sha256 msg) $
+                Value ""
+          -- Store it as certified data
+          call_ cid (setCertifiedData (bytes (reconstruct tree)) >>> reply)
+          -- Get certificate
+          cert <- query cid (replyData getCertificate) >>= decodeCert'
+          -- double check it certifies
+          validateStateCert cert
+          certValue cert ["canister", cid, "certified_data"] >>= is (reconstruct tree)
+
+          return $ CanisterSig.genSig cert tree
+
+        exampleQuery cid userKey = addExpiry $ rec
+          [ "request_type" =: GText "query"
+          , "sender" =: GBlob (mkSelfAuthenticatingId userKey)
+          , "canister_id" =: GBlob cid
+          , "method_name" =: GText "query"
+          , "arg" =: GBlob (run (replyData "It works!"))
+          ]
+        simpleEnv userKey sig req delegations = rec $
+          [ "sender_pubkey" =: GBlob userKey
+          , "sender_sig" =: GBlob sig
+          , "content" =: req
+          ] ++
+          [ "sender_delegation" =: GList delegations | not (null delegations) ]
+    in
+    [ simpleTestCase "direct signature" $ \cid -> do
+      let userKey = genId cid "Hello!"
+      req <- exampleQuery cid userKey
+      sig <- genSig cid "Hello!" $ "\x0Aic-request" <> requestId req
+      let env = simpleEnv userKey sig req []
+      postQueryCBOR cid env >>= okCBOR >>= queryResponse >>= isReply >>= is "It works!"
+
+    , simpleTestCase "direct signature (empty seed)" $ \cid -> do
+      let userKey = genId cid ""
+      req <- exampleQuery cid userKey
+      sig <- genSig cid "" $ "\x0Aic-request" <> requestId req
+      let env = simpleEnv userKey sig req []
+      postQueryCBOR cid env >>= okCBOR >>= queryResponse >>= isReply >>= is "It works!"
+
+    , simpleTestCase "direct signature (wrong seed)" $ \cid -> do
+      let userKey = genId cid "Hello"
+      req <- exampleQuery cid userKey
+      sig <- genSig cid "Hullo" $ "\x0Aic-request" <> requestId req
+      let env = simpleEnv userKey sig req []
+      postQueryCBOR cid env >>= code4xx
+
+    , simpleTestCase "direct signature (wrong cid)" $ \cid -> do
+      let userKey = genId doesn'tExist "Hello"
+      req <- exampleQuery cid userKey
+      sig <- genSig cid "Hello" $ "\x0Aic-request" <> requestId req
+      let env = simpleEnv userKey sig req []
+      postQueryCBOR cid env >>= code4xx
+
+    , simpleTestCase "direct signature (wrong root key)" $ \cid -> do
+      let seed = "Hello"
+      let userKey = genId cid seed
+      req <- exampleQuery cid userKey
+      let msg = "\x0Aic-request" <> requestId req
+      -- Create the tree
+      let tree = construct $
+            SubTrees $ M.singleton "sig" $
+            SubTrees $ M.singleton (sha256 seed) $
+            SubTrees $ M.singleton (sha256 msg) $
+            Value ""
+      -- Create a fake certificate
+      let cert_tree = construct $
+            SubTrees $ M.singleton "canister" $
+            SubTrees $ M.singleton cid $
+            SubTrees $ M.singleton "certified_data" $
+            Value (reconstruct tree)
+      let fake_root_key = createSecretKeyBLS "not the root key"
+      cert_sig <- sign "ic-state-root" fake_root_key (reconstruct cert_tree)
+      let cert = Certificate { cert_tree, cert_sig, cert_delegation = Nothing }
+      let sig = CanisterSig.genSig cert tree
+      let env = simpleEnv userKey sig req []
+      postQueryCBOR cid env >>= code4xx
+
+    , simpleTestCase "delegation to Ed25519" $ \cid -> do
+      let userKey = genId cid "Hello!"
+
+      t <- getPOSIXTime
+      let expiry = round ((t + 60) * 1000_000_000)
+      let delegation = rec
+            [ "pubkey" =: GBlob (toPublicKey otherSK)
+            , "expiration" =: GNat expiry
+            ]
+      sig <- genSig cid "Hello!" $ "\x1Aic-request-auth-delegation" <> requestId delegation
+      let signed_delegation = rec [ "delegation" =: delegation, "signature" =: GBlob sig ]
+
+      req <- exampleQuery cid userKey
+      sig <- sign "ic-request" otherSK (requestId req)
+      let env = simpleEnv userKey sig req [signed_delegation]
+      postQueryCBOR cid env >>= okCBOR >>= queryResponse >>= isReply >>= is "It works!"
+
+    , simpleTestCase "delegation from Ed25519" $ \cid -> do
+      let userKey = genId cid "Hello!"
+
+      t <- getPOSIXTime
+      let expiry = round ((t + 60) * 1000_000_000)
+      let delegation = rec
+            [ "pubkey" =: GBlob userKey
+            , "expiration" =: GNat expiry
+            ]
+      sig <- sign "ic-request-auth-delegation" otherSK (requestId delegation)
+      let signed_delegation = rec [ "delegation" =: delegation, "signature" =: GBlob sig ]
+
+      req <- addExpiry $ rec
+          [ "request_type" =: GText "query"
+          , "sender" =: GBlob otherUser
+          , "canister_id" =: GBlob cid
+          , "method_name" =: GText "query"
+          , "arg" =: GBlob (run (replyData "It works!"))
+          ]
+      sig <- genSig cid "Hello!" $ "\x0Aic-request" <> requestId req
+      let env = simpleEnv (toPublicKey otherSK) sig req [signed_delegation]
+      postQueryCBOR cid env >>= okCBOR >>= queryResponse >>= isReply >>= is "It works!"
+
+    ]
   ]
 
 type Blob = BS.ByteString
@@ -2003,14 +2137,14 @@ getStateCert' sender ecid paths = do
       ]
     envelopeFor (senderOf req) req >>= postReadStateCBOR ecid
 
-decodeStateCert :: HasCallStack => Blob -> IO Certificate
-decodeStateCert b = either assertFailure return $ decodeCert b
+decodeCert' :: HasCallStack => Blob -> IO Certificate
+decodeCert' b = either (assertFailure . T.unpack) return $ decodeCert b
 
 getStateCert :: (HasCallStack, HasTestConfig) => Blob -> Blob -> [[Blob]] -> IO Certificate
 getStateCert sender ecid paths = do
     gr <- getStateCert' sender ecid paths >>= okCBOR
     b <- record (field blob "certificate") gr
-    cert <- decodeStateCert b
+    cert <- decodeCert' b
 
     case wellFormed (cert_tree cert) of
         Left err -> assertFailure $ "Hash tree not well formed: " ++ err
@@ -2020,7 +2154,7 @@ getStateCert sender ecid paths = do
 
 verboseVerify :: String -> Blob -> Blob -> Blob -> Blob -> IO ()
 verboseVerify what domain_sep pk msg sig =
-    case verify domain_sep pk msg sig of
+    case DER_BLS.verify domain_sep pk msg sig of
         Left err -> assertFailure $ unlines
             [ "Signature verification failed on " ++ what
             , T.unpack err
@@ -2038,7 +2172,7 @@ verboseVerify what domain_sep pk msg sig =
 validateDelegation :: (HasCallStack, HasTestConfig) => Maybe Delegation -> IO Blob
 validateDelegation Nothing = return (tc_root_key testConfig)
 validateDelegation (Just del) = do
-    cert <- either assertFailure return $ decodeCert (del_certificate del)
+    cert <- decodeCert' (del_certificate del)
     case wellFormed (cert_tree cert) of
         Left err -> assertFailure $ "Hash tree not well formed: " ++ err
         Right () -> return ()

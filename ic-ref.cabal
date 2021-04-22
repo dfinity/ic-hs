@@ -29,12 +29,14 @@ common version
 
 common certificates
   hs-source-dirs:      src
-  other-modules:       IC.CBORPatterns
+  other-modules:       IC.CBOR.Patterns
+  other-modules:       IC.CBOR.Parser
   other-modules:       IC.HashTree.CBOR
   other-modules:       IC.HashTree
   other-modules:       IC.Certificate
   other-modules:       IC.Certificate.CBOR
   other-modules:       IC.Certificate.Value
+  other-modules:       IC.Certificate.Validate
   build-depends:       leb128-cereal
   build-depends:       cborg
 
@@ -46,7 +48,9 @@ common crypto
   other-modules: IC.Crypto.ECDSA
   other-modules: IC.Crypto.Secp256k1
   other-modules: IC.Crypto.BLS
+  other-modules: IC.Crypto.DER_BLS
   other-modules: IC.Crypto.WebAuthn
+  other-modules: IC.Crypto.CanisterSig
   build-depends: ed25519
   build-depends: cryptonite
   build-depends: cereal
@@ -225,7 +229,8 @@ test-suite unit-test
   import: logic, certificates, serialise, cbor, crypto, ghc-flags
   type: exitcode-stdio-1.0
   main-is: unit-tests.hs
-  other-modules:       IC.CBORPatterns
+  other-modules:       IC.CBOR.Patterns
+  other-modules:       IC.CBOR.Parser
   other-modules:       IC.HashTree.CBOR
   other-modules:       IC.HashTree
   other-modules:       IC.Test.HashTree

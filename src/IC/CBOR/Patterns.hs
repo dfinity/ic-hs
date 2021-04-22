@@ -4,7 +4,7 @@
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE LambdaCase #-}
 
-module IC.CBORPatterns where
+module IC.CBOR.Patterns where
 
 import qualified Data.ByteString.Lazy as BS
 import Numeric.Natural

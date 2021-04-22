@@ -27,8 +27,8 @@ import IC.HTTP.GenR.Parse
 dummyUserId :: EntityId
 dummyUserId = EntityId $ BS.pack [0xCA, 0xFF, 0xEE]
 
-stripEnvelope :: GenR -> Either T.Text (GenR, EnvValidity)
-stripEnvelope gr = runWriterT $ flip record gr $ do
+stripEnvelope :: Blob -> GenR -> Either T.Text (GenR, EnvValidity)
+stripEnvelope root_key gr = runWriterT $ flip record gr $ do
     content <- field anyType "content"
     pk <- optionalField blob "sender_pubkey"
     sig <- optionalField blob "sender_sig"
@@ -47,7 +47,7 @@ stripEnvelope gr = runWriterT $ flip record gr $ do
                 first (<> "\nExpected request id: " <> T.pack (prettyBlob rid)
                        <> "\nPublic Key:          " <> T.pack (prettyBlob pk')
                        <> "\nSignature:           " <> T.pack (prettyBlob sig)) $
-                verify "ic-request" pk' rid sig
+                verify root_key "ic-request" pk' rid sig
         (Nothing, Nothing) ->
             tell $ validFor $ \(EntityId id) ->
               unless (isAnonymousId id) $
@@ -58,7 +58,7 @@ stripEnvelope gr = runWriterT $ flip record gr $ do
     where
       checkDelegations pk [] = return pk
       checkDelegations pk ((pk', Timestamp expiry, targets, hash, sig):ds) = do
-          lift $ lift $ verify "ic-request-auth-delegation" pk hash sig
+          lift $ lift $ verify root_key "ic-request-auth-delegation" pk hash sig
           tell $ validWhen $ \(Timestamp t) ->
               unless (expiry > t) $
                 throwError $ "Delegation expiry is " <> T.pack (show ((t - expiry)`div`1000_000_000)) <> " seconds in the past"

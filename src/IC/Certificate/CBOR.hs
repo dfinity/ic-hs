@@ -7,14 +7,12 @@
 module IC.Certificate.CBOR (encodeCert, decodeCert) where
 
 import qualified Data.Text as T
-import qualified Data.ByteString.Lazy as BS
-import Data.Bifunctor
 import Codec.CBOR.Term
 import Codec.CBOR.Write
-import Codec.CBOR.Read
 
 import IC.Certificate
-import IC.CBORPatterns
+import IC.CBOR.Parser
+import IC.CBOR.Patterns
 import IC.HashTree
 import IC.HashTree.CBOR
 
@@ -30,37 +28,17 @@ encodeCert Certificate{..} = toLazyByteString $ encodeTerm $ TTagged 55799 $ TMa
     | Just Delegation{..} <- pure cert_delegation
     ]
 
-decodeCert :: Blob -> Either String Certificate
-decodeCert s =
-    first (\(DeserialiseFailure _ s) -> "CBOR decoding failure: " <> s)
-        (deserialiseFromBytes decodeTerm s) >>= begin
-  where
-    begin (leftOver, _) | not (BS.null leftOver) = Left "Left-over bytes"
-    begin (_, TTagged 55799 t) = main t
-    begin (_, t) = Left $ "Expected certificate to begin with tag 55799, got " ++ show t ++ " in " ++ show s
+decodeCert :: Blob -> Either T.Text Certificate
+decodeCert s = do
+    kv <- decodeWithTag s >>= parseMap "certificate"
+    cert_tree <- parseField "tree" kv >>= parseHashTree
+    cert_sig <- parseField "signature" kv >>= parseBlob "signature"
+    cert_delegation <- optionalField "delegation" kv >>= mapM parseDelegation
+    return $ Certificate{..}
 
-    main (TMap_ kv) = do
-        cert_tree <- field "tree" kv >>= parseHashTree
-        cert_sig <- field "signature" kv >>= parseBlob "signature"
-        cert_delegation <- optionalField "delegation" kv >>= mapM parseDelegation
-        return $ Certificate{..}
-    main t = Left $ "expected certificate, found " ++ show t
-
-parseBlob :: String -> Term -> Either String Blob
-parseBlob _ (TBlob s) = return s
-parseBlob what t = Left $ "expected " ++ what ++ ", found " ++ show t
-
-parseDelegation :: Term -> Either String Delegation
-parseDelegation (TMap_ kv) = do
-    del_subnet_id <- field "subnet_id" kv >>= parseBlob "subnet_id"
-    del_certificate <- field "certificate" kv >>= parseBlob "certificate"
+parseDelegation :: Term -> Either T.Text Delegation
+parseDelegation t = do
+    kv <- parseMap "delegation" t
+    del_subnet_id <- parseField "subnet_id" kv >>= parseBlob "subnet_id"
+    del_certificate <- parseField "certificate" kv >>= parseBlob "certificate"
     return $ Delegation{..}
-parseDelegation t = Left $ "expected delegation, found " ++ show t
-
-field :: T.Text -> [(Term, a)] -> Either String a
-field f kv = case lookup (TString f) kv of
-    Just t -> return t
-    Nothing -> Left $ "Missing expected field " ++ show f
-
-optionalField :: T.Text -> [(Term, a)] -> Either String (Maybe a)
-optionalField f kv = return $ lookup (TString f) kv

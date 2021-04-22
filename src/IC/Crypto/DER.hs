@@ -10,10 +10,13 @@ import Data.ASN1.BitArray
 
 import IC.Crypto.DER.Decode
 
-data Suite = Ed25519 | WebAuthn | ECDSA | Secp256k1 | BLS deriving Show
+data Suite = Ed25519 | WebAuthn | ECDSA | Secp256k1 | BLS | CanisterSig deriving Show
 
 webAuthnOID :: OID
 webAuthnOID = [1,3,6,1,4,1,56387,1,1]
+
+canisterSigOID :: OID
+canisterSigOID = [1,3,6,1,4,1,56387,1,2]
 
 ed25519OID :: OID
 ed25519OID = [1,3,101,112]
@@ -37,6 +40,7 @@ encode WebAuthn          = encodeDER [webAuthnOID]
 encode ECDSA             = encodeDER [ecPublicKeyOID, secp256r1OID]
 encode Secp256k1         = encodeDER [ecPublicKeyOID, secp256k1OID]
 encode BLS               = encodeDER [blsAlgoOID, blsCurveOID]
+encode CanisterSig       = encodeDER [canisterSigOID]
 
 encodeDER :: [OID] -> BS.ByteString -> BS.ByteString
 encodeDER oids pk = encodeASN1 DER $
@@ -64,6 +68,8 @@ decode bs = case safeDecode bs of
         -> Right (WebAuthn, BS.fromStrict (bitArrayGetData ba))
         | algo == ed25519OID
         -> Right (Ed25519, BS.fromStrict (bitArrayGetData ba))
+        | algo == canisterSigOID
+        -> Right (CanisterSig, BS.fromStrict (bitArrayGetData ba))
         | otherwise
         -> Left $ "Unexpected cipher: algo = " <> T.pack (show algo)
       [  Start Sequence
