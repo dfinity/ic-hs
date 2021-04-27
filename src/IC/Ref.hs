@@ -37,6 +37,7 @@ module IC.Ref
   , handleReadState
   , runStep
   , runToCompletion
+  , setAllTimesTo
   -- $ Exported merely for debug introspection
   , CallContext(..)
   , Message(..)
@@ -1056,6 +1057,10 @@ bumpTime :: ICM m => m ()
 bumpTime = modify $
   \ic -> ic { canisters = M.map (\cs -> cs { time = time cs +1 }) (canisters ic) }
 
+setAllTimesTo :: ICM m => Timestamp -> m ()
+setAllTimesTo ts = modify $
+  \ic -> ic { canisters = M.map (\cs -> cs { time = ts }) (canisters ic) }
+
 
 -- | Returns true if a step was taken
 runStep :: ICM m => m Bool
@@ -1073,6 +1078,8 @@ runStep = do
 
 runToCompletion :: ICM m => m ()
 runToCompletion = repeatWhileTrue runStep
+
+
 
 -- Error handling plumbing
 
