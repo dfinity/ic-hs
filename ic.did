@@ -1,7 +1,6 @@
 type canister_id = principal;
 type user_id = principal;
 type wasm_module = blob;
-type unit = blob;
 
 type canister_settings = record {
   controller : opt principal;
