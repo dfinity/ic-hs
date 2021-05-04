@@ -32,7 +32,7 @@ The goals of the reference implementation are
  * Provide a simplified mock environment for testing Canisters (e.g. `motoko`
    output) that does not require networking.
 
-   In particular, provide `ic-ref-run`, a binary that allows to script the
+   In particular, provide `ic-ref-run`, a binary that allows scripting the
    execution of a single canister.
 
  * Aid in the production implementation of the Internet Computer, by allowing
