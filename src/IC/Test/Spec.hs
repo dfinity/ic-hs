@@ -701,7 +701,7 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
     {-
     This section checks various API calls in various contexts, to see
     if they trap when they should
-    This mirros the table in https://docs.dfinity.systems/public/#system-api-imports
+    This mirros the table in https://sdk.dfinity.org/docs/interface-spec/index.html#system-api-imports
 
     -}
     let
