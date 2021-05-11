@@ -6,8 +6,8 @@ This repository contains a bunch of Internet-Computer related code written to su
 ic-ref: a IC reference implementation
 -------------------------------------
 
-The `ic-ref` binary is a partial implementation of the external interface of the DFINITY
-Internet Computer, as specified in the [Interface Spec].
+The `ic-ref` binary is a partial implementation of the external interface of
+the Internet Computer, as specified in the [Interface Spec].
 
 [Interface Spec]: https://sdk.dfinity.org/docs/interface-spec/index.html
 
