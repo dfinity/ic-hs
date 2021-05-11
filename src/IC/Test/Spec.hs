@@ -3053,7 +3053,7 @@ getTestFile file =
     try (d:ds) = doesFileExist (d </> file) >>= \case
       True -> return (d </> file)
       False -> try ds
-    try [] = error $ "getTestDir: Could not read " ++ file ++ " from test-data/. Please consult impl/README.md"
+    try [] = error $ "getTestDir: Could not read " ++ file ++ " from test-data/. Please consult README.md"
 
 getTestWasm :: FilePath -> IO BS.ByteString
 getTestWasm base = do
