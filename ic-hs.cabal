@@ -1,7 +1,9 @@
 cabal-version:       2.2
-name:                ic-ref
+name:                ic-hs
 version:             0.0.1
-author:              Joachim Breitner
+author:              DFINITY
+license:             LicenseRef-IC-1.0
+license-file:        LICENSE
 build-type:          Simple
 extra-source-files:  cbits/*.h ic.did
 

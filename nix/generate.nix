@@ -32,7 +32,7 @@ let
         # See ./nix/generate.nix for instructions.\
 
       '';
-      inherit src_subst;
+      src_subst = pkgs.lib.replaceStrings ["\n"] [" "] src_subst;
       installPhase = oldAttrs.installPhase + ''
         sed -i "1i$message;s|src = .*|src = $src_subst;|" $out/default.nix
         # Accept `pkgs` as an argument in case the `src_subst` depends on it.
@@ -40,15 +40,19 @@ let
       '';
     });
 
-  # A variant of `haskellSrc2nixWithDoc` for local Haskell packages.
-  localHaskellSrc2nixWithDoc = name: path: extraCabal2nixOptions:
-    haskellSrc2nixWithDoc {
-      inherit name extraCabal2nixOptions;
-      src = import ./gitSource.nix path;
-      src_subst = "import ../gitSource.nix \"${path}\"";
+  packages = {
+    ic-hs = haskellSrc2nixWithDoc {
+      name = "ic-hs";
+      src = pkgs.subpath "/";
+      # since the haskell code now lives on the top-level,
+      # exclude some more files to avoid rebuilds
+      src_subst = ''
+        pkgs.lib.sourceByRegex (pkgs.subpath "/")
+          ["^src.*" "^ic-hs.cabal" "^cbits.*" "^LICENSE" "^ic.did"]
+      '';
+      extraCabal2nixOptions =  "--no-check -frelease";
     };
 
-  packages = {
     winter = haskellSrc2nixWithDoc {
       name = "winter";
       src = pkgs.sources.winter;
@@ -66,7 +70,6 @@ let
       src_subst = "pkgs.sources.haskell-candid";
     };
 
-    ic-ref = localHaskellSrc2nixWithDoc "ic-ref" "impl" "--no-check -frelease";
     base32 = pkgs.haskellPackages.hackage2nix "base32" "0.1.1.2";
     megaparsec = pkgs.haskellPackages.hackage2nix "megaparsec" "8.0.0";
     base64-bytestring = pkgs.haskellPackages.hackage2nix "base64-bytestring" "1.1.0.0";

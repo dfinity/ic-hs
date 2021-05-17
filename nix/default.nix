@@ -27,6 +27,7 @@ let
         (self: super: {
           sources = import sourcesnix { sourcesFile = ./sources.json; pkgs = super; };
 
+          subpath = import ./gitSource.nix;
 
           # nixpkgs's rustc does not inclue the wasm32-unknown-unknown target, so
           # lets add it here. With this we can build the universal canister with stock

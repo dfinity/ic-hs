@@ -1,1 +1,1 @@
-../../universal-canister/target/wasm32-unknown-unknown/release/universal_canister.wasm
+../universal-canister/target/wasm32-unknown-unknown/release/universal_canister.wasm

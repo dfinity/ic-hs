@@ -754,7 +754,7 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
     {-
     This section checks various API calls in various contexts, to see
     if they trap when they should
-    This mirros the table in https://docs.dfinity.systems/public/#system-api-imports
+    This mirros the table in https://sdk.dfinity.org/docs/interface-spec/index.html#system-api-imports
 
     -}
     let
@@ -3129,7 +3129,7 @@ getTestFile file =
     try (d:ds) = doesFileExist (d </> file) >>= \case
       True -> return (d </> file)
       False -> try ds
-    try [] = error $ "getTestDir: Could not read " ++ file ++ " from test-data/. Please consult impl/README.md"
+    try [] = error $ "getTestDir: Could not read " ++ file ++ " from test-data/. Please consult README.md"
 
 getTestWasm :: FilePath -> IO BS.ByteString
 getTestWasm base = do

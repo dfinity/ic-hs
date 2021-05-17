@@ -66,9 +66,9 @@
 , zlib
 }:
 mkDerivation {
-  pname = "ic-ref";
+  pname = "ic-hs";
   version = "0.0.1";
-  src = import ../gitSource.nix "impl";
+  src = pkgs.lib.sourceByRegex (pkgs.subpath "/") [ "^src.*" "^ic-hs.cabal" "^cbits.*" "^LICENSE" "^ic.did" ];
   configureFlags = [ "-frelease" ];
   isLibrary = false;
   isExecutable = true;
@@ -180,6 +180,5 @@ mkDerivation {
     zlib
   ];
   doCheck = false;
-  license = "unknown";
-  hydraPlatforms = stdenv.lib.platforms.none;
+  license = "LicenseRef-IC-1.0";
 }
