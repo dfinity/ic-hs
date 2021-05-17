@@ -264,7 +264,7 @@ systemAPI esref =
       unsafeIOToPrim $ BSC.putStrLn $ BSC.pack "debug.print: " <> bytes
 
     -- The system calls (in the order of the public spec)
-    -- https://docs.dfinity.systems/spec/public/#_system_imports
+    -- https://sdk.dfinity.org/docs/interface-spec/index.html#_system_imports
 
     msg_arg_data_size :: () -> HostM s Int32
     msg_arg_data_copy :: (Int32, Int32, Int32) -> HostM s ()

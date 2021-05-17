@@ -8,7 +8,7 @@ This DSL is expression-based, not stack based; seems to suite all our needs and 
 simpler to work with.
 
 This language is not stable; therefore there is no separarte documentation of
-specification than this file and `impl/universal-canister/src/`
+specification than this file and `universal-canister/src/`
 -}
 
 {-# LANGUAGE KindSignatures #-}

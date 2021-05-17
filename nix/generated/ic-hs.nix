@@ -66,9 +66,9 @@
 , zlib
 }:
 mkDerivation {
-  pname = "ic-ref";
+  pname = "ic-hs";
   version = "0.0.1";
-  src = import ../gitSource.nix "impl";
+  src = import ../gitSource.nix "/";
   configureFlags = [ "-frelease" ];
   isLibrary = false;
   isExecutable = true;

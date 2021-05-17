@@ -1,18 +1,20 @@
-The IC reference implementation
-===============================
+The Internet Computer Haskell Toolkit
+=====================================
 
-`ic-ref` is a partial implementation of the external interface of the DFINITY
-Internet Computer, as specified in the [Interface Spec].
+This repository contains a bunch of Internet-Computer related code written to support the following use cases:
 
-[Interface Spec]: https://docs.dfinity.systems/public/
+ic-ref: a IC reference implementation
+-------------------------------------
 
-Goals
------
+The `ic-ref` binary is a partial implementation of the external interface of
+the Internet Computer, as specified in the [Interface Spec].
+
+[Interface Spec]: https://sdk.dfinity.org/docs/interface-spec/index.html
 
 The goals of the reference implementation are
 
- * It evolves in lock-step with the Interface Spec. At least versioned releases of
-   the Interface Spec come with a complete implementation of `ic-ref`.
+ * It evolves in lock-step with the Interface Spec. Versioned releases of
+   the Interface Spec should come with a complete implementation of `ic-ref`.
 
  * Supplement the prose and pseudo-code in the Interface Spec for additional and
    concrete clarity.
@@ -28,12 +30,6 @@ The goals of the reference implementation are
 
  * Allow testing of external clients (like `dfx`) directly against the
    reference implementation.
-
- * Provide a simplified mock environment for testing Canisters (e.g. `motoko`
-   output) that does not require networking.
-
-   In particular, provide `ic-ref-run`, a binary that allows scripting the
-   execution of a single canister.
 
  * Aid in the production implementation of the Internet Computer, by allowing
    to probe the reference implementation to better understand intended
@@ -54,7 +50,8 @@ run their canisters locally. This adds additional goals:
    help debug canisters.
 
 Should these goals eventually conflict with the goals for a reference
-implementation, e.g. becauese they impose complexity that is not easy to contain in auxillary modules, a project split might be considered.
+implementation, e.g. becauese they impose complexity that is not easy to
+contain in auxillary modules, a project split might be considered.
 
 There are also explicit non-goals to keep in mind:
 
@@ -81,9 +78,6 @@ requires compromising the main goals.
    _all_ possible behaviours of the Interface Spec. If this can be changed (e.g.
    using non-deterministic modeling of computation) without compromising
    readability and normal execution, then this would be nice.
-
- * A deep or type-level embedding of the interfaces (HTTP, System) that can be
-   used separately to  generation of production code (“interface stubs”).
 
  * It could serve as a starting point for applying formal verification to this
    part of the system, e.g. by converting the (non-plumbing) modules to Coq
@@ -114,60 +108,65 @@ To achieve these goals, the following design decisions are made:
    This is an ongoing refinement process, striving for a probably unattainable
    ideal as the goal.
 
-Running
--------
+### Usage
 
-This is the fastest way to run `ic-ref` or `ic-ref-test` is to use the
-following commands in the `impl/` directory:
+The `ic-ref` program starts a webserver at `http://0.0.0.0:8001/` that implements the
+Internet Computer interface, and can be used with `dfx --client http://0.0.0.0:8001/`.
 
-    nix run -f . -c ic-ref
-    nix run -f . -c ic-ref-test
+If you point your browser to `http://0.0.0.0:8001/` you get the evolution of
+the IC state as JSON. Recommended to use Firefox, as it provides a nice UI for
+browsing JSON.
 
-You can also pass arguments, e.g.
+If the `--state-file FILE` argument is given, `ic-ref` will persist its state
+in this file. Note that if that file cannot be read (e.g. because it is from
+an incompatible version of `ic-ref`), starting `ic-ref` will fail.
 
-    nix run -f . -c ic-ref-test --endpoint http://0.0.0.0:8080 -p 'WebAuthn'
 
-Using
------
+ic-ref-test: An acceptance test suite
+-------------------------------------
 
-* The `ic-ref` program starts a webserver at `http://0.0.0.0:8001/` that implements the
-  Internet Computer interface, and can be used with `dfx --client http://0.0.0.0:8001/`.
+As the dual to the reference implementation, the `ic-ref-test` program is a
+specification compliance acceptance test that can be run against an Internet
+Computer instance (e.g. `ic-ref`, the replica) and runs a large number of
+functional tests against it.
 
-  If you point your browser to `http://0.0.0.0:8001/` you get the evolution of
-  the IC state as JSON. Recommended to use Firefox, as it provides a nice UI for
-  browsing JSON.
+### Usage
 
-  If the `--state-file FILE` argument is given, `ic-ref` will persist its state
-  in this file. Note that if that file cannot be read (e.g. because it is from
-  an incompatible version of `ic-ref`), starting `ic-ref` will fail.
+Pass `--endpoint http://localhost:8080/` to run against a specific node.
 
-* The `ic-ref-test` acceptance test.
+With the `-p pattern` flag you can select individual tests; those whose names
+contain the pattern. See https://github.com/feuerbach/tasty#patterns for
+advanced use of this flag.
 
-  Pass `--endpoint http://localhost:8080/` to run against a specific node.
+When passing `--rerun`, the test suite will remember which tests have failed,
+and only run those that failed last tests (or all again, if none have failed
+last run).
 
-  With the `-p pattern` flag you can select individual tests; those whose names
-  contain the pattern. See https://github.com/feuerbach/tasty#patterns for
-  advanced use of this flag.
 
-  When passing `--rerun`, the test suite will remember which tests have failed,
-  and only run those that failed last tests (or all again, if none have failed
-  last run).
+ic-ref-run: A sandboxed scripted IC
+-----------------------------------
 
-* The `ic-request-id` tool takes a CBOR-request (stdin or via a file) and
-  calculates its request id.
+The `ic-ref-run` tool provides a simplified mock environment for testing
+Canisters that does not require networking. It takes scripted input to indicate
+which canisters to install, and which messages to execute.
 
-* The `ic-ref-run` program takes, as an argument, a file with `install`, `call`,
-  `query`, `upgrade` commands, just like
-  [`drun`](https://github.com/dfinity-lab/dfinity/tree/master/rs/drun/).
+This is used, for example, in the test suite of the Motoko compiler.
 
-The `--version` flag reports the current version.
+ic-request-id: Calculate the representation-independent hash
+------------------------------------------------------------
 
-Interactive use of ic-ref-test
-------------------------------
+The `ic-request-id` tool takes a CBOR-request (stdin or via a file) and
+calculates its request id.
 
-You can actually use the Haskell REPL to interact with the internet computer:
+ic-hs: The library
+------------------
+
+The modules of the above tools can be used for other purposes. In that sense, the whole project is one big Haskell library that can be used in quick experiments, in the Haskell REPL, or as a libary to build other tools (e.g. a test framework for canisters as [in the case of the Internet Identity](https://github.com/dfinity/internet-identity/tree/main/backend-tests).
+
+
+To use the Haskell REPL to interact with the internet computer, follow this pattern:
 ```
-~/dfinity/ic-ref/impl $ cabal repl ic-ref-test
+~/dfinity/ic-hs $ cabal repl ic-ref-test
 …
 Ok, 27 modules loaded.
 *Main> :m + *IC.Test.Spec
@@ -190,12 +189,27 @@ Spec version claimed: 0.14.0
 It’s necessary to wrap all lines with the `r $ …` for now; this sets the
 endpoint parameter.
 
+
+Running
+-------
+
+This is the fastest way to run `ic-ref` or `ic-ref-test` is to use the
+following commands in this directory:
+
+    nix run -f . -c ic-ref
+    nix run -f . -c ic-ref-test
+
+You can also pass arguments, e.g.
+
+    nix run -f . -c ic-ref-test --endpoint http://0.0.0.0:8080 -p 'WebAuthn'
+
+
 Developing on ic-ref
 ---------------------
 
-Running `nix-shell` in the `ic-ref/impl` directory gives you an environment
-that allows you to build the project using `cabal build`. You can also run
-`cabal run ic-ref` etc. to run it directly from source.
+Running `nix-shell` gives you an environment that allows you to build the
+project using `cabal build`. You can also run `cabal run ic-ref` etc. to run it
+directly from source.
 
 One possible workflow is to run
 
@@ -203,18 +217,16 @@ One possible workflow is to run
 
 which will run `ic-ref` and restart upon file changes.  Similarly
 
-Developing on ic-ref-test
--------------------------
 
-Before running the test suite, make sure you have built the universal canister.
-The symbolic link in `impl/test-data/universal_canister.wasm` points to the
+For `ic-ref-test`, before running it, you make sure you have built the universal canister.
+
+The symbolic link in `test-data/universal_canister.wasm` points to the
 build output produced by
 
-    cd ../universal_canister
-    nix-shell
-    cargo build --target wasm32-unknown-unknown --release
+    cd universal_canister
+    nix-shell --command 'cargo build --target wasm32-unknown-unknown --release'
 
-now you can run the test suite from the `impl/` directory with
+You can now run the test suite from the top-level directory with
 
     cabal run ic-ref-test
 
