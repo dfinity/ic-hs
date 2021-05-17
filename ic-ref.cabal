@@ -2,7 +2,7 @@ cabal-version:       2.2
 name:                ic-hs
 version:             0.0.1
 author:              DFINITY
-license:             Apache
+license:             Other
 build-type:          Simple
 extra-source-files:  cbits/*.h ic.did
 
