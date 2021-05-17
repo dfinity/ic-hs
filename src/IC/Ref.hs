@@ -355,9 +355,9 @@ authReadStateRequest t ecid ev (ReadStateRequest user_id paths) = do
       ["time"] -> return ()
       ("subnet":_) -> return ()
       ("canister":cid:"module_hash":_) ->
-        assertEffeciveCaniserId ecid (EntityId cid)
+        assertEffectiveCanisterId ecid (EntityId cid)
       ("canister":cid:"controller":_) ->
-        assertEffeciveCaniserId ecid (EntityId cid)
+        assertEffectiveCanisterId ecid (EntityId cid)
       ("request_status" :rid: _) ->
         gets (findRequest rid) >>= \case
           Just (ar@(CallRequest cid _ meth arg),_) -> do
@@ -425,11 +425,11 @@ checkEffectiveCanisterID ecid cid method arg
         Left err ->
             throwError $ "call to management canister is not valid candid: " <> T.pack err
         Right r ->
-            assertEffeciveCaniserId ecid (principalToEntityId (r .! #canister_id))
-  | otherwise = assertEffeciveCaniserId ecid cid
+            assertEffectiveCanisterId ecid (principalToEntityId (r .! #canister_id))
+  | otherwise = assertEffectiveCanisterId ecid cid
 
-assertEffeciveCaniserId :: RequestValidation m => CanisterId -> CanisterId -> m ()
-assertEffeciveCaniserId ecid cid = do
+assertEffectiveCanisterId :: RequestValidation m => CanisterId -> CanisterId -> m ()
+assertEffectiveCanisterId ecid cid = do
   unless (ecid == cid) $ do
     throwError $ "expected effective canister_id " <> T.pack (prettyID cid) <> ", got " <> T.pack (prettyID ecid)
 
