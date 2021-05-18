@@ -86,16 +86,20 @@ common crypto
 
 common cbor
   hs-source-dirs:      src
+  other-modules:       IC.CBOR.Utils
   other-modules:       IC.HTTP.GenR
   other-modules:       IC.HTTP.CBOR
   other-modules:       IC.HTTP.GenR.Parse
   other-modules:       IC.HTTP.RequestId
   other-modules:       IC.Hash
   other-modules:       IC.Id.Forms
+  other-modules:       IC.Types
   build-depends:       base >=4.12 && <5
+  build-depends:       base32
   build-depends:       text
   build-depends:       bytestring
   build-depends:       containers
+  build-depends:       crc
   build-depends:       unordered-containers
   build-depends:       mtl
   build-depends:       cborg
