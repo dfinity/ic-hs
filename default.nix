@@ -284,6 +284,7 @@ rec {
       ic-ref
       ic-ref-dist
       ic-ref-test
+      ic-ref-coverage;
       universal-canister
       interface-spec
       check-generated
