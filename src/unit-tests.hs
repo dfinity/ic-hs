@@ -9,6 +9,7 @@ import System.IO
 import System.IO.Temp
 import System.Directory
 import qualified Data.Map as M
+import qualified Data.Set as S
 
 import qualified IC.Crypto.BLS as BLS
 import IC.Ref
@@ -67,7 +68,7 @@ tests = testGroup "ic-ref unit tests"
           ic <- peekStore store
           case M.elems (canisters ic) of
             [] -> assertFailure "No canisters created"
-            [CanState {controller}] -> controller @?= EntityId "yay"
+            [CanState {controllers}] -> controllers @?= S.singleton (EntityId "yay")
             _ -> assertFailure "Too many canisters?"
     ]
   ]

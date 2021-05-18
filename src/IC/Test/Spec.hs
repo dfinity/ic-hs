@@ -32,6 +32,7 @@ import qualified Data.ByteString.Builder as BS
 import qualified Data.HashMap.Lazy as HM
 import qualified Data.Map.Lazy as M
 import qualified Data.Set as S
+import qualified Data.Vector as Vec
 import Network.HTTP.Client
 import Network.HTTP.Client.TLS
 import Network.HTTP.Types
@@ -316,10 +317,10 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
         >>= isErrOrReject [3,5]
 
       step "Change controller"
-      ic_set_controller ic00 can_id otherUser
+      ic_set_controllers ic00 can_id [otherUser]
 
       step "Change controller (with wrong controller)"
-      ic_set_controller'' defaultUser can_id otherUser
+      ic_set_controllers'' defaultUser can_id [otherUser]
         >>= isErrOrReject [3,5]
 
       step "Reinstall as new controller"
@@ -337,7 +338,7 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
       cid <- create
       cs <- ic_canister_status ic00 cid
       cs .! #status @?= enum #running
-      cs .! #settings .! #controller @?= Principal defaultUser
+      cs .! #settings .! #controllers @?= Vec.fromList [Principal defaultUser]
       cs .! #module_hash @?= Nothing
 
       step "Install"
@@ -478,10 +479,10 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
     ic_install (ic00via cid) (enum #upgrade) can_id trivialWasmModule ""
 
     step "Change controller"
-    ic_set_controller (ic00via cid) can_id cid2
+    ic_set_controllers (ic00via cid) can_id [cid2]
 
     step "Change controller (with wrong controller)"
-    ic_set_controller' (ic00via cid) can_id cid2
+    ic_set_controllers' (ic00via cid) can_id [cid2]
       >>= isReject [3,5]
 
     step "Reinstall as new controller"
@@ -570,23 +571,75 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
     ]
 
   , testGroup "Settings"
-    [ testCase "Create with controller set (provisional)" $ do
-        cid <- ic_provisional_create ic00 Nothing (#controller .== Principal otherUser)
-        cs <- ic_canister_status (ic00as otherUser) cid
-        cs .! #settings .! #controller @?= Principal otherUser
-        ic_set_controller'' defaultUser cid defaultUser >>= isErrOrReject [3,5]
-        ic_set_controller (ic00as otherUser) cid defaultUser
-        cs <- ic_canister_status (ic00as defaultUser) cid
-        cs .! #settings .! #controller @?= Principal defaultUser
+    [ testGroup "Controllers"
+        [testCase "Multiple controllers (provisional)" $ do
+        let controllers = [Principal defaultUser, Principal otherUser]
+        cid <- ic_provisional_create ic00 Nothing (#controllers .== Vec.fromList controllers)
 
-    , simpleTestCase "Create with controller set (aaaaa-aa)" $ \cid -> do
-        cid2 <- ic_create (ic00viaWithCycles cid 20_000_000_000_000) empty
+        -- Controllers should be able to fetch the canister status.
+        cs <- ic_canister_status (ic00as defaultUser) cid
+        Vec.toList (cs .! #settings .! #controllers) `isSet` controllers
+        cs <- ic_canister_status (ic00as otherUser) cid
+        Vec.toList (cs .! #settings .! #controllers) `isSet` controllers
+
+        -- Non-controllers cannot fetch the canister status 
+        ic_canister_status'' ecdsaUser cid >>= isErrOrReject [3, 5]
+        ic_canister_status'' anonymousUser cid >>= isErrOrReject [3, 5]
+        ic_canister_status'' secp256k1User cid >>= isErrOrReject [3, 5]
+
+        -- Set new controller
+        ic_set_controllers (ic00as defaultUser) cid [ecdsaUser]
+
+        -- Only that controller can get canister status
+        ic_canister_status'' defaultUser cid >>= isErrOrReject [3, 5]
+        ic_canister_status'' otherUser cid >>= isErrOrReject [3, 5]
+        ic_canister_status'' anonymousUser cid >>= isErrOrReject [3, 5]
+        ic_canister_status'' secp256k1User cid >>= isErrOrReject [3, 5]
+        cs <- ic_canister_status (ic00as ecdsaUser) cid
+        cs .! #settings .! #controllers @?= Vec.fromList [Principal ecdsaUser]
+
+    , simpleTestCase "Multiple controllers (aaaaa-aa)" $ \cid -> do
+        let controllers = [Principal cid, Principal otherUser]
+        cid2 <- ic_create (ic00viaWithCycles cid 20_000_000_000_000) (#controllers .== Vec.fromList controllers)
+
+        -- Controllers should be able to fetch the canister status.
         cs <- ic_canister_status (ic00via cid) cid2
-        cs .! #settings .! #controller @?= Principal cid
-        ic_set_controller'' defaultUser cid2 defaultUser >>= isErrOrReject [3,5]
-        ic_set_controller (ic00via cid) cid2 defaultUser
-        cs <- ic_canister_status (ic00as defaultUser) cid2
-        cs .! #settings .! #controller @?= Principal defaultUser
+        Vec.toList (cs .! #settings .! #controllers) `isSet` controllers
+        cs <- ic_canister_status (ic00as otherUser) cid2
+        Vec.toList (cs .! #settings .! #controllers) `isSet` controllers
+
+        -- Set new controller
+        ic_set_controllers (ic00via cid) cid2 [ecdsaUser]
+
+        -- Only that controller can get canister status
+        ic_canister_status'' defaultUser cid2 >>= isErrOrReject [3, 5]
+        ic_canister_status'' otherUser cid2 >>= isErrOrReject [3, 5]
+        cs <- ic_canister_status (ic00as ecdsaUser) cid2
+        cs .! #settings .! #controllers @?= Vec.fromList [Principal ecdsaUser]
+
+    , simpleTestCase "> 10 controllers" $ \cid -> do
+        ic_create' (ic00via cid) (#controllers .== Vec.fromList (replicate 11 (Principal cid)))
+           >>= isReject [3,5]
+
+    , simpleTestCase "No controller" $ \cid -> do
+        cid2 <- ic_create (ic00viaWithCycles cid 20_000_000_000_000) (#controllers .== Vec.fromList [])
+        ic_canister_status'' defaultUser cid2 >>= isErrOrReject [3, 5]
+        ic_canister_status'' otherUser cid2 >>= isErrOrReject [3, 5]
+
+    , testCase "Controller is self" $ do
+        cid <- install noop
+        ic_set_controllers ic00 cid [cid] -- Set controller of cid to be itself
+
+        -- cid can now request its own status
+        cs <- ic_canister_status (ic00via cid) cid
+        cs .! #settings .! #controllers @?= Vec.fromList [Principal cid]
+
+    , testCase "Duplicate controllers" $ do
+        let controllers = [Principal defaultUser, Principal defaultUser, Principal otherUser]
+        cid <- ic_provisional_create ic00 Nothing (#controllers .== Vec.fromList controllers)
+        cs <- ic_canister_status (ic00as defaultUser) cid
+        Vec.toList (cs .! #settings .! #controllers) `isSet` controllers
+    ]
 
     , simpleTestCase "Valid allocations" $ \cid -> do
         cid2 <- ic_create (ic00viaWithCycles cid 20_000_000_000_000) $ empty
@@ -1266,12 +1319,12 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
       cid <- create
       cs <- ic_canister_status ic00 cid
       cs .! #status @?= enum #running
-      cs .! #settings .! #controller @?= Principal defaultUser
+      cs .! #settings .! #controllers @?= Vec.fromList [Principal defaultUser]
       cs .! #module_hash @?= Nothing
       ic_uninstall ic00 cid
       cs <- ic_canister_status ic00 cid
       cs .! #status @?= enum #running
-      cs .! #settings .! #controller @?= Principal defaultUser
+      cs .! #settings .! #controllers @?= Vec.fromList [Principal defaultUser]
       cs .! #module_hash @?= Nothing
 
     , testCase "uninstall as wrong user" $ do
@@ -1319,7 +1372,7 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
     , testCase "open call contexts are rejected" $ do
       cid1 <- install noop
       cid2 <- install noop
-      ic_set_controller ic00 cid1 cid2
+      ic_set_controllers ic00 cid1 [cid2]
       -- Step A: 2 calls 1
       -- Step B: 1 calls 2. Now 2 is waiting on a call from 1
       -- Step C: 2 uninstalls 1
@@ -1346,7 +1399,7 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
       -- contexts at 1 are indeed deleted
       cid1 <- install noop
       cid2 <- install noop
-      ic_set_controller ic00 cid1 cid2
+      ic_set_controllers ic00 cid1 [cid2]
       do call cid2 $ inter_update cid1 defArgs
           { other_side =
             inter_update cid2 defArgs
@@ -1377,7 +1430,7 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
       cid1 <- install noop
       cid2 <- install noop
       universal_wasm <- getTestWasm "universal_canister"
-      ic_set_controller ic00 cid1 cid2
+      ic_set_controllers ic00 cid1 [cid2]
       do call cid2 $ inter_update cid1 defArgs
           { other_side =
             inter_update cid2 defArgs
@@ -1495,19 +1548,29 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
 
     , testCase "controller of empty canister" $ do
         cid <- create
-        cert <- getStateCert defaultUser cid [["canister", cid, "controller"]]
-        certValue @Blob cert ["canister", cid, "controller"] >>= is defaultUser
+        cert <- getStateCert defaultUser cid [["canister", cid, "controllers"]]
+        certValue @Blob cert ["canister", cid, "controllers"] >>= asCBORBlobList >>= isSet [defaultUser]
 
     , testCase "module_hash of empty canister" $ do
         cid <- create
         cert <- getStateCert defaultUser cid [["canister", cid, "module_hash"]]
         lookupPath (cert_tree cert) ["canister", cid, "module_hash"] @?= Absent
 
-    , testCase "controller of installed canister" $ do
+    , testCase "single controller of installed canister" $ do
         cid <- install noop
         -- also vary user, just for good measure
-        cert <- getStateCert anonymousUser cid [["canister", cid, "controller"]]
-        certValue @Blob cert ["canister", cid, "controller"] >>= is defaultUser
+        cert <- getStateCert anonymousUser cid [["canister", cid, "controllers"]]
+        certValue @Blob cert ["canister", cid, "controllers"] >>= asCBORBlobList >>= isSet [defaultUser]
+
+    , testCase "multiple controllers of installed canister" $ do
+        cid <- ic_provisional_create ic00 Nothing (#controllers .== Vec.fromList [Principal defaultUser, Principal otherUser])
+        cert <- getStateCert defaultUser cid [["canister", cid, "controllers"]]
+        certValue @Blob cert ["canister", cid, "controllers"] >>= asCBORBlobList >>= isSet [defaultUser, otherUser]
+
+    , testCase "zero controllers of installed canister" $ do
+        cid <- ic_provisional_create ic00 Nothing (#controllers .== Vec.fromList [])
+        cert <- getStateCert defaultUser cid [["canister", cid, "controllers"]]
+        certValue @Blob cert ["canister", cid, "controllers"] >>= asCBORBlobList >>= isSet []
 
     , testCase "module_hash of empty canister" $ do
         cid <- install noop
@@ -2516,6 +2579,17 @@ okCBOR response = do
   code2xx response
   asRight $ decode $ responseBody response
 
+asCBORBlobList :: Blob -> IO [Blob]
+asCBORBlobList blob = do 
+    decoded <- asRight $ decode $ blob
+    case decoded of
+        GList list -> mapM cborToBlob list
+        _ -> assertFailure $ "Failed to decode as CBOR encoded list of blobs: " <> show decoded
+
+cborToBlob :: GenR -> IO Blob
+cborToBlob (GBlob blob) = return blob
+cborToBlob r = assertFailure $ "Expected blob, got " <> show r
+
 -- * Response predicates and parsers
 
 queryResponse :: GenR -> IO ReqResponse
@@ -2586,6 +2660,9 @@ runGet a b = case  Get.runGetOrFail (a <* done) b of
 
 is :: (HasCallStack, Eq a, Show a) => a -> a -> Assertion
 is exp act = act @?= exp
+
+isSet :: (HasCallStack, Ord a, Show a) => [a] -> [a] -> Assertion
+isSet exp act = S.fromList exp @?= S.fromList act
 
 data StatusResponse = StatusResponse
     { status_api_version :: T.Text
@@ -2712,11 +2789,11 @@ ic_uninstall ic00 canister_id = do
   callIC ic00 canister_id #uninstall_code $ empty
     .+ #canister_id .== Principal canister_id
 
-ic_set_controller :: HasTestConfig => IC00 -> Blob -> Blob -> IO ()
-ic_set_controller ic00 canister_id new_controller = do
+ic_set_controllers :: HasTestConfig => IC00 -> Blob -> [Blob] -> IO ()
+ic_set_controllers ic00 canister_id new_controllers = do
   callIC ic00 canister_id #update_settings $ empty
     .+ #canister_id .== Principal canister_id
-    .+ #settings .== fromPartialSettings (#controller .== Principal new_controller)
+    .+ #settings .== fromPartialSettings (#controllers .== Vec.fromList (map Principal new_controllers))
 
 ic_start_canister :: HasTestConfig => IC00 -> Blob -> IO ()
 ic_start_canister ic00 canister_id = do
@@ -2793,9 +2870,9 @@ ic_update_settings' ic00 canister_id r = do
     .+ #canister_id .== Principal canister_id
     .+ #settings .== fromPartialSettings r
 
-ic_set_controller' :: HasTestConfig => IC00 -> Blob -> Blob -> IO ReqResponse
-ic_set_controller' ic00 canister_id new_controller = do
-  ic_update_settings' ic00 canister_id (#controller .== Principal new_controller)
+ic_set_controllers' :: HasTestConfig => IC00 -> Blob -> [Blob] -> IO ReqResponse
+ic_set_controllers' ic00 canister_id new_controllers = do
+  ic_update_settings' ic00 canister_id (#controllers .== Vec.fromList (map Principal new_controllers))
 
 ic_delete_canister' :: HasTestConfig => IC00 -> Blob -> IO ReqResponse
 ic_delete_canister' ic00 canister_id = do
@@ -2838,12 +2915,11 @@ ic_uninstall'' user canister_id =
   callIC'' user canister_id #uninstall_code $ empty
     .+ #canister_id .== Principal canister_id
 
-
-ic_set_controller'' :: HasTestConfig => Blob -> Blob -> Blob -> IO HTTPErrOrReqResponse
-ic_set_controller'' user canister_id new_controller = do
+ic_set_controllers'' :: HasTestConfig => Blob -> Blob -> [Blob] -> IO HTTPErrOrReqResponse
+ic_set_controllers'' user canister_id new_controllers = do
   callIC'' user canister_id #update_settings $ empty
     .+ #canister_id .== Principal canister_id
-    .+ #settings .== fromPartialSettings (#controller .== Principal new_controller)
+    .+ #settings .== fromPartialSettings (#controllers .== Vec.fromList (map Principal new_controllers))
 
 ic_start_canister'' :: HasTestConfig => Blob -> Blob -> IO HTTPErrOrReqResponse
 ic_start_canister'' user canister_id = do

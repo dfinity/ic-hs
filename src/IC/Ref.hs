@@ -54,6 +54,9 @@ import qualified Data.Row as R
 import qualified Data.Row.Variants as V
 import qualified Data.ByteString.Lazy as BS
 import qualified Data.Text as T
+import qualified Data.Vector as Vec
+import qualified Data.Set as S
+import Data.List
 import Data.Maybe
 import Numeric.Natural
 import Data.Functor
@@ -69,6 +72,7 @@ import GHC.Stack
 import IC.Types
 import IC.Constants
 import IC.Canister
+import IC.CBOR.Utils
 import IC.Id.Fresh
 import IC.Utils
 import IC.Management
@@ -123,7 +127,7 @@ data CanisterContent = CanisterContent
 data CanState = CanState
   { content :: Maybe CanisterContent -- absent when empty
   , run_status :: RunStatus
-  , controller :: EntityId
+  , controllers :: S.Set EntityId
   , memory_allocation :: Natural
   , compute_allocation :: Natural
   , freezing_threshold :: Natural
@@ -216,14 +220,14 @@ callerOfRequest rid = gets (M.lookup rid . requests) >>= \case
 
 -- Canister handling
 
-createEmptyCanister :: ICM m => CanisterId -> EntityId -> Timestamp -> m ()
-createEmptyCanister cid controller time = modify $ \ic ->
+createEmptyCanister :: ICM m => CanisterId -> S.Set EntityId -> Timestamp -> m ()
+createEmptyCanister cid controllers time = modify $ \ic ->
     ic { canisters = M.insert cid can (canisters ic) }
   where
     can = CanState
       { content = Nothing
       , run_status = IsRunning
-      , controller = controller
+      , controllers = controllers
       , memory_allocation = 0
       , compute_allocation = 0
       , freezing_threshold = 2592000
@@ -271,12 +275,12 @@ setCanisterState :: ICM m => CanisterId -> WasmState -> m ()
 setCanisterState cid wasm_state = modCanisterContent cid $
     \cs -> cs { wasm_state = wasm_state }
 
-getController :: ICM m => CanisterId -> m EntityId
-getController cid = controller <$> getCanister cid
+getControllers :: ICM m => CanisterId -> m (S.Set EntityId)
+getControllers cid = controllers <$> getCanister cid
 
-setController :: ICM m => CanisterId -> EntityId -> m ()
-setController cid controller = modCanister cid $
-    \cs -> cs { controller = controller }
+setControllers :: ICM m => CanisterId -> (S.Set EntityId) -> m ()
+setControllers cid controllers = modCanister cid $
+    \cs -> cs { controllers = controllers }
 
 setComputeAllocation :: ICM m => CanisterId -> Natural -> m ()
 setComputeAllocation cid n = modCanister cid $
@@ -356,7 +360,7 @@ authReadStateRequest t ecid ev (ReadStateRequest user_id paths) = do
       ("subnet":_) -> return ()
       ("canister":cid:"module_hash":_) ->
         assertEffectiveCanisterId ecid (EntityId cid)
-      ("canister":cid:"controller":_) ->
+      ("canister":cid:"controllers":_) ->
         assertEffectiveCanisterId ecid (EntityId cid)
       ("request_status" :rid: _) ->
         gets (findRequest rid) >>= \case
@@ -447,8 +451,8 @@ inspectIngress (CallRequest canister_id user_id method arg)
             let canister_id = principalToEntityId $ r .! #canister_id
             onReject (throwError . T.pack . snd) $
                 canisterMustExist canister_id
-            controller <- getController canister_id
-            unless (controller == user_id) $
+            controllers <- getControllers canister_id
+            unless (user_id `S.member` controllers) $
                 throwError "Wrong sender"
       | otherwise
       -> throwError $ "Unknown management method " <> T.pack method
@@ -493,7 +497,7 @@ stateTree (Timestamp t) ic = node
   , "canister" =: node
     [ cid =: node (
       [ "certified_data" =: val (certified_data cs)
-      , "controller" =: val (rawEntityId (controller cs))
+      , "controllers" =: val (encodePrincipalList (S.toList (controllers cs)))
       ] ++
       [ "module_hash" =: val h | Just h <- pure $ module_hash cs ]
     )
@@ -824,7 +828,7 @@ icCreateCanisterCommon :: (ICM m, CanReject m) => EntityId -> Natural -> m Entit
 icCreateCanisterCommon controller amount = do
     new_id <- gets (freshId . M.keys . canisters)
     let currentTime = 0 -- ic-ref lives in the 70ies
-    createEmptyCanister new_id controller currentTime
+    createEmptyCanister new_id (S.singleton controller) currentTime
     -- Here we fill up the canister with the cycles provided by the caller
     setBalance new_id amount
     return new_id
@@ -840,10 +844,13 @@ validateSettings r = do
     forM_ (r .! #freezing_threshold) $ \n -> do
         unless (n < 2^(64::Int)) $
             reject RC_SYS_FATAL  "Memory allocation not < 2^64"
+    forM_ (r .! #controllers) $ \n -> do
+        unless (length n <= 10) $
+            reject RC_SYS_FATAL  "Controllers cannot be > 10"
 
 applySettings :: ICM m => EntityId -> Settings -> m ()
 applySettings cid r = do
-    forM_ (r .! #controller) $ setController cid . principalToEntityId
+    forM_ (r .! #controllers) $ setControllers cid . S.fromList . map principalToEntityId . Vec.toList
     forM_ (r .! #compute_allocation) $ setComputeAllocation cid
     forM_ (r .! #memory_allocation) $ setMemoryAllocation cid
     forM_ (r .! #freezing_threshold) $ setFreezingThreshold cid
@@ -854,12 +861,12 @@ onlyController ::
 onlyController caller act r = do
     let canister_id = principalToEntityId (r .! #canister_id)
     canisterMustExist canister_id
-    controller <- getController canister_id
-    if controller == caller
+    controllers <- getControllers canister_id
+    if caller `S.member` controllers
     then act r
     else reject RC_SYS_FATAL $
         prettyID caller <> " is not authorized to manage canister " <>
-        prettyID canister_id <> ", only " <> prettyID controller <> " is"
+        prettyID canister_id <> ", Controllers are: " <> intercalate ", " (map prettyID (S.toList controllers))
 
 icInstallCode :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "install_code"
 icInstallCode caller r = do
@@ -977,7 +984,7 @@ icCanisterStatus r = do
     return $ R.empty
       .+ #status .== s
       .+ #settings .== (R.empty
-        .+ #controller .== entityIdToPrincipal (controller can_state)
+        .+ #controllers .== Vec.fromList (map entityIdToPrincipal (S.toList (controllers can_state)))
         .+ #memory_allocation .== memory_allocation can_state
         .+ #compute_allocation .== compute_allocation can_state
         .+ #freezing_threshold .== freezing_threshold can_state
