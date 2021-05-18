@@ -582,7 +582,7 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
         cs <- ic_canister_status (ic00as otherUser) cid
         Vec.toList (cs .! #settings .! #controllers) `isSet` controllers
 
-        -- Non-controllers cannot fetch the canister status 
+        -- Non-controllers cannot fetch the canister status
         ic_canister_status'' ecdsaUser cid >>= isErrOrReject [3, 5]
         ic_canister_status'' anonymousUser cid >>= isErrOrReject [3, 5]
         ic_canister_status'' secp256k1User cid >>= isErrOrReject [3, 5]
@@ -618,7 +618,7 @@ icTests = withTestConfig $ testGroup "Interface Spec acceptance tests"
         cs .! #settings .! #controllers @?= Vec.fromList [Principal ecdsaUser]
 
     , simpleTestCase "> 10 controllers" $ \cid -> do
-        ic_create' (ic00via cid) (#controllers .== Vec.fromList (replicate 11 (Principal cid)))
+        ic_create' (ic00viaWithCycles cid 20_000_000_000_000) (#controllers .== Vec.fromList (replicate 11 (Principal cid)))
            >>= isReject [3,5]
 
     , simpleTestCase "No controller" $ \cid -> do
