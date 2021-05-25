@@ -52,6 +52,9 @@ let
 # On hydra, checkouts are always clean, and we don't want to do IFD
   isHydra = (builtins.tryEval <src>).success;
   not_dot_git = p: t: !(has_suffix ".git" p);
+
+# Stable name even when subdir == /
+  nameFor = subdir: if (subdir == "/") then "src" else baseNameOf (toString subdir);
 in
 
 # unfortunately this is not completely self-contained,
@@ -93,7 +96,7 @@ then
     filter = filter_from_list ../. whitelist;
   in
     subdir: nixpkgs.lib.cleanSourceWith {
-      name = baseNameOf (toString subdir);
+      name = nameFor subdir;
       src = if isString subdir then (../. + "/${subdir}") else subdir;
       filter = filter;
     }
@@ -108,7 +111,7 @@ else
     (isHydra || has_prefix "/nix/store" (toString ../.))
     "gitSource.nix: ${toString ../.} does not seem to be a git repository,\nassuming it is a clean checkout."
     (subdir: nixpkgs.lib.cleanSourceWith {
-      name = baseNameOf (toString subdir);
+      name = nameFor subdir;
       src = if isString subdir then (../. + "/${subdir}") else subdir;
       filter = not_dot_git;
     })
