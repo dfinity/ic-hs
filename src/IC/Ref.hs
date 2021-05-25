@@ -37,7 +37,9 @@ module IC.Ref
   , handleReadState
   , runStep
   , runToCompletion
+  -- $ Exported for use as a library, e.g. in testing
   , setAllTimesTo
+  , createEmptyCanister
   -- $ Exported merely for debug introspection
   , CallContext(..)
   , Message(..)
