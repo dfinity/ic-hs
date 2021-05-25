@@ -116,7 +116,7 @@ handle store req respond = case (requestMethod req, pathInfo req) of
 
     invalidRequest msg = do
         when False $ print (T.unpack msg)
-        -- ^ When testing against dfx, and until it prints error messages
+        -- When testing against dfx, and until it prints error messages
         -- this can be enabled
         plain status400 (T.encodeUtf8Builder msg)
 
