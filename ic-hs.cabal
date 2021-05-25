@@ -395,7 +395,6 @@ test-suite unit-test
   build-depends: mtl
   build-depends: parallel
   build-depends: primitive
-  build-depends: QuickCheck
   build-depends: quickcheck-io
   build-depends: random >= 1.2
   build-depends: row-types
@@ -498,7 +497,6 @@ library
   build-depends: prettyprinter
   build-depends: primitive
   build-depends: process
-  build-depends: QuickCheck
   build-depends: quickcheck-io
   build-depends: random
   build-depends: random >= 1.2

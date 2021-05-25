@@ -37,7 +37,6 @@
 , prettyprinter
 , primitive
 , process
-, QuickCheck
 , quickcheck-io
 , random
 , row-types
@@ -107,7 +106,6 @@ mkDerivation {
     prettyprinter
     primitive
     process
-    QuickCheck
     quickcheck-io
     random
     row-types
@@ -221,7 +219,6 @@ mkDerivation {
     mtl
     parallel
     primitive
-    QuickCheck
     quickcheck-io
     random
     row-types
