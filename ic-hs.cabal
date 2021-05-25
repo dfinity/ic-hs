@@ -323,6 +323,7 @@ executable ic-ref-test
   other-modules: IC.HTTP.RequestId
   other-modules: IC.Id.Forms
   other-modules: IC.Management
+  other-modules: IC.Test.Agent
   other-modules: IC.Test.Options
   other-modules: IC.Test.Spec
   other-modules: IC.Test.Universal
@@ -564,6 +565,7 @@ library
   exposed-modules: IC.Ref
   exposed-modules: IC.Serialise
   exposed-modules: IC.StateFile
+  exposed-modules: IC.Test.Agent
   exposed-modules: IC.Test.BLS
   exposed-modules: IC.Test.ECDSA
   exposed-modules: IC.Test.HashTree
