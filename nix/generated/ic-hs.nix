@@ -70,8 +70,70 @@ mkDerivation {
   version = "0.0.1";
   src = pkgs.lib.sourceByRegex (pkgs.subpath "/") [ "^src.*" "^ic-hs.cabal" "^cbits.*" "^LICENSE" "^ic.did" ];
   configureFlags = [ "-frelease" ];
-  isLibrary = false;
+  isLibrary = true;
   isExecutable = true;
+  libraryHaskellDepends = [
+    aeson
+    asn1-encoding
+    asn1-types
+    atomic-write
+    base
+    base32
+    base64-bytestring
+    binary
+    bindings-DSL
+    bytestring
+    candid
+    cborg
+    cereal
+    containers
+    crc
+    cryptonite
+    data-default-class
+    directory
+    ed25519
+    filepath
+    hashable
+    hex-text
+    http-client
+    http-client-tls
+    http-types
+    leb128-cereal
+    memory
+    MonadRandom
+    mtl
+    optparse-applicative
+    parallel
+    prettyprinter
+    primitive
+    process
+    QuickCheck
+    quickcheck-io
+    random
+    row-types
+    serialise
+    split
+    splitmix
+    tasty
+    tasty-ant-xml
+    tasty-html
+    tasty-hunit
+    tasty-quickcheck
+    tasty-rerun
+    template-haskell
+    temporary
+    text
+    time
+    transformers
+    unordered-containers
+    utf8-string
+    vector
+    wai
+    wai-extra
+    warp
+    winter
+    zlib
+  ];
   executableHaskellDepends = [
     aeson
     asn1-encoding
