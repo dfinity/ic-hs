@@ -36,4 +36,4 @@ jobs:
       with:
         BRANCH: gh-pages
         FOLDER: gh-page
-        SINGLE_COMMIT: true
+        SINGLE-COMMIT: true
