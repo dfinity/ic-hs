@@ -97,6 +97,8 @@ let
           muslHaskellPackages.ic-hs.overrideAttrs (
             old: {
               configureFlags = [
+                "-frelease"
+                "-f-library"
                 "--ghc-option=-optl=-static"
                 "--extra-lib-dirs=${nixpkgs.pkgsMusl.zlib.static}/lib"
                 "--extra-lib-dirs=${nixpkgs.pkgsMusl.libffi.overrideAttrs (old: { dontDisableStatic = true; })}/lib"

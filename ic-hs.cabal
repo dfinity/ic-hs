@@ -11,6 +11,10 @@ flag release
   default: False
   description: Release build, warnings are errors
 
+flag library
+  default: True
+  description: Build library (useful to disable in musl builds)
+
 -- NB: It might look odd that we are replicating the module lists between
 -- the various executables and the library.
 --
@@ -463,6 +467,10 @@ test-suite unit-test
 
 library
   import: cbits, ghc-flags
+
+  if !flag(library)
+    buildable: False
+
   build-depends: aeson
   build-depends: asn1-encoding
   build-depends: asn1-types
