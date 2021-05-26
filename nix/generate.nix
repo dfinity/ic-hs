@@ -92,7 +92,7 @@ let
     ) + ''
       chmod u+w $out/*.nix
       nixpkgs-fmt $out/*.nix
-      echo <<__END__ > $out/README.md
+      cat <<__END__ > $out/README.md
       The contents of this directory are automatically generated.
       To update, please run nix-shell generate.nix
       __END__
