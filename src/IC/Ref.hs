@@ -578,9 +578,8 @@ submitRequest rid r = modify $ \ic ->
 -- | Eventually, they are processed
 
 processRequest :: ICM m => (RequestID, CallRequest) -> m ()
-processRequest (rid, req) = onReject (setReqStatus rid . CallResponse .  Rejected) $
-  case req of
-  CallRequest canister_id _user_id method arg -> do
+processRequest (rid, CallRequest canister_id _user_id method arg) =
+  onReject (setReqStatus rid . CallResponse .  Rejected) $ do
     ctxt_id <- newCallContext $ CallContext
       { canister = canister_id
       , origin = FromUser rid
