@@ -16,3 +16,6 @@ jobs:
     - run: nix-build -A ic-hs-coverage
     - run: nix-build -A coverage
     - run: nix-build -A check-generated
+    - run: nix-build -A ic-ref-dist
+    # now the rest
+    - run: nix-build
