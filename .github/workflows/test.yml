@@ -11,11 +11,15 @@ jobs:
       with:
         name: ic-hs-test
         authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+    # until https://github.com/cachix/cachix-action/issues/86 is fixed:
+    - run: cachix watch-store ic-hs-test
+
     - run: nix-build -A universal-canister
     - run: nix-build -A ic-hs
     - run: nix-build -A ic-hs-coverage
     - run: nix-build -A coverage
     - run: nix-build -A check-generated
     - run: nix-build -A ic-ref-dist
+    - run: nix-build -A ic-ref-test
     # now the rest
     - run: nix-build
