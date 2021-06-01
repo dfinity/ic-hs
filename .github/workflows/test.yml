@@ -19,7 +19,9 @@ jobs:
     - run: nix-build -A ic-hs-coverage
     - run: nix-build -A coverage
     - run: nix-build -A check-generated
+    - run: nix-build -A check-cabal-freeze
     - run: nix-build -A ic-ref-dist
     - run: nix-build -A ic-ref-test
+    - run: nix-build -A ic-hs-shell
     # now the rest
     - run: nix-build
