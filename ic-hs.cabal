@@ -119,6 +119,7 @@ executable ic-ref
   build-depends: wai-extra
   build-depends: warp
   build-depends: winter
+  build-depends: uglymemo
   build-depends: zlib
   other-modules: IC.Canister
   other-modules: IC.Canister.Imp
@@ -211,6 +212,7 @@ executable ic-ref-run
   build-depends: utf8-string
   build-depends: vector
   build-depends: winter
+  build-depends: uglymemo
   other-modules: IC.Canister
   other-modules: IC.Canister.Imp
   other-modules: IC.Canister.Snapshot
@@ -417,6 +419,7 @@ test-suite unit-test
   build-depends: utf8-string
   build-depends: vector
   build-depends: winter
+  build-depends: uglymemo
   build-depends: zlib
   other-modules: IC.Canister
   other-modules: IC.Canister.Imp
@@ -532,6 +535,7 @@ library
   build-depends: wai-extra
   build-depends: warp
   build-depends: winter
+  build-depends: uglymemo
   build-depends: zlib
   exposed-modules: IC.Canister
   exposed-modules: IC.Canister.Imp

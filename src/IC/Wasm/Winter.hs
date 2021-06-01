@@ -39,6 +39,7 @@ import Data.Binary.Get (runGetOrFail)
 import Data.Default.Class (Default (..))
 import Data.Int
 import Data.Foldable
+import Data.MemoUgly
 
 import qualified Wasm.Binary.Decode as W
 import qualified Wasm.Exec.Eval as W
@@ -64,8 +65,12 @@ type Imports s = [Import s]
 
 type Module = W.Module W.Phrase
 
+-- This function is memoized using Data.MemoUgly. This optimizes for workloads
+-- where the same module is parsed many times (ic-ref-test). It is wasteful when
+-- a module is parsed, eventually dropped (i.e. canister deleted), and never installed
+-- again.
 parseModule :: BS.ByteString -> Either String Module
-parseModule bytes = case runGetOrFail W.getModule bytes of
+parseModule = memo $ \bytes -> case runGetOrFail W.getModule bytes of
   Left  (_,_,err) -> Left err
   Right (_,_,wasm_mod) -> Right wasm_mod
 
