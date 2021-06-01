@@ -55,6 +55,7 @@
 , text
 , time
 , transformers
+, uglymemo
 , unordered-containers
 , utf8-string
 , vector
@@ -123,6 +124,7 @@ mkDerivation {
     text
     time
     transformers
+    uglymemo
     unordered-containers
     utf8-string
     vector
@@ -181,6 +183,7 @@ mkDerivation {
     text
     time
     transformers
+    uglymemo
     unordered-containers
     utf8-string
     vector
@@ -232,6 +235,7 @@ mkDerivation {
     text
     time
     transformers
+    uglymemo
     unordered-containers
     utf8-string
     vector

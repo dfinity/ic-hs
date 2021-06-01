@@ -219,7 +219,7 @@ rec {
       phases = [ "unpackPhase" "setupCompilerEnvironmentPhase" "buildPhase" "installPhase" ];
       buildPhase = ''
         cd $packageConfDir
-        ! grep -i '^license:' *.conf | grep -v 'BSD\|Apache\|MIT\|ISC'
+        ! grep -i '^license:' *.conf | grep -v 'BSD\|Apache\|MIT\|ISC\|PublicDomain'
       '';
       outputs = ["out"]; # no docs
       installPhase = ''
