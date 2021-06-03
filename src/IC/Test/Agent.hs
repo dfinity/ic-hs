@@ -172,6 +172,7 @@ ecdsaUser :: Blob
 ecdsaUser = mkSelfAuthenticatingId $ toPublicKey ecdsaSK
 secp256k1User :: Blob
 secp256k1User = mkSelfAuthenticatingId $ toPublicKey secp256k1SK
+
 anonymousUser :: Blob
 anonymousUser = "\x04"
 
