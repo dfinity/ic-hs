@@ -958,16 +958,16 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     , simpleTestCase "in update" $ \cid ->
       query cid (replyData getTimeTwice) >>= as2Word64 >>= bothSame
     , testCase "in install" $ do
-      cid <- install $ setGlobal (getTimeTwice)
+      cid <- install $ setGlobal getTimeTwice
       query cid (replyData getGlobal) >>= as2Word64 >>= bothSame
     , testCase "in pre_upgrade" $ do
       cid <- install $
         ignore (stableGrow (int 1)) >>>
-        onPreUpgrade (callback $ stableWrite (int 0) (getTimeTwice))
+        onPreUpgrade (callback $ stableWrite (int 0) getTimeTwice)
       upgrade cid noop
       query cid (replyData (stableRead (int 0) (int (2*8)))) >>= as2Word64 >>= bothSame
     , simpleTestCase "in post_upgrade" $ \cid -> do
-      upgrade cid $ setGlobal (getTimeTwice)
+      upgrade cid $ setGlobal getTimeTwice
       query cid (replyData getGlobal) >>= as2Word64 >>= bothSame
     ]
 
