@@ -3,7 +3,13 @@ on:
   push:
 jobs:
   test:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os:
+        - ubuntu-latest
+        - macos-latest
+        # TODO: - windows-latest
+    runs-on: ${{ matrix.os }}
     steps:
     - uses: actions/checkout@v2
     - uses: cachix/install-nix-action@v13
