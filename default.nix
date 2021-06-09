@@ -137,7 +137,7 @@ rec {
       sleep 1
       test -e port
       mkdir -p $out
-      LANG=C.UTF8 ic-ref-test --endpoint "http://0.0.0.0:$(cat port)/" --html $out/report.html
+      LANG=C.UTF8 ic-ref-test --endpoint "http://0.0.0.0:$(cat port)/" --html $out/report.html --xml $out/report.xml
 
       mkdir -p $out/nix-support
       echo "report test-results $out report.html" >> $out/nix-support/hydra-build-products
