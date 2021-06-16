@@ -41,7 +41,7 @@ createSecretKeyEd25519 :: BS.ByteString -> SecretKey
 createSecretKeyEd25519 = Ed25519 . Ed25519.createKey
 
 createSecretKeyWebAuthn :: BS.ByteString -> SecretKey
-createSecretKeyWebAuthn = WebAuthn . WebAuthn.createKey
+createSecretKeyWebAuthn = WebAuthn . WebAuthn.createECDSAKey
 
 createSecretKeyECDSA :: BS.ByteString -> SecretKey
 createSecretKeyECDSA = ECDSA . ECDSA.createKey

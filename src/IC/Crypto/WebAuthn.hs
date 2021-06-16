@@ -11,6 +11,7 @@ module IC.Crypto.WebAuthn
  ( init
  , SecretKey
  , createECDSAKey
+ , createRSAKey
  , toPublicKey
  , sign
  , verify
@@ -36,9 +37,11 @@ import Control.Monad.Except
 import qualified Crypto.PubKey.ECC.ECDSA as EC
 import qualified Crypto.PubKey.ECC.Generate as EC
 import qualified Crypto.PubKey.ECC.Types as EC
+import qualified Crypto.PubKey.RSA as RSA (generate)
 import qualified Crypto.PubKey.RSA.PKCS15 as RSA
 import qualified Crypto.PubKey.RSA.Types as RSA
 import qualified Crypto.Number.Serialize as EC
+import Crypto.Random (withDRG, drgNewSeed, seedFromInteger)
 import Crypto.Hash.Algorithms (SHA256(..))
 import Data.ASN1.Types
 import Data.ASN1.Encoding
@@ -107,8 +110,8 @@ parseCOSEKey s = do
     keyVal (TInteger k,v) = pure (k,v)
     keyVal _ = throwError "Non-integer key in CBOR map"
 
-genCOSEKey :: EC.PublicKey -> BS.ByteString
-genCOSEKey (EC.PublicKey _curve (EC.Point x y)) =
+genCOSEECDSAKey :: EC.PublicKey -> BS.ByteString
+genCOSEECDSAKey (EC.PublicKey _curve (EC.Point x y)) =
   toLazyByteString $ encodeTerm $ TMap
     [ (TInt 1, TInt 2)
     , (TInt 3, TInt (-7))
@@ -116,9 +119,16 @@ genCOSEKey (EC.PublicKey _curve (EC.Point x y)) =
     , (TInt (-2), TBytes (EC.i2ospOf_ 32 x))
     , (TInt (-3), TBytes (EC.i2ospOf_ 32 y))
     ]
-genCOSEKey (EC.PublicKey _ EC.PointO) = error "genCOSEKey: Point at infinity"
+genCOSEECDSAKey (EC.PublicKey _ EC.PointO) = error "genCOSEKey: Point at infinity"
 
-
+genCOSERSAKey :: RSA.PublicKey -> BS.ByteString
+genCOSERSAKey (RSA.PublicKey keyLength n e) =
+  toLazyByteString $ encodeTerm $ TMap
+    [ (TInt 1, TInt 3)
+    , (TInt 3, TInt (-257))
+    , (TInt (-1), TBytes (EC.i2ospOf_ keyLength n))
+    , (TInt (-2), TBytes (EC.i2ospOf_ keyLength e))
+    ]
 
 parseCOSESig :: BS.ByteString -> Either T.Text EC.Signature
 parseCOSESig s =
@@ -126,9 +136,13 @@ parseCOSESig s =
     [Start Sequence,IntVal r,IntVal s,End Sequence] -> pure $ EC.Signature r s
     a -> throwError $ "Unexpected DER encoding for COSE sig: " <> T.pack (show a)
 
-genCOSESig :: EC.Signature -> BS.ByteString
-genCOSESig (EC.Signature r s) = encodeASN1 DER
+genCOSEECDSASig :: EC.Signature -> BS.ByteString
+genCOSEECDSASig (EC.Signature r s) = encodeASN1 DER
     [Start Sequence,IntVal r,IntVal s,End Sequence]
+
+-- genCOSERSASig :: BS.ByteString -> BS.ByteString
+-- genCOSERSASig sig = encodeASN1 DER
+--     [Start Sequence,_x sig,End Sequence]
 
 data SecretKey = ECDSASecretKey EC.PrivateKey EC.PublicKey
                | RSASecretKey RSA.PrivateKey
@@ -145,16 +159,31 @@ createECDSAKey seed =
     d = fromIntegral (hash seed) `mod` (n-2) + 1
     q = EC.generateQ curve d
 
+createRSAKey :: BS.ByteString -> SecretKey
+createRSAKey seed =
+  RSASecretKey $ snd $ fst $ withDRG drg (RSA.generate 256 3)
+  where
+    drg = drgNewSeed $ seedFromInteger $ fromIntegral $ hash seed
+
 toPublicKey :: SecretKey -> BS.ByteString
-toPublicKey (SecretKey _ pk) = genCOSEKey pk
+toPublicKey key = case key of
+  (ECDSASecretKey _ pk) -> genCOSEECDSAKey pk
+  (RSASecretKey pk) -> genCOSERSAKey (RSA.private_pub pk)
 
 
 sign :: SecretKey -> BS.ByteString -> IO BS.ByteString
-sign (SecretKey sk _) msg = do
+sign (ECDSASecretKey sk _) msg = do
   let cdj = genClientDataJson msg
   let ad = "arbitrary?"
   sig <- EC.sign sk SHA256 (BS.toStrict (ad <> sha256 cdj))
-  return $ genSig (ad, cdj, genCOSESig sig)
+  return $ genSig (ad, cdj, genCOSEECDSASig sig)
+sign (RSASecretKey pk) msg = do
+  let cdj = genClientDataJson msg
+  let ad = "arbitrary?"
+  case RSA.sign Nothing (Just SHA256) pk (BS.toStrict (ad <> sha256 cdj)) of
+    Left err -> error (show err)
+    Right sig ->
+      return $ genSig (ad, cdj, BS.fromStrict sig)
 
 verify :: BS.ByteString -> BS.ByteString -> BS.ByteString -> Either T.Text ()
 verify pk msg sig = do
