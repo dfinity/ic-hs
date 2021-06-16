@@ -38,6 +38,7 @@ let
               then flag + ",wasm32-unknown-unknown"
               else flag
             );
+            RUSTFLAGS = old.RUSTFLAGS + " -A broken_intra_doc_links";
           });
 
           all-cabal-hashes = self.fetchurl {
