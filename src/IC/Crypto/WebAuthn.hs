@@ -10,7 +10,7 @@ nesting of CBOR, DER and JSON…
 module IC.Crypto.WebAuthn
  ( init
  , SecretKey
- , createKey
+ , createECDSAKey
  , toPublicKey
  , sign
  , verify
@@ -36,6 +36,8 @@ import Control.Monad.Except
 import qualified Crypto.PubKey.ECC.ECDSA as EC
 import qualified Crypto.PubKey.ECC.Generate as EC
 import qualified Crypto.PubKey.ECC.Types as EC
+import qualified Crypto.PubKey.RSA.PKCS15 as RSA
+import qualified Crypto.PubKey.RSA.Types as RSA
 import qualified Crypto.Number.Serialize as EC
 import Crypto.Hash.Algorithms (SHA256(..))
 import Data.ASN1.Types
@@ -128,15 +130,16 @@ genCOSESig :: EC.Signature -> BS.ByteString
 genCOSESig (EC.Signature r s) = encodeASN1 DER
     [Start Sequence,IntVal r,IntVal s,End Sequence]
 
-data SecretKey = SecretKey EC.PrivateKey EC.PublicKey
+data SecretKey = ECDSASecretKey EC.PrivateKey EC.PublicKey
+               | RSASecretKey RSA.PrivateKey
   deriving Show
 
 curve :: EC.Curve
 curve = EC.getCurveByName EC.SEC_p256r1
 
-createKey :: BS.ByteString -> SecretKey
-createKey seed =
-    SecretKey (EC.PrivateKey curve d) (EC.PublicKey curve q)
+createECDSAKey :: BS.ByteString -> SecretKey
+createECDSAKey seed =
+    ECDSASecretKey (EC.PrivateKey curve d) (EC.PublicKey curve q)
   where
     n = EC.ecc_n $ EC.common_curve curve
     d = fromIntegral (hash seed) `mod` (n-2) + 1
