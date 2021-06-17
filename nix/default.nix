@@ -29,18 +29,6 @@ let
 
           subpath = import ./gitSource.nix;
 
-          # nixpkgs's rustc does not inclue the wasm32-unknown-unknown target, so
-          # lets add it here. With this we can build the universal canister with stock
-          # nixpkgs + naersk, in particular no dependency on internal repositories.
-          rustc = super.rustc.overrideAttrs (old: {
-            configureFlags = self.lib.lists.forEach old.configureFlags (flag:
-              if self.lib.strings.hasPrefix "--target=" flag
-              then flag + ",wasm32-unknown-unknown"
-              else flag
-            );
-            RUSTFLAGS = old.RUSTFLAGS + " -A broken_intra_doc_links";
-          });
-
           all-cabal-hashes = self.fetchurl {
             url = "https://github.com/commercialhaskell/all-cabal-hashes/archive/f18d8ab7adfbd15acfc5e994dfb973577a5aba5c.tar.gz";
             sha256 = "0kn2wqilpw0nyx54jyz4vp7xrx1893zdv7d54yi9pjl677pnwcs9";

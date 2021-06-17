@@ -6,10 +6,10 @@
         "homepage": null,
         "owner": "nomeata",
         "repo": "haskell-candid",
-        "rev": "26b6aacbe04fa59b977a0e8e3038e9ddb8f5196c",
-        "sha256": "0fx11q57q90f20akx5r3mizd0n326p293km69vr9kd43ab9vbxqv",
+        "rev": "032a4fbc89039857270908766a5949018c4fbc5e",
+        "sha256": "1v5fgvx4y454lh62zbccxbzhxlrzfqq6np9macfz4a79lhl8d0cy",
         "type": "tarball",
-        "url": "https://github.com/nomeata/haskell-candid/archive/26b6aacbe04fa59b977a0e8e3038e9ddb8f5196c.tar.gz",
+        "url": "https://github.com/nomeata/haskell-candid/archive/032a4fbc89039857270908766a5949018c4fbc5e.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "leb128-cereal": {
@@ -58,10 +58,10 @@
         "homepage": "https://github.com/dfinity-side-projects/winter",
         "owner": "dfinity-side-projects",
         "repo": "winter",
-        "rev": "2cc31576fe029d85c37d21fc9ea4902c5c64b5a9",
-        "sha256": "1mwjvk1a1qi7vw10pmq91psn2glsc25c1smbbxjmf6k767v1l0vf",
+        "rev": "e62722796e11760947a94285734e7bc29d72c389",
+        "sha256": "1yfgk5bhyzrllnkhpg1plzp3mz7h1fgn3j0zfn36a3h892lknlds",
         "type": "tarball",
-        "url": "https://github.com/dfinity-side-projects/winter/archive/2cc31576fe029d85c37d21fc9ea4902c5c64b5a9.tar.gz",
+        "url": "https://github.com/dfinity-side-projects/winter/archive/e62722796e11760947a94285734e7bc29d72c389.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     }
 }

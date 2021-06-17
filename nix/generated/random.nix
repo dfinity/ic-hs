@@ -5,6 +5,7 @@
 , deepseq
 , doctest
 , gauge
+, lib
 , mtl
 , mwc-random
 , primitive
@@ -12,7 +13,6 @@
 , smallcheck
 , split
 , splitmix
-, stdenv
 , tasty
 , tasty-expected-failure
 , tasty-hunit
@@ -53,5 +53,5 @@ mkDerivation {
     time
   ];
   description = "Pseudo-random number generation";
-  license = stdenv.lib.licenses.bsd3;
+  license = lib.licenses.bsd3;
 }

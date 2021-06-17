@@ -59,8 +59,8 @@ import qualified Data.Binary.Get as Get
 import qualified Codec.Candid as Candid
 import Data.Row
 import qualified Data.Row.Records as R
+import qualified Data.Row.Dictionaries as R
 import qualified Data.Row.Variants as V
-import qualified Data.Row.Internal as R
 
 import IC.Version
 import IC.HTTP.GenR

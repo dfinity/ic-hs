@@ -29,6 +29,7 @@
 , http-client-tls
 , http-types
 , leb128-cereal
+, lib
 , memory
 , MonadRandom
 , mtl
@@ -43,7 +44,6 @@
 , serialise
 , split
 , splitmix
-, stdenv
 , tasty
 , tasty-ant-xml
 , tasty-html

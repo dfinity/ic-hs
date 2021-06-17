@@ -6,7 +6,19 @@ let nixpkgs = import ./nix { inherit system; }; in
 let stdenv = nixpkgs.stdenv; in
 let subpath = nixpkgs.subpath; in
 
-let naersk = nixpkgs.callPackage nixpkgs.sources.naersk {}; in
+let naersk = nixpkgs.callPackage nixpkgs.sources.naersk {
+      # nixpkgs's rustc does not inclue the wasm32-unknown-unknown target, so
+      # lets add it here. With this we can build the universal canister with stock
+      # nixpkgs + naersk, in particular no dependency on internal repositories.
+      rustc = nixpkgs.rustc.overrideAttrs (old: {
+        configureFlags = nixpkgs.lib.lists.forEach old.configureFlags (flag:
+          if nixpkgs.lib.strings.hasPrefix "--target=" flag
+          then flag + ",wasm32-unknown-unknown"
+          else flag
+        );
+        RUSTFLAGS = old.RUSTFLAGS + " -A broken_intra_doc_links";
+      });
+    }; in
 let universal-canister = (naersk.buildPackage rec {
     name = "universal-canister";
     src = subpath ./universal-canister;
