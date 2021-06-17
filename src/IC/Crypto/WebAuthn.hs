@@ -77,38 +77,46 @@ genClientDataJson challenge = JSON.encode $ JSON.Object $
     <> "type" JSON..= ("webauthn.get" :: T.Text)
     <> "origin" JSON..= ("ic-ref-test" :: T.Text)
 
-parseCOSEKey :: BS.ByteString -> Either T.Text EC.PublicKey
-parseCOSEKey s = do
+verifyCOSESig :: BS.ByteString -> BS.ByteString -> BS.ByteString -> Either T.Text () 
+verifyCOSESig s msg sig = do
     kv <- decodeWithoutTag s >>= parseMap "COSE key"
     m <- M.fromList <$> mapM keyVal kv
     let field n = case M.lookup n m of
             Just x -> return x
-            Nothing -> throwError $ "COSE: missing entry " <> T.pack (show n)
+            Nothing -> throwError $ "COSE: missing entry " <> tshow n
     let intField n = field n >>= \case
             TInt i -> pure i
-            _ -> throwError $ "COSE field " <> T.pack (show n) <> " not an int"
-    let bytesField n = field n >>= \case
-            TBytes b -> pure b
-            _ -> throwError $ "COSE field " <> T.pack (show n) <> " not bytes"
+            _ -> throwError $ "COSE field " <> tshow n <> " not an int"
+    let integerField n = field n >>= \case
+            TBytes b -> pure $ EC.os2ip b
+            _ -> throwError $ "COSE field " <> tshow n <> " not bytes"
 
     ty <- intField 1
-    unless (ty == 2) $
-        throwError "COSE: Only key type 2 (EC2) supported"
-    ty <- intField 3
-    unless (ty == -7) $
-        throwError "COSE: Only type -7 (ECDSA) supported"
-    crv <- intField (-1)
-    unless (crv == 1) $
-        throwError $ "parsePublicKey: unknown curve: " <> T.pack (show crv)
-    xb <- bytesField (-2)
-    yb <- bytesField (-3)
-    let x = EC.os2ip xb
-    let y = EC.os2ip yb
-    return $ EC.PublicKey curve (EC.Point x y)
+    alg <- intField 3
+    case (ty, alg) of
+      (2, -7) -> do
+        crv <- intField (-1)
+        unless (crv == 1) $
+            throwError $ "parsePublicKey: unknown curve: " <> tshow crv
+        x <- integerField (-2)
+        y <- integerField (-3)
+        let pk = EC.PublicKey curve (EC.Point x y)
+        sig <- parseCOSEECDSASig sig
+        unless (EC.verify SHA256 pk sig (BS.toStrict msg)) $
+            throwError "WebAuthn signature verification failed"
+      (3, -257) -> do
+        n <-  integerField (-1)
+        e <- integerField (-2)
+        let pk = RSA.PublicKey 256 n e
+        unless (RSA.verify (Just SHA256) pk (BS.toStrict msg) (BS.toStrict sig)) $
+          throwError "WebAuthn signature verification failed"
+      _ -> throwError $ "COSE: Unsupport pair of unsupported type, algorithm: " <> tshow ty <> " " <> tshow alg
   where
     keyVal (TInt k,v) = pure (fromIntegral k,v)
     keyVal (TInteger k,v) = pure (k,v)
     keyVal _ = throwError "Non-integer key in CBOR map"
+    tshow :: (Show a) => a -> T.Text
+    tshow v = T.pack (show v)
 
 genCOSEECDSAKey :: EC.PublicKey -> BS.ByteString
 genCOSEECDSAKey (EC.PublicKey _curve (EC.Point x y)) =
@@ -130,8 +138,8 @@ genCOSERSAKey (RSA.PublicKey keyLength n e) =
     , (TInt (-2), TBytes (EC.i2ospOf_ keyLength e))
     ]
 
-parseCOSESig :: BS.ByteString -> Either T.Text EC.Signature
-parseCOSESig s =
+parseCOSEECDSASig :: BS.ByteString -> Either T.Text EC.Signature
+parseCOSEECDSASig s =
   first T.pack (safeDecode s) >>= \case
     [Start Sequence,IntVal r,IntVal s,End Sequence] -> pure $ EC.Signature r s
     a -> throwError $ "Unexpected DER encoding for COSE sig: " <> T.pack (show a)
@@ -188,10 +196,7 @@ sign (RSASecretKey pk) msg = do
 verify :: BS.ByteString -> BS.ByteString -> BS.ByteString -> Either T.Text ()
 verify pk msg sig = do
     (ad, cdj, sig) <- parseSig sig
-    pk <- parseCOSEKey pk
-    sig <- parseCOSESig sig
-    unless (EC.verify SHA256 pk sig (BS.toStrict $ ad <> sha256 cdj)) $
-      throwError "WebAuthn signature verification failed"
+    verifyCOSESig pk (ad <> sha256 cdj) sig 
     challenge <- parseClientDataJson cdj
     unless (challenge == msg) $
       throwError $ "Wrong challenge. Expected " <> T.pack (show msg) <>
