@@ -14,6 +14,8 @@ nix: subpath:
   splitmix = nix.haskell.lib.dontCheck (super.callPackage generated/splitmix.nix {});
   QuickCheck = super.callPackage generated/QuickCheck.nix {};
   megaparsec = super.callPackage generated/megaparsec.nix {};
+  row-types = super.callPackage generated/row-types.nix {};
+  smallcheck = super.callPackage generated/smallcheck.nix {};
 
   # Only the test suite of crc is broken
   # https://github.com/MichaelXavier/crc/issues/2
