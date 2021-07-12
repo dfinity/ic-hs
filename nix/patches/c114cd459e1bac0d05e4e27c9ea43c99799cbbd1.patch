@@ -1,0 +1,1506 @@
+From 8d11c1380a8b750bc15641f61590ebc313d754df Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Niklas=20Hamb=C3=BCchen?= <mail@nh2.me>
+Date: Sun, 4 Jul 2021 21:56:21 +0000
+Subject: [PATCH 01/16] pkgsMusl.haskell.compiler.ghc901: Fix evaluation with
+ musl
+
+`glibcLocales` only exists when glibc is used.
+
+Similar to commit:
+
+    8727284a - haskell: only use glibcLocales when using glibc
+---
+ pkgs/development/compilers/ghc/9.0.1.nix | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/pkgs/development/compilers/ghc/9.0.1.nix b/pkgs/development/compilers/ghc/9.0.1.nix
+index f5a6b5f32fa8af..d7db4d66f74575 100644
+--- a/pkgs/development/compilers/ghc/9.0.1.nix
++++ b/pkgs/development/compilers/ghc/9.0.1.nix
+@@ -143,7 +143,7 @@ stdenv.mkDerivation (rec {
+ 
+     echo -n "${buildMK}" > mk/build.mk
+     sed -i -e 's|-isysroot /Developer/SDKs/MacOSX10.5.sdk||' configure
+-  '' + lib.optionalString (stdenv.isLinux) ''
++  '' + lib.optionalString (stdenv.isLinux && hostPlatform.libc == "glibc") ''
+     export LOCALE_ARCHIVE="${glibcLocales}/lib/locale/locale-archive"
+   '' + lib.optionalString (!stdenv.isDarwin) ''
+     export NIX_LDFLAGS+=" -rpath $out/lib/ghc-${version}"
+
+From a666b155725da3033fbfae99834bec0b6752911c Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Niklas=20Hamb=C3=BCchen?= <mail@nh2.me>
+Date: Sun, 4 Jul 2021 23:56:19 +0000
+Subject: [PATCH 02/16] argp-standalone: Add `-fPIC`.
+
+Fixes `pkgsMusl.elfutils` failing with `recompile with -fPIC`.
+
+This was discovered trying to build `pkgsMusl.haskell.compiler.ghcHEAD`.
+---
+ pkgs/development/libraries/argp-standalone/default.nix | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/pkgs/development/libraries/argp-standalone/default.nix b/pkgs/development/libraries/argp-standalone/default.nix
+index 33b253718a7fb3..bb987d069a77fc 100644
+--- a/pkgs/development/libraries/argp-standalone/default.nix
++++ b/pkgs/development/libraries/argp-standalone/default.nix
+@@ -33,7 +33,11 @@ stdenv.mkDerivation {
+ 
+   patchFlags = lib.optional stdenv.hostPlatform.isDarwin "-p0";
+ 
+-  preConfigure = lib.optionalString stdenv.hostPlatform.isLinux "export CFLAGS='-fgnu89-inline'";
++  # For currently unknown reason, `-fPIC` has to be passed explicitly, otherwise
++  # downstream software like `elfutils` will get `recompile errors like:
++  #     libargp.a(argp-help.o): relocation R_X86_64_PC32 against symbol `program_invocation_short_name' can not be used when making a shared object; recompile with -fPIC
++  # It seems that nixpkgs's on-by-default `-fPIC` is not in effect here.
++  preConfigure = lib.optionalString stdenv.hostPlatform.isLinux "export CFLAGS='-fgnu89-inline -fPIC'";
+ 
+   postInstall = ''
+     mkdir -p $out/lib $out/include
+
+From 947f757bba6a540272af9339c7ad278bd0bd6c1f Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Niklas=20Hamb=C3=BCchen?= <mail@nh2.me>
+Date: Sun, 4 Jul 2021 17:24:10 +0000
+Subject: [PATCH 03/16] haskell.packages.ghc8102Binary: Add comments
+
+---
+ pkgs/development/compilers/ghc/8.10.2-binary.nix | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/pkgs/development/compilers/ghc/8.10.2-binary.nix b/pkgs/development/compilers/ghc/8.10.2-binary.nix
+index ad1a47e5cc9fe3..a0e84c4502be48 100644
+--- a/pkgs/development/compilers/ghc/8.10.2-binary.nix
++++ b/pkgs/development/compilers/ghc/8.10.2-binary.nix
+@@ -68,8 +68,10 @@ stdenv.mkDerivation rec {
+   nativeBuildInputs = [ perl ];
+   propagatedBuildInputs = lib.optionals useLLVM [ llvmPackages.llvm ];
+ 
++  # Set LD_LIBRARY_PATH or equivalent so that the programs running as part
++  # of the bindist installer can find the libraries they expect.
+   # Cannot patchelf beforehand due to relative RPATHs that anticipate
+-  # the final install location/
++  # the final install location.
+   ${libEnvVar} = libPath;
+ 
+   postUnpack =
+@@ -133,6 +135,7 @@ stdenv.mkDerivation rec {
+     "--with-gmp-libraries=${lib.getLib gmp}/lib"
+     "--with-gmp-includes=${lib.getDev gmp}/include"
+   ] ++ lib.optional stdenv.isDarwin "--with-gcc=${./gcc-clang-wrapper.sh}"
++    # From: https://github.com/NixOS/nixpkgs/pull/43369/commits
+     ++ lib.optional stdenv.hostPlatform.isMusl "--disable-ld-override";
+ 
+   # No building is necessary, but calling make without flags ironically
+
+From 67e8744ef8450d6bf6d529ed13dc7172842be425 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Niklas=20Hamb=C3=BCchen?= <mail@nh2.me>
+Date: Sun, 4 Jul 2021 18:11:47 +0000
+Subject: [PATCH 04/16] ghc: Refactor: Extract `ghcBinDists`
+
+---
+ .../compilers/ghc/8.10.2-binary.nix           | 71 +++++++++++--------
+ 1 file changed, 43 insertions(+), 28 deletions(-)
+
+diff --git a/pkgs/development/compilers/ghc/8.10.2-binary.nix b/pkgs/development/compilers/ghc/8.10.2-binary.nix
+index a0e84c4502be48..69708add3e1b20 100644
+--- a/pkgs/development/compilers/ghc/8.10.2-binary.nix
++++ b/pkgs/development/compilers/ghc/8.10.2-binary.nix
+@@ -14,6 +14,47 @@
+ assert stdenv.targetPlatform == stdenv.hostPlatform;
+ 
+ let
++  downloadsUrl = "https://downloads.haskell.org/ghc";
++
++  version = "8.10.2";
++
++  # Information about available bindists that we use in the build.
++  ghcBinDists = {
++    i686-linux = {
++      src = {
++        url = "${downloadsUrl}/${version}/ghc-${version}-i386-deb9-linux.tar.xz";
++        sha256 = "0bvwisl4w0z5z8z0da10m9sv0mhm9na2qm43qxr8zl23mn32mblx";
++      };
++    };
++    x86_64-linux = {
++      src = {
++        url = "${downloadsUrl}/${version}/ghc-${version}-x86_64-deb10-linux.tar.xz";
++        sha256 = "0chnzy9j23b2wa8clx5arwz8wnjfxyjmz9qkj548z14cqf13slcl";
++      };
++    };
++    armv7l-linux = {
++      src = {
++        url = "${downloadsUrl}/${version}/ghc-${version}-armv7-deb10-linux.tar.xz";
++        sha256 = "1j41cq5d3rmlgz7hzw8f908fs79gc5mn3q5wz277lk8zdf19g75v";
++      };
++    };
++    aarch64-linux = {
++      src = {
++        url = "${downloadsUrl}/${version}/ghc-${version}-aarch64-deb10-linux.tar.xz";
++        sha256 = "14smwl3741ixnbgi0l51a7kh7xjkiannfqx15b72svky0y4l3wjw";
++      };
++    };
++    x86_64-darwin = {
++      src = {
++        url = "${downloadsUrl}/${version}/ghc-${version}-x86_64-apple-darwin.tar.xz";
++        sha256 = "1hngyq14l4f950hzhh2d204ca2gfc98pc9xdasxihzqd1jq75dzd";
++      };
++    };
++  };
++
++  binDistUsed = ghcBinDists.${stdenv.hostPlatform.system}
++    or (throw "cannot bootstrap GHC on this platform");
++
+   useLLVM = !stdenv.targetPlatform.isx86;
+ 
+   libPath = lib.makeLibraryPath ([
+@@ -30,40 +71,14 @@ let
+        ''"$(cat $NIX_CC/nix-support/dynamic-linker)"''
+     else
+       "${lib.getLib glibc}/lib/ld-linux*";
+-
+-  downloadsUrl = "https://downloads.haskell.org/ghc";
+-
+ in
+ 
+ stdenv.mkDerivation rec {
+-  version = "8.10.2";
++  inherit version;
+ 
+   name = "ghc-${version}-binary";
+ 
+-  # https://downloads.haskell.org/~ghc/8.10.2/
+-  src = fetchurl ({
+-    i686-linux = {
+-      url = "${downloadsUrl}/${version}/ghc-${version}-i386-deb9-linux.tar.xz";
+-      sha256 = "0bvwisl4w0z5z8z0da10m9sv0mhm9na2qm43qxr8zl23mn32mblx";
+-    };
+-    x86_64-linux = {
+-      url = "${downloadsUrl}/${version}/ghc-${version}-x86_64-deb10-linux.tar.xz";
+-      sha256 = "0chnzy9j23b2wa8clx5arwz8wnjfxyjmz9qkj548z14cqf13slcl";
+-    };
+-    armv7l-linux = {
+-      url = "${downloadsUrl}/${version}/ghc-${version}-armv7-deb10-linux.tar.xz";
+-      sha256 = "1j41cq5d3rmlgz7hzw8f908fs79gc5mn3q5wz277lk8zdf19g75v";
+-    };
+-    aarch64-linux = {
+-      url = "${downloadsUrl}/${version}/ghc-${version}-aarch64-deb10-linux.tar.xz";
+-      sha256 = "14smwl3741ixnbgi0l51a7kh7xjkiannfqx15b72svky0y4l3wjw";
+-    };
+-    x86_64-darwin = {
+-      url = "${downloadsUrl}/${version}/ghc-${version}-x86_64-apple-darwin.tar.xz";
+-      sha256 = "1hngyq14l4f950hzhh2d204ca2gfc98pc9xdasxihzqd1jq75dzd";
+-    };
+-  }.${stdenv.hostPlatform.system}
+-    or (throw "cannot bootstrap GHC on this platform"));
++  src = fetchurl binDistUsed.src;
+ 
+   nativeBuildInputs = [ perl ];
+   propagatedBuildInputs = lib.optionals useLLVM [ llvmPackages.llvm ];
+
+From 8a2de701f7afb543fb8bd920351715bfabbe7706 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Niklas=20Hamb=C3=BCchen?= <mail@nh2.me>
+Date: Sun, 4 Jul 2021 18:30:39 +0000
+Subject: [PATCH 05/16] haskell.compiler.ghc8102Binary: Fix build on i686.
+
+The library override that was present in the code referred to a
+name that isn't even used in current GHC bindists.
+
+Tested with:
+
+    NIX_PATH=nixpkgs=. nix-build --no-link -A haskell.compiler.ghc8102Binary --argstr system i686-linux
+---
+ pkgs/development/compilers/ghc/8.10.2-binary.nix | 8 ++++++--
+ 1 file changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/pkgs/development/compilers/ghc/8.10.2-binary.nix b/pkgs/development/compilers/ghc/8.10.2-binary.nix
+index 69708add3e1b20..760c22698681fa 100644
+--- a/pkgs/development/compilers/ghc/8.10.2-binary.nix
++++ b/pkgs/development/compilers/ghc/8.10.2-binary.nix
+@@ -1,5 +1,6 @@
+ { lib, stdenv
+ , fetchurl, perl, gcc
++, ncurses5
+ , ncurses6, gmp, glibc, libiconv, numactl
+ , llvmPackages
+ 
+@@ -58,7 +59,11 @@ let
+   useLLVM = !stdenv.targetPlatform.isx86;
+ 
+   libPath = lib.makeLibraryPath ([
+-    ncurses6 gmp
++    # The i686-linux bindist provided by GHC HQ is currently built on Debian 9,
++    # which link it against `libtinfo.so.5` (ncurses 5).
++    # Other bindists are linked `libtinfo.so.6` (ncurses 6).
++    (if stdenv.hostPlatform.system == "i686-linux" then ncurses5 else ncurses6)
++    gmp
+   ] ++ lib.optional (stdenv.hostPlatform.isDarwin) libiconv
+     ++ lib.optional (stdenv.hostPlatform.isAarch64) numactl);
+ 
+@@ -124,7 +129,6 @@ stdenv.mkDerivation rec {
+     # Rename needed libraries and binaries, fix interpreter
+     lib.optionalString stdenv.isLinux ''
+       find . -type f -perm -0100 -exec patchelf \
+-          --replace-needed libncurses${lib.optionalString stdenv.is64bit "w"}.so.6 libncurses.so \
+           --interpreter ${glibcDynLinker} {} \;
+ 
+       sed -i "s|/usr/bin/perl|perl\x00        |" ghc-${version}/ghc/stage2/build/tmp/ghc-stage2
+
+From 1326009806c41950986eeb185f088d4e002dd5c7 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Niklas=20Hamb=C3=BCchen?= <mail@nh2.me>
+Date: Sun, 4 Jul 2021 19:11:42 +0000
+Subject: [PATCH 06/16] haskell.compiler.ghc8102Binary: Add check for
+ arch-specific libraries.
+
+With this check, we no longer don't notice when the upstream bindist
+changes its dependencies (e.g. because a newer Debian version is used
+that uses a new `ncurses` version).
+---
+ .../compilers/ghc/8.10.2-binary.nix           | 92 +++++++++++++++++--
+ 1 file changed, 83 insertions(+), 9 deletions(-)
+
+diff --git a/pkgs/development/compilers/ghc/8.10.2-binary.nix b/pkgs/development/compilers/ghc/8.10.2-binary.nix
+index 760c22698681fa..0abb2aa4ac4c6c 100644
+--- a/pkgs/development/compilers/ghc/8.10.2-binary.nix
++++ b/pkgs/development/compilers/ghc/8.10.2-binary.nix
+@@ -20,36 +20,76 @@ let
+   version = "8.10.2";
+ 
+   # Information about available bindists that we use in the build.
++  #
++  # # Bindist library checking
++  #
++  # The field `archSpecificLibraries` also provides a way for us get notified
++  # early when the upstream bindist changes its dependencies (e.g. because a
++  # newer Debian version is used that uses a new `ncurses` version).
++  #
++  # Usage:
++  #
++  # * You can find the `fileToCheckFor` of libraries by running `readelf -d`
++  #   on the compiler binary (`exePathForLibraryCheck`).
++  # * To skip library checking for an architecture,
++  #   set `exePathForLibraryCheck = null`.
++  # * To skip file checking for a specific arch specfic library,
++  #   set `fileToCheckFor = null`.
+   ghcBinDists = {
+     i686-linux = {
+       src = {
+         url = "${downloadsUrl}/${version}/ghc-${version}-i386-deb9-linux.tar.xz";
+         sha256 = "0bvwisl4w0z5z8z0da10m9sv0mhm9na2qm43qxr8zl23mn32mblx";
+       };
++      exePathForLibraryCheck = "ghc/stage2/build/tmp/ghc-stage2";
++      archSpecificLibraries = [
++        # The i686-linux bindist provided by GHC HQ is currently built on Debian 9,
++        # which link it against `libtinfo.so.5` (ncurses 5).
++        # Other bindists are linked `libtinfo.so.6` (ncurses 6).
++        { nixPackage = ncurses5; fileToCheckFor = "libtinfo.so.5"; }
++      ];
+     };
+     x86_64-linux = {
+       src = {
+         url = "${downloadsUrl}/${version}/ghc-${version}-x86_64-deb10-linux.tar.xz";
+         sha256 = "0chnzy9j23b2wa8clx5arwz8wnjfxyjmz9qkj548z14cqf13slcl";
+       };
++      exePathForLibraryCheck = "ghc/stage2/build/tmp/ghc-stage2";
++      archSpecificLibraries = [
++        { nixPackage = ncurses6; fileToCheckFor = "libtinfo.so.6"; }
++      ];
+     };
+     armv7l-linux = {
+       src = {
+         url = "${downloadsUrl}/${version}/ghc-${version}-armv7-deb10-linux.tar.xz";
+         sha256 = "1j41cq5d3rmlgz7hzw8f908fs79gc5mn3q5wz277lk8zdf19g75v";
+       };
++      exePathForLibraryCheck = "ghc/stage2/build/tmp/ghc-stage2";
++      archSpecificLibraries = [
++        { nixPackage = ncurses6; fileToCheckFor = "libtinfo.so.6"; }
++      ];
+     };
+     aarch64-linux = {
+       src = {
+         url = "${downloadsUrl}/${version}/ghc-${version}-aarch64-deb10-linux.tar.xz";
+         sha256 = "14smwl3741ixnbgi0l51a7kh7xjkiannfqx15b72svky0y4l3wjw";
+       };
++      exePathForLibraryCheck = "ghc/stage2/build/tmp/ghc-stage2";
++      archSpecificLibraries = [
++        { nixPackage = ncurses6; fileToCheckFor = "libtinfo.so.6"; }
++        { nixPackage = numactl; fileToCheckFor = null; }
++      ];
+     };
+     x86_64-darwin = {
+       src = {
+         url = "${downloadsUrl}/${version}/ghc-${version}-x86_64-apple-darwin.tar.xz";
+         sha256 = "1hngyq14l4f950hzhh2d204ca2gfc98pc9xdasxihzqd1jq75dzd";
+       };
++      exePathForLibraryCheck = null; # we don't have a library check for darwin yet
++      archSpecificLibraries = [
++        { nixPackage = ncurses6; fileToCheckFor = null; }
++        { nixPackage = libiconv; fileToCheckFor = null; }
++      ];
+     };
+   };
+ 
+@@ -58,14 +98,14 @@ let
+ 
+   useLLVM = !stdenv.targetPlatform.isx86;
+ 
+-  libPath = lib.makeLibraryPath ([
+-    # The i686-linux bindist provided by GHC HQ is currently built on Debian 9,
+-    # which link it against `libtinfo.so.5` (ncurses 5).
+-    # Other bindists are linked `libtinfo.so.6` (ncurses 6).
+-    (if stdenv.hostPlatform.system == "i686-linux" then ncurses5 else ncurses6)
+-    gmp
+-  ] ++ lib.optional (stdenv.hostPlatform.isDarwin) libiconv
+-    ++ lib.optional (stdenv.hostPlatform.isAarch64) numactl);
++  libPath =
++    lib.makeLibraryPath (
++      [
++        gmp
++      ]
++      # Add arch-specific libraries.
++      ++ map ({ nixPackage, ... }: nixPackage) binDistUsed.archSpecificLibraries
++    );
+ 
+   libEnvVar = lib.optionalString stdenv.hostPlatform.isDarwin "DY"
+     + "LD_LIBRARY_PATH";
+@@ -95,9 +135,43 @@ stdenv.mkDerivation rec {
+   ${libEnvVar} = libPath;
+ 
+   postUnpack =
++    # Verify our assumptions of which `libtinfo.so` (ncurses) version is used,
++    # so that we know when ghc bindists upgrade that and we need to update the
++    # version used in `libPath`.
++    lib.optionalString
++      (binDistUsed.exePathForLibraryCheck != null)
++      # Note the `*` glob because some GHCs have a suffix when unpacked, e.g.
++      # the musl bindist has dir `ghc-VERSION-x86_64-unknown-linux/`.
++      # As a result, don't shell-quote this glob when splicing the string.
++      (let buildExeGlob = ''ghc-${version}*/"${binDistUsed.exePathForLibraryCheck}"''; in
++        lib.concatStringsSep "\n" [
++          (''
++            echo "Checking that ghc binary exists in bindist at ${buildExeGlob}"
++            if ! test -e ${buildExeGlob}; then
++              echo >&2 "GHC binary ${binDistUsed.exePathForLibraryCheck} could not be found in the bindist build directory (at ${buildExeGlob}) for arch ${stdenv.hostPlatform.system}, please check that ghcBinDists correctly reflect the bindist dependencies!"; exit 1;
++            fi
++          '')
++          (lib.concatMapStringsSep
++            "\n"
++            ({ fileToCheckFor, nixPackage }:
++              lib.optionalString (fileToCheckFor != null) ''
++                echo "Checking bindist for ${fileToCheckFor} to ensure that is still used"
++                if ! readelf -d ${buildExeGlob} | grep "${fileToCheckFor}"; then
++                  echo >&2 "File ${fileToCheckFor} could not be found in ${binDistUsed.exePathForLibraryCheck} for arch ${stdenv.hostPlatform.system}, please check that ghcBinDists correctly reflect the bindist dependencies!"; exit 1;
++                fi
++
++                echo "Checking that the nix package ${nixPackage} contains ${fileToCheckFor}"
++                if ! test -e "${lib.getLib nixPackage}/lib/${fileToCheckFor}"; then
++                  echo >&2 "Nix package ${nixPackage} did not contain ${fileToCheckFor} for arch ${stdenv.hostPlatform.system}, please check that ghcBinDists correctly reflect the bindist dependencies!"; exit 1;
++                fi
++              ''
++            )
++            binDistUsed.archSpecificLibraries
++          )
++        ])
+     # GHC has dtrace probes, which causes ld to try to open /usr/lib/libdtrace.dylib
+     # during linking
+-    lib.optionalString stdenv.isDarwin ''
++    + lib.optionalString stdenv.isDarwin ''
+       export NIX_LDFLAGS+=" -no_dtrace_dof"
+       # not enough room in the object files for the full path to libiconv :(
+       for exe in $(find . -type f -executable); do
+
+From 5777bd3d561d955a0cce9a46d6bf545ee40ba84c Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Niklas=20Hamb=C3=BCchen?= <mail@nh2.me>
+Date: Sun, 4 Jul 2021 19:24:06 +0000
+Subject: [PATCH 07/16] haskell.compiler.ghc8102Binary: Remove `sed` of
+ `/usr/bin/*` commands.
+
+None of the current bindists appear to contain these paths in their
+`ghc-stage2` binary.
+---
+ pkgs/development/compilers/ghc/8.10.2-binary.nix | 3 ---
+ 1 file changed, 3 deletions(-)
+
+diff --git a/pkgs/development/compilers/ghc/8.10.2-binary.nix b/pkgs/development/compilers/ghc/8.10.2-binary.nix
+index 0abb2aa4ac4c6c..51d57f6f8410ec 100644
+--- a/pkgs/development/compilers/ghc/8.10.2-binary.nix
++++ b/pkgs/development/compilers/ghc/8.10.2-binary.nix
+@@ -204,9 +204,6 @@ stdenv.mkDerivation rec {
+     lib.optionalString stdenv.isLinux ''
+       find . -type f -perm -0100 -exec patchelf \
+           --interpreter ${glibcDynLinker} {} \;
+-
+-      sed -i "s|/usr/bin/perl|perl\x00        |" ghc-${version}/ghc/stage2/build/tmp/ghc-stage2
+-      sed -i "s|/usr/bin/gcc|gcc\x00        |" ghc-${version}/ghc/stage2/build/tmp/ghc-stage2
+     '' +
+     # We're kludging a glibc bindist into working with non-glibc...
+     # Here we patch up the use of `__strdup` (part of glibc binary ABI)
+
+From da1cf8cb90c6675356106905422bbbe767261e9b Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Niklas=20Hamb=C3=BCchen?= <mail@nh2.me>
+Date: Sun, 4 Jul 2021 19:26:53 +0000
+Subject: [PATCH 08/16] pkgsMusl.haskell.compiler.ghc8102Binary: Fix musl
+ segfault. Fixes #118731 #129247.
+
+This commit replaces the musl + glibc hackery in the GHC bindist
+compiler by using the new musl based bindist that GHC HQ provides
+(built on Alpine).
+We could alternatively also use a nix-built musl boostrap compiler,
+but it seems nicer to use the GHC HQ one for now.
+
+This fixes the compiler built by
+`pkgsMusl.haskell.compiler.ghc8102Binary` segfaulting (#118731)
+since the commit
+
+    5e2311d2f - musl: 1.2.1 -> 1.2.2
+
+concretely, musl commit
+
+    01c7920f - remove redundant pthread struct members repeated for layout purposes
+
+which I suspect breaks some glibc/musl ABI compatibility that may have
+existed accidentally until then.
+
+The added
+
+    lib.optional stdenv.targetPlatform.isMusl "pie";
+
+also fixes that the packaged bindist compiler cannot create a binary
+in its `installCheck` phase (and overall); see detail explanation
+in #129247.
+---
+ .../compilers/ghc/8.10.2-binary.nix           | 105 +++++++++++++-----
+ 1 file changed, 76 insertions(+), 29 deletions(-)
+
+diff --git a/pkgs/development/compilers/ghc/8.10.2-binary.nix b/pkgs/development/compilers/ghc/8.10.2-binary.nix
+index 51d57f6f8410ec..a2a7f7b9eaced4 100644
+--- a/pkgs/development/compilers/ghc/8.10.2-binary.nix
++++ b/pkgs/development/compilers/ghc/8.10.2-binary.nix
+@@ -1,7 +1,7 @@
+ { lib, stdenv
+ , fetchurl, perl, gcc
+ , ncurses5
+-, ncurses6, gmp, glibc, libiconv, numactl
++, ncurses6, gmp, libiconv, numactl
+ , llvmPackages
+ 
+   # minimal = true; will remove files that aren't strictly necessary for
+@@ -49,16 +49,33 @@ let
+         { nixPackage = ncurses5; fileToCheckFor = "libtinfo.so.5"; }
+       ];
+     };
+-    x86_64-linux = {
+-      src = {
+-        url = "${downloadsUrl}/${version}/ghc-${version}-x86_64-deb10-linux.tar.xz";
+-        sha256 = "0chnzy9j23b2wa8clx5arwz8wnjfxyjmz9qkj548z14cqf13slcl";
+-      };
+-      exePathForLibraryCheck = "ghc/stage2/build/tmp/ghc-stage2";
+-      archSpecificLibraries = [
+-        { nixPackage = ncurses6; fileToCheckFor = "libtinfo.so.6"; }
+-      ];
+-    };
++    x86_64-linux =
++      if stdenv.hostPlatform.isMusl
++        then
++          { # musl-bindist (referred to below)
++            src = {
++              url = "${downloadsUrl}/${version}/ghc-${version}-x86_64-alpine3.10-linux-integer-simple.tar.xz";
++              sha256 = "0xpcbyaxqyhbl6f0i3s4rp2jm67nqpkfh2qlbj3i2fiaix89ml0l";
++            };
++            exePathForLibraryCheck = "bin/ghc";
++            archSpecificLibraries = [
++              # In contrast to glibc builds, the musl-bindist uses `libncursesw.so.*`
++              # instead of `libtinfo.so.*.`
++              { nixPackage = ncurses6; fileToCheckFor = "libncursesw.so.6"; }
++            ];
++          }
++        else
++          { # normal glibc based bindist
++            src = {
++              url = "${downloadsUrl}/${version}/ghc-${version}-x86_64-deb10-linux.tar.xz";
++              sha256 = "0chnzy9j23b2wa8clx5arwz8wnjfxyjmz9qkj548z14cqf13slcl";
++            };
++            exePathForLibraryCheck = "ghc/stage2/build/tmp/ghc-stage2";
++            archSpecificLibraries = [
++              { nixPackage = ncurses6; fileToCheckFor = "libtinfo.so.6"; }
++            ];
++          }
++        ;
+     armv7l-linux = {
+       src = {
+         url = "${downloadsUrl}/${version}/ghc-${version}-armv7-deb10-linux.tar.xz";
+@@ -110,12 +127,6 @@ let
+   libEnvVar = lib.optionalString stdenv.hostPlatform.isDarwin "DY"
+     + "LD_LIBRARY_PATH";
+ 
+-  glibcDynLinker = assert stdenv.isLinux;
+-    if stdenv.hostPlatform.libc == "glibc" then
+-       # Could be stdenv.cc.bintools.dynamicLinker, keeping as-is to avoid rebuild.
+-       ''"$(cat $NIX_CC/nix-support/dynamic-linker)"''
+-    else
+-      "${lib.getLib glibc}/lib/ld-linux*";
+ in
+ 
+ stdenv.mkDerivation rec {
+@@ -126,7 +137,20 @@ stdenv.mkDerivation rec {
+   src = fetchurl binDistUsed.src;
+ 
+   nativeBuildInputs = [ perl ];
+-  propagatedBuildInputs = lib.optionals useLLVM [ llvmPackages.llvm ];
++  propagatedBuildInputs =
++    lib.optionals useLLVM [ llvmPackages.llvm ]
++    # Because musl bindists currently provide no way to tell where
++    # libgmp is (see not [musl bindists have no .buildinfo]), we need
++    # to propagate `gmp`, otherwise programs built by this ghc will
++    # fail linking with `cannot find -lgmp` errors.
++    # Also, as of writing, the release pages of musl bindists claim
++    # that they use `integer-simple` and do not require `gmp`; however
++    # that is incorrect, so `gmp` is required until a release has been
++    # made that includes https://gitlab.haskell.org/ghc/ghc/-/issues/20059.
++    # (Note that for packaging the `-binary` compiler, nixpkgs does not care
++    # about whether or not `gmp` is used; this comment is just here to explain
++    # why the `gmp` dependency exists despite what the release page says.)
++    ++ lib.optionals stdenv.hostPlatform.isMusl [ gmp ]; # musl bindist needs this
+ 
+   # Set LD_LIBRARY_PATH or equivalent so that the programs running as part
+   # of the bindist installer can find the libraries they expect.
+@@ -187,6 +211,9 @@ stdenv.mkDerivation rec {
+       patchShebangs ghc-${version}/configure
+     '' +
+     # We have to patch the GMP paths for the integer-gmp package.
++    # Note [musl bindists have no .buildinfo]
++    # Note that musl bindists do not contain them; unclear if that's intended;
++    # see: https://gitlab.haskell.org/ghc/ghc/-/issues/20073#note_363231
+     ''
+       find . -name integer-gmp.buildinfo \
+           -exec sed -i "s@extra-lib-dirs: @extra-lib-dirs: ${gmp.out}/lib@" {} \;
+@@ -203,16 +230,7 @@ stdenv.mkDerivation rec {
+     # Rename needed libraries and binaries, fix interpreter
+     lib.optionalString stdenv.isLinux ''
+       find . -type f -perm -0100 -exec patchelf \
+-          --interpreter ${glibcDynLinker} {} \;
+-    '' +
+-    # We're kludging a glibc bindist into working with non-glibc...
+-    # Here we patch up the use of `__strdup` (part of glibc binary ABI)
+-    # to instead use `strdup` since musl doesn't provide __strdup
+-    # (`__strdup` is defined to be an alias of `strdup` anyway[1]).
+-    # [1] http://refspecs.linuxbase.org/LSB_4.0.0/LSB-Core-generic/LSB-Core-generic/baselib---strdup-1.html
+-    # Use objcopy magic to make the change:
+-    lib.optionalString stdenv.hostPlatform.isMusl ''
+-      find ./ghc-${version}/rts -name "libHSrts*.a" -exec ''${OBJCOPY:-objcopy} --redefine-sym __strdup=strdup {} \;
++          --interpreter ${stdenv.cc.bintools.dynamicLinker} {} \;
+     '';
+ 
+   # fix for `configure: error: Your linker is affected by binutils #16177`
+@@ -222,6 +240,9 @@ stdenv.mkDerivation rec {
+ 
+   configurePlatforms = [ ];
+   configureFlags = [
++    # Note that musl-based bindists seem to do nothing with the
++    # `--with-gmp-libraries` flag, see:
++    # https://gitlab.haskell.org/ghc/ghc/-/issues/20073#note_363231
+     "--with-gmp-libraries=${lib.getLib gmp}/lib"
+     "--with-gmp-includes=${lib.getDev gmp}/include"
+   ] ++ lib.optional stdenv.isDarwin "--with-gcc=${./gcc-clang-wrapper.sh}"
+@@ -232,6 +253,22 @@ stdenv.mkDerivation rec {
+   # calls install-strip ...
+   dontBuild = true;
+ 
++  # Apparently necessary for the ghc Alpine (musl) bindist:
++  # When we strip, and then run the
++  #     patchelf --set-rpath "${libPath}:$(patchelf --print-rpath $p)" $p
++  # below, running ghc (e.g. during `installCheckPhase)` gives some apparently
++  # corrupted rpath or whatever makes the loader work on nonsensical strings:
++  #     running install tests
++  #     Error relocating /nix/store/...-ghc-8.10.2-binary/lib/ghc-8.10.5/bin/ghc: : symbol not found
++  #     Error relocating /nix/store/...-ghc-8.10.2-binary/lib/ghc-8.10.5/bin/ghc: ir6zf6c9f86pfx8sr30n2vjy-ghc-8.10.2-binary/lib/ghc-8.10.5/bin/../lib/x86_64-linux-ghc-8.10.5/libHSexceptions-0.10.4-ghc8.10.5.so: symbol not found
++  #     Error relocating /nix/store/...-ghc-8.10.2-binary/lib/ghc-8.10.5/bin/ghc: y/lib/ghc-8.10.5/bin/../lib/x86_64-linux-ghc-8.10.5/libHStemplate-haskell-2.16.0.0-ghc8.10.5.so: symbol not found
++  #     Error relocating /nix/store/...-ghc-8.10.2-binary/lib/ghc-8.10.5/bin/ghc: 8.10.5/libHStemplate-haskell-2.16.0.0-ghc8.10.5.so: symbol not found
++  #     Error relocating /nix/store/...-ghc-8.10.2-binary/lib/ghc-8.10.5/bin/ghc: �: symbol not found
++  #     Error relocating /nix/store/...-ghc-8.10.2-binary/lib/ghc-8.10.5/bin/ghc: �?: symbol not found
++  #     Error relocating /nix/store/...-ghc-8.10.2-binary/lib/ghc-8.10.5/bin/ghc: 64-linux-ghc-8.10.5/libHSexceptions-0.10.4-ghc8.10.5.so: symbol not found
++  # This is extremely bogus and should be investigated.
++  dontStrip = if stdenv.hostPlatform.isMusl then true else false; # `if` for explicitness
++
+   # On Linux, use patchelf to modify the executables so that they can
+   # find editline/gmp.
+   postFixup = lib.optionalString stdenv.isLinux
+@@ -279,13 +316,23 @@ stdenv.mkDerivation rec {
+     find $out -type f -name '*.p_o' -delete
+     find $out -type f -name '*.p_hi' -delete
+     find $out -type f -name '*_p.a' -delete
+-    rm $out/lib/ghc-*/bin/ghc-iserv-prof
++    # `-f` because e.g. musl bindist does not have this file.
++    rm -f $out/lib/ghc-*/bin/ghc-iserv-prof
+     # Hydra will redistribute this derivation, so we have to keep the docs for
+     # legal reasons (retaining the legal notices etc)
+     # As a last resort we could unpack the docs separately and symlink them in.
+     # They're in $out/share/{doc,man}.
+   '';
+ 
++  # In nixpkgs, musl based builds currently enable `pie` hardening by default
++  # (see `defaultHardeningFlags` in `make-derivation.nix`).
++  # But GHC cannot currently produce outputs that are ready for `-pie` linking.
++  # Thus, disable `pie` hardening, otherwise `recompile with -fPIE` errors appear.
++  # See:
++  # * https://github.com/NixOS/nixpkgs/issues/129247
++  # * https://gitlab.haskell.org/ghc/ghc/-/issues/19580
++  hardeningDisable = lib.optional stdenv.targetPlatform.isMusl "pie";
++
+   doInstallCheck = true;
+   installCheckPhase = ''
+     unset ${libEnvVar}
+
+From c866b8a13b881fe2082fb05998173a0408b9177f Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Niklas=20Hamb=C3=BCchen?= <mail@nh2.me>
+Date: Sun, 4 Jul 2021 21:42:15 +0000
+Subject: [PATCH 09/16] haskell.compiler.ghc8102Binary: find `-executable` ->
+ `-perm -0100`
+
+---
+ pkgs/development/compilers/ghc/8.10.2-binary.nix | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/pkgs/development/compilers/ghc/8.10.2-binary.nix b/pkgs/development/compilers/ghc/8.10.2-binary.nix
+index a2a7f7b9eaced4..d77a9601deeda1 100644
+--- a/pkgs/development/compilers/ghc/8.10.2-binary.nix
++++ b/pkgs/development/compilers/ghc/8.10.2-binary.nix
+@@ -229,7 +229,7 @@ stdenv.mkDerivation rec {
+     '' +
+     # Rename needed libraries and binaries, fix interpreter
+     lib.optionalString stdenv.isLinux ''
+-      find . -type f -perm -0100 -exec patchelf \
++      find . -type f -executable -exec patchelf \
+           --interpreter ${stdenv.cc.bintools.dynamicLinker} {} \;
+     '';
+ 
+
+From f154c3addec162c89b8c256da17129c1a7a7d7fe Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Niklas=20Hamb=C3=BCchen?= <mail@nh2.me>
+Date: Sun, 4 Jul 2021 21:44:23 +0000
+Subject: [PATCH 10/16] haskell.compiler.ghc865Binary: Disable "pie" hardening.
+ See #129247
+
+While this does not fix `ghc865Binary` with musl, it at least prevents
+that the other, newer errors are shadowed (see #129247).
+---
+ pkgs/development/compilers/ghc/8.6.5-binary.nix | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/pkgs/development/compilers/ghc/8.6.5-binary.nix b/pkgs/development/compilers/ghc/8.6.5-binary.nix
+index 8a0994b8b6a54b..42b60ec32312b9 100644
+--- a/pkgs/development/compilers/ghc/8.6.5-binary.nix
++++ b/pkgs/development/compilers/ghc/8.6.5-binary.nix
+@@ -152,6 +152,15 @@ stdenv.mkDerivation rec {
+     done
+   '';
+ 
++  # In nixpkgs, musl based builds currently enable `pie` hardening by default
++  # (see `defaultHardeningFlags` in `make-derivation.nix`).
++  # But GHC cannot currently produce outputs that are ready for `-pie` linking.
++  # Thus, disable `pie` hardening, otherwise `recompile with -fPIE` errors appear.
++  # See:
++  # * https://github.com/NixOS/nixpkgs/issues/129247
++  # * https://gitlab.haskell.org/ghc/ghc/-/issues/19580
++  hardeningDisable = lib.optional stdenv.targetPlatform.isMusl "pie";
++
+   doInstallCheck = true;
+   installCheckPhase = ''
+     unset ${libEnvVar}
+
+From 8b15fccf8ae1dfb0c9404e46b9b008d15f6a372d Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Niklas=20Hamb=C3=BCchen?= <mail@nh2.me>
+Date: Sun, 4 Jul 2021 21:48:18 +0000
+Subject: [PATCH 11/16] pkgsMuslhaskell.compiler.{ghc884,ghc8104}: Use GHC 8.10
+ as bootstrap compiler.
+
+This addresses the fact that `ghc865Binary` segfaults on musl
+(see #118731) because of the glibc+musl mix used in there.
+
+With the previous commits, `ghc8102Binary` was changed to use
+the musl-based bindist from GHC HQ instead, which works.
+
+With this change, all nix Haskell compilers builds on musl:
+
+    NIX_PATH=nixpkgs=. nix-build --no-link --expr 'with import <nixpkgs> {}; { inherit (pkgsMusl.haskell.compiler) ghc884 ghc8104 ghc901 ghcHEAD; }'
+---
+ pkgs/development/compilers/ghc/8.8.4.nix | 11 +++++++----
+ pkgs/top-level/haskell-packages.nix      |  6 ++++--
+ 2 files changed, 11 insertions(+), 6 deletions(-)
+
+diff --git a/pkgs/development/compilers/ghc/8.8.4.nix b/pkgs/development/compilers/ghc/8.8.4.nix
+index 544b96f5e4f039..c907928d5ef9c4 100644
+--- a/pkgs/development/compilers/ghc/8.8.4.nix
++++ b/pkgs/development/compilers/ghc/8.8.4.nix
+@@ -142,11 +142,14 @@ stdenv.mkDerivation (rec {
+   postPatch = "patchShebangs .";
+ 
+   # GHC is a bit confused on its cross terminology.
+-  preConfigure = lib.optionalString stdenv.isAarch64 ''
++  preConfigure =
+     # Aarch64 allow backward bootstrapping since earlier versions are unstable.
+-    find . -name \*\.cabal\* -exec sed -i -e 's/\(base.*\)4.14/\14.16/' {} \; \
+-      -exec sed -i -e 's/\(prim.*\)0.6/\10.8/' {} \;
+-  '' + ''
++    # Same for musl, as earlier versions do not provide a musl bindist for bootstrapping.
++    lib.optionalString (stdenv.isAarch64 || stdenv.hostPlatform.isMusl) ''
++      find . -name \*\.cabal\* -exec sed -i -e 's/\(base.*\)4.14/\14.16/' {} \; \
++        -exec sed -i -e 's/\(prim.*\)0.6/\10.8/' {} \;
++    ''
++  + ''
+     for env in $(env | grep '^TARGET_' | sed -E 's|\+?=.*||'); do
+       export "''${env#TARGET_}=''${!env}"
+     done
+diff --git a/pkgs/top-level/haskell-packages.nix b/pkgs/top-level/haskell-packages.nix
+index 8bea40efe64d48..b872f3286e162a 100644
+--- a/pkgs/top-level/haskell-packages.nix
++++ b/pkgs/top-level/haskell-packages.nix
+@@ -57,7 +57,8 @@ in {
+ 
+     ghc884 = callPackage ../development/compilers/ghc/8.8.4.nix {
+       # aarch64 ghc865Binary gets SEGVs due to haskell#15449 or similar
+-      bootPkgs = if stdenv.isAarch64 then
++      # Musl bindists do not exist for ghc 8.6.5, so we use 8.10.* for them
++      bootPkgs = if stdenv.isAarch64 || stdenv.targetPlatform.isMusl then
+           packages.ghc8102BinaryMinimal
+         else
+           packages.ghc865Binary;
+@@ -67,7 +68,8 @@ in {
+     };
+     ghc8104 = callPackage ../development/compilers/ghc/8.10.4.nix {
+       # aarch64 ghc865Binary gets SEGVs due to haskell#15449 or similar
+-      bootPkgs = if stdenv.isAarch64 || stdenv.isAarch32 then
++      # Musl bindists do not exist for ghc 8.6.5, so we use 8.10.* for them
++      bootPkgs = if stdenv.isAarch64 || stdenv.isAarch32 || stdenv.targetPlatform.isMusl then
+           packages.ghc8102BinaryMinimal
+         else
+           packages.ghc865Binary;
+
+From 8adcd395041665bad739f777e7b6284186a4c507 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Niklas=20Hamb=C3=BCchen?= <mail@nh2.me>
+Date: Sun, 4 Jul 2021 21:59:24 +0000
+Subject: [PATCH 12/16] ghc: Add comments about `hardeningDisable` `pie` for
+ musl
+
+---
+ pkgs/development/compilers/ghc/8.10.4.nix | 11 ++++++++++-
+ pkgs/development/compilers/ghc/8.8.4.nix  | 11 ++++++++++-
+ pkgs/development/compilers/ghc/9.0.1.nix  | 11 ++++++++++-
+ pkgs/development/compilers/ghc/head.nix   | 11 ++++++++++-
+ 4 files changed, 40 insertions(+), 4 deletions(-)
+
+diff --git a/pkgs/development/compilers/ghc/8.10.4.nix b/pkgs/development/compilers/ghc/8.10.4.nix
+index f007dcf789875b..8062062f42b419 100644
+--- a/pkgs/development/compilers/ghc/8.10.4.nix
++++ b/pkgs/development/compilers/ghc/8.10.4.nix
+@@ -238,7 +238,16 @@ stdenv.mkDerivation (rec {
+ 
+   checkTarget = "test";
+ 
+-  hardeningDisable = [ "format" ] ++ lib.optional stdenv.targetPlatform.isMusl "pie";
++  hardeningDisable =
++    [ "format" ]
++    # In nixpkgs, musl based builds currently enable `pie` hardening by default
++    # (see `defaultHardeningFlags` in `make-derivation.nix`).
++    # But GHC cannot currently produce outputs that are ready for `-pie` linking.
++    # Thus, disable `pie` hardening, otherwise `recompile with -fPIE` errors appear.
++    # See:
++    # * https://github.com/NixOS/nixpkgs/issues/129247
++    # * https://gitlab.haskell.org/ghc/ghc/-/issues/19580
++    ++ lib.optional stdenv.targetPlatform.isMusl "pie";
+ 
+   postInstall = ''
+     # Install the bash completion file.
+diff --git a/pkgs/development/compilers/ghc/8.8.4.nix b/pkgs/development/compilers/ghc/8.8.4.nix
+index c907928d5ef9c4..1f643d53be4f0d 100644
+--- a/pkgs/development/compilers/ghc/8.8.4.nix
++++ b/pkgs/development/compilers/ghc/8.8.4.nix
+@@ -248,7 +248,16 @@ stdenv.mkDerivation (rec {
+ 
+   checkTarget = "test";
+ 
+-  hardeningDisable = [ "format" ] ++ lib.optional stdenv.targetPlatform.isMusl "pie";
++  hardeningDisable =
++    [ "format" ]
++    # In nixpkgs, musl based builds currently enable `pie` hardening by default
++    # (see `defaultHardeningFlags` in `make-derivation.nix`).
++    # But GHC cannot currently produce outputs that are ready for `-pie` linking.
++    # Thus, disable `pie` hardening, otherwise `recompile with -fPIE` errors appear.
++    # See:
++    # * https://github.com/NixOS/nixpkgs/issues/129247
++    # * https://gitlab.haskell.org/ghc/ghc/-/issues/19580
++    ++ lib.optional stdenv.targetPlatform.isMusl "pie";
+ 
+   postInstall = ''
+     # Install the bash completion file.
+diff --git a/pkgs/development/compilers/ghc/9.0.1.nix b/pkgs/development/compilers/ghc/9.0.1.nix
+index d7db4d66f74575..f461fa6d4403d6 100644
+--- a/pkgs/development/compilers/ghc/9.0.1.nix
++++ b/pkgs/development/compilers/ghc/9.0.1.nix
+@@ -225,7 +225,16 @@ stdenv.mkDerivation (rec {
+ 
+   checkTarget = "test";
+ 
+-  hardeningDisable = [ "format" ] ++ lib.optional stdenv.targetPlatform.isMusl "pie";
++  hardeningDisable =
++    [ "format" ]
++    # In nixpkgs, musl based builds currently enable `pie` hardening by default
++    # (see `defaultHardeningFlags` in `make-derivation.nix`).
++    # But GHC cannot currently produce outputs that are ready for `-pie` linking.
++    # Thus, disable `pie` hardening, otherwise `recompile with -fPIE` errors appear.
++    # See:
++    # * https://github.com/NixOS/nixpkgs/issues/129247
++    # * https://gitlab.haskell.org/ghc/ghc/-/issues/19580
++    ++ lib.optional stdenv.targetPlatform.isMusl "pie";
+ 
+   postInstall = ''
+     # Install the bash completion file.
+diff --git a/pkgs/development/compilers/ghc/head.nix b/pkgs/development/compilers/ghc/head.nix
+index ec236731afd7c3..18df8c538d7388 100644
+--- a/pkgs/development/compilers/ghc/head.nix
++++ b/pkgs/development/compilers/ghc/head.nix
+@@ -242,7 +242,16 @@ stdenv.mkDerivation (rec {
+ 
+   checkTarget = "test";
+ 
+-  hardeningDisable = [ "format" ] ++ lib.optional stdenv.targetPlatform.isMusl "pie";
++  hardeningDisable =
++    [ "format" ]
++    # In nixpkgs, musl based builds currently enable `pie` hardening by default
++    # (see `defaultHardeningFlags` in `make-derivation.nix`).
++    # But GHC cannot currently produce outputs that are ready for `-pie` linking.
++    # Thus, disable `pie` hardening, otherwise `recompile with -fPIE` errors appear.
++    # See:
++    # * https://github.com/NixOS/nixpkgs/issues/129247
++    # * https://gitlab.haskell.org/ghc/ghc/-/issues/19580
++    ++ lib.optional stdenv.targetPlatform.isMusl "pie";
+ 
+   postInstall = ''
+     # Install the bash completion file.
+
+From f4e62a996f82f2e52c988097c828ff227d93f1be Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Niklas=20Hamb=C3=BCchen?= <mail@nh2.me>
+Date: Sun, 4 Jul 2021 22:07:57 +0000
+Subject: [PATCH 13/16] pkgsMusl.haskell.compiler.ghc{8104,884,901,HEAD}:
+ Disable sphinx for musl
+
+Adds new package options:
+
+* enableDocs
+* enableHaddockProgram
+
+to control whether to build Sphinx docs, and GHC haddocks and the
+haddock program.
+
+Unfortunately currently the building of the `haddock `program
+and generating GHC docs are mixed into one option, see:
+https://gitlab.haskell.org/ghc/ghc/-/issues/20077
+
+Making Sphinx docs disableable, and disabling them by default
+for Musl and cross builds, makes it much easier to provide these
+builds without having to support Sphinx's enormous dependency
+tree for those ways of building.
+---
+ pkgs/development/compilers/ghc/8.10.4.nix | 40 ++++++++++++++++++++---
+ pkgs/development/compilers/ghc/8.8.4.nix  | 40 ++++++++++++++++++++---
+ pkgs/development/compilers/ghc/9.0.1.nix  | 40 ++++++++++++++++++++---
+ pkgs/development/compilers/ghc/head.nix   | 40 ++++++++++++++++++++---
+ 4 files changed, 144 insertions(+), 16 deletions(-)
+
+diff --git a/pkgs/development/compilers/ghc/8.10.4.nix b/pkgs/development/compilers/ghc/8.10.4.nix
+index 8062062f42b419..10ca2f6662c27a 100644
+--- a/pkgs/development/compilers/ghc/8.10.4.nix
++++ b/pkgs/development/compilers/ghc/8.10.4.nix
+@@ -38,6 +38,20 @@
+   ghcFlavour ? lib.optionalString (stdenv.targetPlatform != stdenv.hostPlatform)
+     (if useLLVM then "perf-cross" else "perf-cross-ncg")
+ 
++, #  Whether to build sphinx documentation.
++  enableDocs ? (
++    # Docs disabled for musl and cross because it's a large task to keep
++    # all `sphinx` dependencies building in those environments.
++    # `sphinx` pulls in among others:
++    # Ruby, Python, Perl, Rust, OpenGL, Xorg, gtk, LLVM.
++    (stdenv.targetPlatform == stdenv.hostPlatform)
++    && !stdenv.hostPlatform.isMusl
++  )
++
++, enableHaddockProgram ?
++    # Disabled for cross; see note [HADDOCK_DOCS].
++    (stdenv.targetPlatform == stdenv.hostPlatform)
++
+ , # Whether to disable the large address space allocator
+   # necessary fix for iOS: https://www.reddit.com/r/haskell/comments/4ttdz1/building_an_osxi386_to_iosarm64_cross_compiler/d5qvd67/
+   disableLargeAddressSpace ? stdenv.targetPlatform.isDarwin && stdenv.targetPlatform.isAarch64
+@@ -45,6 +59,10 @@
+ 
+ assert !enableIntegerSimple -> gmp != null;
+ 
++# Cross cannot currently build the `haddock` program for silly reasons,
++# see note [HADDOCK_DOCS].
++assert (stdenv.targetPlatform != stdenv.hostPlatform) -> !enableHaddockProgram;
++
+ let
+   inherit (stdenv) buildPlatform hostPlatform targetPlatform;
+ 
+@@ -60,14 +78,26 @@ let
+     ifneq \"\$(BuildFlavour)\" \"\"
+     include mk/flavours/\$(BuildFlavour).mk
+     endif
++    BUILD_SPHINX_HTML = ${if enableDocs then "YES" else "NO"}
++    BUILD_SPHINX_PDF = NO
++  '' +
++  # Note [HADDOCK_DOCS]:
++  # Unfortunately currently `HADDOCK_DOCS` controls both whether the `haddock`
++  # program is built (which we generally always want to have a complete GHC install)
++  # and whether it is run on the GHC sources to generate hyperlinked source code
++  # (which is impossible for cross-compilation); see:
++  # https://gitlab.haskell.org/ghc/ghc/-/issues/20077
++  # This implies that currently a cross-compiled GHC will never have a `haddock`
++  # program, so it can never generate haddocks for any packages.
++  # If this is solved in the future, we'd like to unconditionally
++  # build the haddock program (removing the `enableHaddockProgram` option).
++  ''
++    HADDOCK_DOCS = ${if enableHaddockProgram then "YES" else "NO"}
+     DYNAMIC_GHC_PROGRAMS = ${if enableShared then "YES" else "NO"}
+     INTEGER_LIBRARY = ${if enableIntegerSimple then "integer-simple" else "integer-gmp"}
+   '' + lib.optionalString (targetPlatform != hostPlatform) ''
+     Stage1Only = ${if targetPlatform.system == hostPlatform.system then "NO" else "YES"}
+     CrossCompilePrefix = ${targetPrefix}
+-    HADDOCK_DOCS = NO
+-    BUILD_SPHINX_HTML = NO
+-    BUILD_SPHINX_PDF = NO
+   '' + lib.optionalString (!enableProfiledLibs) ''
+     GhcLibWays = "v dyn"
+   '' + lib.optionalString enableRelocatedStaticLibs ''
+@@ -217,8 +247,10 @@ stdenv.mkDerivation (rec {
+   dontAddExtraLibs = true;
+ 
+   nativeBuildInputs = [
+-    perl autoconf automake m4 python3 sphinx
++    perl autoconf automake m4 python3
+     ghc bootPkgs.alex bootPkgs.happy bootPkgs.hscolour
++  ] ++ lib.optionals enableDocs [
++    sphinx
+   ];
+ 
+   # For building runtime libs
+diff --git a/pkgs/development/compilers/ghc/8.8.4.nix b/pkgs/development/compilers/ghc/8.8.4.nix
+index 1f643d53be4f0d..238266147167e4 100644
+--- a/pkgs/development/compilers/ghc/8.8.4.nix
++++ b/pkgs/development/compilers/ghc/8.8.4.nix
+@@ -38,6 +38,20 @@
+   ghcFlavour ? lib.optionalString (stdenv.targetPlatform != stdenv.hostPlatform)
+     (if useLLVM then "perf-cross" else "perf-cross-ncg")
+ 
++, #  Whether to build sphinx documentation.
++  enableDocs ? (
++    # Docs disabled for musl and cross because it's a large task to keep
++    # all `sphinx` dependencies building in those environments.
++    # `sphinx` pullls in among others:
++    # Ruby, Python, Perl, Rust, OpenGL, Xorg, gtk, LLVM.
++    (stdenv.targetPlatform == stdenv.hostPlatform)
++    && !stdenv.hostPlatform.isMusl
++  )
++
++, enableHaddockProgram ?
++    # Disabled for cross; see note [HADDOCK_DOCS].
++    (stdenv.targetPlatform == stdenv.hostPlatform)
++
+ , # Whether to disable the large address space allocator
+   # necessary fix for iOS: https://www.reddit.com/r/haskell/comments/4ttdz1/building_an_osxi386_to_iosarm64_cross_compiler/d5qvd67/
+   disableLargeAddressSpace ? stdenv.targetPlatform.isDarwin && stdenv.targetPlatform.isAarch64
+@@ -45,6 +59,10 @@
+ 
+ assert !enableIntegerSimple -> gmp != null;
+ 
++# Cross cannot currently build the `haddock` program for silly reasons,
++# see note [HADDOCK_DOCS].
++assert (stdenv.targetPlatform != stdenv.hostPlatform) -> !enableHaddockProgram;
++
+ let
+   inherit (stdenv) buildPlatform hostPlatform targetPlatform;
+ 
+@@ -60,6 +78,21 @@ let
+     ifneq \"\$(BuildFlavour)\" \"\"
+     include mk/flavours/\$(BuildFlavour).mk
+     endif
++    BUILD_SPHINX_HTML = ${if enableDocs then "YES" else "NO"}
++    BUILD_SPHINX_PDF = NO
++  '' +
++  # Note [HADDOCK_DOCS]:
++  # Unfortunately currently `HADDOCK_DOCS` controls both whether the `haddock`
++  # program is built (which we generally always want to have a complete GHC install)
++  # and whether it is run on the GHC sources to generate hyperlinked source code
++  # (which is impossible for cross-compilation); see:
++  # https://gitlab.haskell.org/ghc/ghc/-/issues/20077
++  # This implies that currently a cross-compiled GHC will never have a `haddock`
++  # program, so it can never generate haddocks for any packages.
++  # If this is solved in the future, we'd like to unconditionally
++  # build the haddock program (removing the `enableHaddockProgram` option).
++  ''
++    HADDOCK_DOCS = ${if enableHaddockProgram then "YES" else "NO"}
+     DYNAMIC_GHC_PROGRAMS = ${if enableShared then "YES" else "NO"}
+     INTEGER_LIBRARY = ${if enableIntegerSimple then "integer-simple" else "integer-gmp"}
+   ''
+@@ -72,9 +105,6 @@ let
+   + lib.optionalString (targetPlatform != hostPlatform) ''
+     Stage1Only = ${if (targetPlatform.system == hostPlatform.system && !targetPlatform.isiOS) then "NO" else "YES"}
+     CrossCompilePrefix = ${targetPrefix}
+-    HADDOCK_DOCS = NO
+-    BUILD_SPHINX_HTML = NO
+-    BUILD_SPHINX_PDF = NO
+   '' + lib.optionalString dontStrip ''
+     STRIP_CMD = :
+   '' + lib.optionalString (!enableProfiledLibs) ''
+@@ -227,8 +257,10 @@ stdenv.mkDerivation (rec {
+   dontAddExtraLibs = true;
+ 
+   nativeBuildInputs = [
+-    perl autoconf automake m4 python3 sphinx
++    perl autoconf automake m4 python3
+     ghc bootPkgs.alex bootPkgs.happy bootPkgs.hscolour
++  ] ++ lib.optionals enableDocs [
++    sphinx
+   ];
+ 
+   # For building runtime libs
+diff --git a/pkgs/development/compilers/ghc/9.0.1.nix b/pkgs/development/compilers/ghc/9.0.1.nix
+index f461fa6d4403d6..d2ae51c66dee23 100644
+--- a/pkgs/development/compilers/ghc/9.0.1.nix
++++ b/pkgs/development/compilers/ghc/9.0.1.nix
+@@ -39,6 +39,20 @@
+   ghcFlavour ? lib.optionalString (stdenv.targetPlatform != stdenv.hostPlatform)
+     (if useLLVM then "perf-cross" else "perf-cross-ncg")
+ 
++, #  Whether to build sphinx documentation.
++  enableDocs ? (
++    # Docs disabled for musl and cross because it's a large task to keep
++    # all `sphinx` dependencies building in those environments.
++    # `sphinx` pullls in among others:
++    # Ruby, Python, Perl, Rust, OpenGL, Xorg, gtk, LLVM.
++    (stdenv.targetPlatform == stdenv.hostPlatform)
++    && !stdenv.hostPlatform.isMusl
++  )
++
++, enableHaddockProgram ?
++    # Disabled for cross; see note [HADDOCK_DOCS].
++    (stdenv.targetPlatform == stdenv.hostPlatform)
++
+ , # Whether to disable the large address space allocator
+   # necessary fix for iOS: https://www.reddit.com/r/haskell/comments/4ttdz1/building_an_osxi386_to_iosarm64_cross_compiler/d5qvd67/
+   disableLargeAddressSpace ? stdenv.targetPlatform.isDarwin && stdenv.targetPlatform.isAarch64
+@@ -46,6 +60,10 @@
+ 
+ assert !enableIntegerSimple -> gmp != null;
+ 
++# Cross cannot currently build the `haddock` program for silly reasons,
++# see note [HADDOCK_DOCS].
++assert (stdenv.targetPlatform != stdenv.hostPlatform) -> !enableHaddockProgram;
++
+ let
+   inherit (stdenv) buildPlatform hostPlatform targetPlatform;
+ 
+@@ -61,14 +79,26 @@ let
+     ifneq \"\$(BuildFlavour)\" \"\"
+     include mk/flavours/\$(BuildFlavour).mk
+     endif
++    BUILD_SPHINX_HTML = ${if enableDocs then "YES" else "NO"}
++    BUILD_SPHINX_PDF = NO
++  '' +
++  # Note [HADDOCK_DOCS]:
++  # Unfortunately currently `HADDOCK_DOCS` controls both whether the `haddock`
++  # program is built (which we generally always want to have a complete GHC install)
++  # and whether it is run on the GHC sources to generate hyperlinked source code
++  # (which is impossible for cross-compilation); see:
++  # https://gitlab.haskell.org/ghc/ghc/-/issues/20077
++  # This implies that currently a cross-compiled GHC will never have a `haddock`
++  # program, so it can never generate haddocks for any packages.
++  # If this is solved in the future, we'd like to unconditionally
++  # build the haddock program (removing the `enableHaddockProgram` option).
++  ''
++    HADDOCK_DOCS = ${if enableHaddockProgram then "YES" else "NO"}
+     DYNAMIC_GHC_PROGRAMS = ${if enableShared then "YES" else "NO"}
+     INTEGER_LIBRARY = ${if enableIntegerSimple then "integer-simple" else "integer-gmp"}
+   '' + lib.optionalString (targetPlatform != hostPlatform) ''
+     Stage1Only = ${if targetPlatform.system == hostPlatform.system then "NO" else "YES"}
+     CrossCompilePrefix = ${targetPrefix}
+-    HADDOCK_DOCS = NO
+-    BUILD_SPHINX_HTML = NO
+-    BUILD_SPHINX_PDF = NO
+   '' + lib.optionalString (!enableProfiledLibs) ''
+     GhcLibWays = "v dyn"
+   '' + lib.optionalString enableRelocatedStaticLibs ''
+@@ -204,8 +234,10 @@ stdenv.mkDerivation (rec {
+   dontAddExtraLibs = true;
+ 
+   nativeBuildInputs = [
+-    perl autoconf automake m4 python3 sphinx
++    perl autoconf automake m4 python3
+     ghc bootPkgs.alex bootPkgs.happy bootPkgs.hscolour
++  ] ++ lib.optionals enableDocs [
++    sphinx
+   ];
+ 
+   # For building runtime libs
+diff --git a/pkgs/development/compilers/ghc/head.nix b/pkgs/development/compilers/ghc/head.nix
+index 18df8c538d7388..2ea14b78cc4a1c 100644
+--- a/pkgs/development/compilers/ghc/head.nix
++++ b/pkgs/development/compilers/ghc/head.nix
+@@ -46,6 +46,20 @@
+   ghcFlavour ? lib.optionalString (stdenv.targetPlatform != stdenv.hostPlatform)
+     (if useLLVM then "perf-cross" else "perf-cross-ncg")
+ 
++, #  Whether to build sphinx documentation.
++  enableDocs ? (
++    # Docs disabled for musl and cross because it's a large task to keep
++    # all `sphinx` dependencies building in those environments.
++    # `sphinx` pullls in among others:
++    # Ruby, Python, Perl, Rust, OpenGL, Xorg, gtk, LLVM.
++    (stdenv.targetPlatform == stdenv.hostPlatform)
++    && !stdenv.hostPlatform.isMusl
++  )
++
++, enableHaddockProgram ?
++    # Disabled for cross; see note [HADDOCK_DOCS].
++    (stdenv.targetPlatform == stdenv.hostPlatform)
++
+ , # Whether to disable the large address space allocator
+   # necessary fix for iOS: https://www.reddit.com/r/haskell/comments/4ttdz1/building_an_osxi386_to_iosarm64_cross_compiler/d5qvd67/
+   disableLargeAddressSpace ? stdenv.targetPlatform.isDarwin && stdenv.targetPlatform.isAarch64
+@@ -53,6 +67,10 @@
+ 
+ assert !enableNativeBignum -> gmp != null;
+ 
++# Cross cannot currently build the `haddock` program for silly reasons,
++# see note [HADDOCK_DOCS].
++assert (stdenv.targetPlatform != stdenv.hostPlatform) -> !enableHaddockProgram;
++
+ let
+   inherit (stdenv) buildPlatform hostPlatform targetPlatform;
+ 
+@@ -68,14 +86,26 @@ let
+     ifneq \"\$(BuildFlavour)\" \"\"
+     include mk/flavours/\$(BuildFlavour).mk
+     endif
++    BUILD_SPHINX_HTML = ${if enableDocs then "YES" else "NO"}
++    BUILD_SPHINX_PDF = NO
++  '' +
++  # Note [HADDOCK_DOCS]:
++  # Unfortunately currently `HADDOCK_DOCS` controls both whether the `haddock`
++  # program is built (which we generally always want to have a complete GHC install)
++  # and whether it is run on the GHC sources to generate hyperlinked source code
++  # (which is impossible for cross-compilation); see:
++  # https://gitlab.haskell.org/ghc/ghc/-/issues/20077
++  # This implies that currently a cross-compiled GHC will never have a `haddock`
++  # program, so it can never generate haddocks for any packages.
++  # If this is solved in the future, we'd like to unconditionally
++  # build the haddock program (removing the `enableHaddockProgram` option).
++  ''
++    HADDOCK_DOCS = ${if enableHaddockProgram then "YES" else "NO"}
+     DYNAMIC_GHC_PROGRAMS = ${if enableShared then "YES" else "NO"}
+     BIGNUM_BACKEND = ${if enableNativeBignum then "native" else "gmp"}
+   '' + lib.optionalString (targetPlatform != hostPlatform) ''
+     Stage1Only = ${if (targetPlatform.system == hostPlatform.system && !targetPlatform.isiOS) then "NO" else "YES"}
+     CrossCompilePrefix = ${targetPrefix}
+-    HADDOCK_DOCS = NO
+-    BUILD_SPHINX_HTML = NO
+-    BUILD_SPHINX_PDF = NO
+   '' + lib.optionalString dontStrip ''
+     STRIP_CMD = :
+   '' + lib.optionalString (!enableProfiledLibs) ''
+@@ -221,8 +251,10 @@ stdenv.mkDerivation (rec {
+   dontAddExtraLibs = true;
+ 
+   nativeBuildInputs = [
+-    perl autoconf autoreconfHook automake m4 python3 sphinx
++    perl autoconf autoreconfHook automake m4 python3
+     ghc bootPkgs.alex bootPkgs.happy bootPkgs.hscolour
++  ] ++ lib.optionals enableDocs [
++    sphinx
+   ];
+ 
+   # For building runtime libs
+
+From c6a77590e30fb16450ed666b39cd1b8daf8ca2ae Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Niklas=20Hamb=C3=BCchen?= <mail@nh2.me>
+Date: Mon, 5 Jul 2021 17:08:58 +0200
+Subject: [PATCH 14/16] haskell.compiler.ghc8102Binary: Split `ghcBinDists` set
+ into default and musl.
+
+This allows to implement the "HACK" mentioned in the commit to
+build `pkgsMusl` GHCs on Hydra without failing evaluation on Darwin.
+
+Reference of the discussion:
+https://github.com/NixOS/nixpkgs/pull/129289#discussion_r663956747
+
+Patch contributed by @sterni.
+---
+ .../compilers/ghc/8.10.2-binary.nix           | 151 ++++++++++--------
+ 1 file changed, 82 insertions(+), 69 deletions(-)
+
+diff --git a/pkgs/development/compilers/ghc/8.10.2-binary.nix b/pkgs/development/compilers/ghc/8.10.2-binary.nix
+index d77a9601deeda1..616b2894bb3b6a 100644
+--- a/pkgs/development/compilers/ghc/8.10.2-binary.nix
++++ b/pkgs/development/compilers/ghc/8.10.2-binary.nix
+@@ -36,82 +36,86 @@ let
+   # * To skip file checking for a specific arch specfic library,
+   #   set `fileToCheckFor = null`.
+   ghcBinDists = {
+-    i686-linux = {
+-      src = {
+-        url = "${downloadsUrl}/${version}/ghc-${version}-i386-deb9-linux.tar.xz";
+-        sha256 = "0bvwisl4w0z5z8z0da10m9sv0mhm9na2qm43qxr8zl23mn32mblx";
++    # Binary distributions for the default libc (e.g. glibc, or libSystem on Darwin)
++    # nixpkgs uses for the respective system.
++    defaultLibc = {
++      i686-linux = {
++        src = {
++          url = "${downloadsUrl}/${version}/ghc-${version}-i386-deb9-linux.tar.xz";
++          sha256 = "0bvwisl4w0z5z8z0da10m9sv0mhm9na2qm43qxr8zl23mn32mblx";
++        };
++        exePathForLibraryCheck = "ghc/stage2/build/tmp/ghc-stage2";
++        archSpecificLibraries = [
++          # The i686-linux bindist provided by GHC HQ is currently built on Debian 9,
++          # which link it against `libtinfo.so.5` (ncurses 5).
++          # Other bindists are linked `libtinfo.so.6` (ncurses 6).
++          { nixPackage = ncurses5; fileToCheckFor = "libtinfo.so.5"; }
++        ];
+       };
+-      exePathForLibraryCheck = "ghc/stage2/build/tmp/ghc-stage2";
+-      archSpecificLibraries = [
+-        # The i686-linux bindist provided by GHC HQ is currently built on Debian 9,
+-        # which link it against `libtinfo.so.5` (ncurses 5).
+-        # Other bindists are linked `libtinfo.so.6` (ncurses 6).
+-        { nixPackage = ncurses5; fileToCheckFor = "libtinfo.so.5"; }
+-      ];
+-    };
+-    x86_64-linux =
+-      if stdenv.hostPlatform.isMusl
+-        then
+-          { # musl-bindist (referred to below)
+-            src = {
+-              url = "${downloadsUrl}/${version}/ghc-${version}-x86_64-alpine3.10-linux-integer-simple.tar.xz";
+-              sha256 = "0xpcbyaxqyhbl6f0i3s4rp2jm67nqpkfh2qlbj3i2fiaix89ml0l";
+-            };
+-            exePathForLibraryCheck = "bin/ghc";
+-            archSpecificLibraries = [
+-              # In contrast to glibc builds, the musl-bindist uses `libncursesw.so.*`
+-              # instead of `libtinfo.so.*.`
+-              { nixPackage = ncurses6; fileToCheckFor = "libncursesw.so.6"; }
+-            ];
+-          }
+-        else
+-          { # normal glibc based bindist
+-            src = {
+-              url = "${downloadsUrl}/${version}/ghc-${version}-x86_64-deb10-linux.tar.xz";
+-              sha256 = "0chnzy9j23b2wa8clx5arwz8wnjfxyjmz9qkj548z14cqf13slcl";
+-            };
+-            exePathForLibraryCheck = "ghc/stage2/build/tmp/ghc-stage2";
+-            archSpecificLibraries = [
+-              { nixPackage = ncurses6; fileToCheckFor = "libtinfo.so.6"; }
+-            ];
+-          }
+-        ;
+-    armv7l-linux = {
+-      src = {
+-        url = "${downloadsUrl}/${version}/ghc-${version}-armv7-deb10-linux.tar.xz";
+-        sha256 = "1j41cq5d3rmlgz7hzw8f908fs79gc5mn3q5wz277lk8zdf19g75v";
++      x86_64-linux = {
++        src = {
++          url = "${downloadsUrl}/${version}/ghc-${version}-x86_64-deb10-linux.tar.xz";
++          sha256 = "0chnzy9j23b2wa8clx5arwz8wnjfxyjmz9qkj548z14cqf13slcl";
++        };
++        exePathForLibraryCheck = "ghc/stage2/build/tmp/ghc-stage2";
++        archSpecificLibraries = [
++          { nixPackage = ncurses6; fileToCheckFor = "libtinfo.so.6"; }
++        ];
+       };
+-      exePathForLibraryCheck = "ghc/stage2/build/tmp/ghc-stage2";
+-      archSpecificLibraries = [
+-        { nixPackage = ncurses6; fileToCheckFor = "libtinfo.so.6"; }
+-      ];
+-    };
+-    aarch64-linux = {
+-      src = {
+-        url = "${downloadsUrl}/${version}/ghc-${version}-aarch64-deb10-linux.tar.xz";
+-        sha256 = "14smwl3741ixnbgi0l51a7kh7xjkiannfqx15b72svky0y4l3wjw";
++      armv7l-linux = {
++        src = {
++          url = "${downloadsUrl}/${version}/ghc-${version}-armv7-deb10-linux.tar.xz";
++          sha256 = "1j41cq5d3rmlgz7hzw8f908fs79gc5mn3q5wz277lk8zdf19g75v";
++        };
++        exePathForLibraryCheck = "ghc/stage2/build/tmp/ghc-stage2";
++        archSpecificLibraries = [
++          { nixPackage = ncurses6; fileToCheckFor = "libtinfo.so.6"; }
++        ];
++      };
++      aarch64-linux = {
++        src = {
++          url = "${downloadsUrl}/${version}/ghc-${version}-aarch64-deb10-linux.tar.xz";
++          sha256 = "14smwl3741ixnbgi0l51a7kh7xjkiannfqx15b72svky0y4l3wjw";
++        };
++        exePathForLibraryCheck = "ghc/stage2/build/tmp/ghc-stage2";
++        archSpecificLibraries = [
++          { nixPackage = ncurses6; fileToCheckFor = "libtinfo.so.6"; }
++          { nixPackage = numactl; fileToCheckFor = null; }
++        ];
++      };
++      x86_64-darwin = {
++        src = {
++          url = "${downloadsUrl}/${version}/ghc-${version}-x86_64-apple-darwin.tar.xz";
++          sha256 = "1hngyq14l4f950hzhh2d204ca2gfc98pc9xdasxihzqd1jq75dzd";
++        };
++        exePathForLibraryCheck = null; # we don't have a library check for darwin yet
++        archSpecificLibraries = [
++          { nixPackage = ncurses6; fileToCheckFor = null; }
++          { nixPackage = libiconv; fileToCheckFor = null; }
++        ];
+       };
+-      exePathForLibraryCheck = "ghc/stage2/build/tmp/ghc-stage2";
+-      archSpecificLibraries = [
+-        { nixPackage = ncurses6; fileToCheckFor = "libtinfo.so.6"; }
+-        { nixPackage = numactl; fileToCheckFor = null; }
+-      ];
+     };
+-    x86_64-darwin = {
+-      src = {
+-        url = "${downloadsUrl}/${version}/ghc-${version}-x86_64-apple-darwin.tar.xz";
+-        sha256 = "1hngyq14l4f950hzhh2d204ca2gfc98pc9xdasxihzqd1jq75dzd";
++    # Binary distributions for the musl libc for the respective system.
++    musl = {
++      x86_64-linux = {
++        src = {
++          url = "${downloadsUrl}/${version}/ghc-${version}-x86_64-alpine3.10-linux-integer-simple.tar.xz";
++          sha256 = "0xpcbyaxqyhbl6f0i3s4rp2jm67nqpkfh2qlbj3i2fiaix89ml0l";
++        };
++        exePathForLibraryCheck = "bin/ghc";
++        archSpecificLibraries = [
++          # In contrast to glibc builds, the musl-bindist uses `libncursesw.so.*`
++          # instead of `libtinfo.so.*.`
++          { nixPackage = ncurses6; fileToCheckFor = "libncursesw.so.6"; }
++        ];
+       };
+-      exePathForLibraryCheck = null; # we don't have a library check for darwin yet
+-      archSpecificLibraries = [
+-        { nixPackage = ncurses6; fileToCheckFor = null; }
+-        { nixPackage = libiconv; fileToCheckFor = null; }
+-      ];
+     };
+   };
+ 
+-  binDistUsed = ghcBinDists.${stdenv.hostPlatform.system}
+-    or (throw "cannot bootstrap GHC on this platform");
++  distSetName = if stdenv.hostPlatform.isMusl then "musl" else "defaultLibc";
++
++  binDistUsed = ghcBinDists.${distSetName}.${stdenv.hostPlatform.system}
++    or (throw "cannot bootstrap GHC on this platform ('${stdenv.hostPlatform.system}' with libc '${distSetName}')");
+ 
+   useLLVM = !stdenv.targetPlatform.isx86;
+ 
+@@ -361,7 +365,16 @@ stdenv.mkDerivation rec {
+     homepage = "http://haskell.org/ghc";
+     description = "The Glasgow Haskell Compiler";
+     license = lib.licenses.bsd3;
+-    platforms = ["x86_64-linux" "armv7l-linux" "aarch64-linux" "i686-linux" "x86_64-darwin"];
++    # HACK: since we can't encode the libc / abi in platforms, we need
++    # to make the platform list dependent on the evaluation platform
++    # in order to avoid eval errors with musl which supports less
++    # platforms than the default libcs (i. e. glibc / libSystem).
++    # This is done for the benefit of Hydra, so `packagePlatforms`
++    # won't return any platforms that would cause an evaluation
++    # failure for `pkgsMusl.haskell.compiler.ghc8102Binary`, as
++    # long as the evaluator runs on a platform that supports
++    # `pkgsMusl`.
++    platforms = builtins.attrNames ghcBinDists.${distSetName};
+     hydraPlatforms = builtins.filter (p: minimal || p != "aarch64-linux") platforms;
+     maintainers = with lib.maintainers; [ lostnet ];
+   };
+
+From 0044356dc7b53fbafb78ceb17cec05e293c70940 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Niklas=20Hamb=C3=BCchen?= <mail@nh2.me>
+Date: Mon, 5 Jul 2021 01:32:25 +0000
+Subject: [PATCH 15/16] release-haskell.nix: Add pkgsMusl haskell compilers to
+ Hydra jobs
+
+---
+ pkgs/top-level/release-haskell.nix | 17 +++++++++++++++++
+ 1 file changed, 17 insertions(+)
+
+diff --git a/pkgs/top-level/release-haskell.nix b/pkgs/top-level/release-haskell.nix
+index 87a08dddb606bb..bf26526872bbbb 100644
+--- a/pkgs/top-level/release-haskell.nix
++++ b/pkgs/top-level/release-haskell.nix
+@@ -96,6 +96,8 @@ let
+         writers = testPlatforms.writers;
+       };
+ 
++      pkgsMusl.haskell.compiler = packagePlatforms pkgs.pkgsMusl.haskell.compiler;
++
+       # test some statically linked packages to catch regressions
+       # and get some cache going for static compilation with GHC
+       pkgsStatic.haskellPackages = {
+@@ -308,6 +310,21 @@ let
+           jobs.pkgsStatic.haskellPackages.random.aarch64-linux
+         ];
+       };
++      muslGHCs = pkgs.releaseTools.aggregate {
++        name = "haskell-pkgsMusl-ghcs";
++        meta = {
++          description = "GHCs built with musl";
++          maintainers = with lib.maintainers; [
++            nh2
++          ];
++        };
++        constituents = accumulateDerivations [
++          jobs.pkgsMusl.haskell.compiler.ghc8102Binary
++          jobs.pkgsMusl.haskell.compiler.ghc884
++          jobs.pkgsMusl.haskell.compiler.ghc8104
++          jobs.pkgsMusl.haskell.compiler.ghc901
++        ];
++      };
+     }
+   ];
+ 
+
+From 63b1e6e48990c01ce0dcfbceb850047a2c24cbda Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Niklas=20Hamb=C3=BCchen?= <mail@nh2.me>
+Date: Mon, 5 Jul 2021 19:01:00 +0200
+Subject: [PATCH 16/16] ghc*-binary: Remove no-op `--with-gmp-libraries`
+
+---
+ pkgs/development/compilers/ghc/8.10.2-binary.nix | 6 ++----
+ pkgs/development/compilers/ghc/8.6.5-binary.nix  | 3 ++-
+ 2 files changed, 4 insertions(+), 5 deletions(-)
+
+diff --git a/pkgs/development/compilers/ghc/8.10.2-binary.nix b/pkgs/development/compilers/ghc/8.10.2-binary.nix
+index 616b2894bb3b6a..3ef4ebb9b98f7b 100644
+--- a/pkgs/development/compilers/ghc/8.10.2-binary.nix
++++ b/pkgs/development/compilers/ghc/8.10.2-binary.nix
+@@ -244,11 +244,9 @@ stdenv.mkDerivation rec {
+ 
+   configurePlatforms = [ ];
+   configureFlags = [
+-    # Note that musl-based bindists seem to do nothing with the
+-    # `--with-gmp-libraries` flag, see:
+-    # https://gitlab.haskell.org/ghc/ghc/-/issues/20073#note_363231
+-    "--with-gmp-libraries=${lib.getLib gmp}/lib"
+     "--with-gmp-includes=${lib.getDev gmp}/include"
++    # Note `--with-gmp-libraries` does nothing for GHC bindists:
++    # https://gitlab.haskell.org/ghc/ghc/-/merge_requests/6124
+   ] ++ lib.optional stdenv.isDarwin "--with-gcc=${./gcc-clang-wrapper.sh}"
+     # From: https://github.com/NixOS/nixpkgs/pull/43369/commits
+     ++ lib.optional stdenv.hostPlatform.isMusl "--disable-ld-override";
+diff --git a/pkgs/development/compilers/ghc/8.6.5-binary.nix b/pkgs/development/compilers/ghc/8.6.5-binary.nix
+index 42b60ec32312b9..c3d6ab1beca2f9 100644
+--- a/pkgs/development/compilers/ghc/8.6.5-binary.nix
++++ b/pkgs/development/compilers/ghc/8.6.5-binary.nix
+@@ -121,8 +121,9 @@ stdenv.mkDerivation rec {
+ 
+   configurePlatforms = [ ];
+   configureFlags = [
+-    "--with-gmp-libraries=${lib.getLib gmp}/lib"
+     "--with-gmp-includes=${lib.getDev gmp}/include"
++    # Note `--with-gmp-libraries` does nothing for GHC bindists:
++    # https://gitlab.haskell.org/ghc/ghc/-/merge_requests/6124
+   ] ++ lib.optional stdenv.isDarwin "--with-gcc=${./gcc-clang-wrapper.sh}"
+     ++ lib.optional stdenv.hostPlatform.isMusl "--disable-ld-override";
+ 
