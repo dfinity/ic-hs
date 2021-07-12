@@ -78,7 +78,7 @@ printReqResponse (ReadStateResponse _ ) = error "dead code in ic-ref"
 candidOrPretty :: Blob -> String
 candidOrPretty b
   | BC.pack "DIDL" `B.isPrefixOf` b
-  , Right vs <- Candid.decodeVals b
+  , Right (_, vs) <- Candid.decodeVals b
   = show (pretty vs)
   | otherwise
   = "(" ++ prettyBlob b ++ ")"
