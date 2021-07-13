@@ -14,9 +14,7 @@ let
     name = "nixpkgs-patched";
     src = nixpkgs_src;
     patches = [
-      # ./patches/0001-ghc865-binary-Use-binary-distribution-which-links-ag.patch
-      # ./patches/0002-openblas-0.3.10-0.3.13.patch
-      # ./patches/fb063991b26b2b93dece6d09f37041451a5ef4cb.patch
+      ./patches/c114cd459e1bac0d05e4e27c9ea43c99799cbbd1.patch
     ];
   };
 
