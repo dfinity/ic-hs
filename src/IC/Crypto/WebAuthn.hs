@@ -130,12 +130,12 @@ genCOSEECDSAKey (EC.PublicKey _curve (EC.Point x y)) =
 genCOSEECDSAKey (EC.PublicKey _ EC.PointO) = error "genCOSEKey: Point at infinity"
 
 genCOSERSAKey :: RSA.PublicKey -> BS.ByteString
-genCOSERSAKey (RSA.PublicKey keyLength n e) =
+genCOSERSAKey (RSA.PublicKey _keyLength n e) =
   toLazyByteString $ encodeTerm $ TMap
     [ (TInt 1, TInt 3)
     , (TInt 3, TInt (-257))
-    , (TInt (-1), TBytes (EC.i2ospOf_ keyLength n))
-    , (TInt (-2), TBytes (EC.i2ospOf_ keyLength e))
+    , (TInt (-1), TBytes (EC.i2osp n))
+    , (TInt (-2), TBytes (EC.i2osp e))
     ]
 
 parseCOSEECDSASig :: BS.ByteString -> Either T.Text EC.Signature
