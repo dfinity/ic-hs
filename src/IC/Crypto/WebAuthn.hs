@@ -148,10 +148,6 @@ genCOSEECDSASig :: EC.Signature -> BS.ByteString
 genCOSEECDSASig (EC.Signature r s) = encodeASN1 DER
     [Start Sequence,IntVal r,IntVal s,End Sequence]
 
--- genCOSERSASig :: BS.ByteString -> BS.ByteString
--- genCOSERSASig sig = encodeASN1 DER
---     [Start Sequence,_x sig,End Sequence]
-
 data SecretKey = ECDSASecretKey EC.PrivateKey EC.PublicKey
                | RSASecretKey RSA.PrivateKey
   deriving Show
