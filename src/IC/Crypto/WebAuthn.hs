@@ -115,7 +115,7 @@ verifyCOSESig s msg sig = do
     keyVal (TInt k,v) = pure (fromIntegral k,v)
     keyVal (TInteger k,v) = pure (k,v)
     keyVal _ = throwError "Non-integer key in CBOR map"
-    tshow :: (Show a) => a -> T.Text
+    tshow :: Show a => a -> T.Text
     tshow v = T.pack (show v)
 
 genCOSEECDSAKey :: EC.PublicKey -> BS.ByteString
