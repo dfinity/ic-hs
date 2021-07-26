@@ -6,7 +6,8 @@ Everything related to signature creation and checking
 module IC.Crypto
  ( SecretKey(..)
  , createSecretKeyEd25519
- , createSecretKeyWebAuthn
+ , createSecretKeyWebAuthnECDSA
+ , createSecretKeyWebAuthnRSA
  , createSecretKeyECDSA
  , createSecretKeySecp256k1
  , createSecretKeyBLS
@@ -40,8 +41,11 @@ data SecretKey
 createSecretKeyEd25519 :: BS.ByteString -> SecretKey
 createSecretKeyEd25519 = Ed25519 . Ed25519.createKey
 
-createSecretKeyWebAuthn :: BS.ByteString -> SecretKey
-createSecretKeyWebAuthn = WebAuthn . WebAuthn.createECDSAKey
+createSecretKeyWebAuthnECDSA :: BS.ByteString -> SecretKey
+createSecretKeyWebAuthnECDSA = WebAuthn . WebAuthn.createECDSAKey
+
+createSecretKeyWebAuthnRSA :: BS.ByteString -> SecretKey
+createSecretKeyWebAuthnRSA = WebAuthn . WebAuthn.createRSAKey
 
 createSecretKeyECDSA :: BS.ByteString -> SecretKey
 createSecretKeyECDSA = ECDSA . ECDSA.createKey
