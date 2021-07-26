@@ -110,7 +110,7 @@ verifyCOSESig s msg sig = do
         let pk = RSA.PublicKey 256 n e
         unless (RSA.verify (Just SHA256) pk (BS.toStrict msg) (BS.toStrict sig)) $
           throwError "WebAuthn signature verification failed"
-      _ -> throwError $ "COSE: Unsupport pair of unsupported type, algorithm: " <> tshow ty <> " " <> tshow alg
+      _ -> throwError $ "COSE: Unsupported pair of type, algorithm: " <> tshow ty <> " " <> tshow alg
   where
     keyVal (TInt k,v) = pure (fromIntegral k,v)
     keyVal (TInteger k,v) = pure (k,v)
