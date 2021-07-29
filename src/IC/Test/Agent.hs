@@ -154,8 +154,11 @@ defaultSK = createSecretKeyEd25519 "fixed32byteseedfortesting"
 otherSK :: SecretKey
 otherSK = createSecretKeyEd25519 "anotherfixed32byteseedfortesting"
 
-webAuthnSK :: SecretKey
-webAuthnSK = createSecretKeyWebAuthn "webauthnseed"
+webAuthnECDSASK :: SecretKey
+webAuthnECDSASK = createSecretKeyWebAuthnECDSA "webauthnseed"
+
+webAuthnRSASK :: SecretKey
+webAuthnRSASK = createSecretKeyWebAuthnRSA "webauthnseed"
 
 ecdsaSK :: SecretKey
 ecdsaSK = createSecretKeyECDSA "ecdsaseed"
@@ -167,8 +170,10 @@ defaultUser :: Blob
 defaultUser = mkSelfAuthenticatingId $ toPublicKey defaultSK
 otherUser :: Blob
 otherUser = mkSelfAuthenticatingId $ toPublicKey otherSK
-webAuthnUser :: Blob
-webAuthnUser = mkSelfAuthenticatingId $ toPublicKey webAuthnSK
+webAuthnECDSAUser :: Blob
+webAuthnECDSAUser = mkSelfAuthenticatingId $ toPublicKey webAuthnECDSASK
+webAuthnRSAUser :: Blob
+webAuthnRSAUser = mkSelfAuthenticatingId $ toPublicKey webAuthnRSASK
 ecdsaUser :: Blob
 ecdsaUser = mkSelfAuthenticatingId $ toPublicKey ecdsaSK
 secp256k1User :: Blob
@@ -242,7 +247,8 @@ envelopeFor u content = envelope key content
     key ::  SecretKey
     key | u == defaultUser = defaultSK
         | u == otherUser = otherSK
-        | u == webAuthnUser = webAuthnSK
+        | u == webAuthnECDSAUser = webAuthnECDSASK
+        | u == webAuthnRSAUser = webAuthnRSASK
         | u == ecdsaUser = ecdsaSK
         | u == secp256k1User = secp256k1SK
         | u == anonymousUser = error "No key for the anonymous user"

@@ -1867,7 +1867,8 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
         ]
 
       withEd25519 = zip [createSecretKeyEd25519 (BS.singleton n) | n <- [0..]]
-      withWebAuthn = zip [createSecretKeyWebAuthn (BS.singleton n) | n <- [0..]]
+      withWebAuthnECDSA = zip [createSecretKeyWebAuthnECDSA (BS.singleton n) | n <- [0..]]
+      withWebAuthnRSA = zip [createSecretKeyWebAuthnRSA (BS.singleton n) | n <- [0..]]
 
     in
     [ goodTestCase "one delegation, singleton target" callReq $ \cid ->
@@ -1876,8 +1877,10 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
       withEd25519 [Just [doesn'tExist]]
     , goodTestCase "one delegation, two targets" callReq $ \cid ->
       withEd25519 [Just [cid, doesn'tExist]]
-    , goodTestCase "two delegations, two targets, webauthn" callReq $ \cid ->
-      withWebAuthn [Just [cid, doesn'tExist], Just [cid, doesn'tExist]]
+    , goodTestCase "two delegations, two targets, webauthn ECDSA" callReq $ \cid ->
+      withWebAuthnECDSA [Just [cid, doesn'tExist], Just [cid, doesn'tExist]]
+    , goodTestCase "two delegations, two targets, webauthn RSA" callReq $ \cid ->
+      withWebAuthnRSA [Just [cid, doesn'tExist], Just [cid, doesn'tExist]]
     , goodTestCase "one delegation, redundant targets" callReq $ \cid ->
       withEd25519 [Just [cid, cid, doesn'tExist]]
     , goodTestCase "two delegations, singletons" callReq $ \cid ->
@@ -1908,15 +1911,16 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
         ed25519SK4 = createSecretKeyEd25519 "even more keys"
         delEnv sks = delegationEnv otherSK (map (, Nothing) sks) -- no targets in these tests
     in flip foldMap
-      [ ("Ed25519",            otherUser,      envelope otherSK)
-      , ("ECDSA",              ecdsaUser,      envelope ecdsaSK)
-      , ("secp256k1",          secp256k1User,  envelope secp256k1SK)
-      , ("WebAuthn",           webAuthnUser,   envelope webAuthnSK)
-      , ("empty delegations",  otherUser,      delEnv [])
-      , ("same delegations",   otherUser,      delEnv [otherSK])
-      , ("three delegations",  otherUser,      delEnv [ed25519SK2, ed25519SK3])
-      , ("four delegations",   otherUser,      delEnv [ed25519SK2, ed25519SK3, ed25519SK4])
-      , ("mixed delegations",  otherUser,      delEnv [defaultSK, webAuthnSK, ecdsaSK, secp256k1SK])
+      [ ("Ed25519",            otherUser,         envelope otherSK)
+      , ("ECDSA",              ecdsaUser,         envelope ecdsaSK)
+      , ("secp256k1",          secp256k1User,     envelope secp256k1SK)
+      , ("WebAuthn ECDSA",     webAuthnECDSAUser, envelope webAuthnECDSASK)
+      , ("WebAuthn RSA",       webAuthnRSAUser,   envelope webAuthnRSASK)
+      , ("empty delegations",  otherUser,         delEnv [])
+      , ("same delegations",   otherUser,         delEnv [otherSK])
+      , ("three delegations",  otherUser,         delEnv [ed25519SK2, ed25519SK3])
+      , ("four delegations",   otherUser,         delEnv [ed25519SK2, ed25519SK3, ed25519SK4])
+      , ("mixed delegations",  otherUser,         delEnv [defaultSK, webAuthnECDSASK, webAuthnRSASK, ecdsaSK, secp256k1SK])
       ] $ \ (name, user, env) ->
     [ simpleTestCase (name ++ " in query") $ \cid -> do
       req <- addExpiry $ rec
