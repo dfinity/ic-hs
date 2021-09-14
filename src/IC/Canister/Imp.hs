@@ -554,7 +554,7 @@ rawInitialize caller env dat (ImpState esref inst sm wasm_mod) = do
 rawHeartbeat :: Env -> ImpState s -> ST s (TrapOr UpdateResult)
 rawHeartbeat env (ImpState esref inst sm wasm_mod) = do
   result <- runExceptT $ do
-    let es = initialExecutionState inst sm env cantRespond
+    let es = (initialExecutionState inst sm env cantRespond)
 
     if "canister_heartbeat" `elem` exportedFunctions wasm_mod
     then withES esref es $ void $ invokeExport inst "canister_heartbeat" []

@@ -1035,11 +1035,14 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     ]
 
   , testGroup "heartbeat"
-    [ testCase "called once" $ do
-      cid <- install $ onHeartbeat $ heartbeat $ setGlobal "FOO"
-      -- Heartbeat is triggered after each query call, so 'BAR' is expected to be overridden with 'FOO'.
-      call_ cid (setGlobal "BAR" >>> reply)
-      query cid (replyData getGlobal) >>= is "FOO"
+    [ testCase "called once for all canisters" $ do
+      cid <- install $ onHeartbeat $ heartbeat $ setCertifiedData "FOO"
+      cid2 <- install $ onHeartbeat $ heartbeat $ setCertifiedData "BAR"
+      -- Send a dummy request to enforce execution of heartbeat functions.
+      -- (it's triggered for all canisters after each call request)
+      call_ cid (setGlobal "FIZZ" >>> reply)
+      query cid (replyData getCertificate) >>= extractCertData cid >>= is "FOO"
+      query cid2 (replyData getCertificate) >>= extractCertData cid2 >>= is "BAR"
     ]
 
   , testGroup "reinstall"
