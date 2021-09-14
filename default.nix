@@ -179,7 +179,7 @@ rec {
       outputs = ["out"]; # no docs
       installPhase = ''
         mkdir -p $out
-        echo "-- Run nix-shell .. -A check-cabal-freeze to update this file" > $out/cabal.project.freeze
+        echo "-- Run nix-shell . -A check-cabal-freeze to update this file" > $out/cabal.project.freeze
         cat cabal.project.freeze >> $out/cabal.project.freeze
       '';
     });
