@@ -112,8 +112,8 @@ peekStore Store{lastState} = readIORef lastState
 -- which didn’t turn up anything decisively better
 --
 writerThread ::
-  (a -> IO ()) -> -- ^ how to write the thing
-  IO (a -> IO (), IO ()) -- notify about new value (async); shutdown (sync)
+  (a -> IO ()) -- ^ how to write the thing
+  -> IO (a -> IO (), IO ()) -- notify about new value (async); shutdown (sync)
 writerThread doSomething = do
   latest_unwritten <- newEmptyMVar
   write_soon <- newEmptyMVar

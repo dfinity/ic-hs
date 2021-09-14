@@ -37,6 +37,7 @@ data CanisterModule = CanisterModule
   , update_methods :: MethodName ↦ (EntityId -> Env -> Responded -> Cycles -> Blob -> UpdateFunc)
   , query_methods :: MethodName ↦ (EntityId -> Env -> Blob -> QueryFunc)
   , callbacks :: Callback -> Env -> Responded -> Cycles -> Response -> Cycles -> UpdateFunc
+  , cleanup :: WasmClosure -> Env -> WasmState -> TrapOr (WasmState, ())
   , pre_upgrade_method :: WasmState -> EntityId -> Env -> TrapOr (CanisterActions, Blob)
   , post_upgrade_method :: EntityId -> Env -> Blob -> Blob -> TrapOr (WasmState, CanisterActions)
   , inspect_message :: MethodName -> EntityId -> Env -> Blob -> WasmState -> TrapOr ()
@@ -72,6 +73,8 @@ parseCanister bytes =
         ]
       , callbacks = \cb env responded cycles_available res refund wasm_state ->
         invoke wasm_state (rawCallback cb env responded cycles_available res refund)
+      , cleanup = \cb env wasm_state ->
+        invoke wasm_state (rawCleanup cb env)
       , pre_upgrade_method = \wasm_state caller env ->
             snd <$> invoke wasm_state (rawPreUpgrade caller env)
       , post_upgrade_method = \caller env mem dat ->

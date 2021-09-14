@@ -1,7 +1,7 @@
 nix: subpath:
   self: super: {
   winter = super.callPackage generated/winter.nix {};
-  ic-ref = super.callPackage generated/ic-ref.nix {};
+  ic-hs = super.callPackage generated/ic-hs.nix {};
   leb128-cereal = super.callPackage generated/leb128-cereal.nix {};
   candid = super.callPackage generated/candid.nix {};
 
@@ -14,6 +14,8 @@ nix: subpath:
   splitmix = nix.haskell.lib.dontCheck (super.callPackage generated/splitmix.nix {});
   QuickCheck = super.callPackage generated/QuickCheck.nix {};
   megaparsec = super.callPackage generated/megaparsec.nix {};
+  row-types = super.callPackage generated/row-types.nix {};
+  smallcheck = super.callPackage generated/smallcheck.nix {};
 
   # need older version (for now)
   row-types = super.callPackage generated/row-types.nix {};

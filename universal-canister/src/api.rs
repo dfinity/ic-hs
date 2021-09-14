@@ -39,6 +39,7 @@ mod ic0 {
             reject_fun : u32,
             reject_env : u32,
             ) -> ();
+        pub fn call_on_cleanup( fun: u32, env: u32 ) -> ();
         pub fn call_data_append( src: u32, size: u32 ) -> ();
         pub fn call_cycles_add( amount : u64 ) -> ();
         pub fn call_perform() -> u32;
@@ -70,10 +71,16 @@ pub fn call_new (
           method.as_ptr() as u32,
           method.len() as u32,
           reply_fun as u32,
-          reply_env as u32,
+          reply_env,
           reject_fun as u32,
-          reject_env as u32,
+          reject_env,
       )
+    }
+}
+
+pub fn call_on_cleanup(fun: fn(u32) -> (), env: u32) {
+    unsafe {
+        ic0::call_on_cleanup(fun as u32, env as u32)
     }
 }
 

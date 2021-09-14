@@ -78,7 +78,7 @@ printReqResponse (ReadStateResponse _ ) = error "dead code in ic-ref"
 candidOrPretty :: Blob -> String
 candidOrPretty b
   | BC.pack "DIDL" `B.isPrefixOf` b
-  , Right vs <- Candid.decodeVals b
+  , Right (_, vs) <- Candid.decodeVals b
   = show (pretty vs)
   | otherwise
   = "(" ++ prettyBlob b ++ ")"
@@ -131,7 +131,8 @@ work msg_file = do
   flip evalStateT ic $
     forM_ msgs $ \case
       Create ->
-        callManagement user_id #create_canister ()
+        callManagement user_id #create_canister $ empty
+          .+ #settings .== Nothing
       Install cid filename arg -> do
         wasm <- liftIO $ B.readFile filename
         callManagement user_id #install_code $ empty
@@ -139,8 +140,6 @@ work msg_file = do
           .+ #canister_id .== Candid.Principal cid
           .+ #wasm_module .== wasm
           .+ #arg .== arg
-          .+ #compute_allocation .== Nothing
-          .+ #memory_allocation .== Nothing
       Reinstall cid filename arg -> do
         wasm <- liftIO $ B.readFile filename
         callManagement user_id #install_code $ empty
@@ -148,8 +147,6 @@ work msg_file = do
           .+ #canister_id .== Candid.Principal cid
           .+ #wasm_module .== wasm
           .+ #arg .== arg
-          .+ #compute_allocation .== Nothing
-          .+ #memory_allocation .== Nothing
       Upgrade cid filename arg -> do
         wasm <- liftIO $ B.readFile filename
         callManagement user_id #install_code $ empty
@@ -157,8 +154,6 @@ work msg_file = do
           .+ #canister_id .== Candid.Principal cid
           .+ #wasm_module .== wasm
           .+ #arg .== arg
-          .+ #compute_allocation .== Nothing
-          .+ #memory_allocation .== Nothing
       Query  cid method arg ->
         submitQuery  (QueryRequest (EntityId cid) user_id method arg)
       Update cid method arg ->

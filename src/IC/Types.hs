@@ -99,6 +99,7 @@ data WasmClosure = WasmClosure
 data Callback = Callback
   { reply_callback :: WasmClosure
   , reject_callback :: WasmClosure
+  , cleanup_callback :: Maybe WasmClosure
   }
   deriving Show
 

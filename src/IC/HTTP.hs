@@ -23,6 +23,7 @@ import IC.HTTP.RequestId
 import IC.Debug.JSON ()
 import IC.Serialise ()
 import IC.StateFile
+import IC.Crypto
 
 withApp :: Maybe FilePath -> (Application -> IO a) -> IO a
 withApp backingFile action =
@@ -38,8 +39,10 @@ handle store req respond = case (requestMethod req, pathInfo req) of
     ("POST", ["api","v2","canister",textual_ecid,verb]) ->
         case parsePrincipal textual_ecid of
             Left err -> invalidRequest $ "cannot parse effective canister id: " <> T.pack err
-            Right (Principal ecid) -> case verb of
-                "call" -> withSignedCBOR $ \(gr, ev) -> case callRequest gr of
+            Right (Principal ecid) -> do
+              root_key <- peekIC $ gets $ toPublicKey . secretRootKey
+              case verb of
+                "call" -> withSignedCBOR root_key $ \(gr, ev) -> case callRequest gr of
                     Left err -> invalidRequest err
                     Right cr -> runIC $ do
                         t <- lift getTimestamp
@@ -49,7 +52,7 @@ handle store req respond = case (requestMethod req, pathInfo req) of
                             Right () -> do
                                 submitRequest (requestId gr) cr
                                 lift $ empty status202
-                "query" -> withSignedCBOR $ \(gr, ev) -> case queryRequest gr of
+                "query" -> withSignedCBOR root_key $ \(gr, ev) -> case queryRequest gr of
                     Left err -> invalidRequest err
                     Right qr -> peekIC $ do
                         t <- lift getTimestamp
@@ -60,7 +63,7 @@ handle store req respond = case (requestMethod req, pathInfo req) of
                                 t <- lift getTimestamp
                                 r <- handleQuery t qr
                                 lift $ cbor status200 (IC.HTTP.Request.response r)
-                "read_state" -> withSignedCBOR $ \(gr, ev) -> case readStateRequest gr of
+                "read_state" -> withSignedCBOR root_key $ \(gr, ev) -> case readStateRequest gr of
                     Left err -> invalidRequest err
                     Right rsr -> peekIC $ do
                         t <- lift getTimestamp
@@ -76,7 +79,10 @@ handle store req respond = case (requestMethod req, pathInfo req) of
   where
     runIC :: StateT IC IO a -> IO a
     runIC a = do
-      x <- modifyStore store a
+      x <- modifyStore store $ do
+        -- Here we make IC.Ref use “real time”
+        lift getTimestamp >>= setAllTimesTo
+        a
       -- begin processing in the background (it is important that
       -- this thread returns, else warp is blocked somehow)
       void $ forkIO loopIC
@@ -110,7 +116,7 @@ handle store req respond = case (requestMethod req, pathInfo req) of
 
     invalidRequest msg = do
         when False $ print (T.unpack msg)
-        -- ^ When testing against dfx, and until it prints error messages
+        -- When testing against dfx, and until it prints error messages
         -- this can be enabled
         plain status400 (T.encodeUtf8Builder msg)
 
@@ -129,5 +135,5 @@ handle store req respond = case (requestMethod req, pathInfo req) of
                 Right gr -> k gr
         _ -> invalidRequest "Expected application/cbor request"
 
-    withSignedCBOR :: ((GenR, EnvValidity) -> IO ResponseReceived) -> IO ResponseReceived
-    withSignedCBOR k = withCBOR $ either invalidRequest k . stripEnvelope
+    withSignedCBOR :: Blob -> ((GenR, EnvValidity) -> IO ResponseReceived) -> IO ResponseReceived
+    withSignedCBOR root_key k = withCBOR $ either invalidRequest k . stripEnvelope root_key

@@ -1,5 +1,5 @@
 {- |
-Implements the special forms of ids (https://docs.dfinity.systems/public/#id-classes)
+Implements the special forms of ids (https://sdk.dfinity.org/docs/interface-spec/index.html#id-classes)
 -}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE OverloadedStrings #-}

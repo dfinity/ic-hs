@@ -6,7 +6,8 @@ Everything related to signature creation and checking
 module IC.Crypto
  ( SecretKey(..)
  , createSecretKeyEd25519
- , createSecretKeyWebAuthn
+ , createSecretKeyWebAuthnECDSA
+ , createSecretKeyWebAuthnRSA
  , createSecretKeyECDSA
  , createSecretKeySecp256k1
  , createSecretKeyBLS
@@ -25,6 +26,7 @@ import qualified IC.Crypto.WebAuthn as WebAuthn
 import qualified IC.Crypto.ECDSA as ECDSA
 import qualified IC.Crypto.Secp256k1 as Secp256k1
 import qualified IC.Crypto.BLS as BLS
+import qualified IC.Crypto.CanisterSig as CanisterSig
 import Data.Int
 import Control.Monad.Except
 
@@ -39,8 +41,11 @@ data SecretKey
 createSecretKeyEd25519 :: BS.ByteString -> SecretKey
 createSecretKeyEd25519 = Ed25519 . Ed25519.createKey
 
-createSecretKeyWebAuthn :: BS.ByteString -> SecretKey
-createSecretKeyWebAuthn = WebAuthn . WebAuthn.createKey
+createSecretKeyWebAuthnECDSA :: BS.ByteString -> SecretKey
+createSecretKeyWebAuthnECDSA = WebAuthn . WebAuthn.createECDSAKey
+
+createSecretKeyWebAuthnRSA :: BS.ByteString -> SecretKey
+createSecretKeyWebAuthnRSA = WebAuthn . WebAuthn.createRSAKey
 
 createSecretKeyECDSA :: BS.ByteString -> SecretKey
 createSecretKeyECDSA = ECDSA . ECDSA.createKey
@@ -80,8 +85,8 @@ sign domain_sep sk payload = case sk of
     msg | BS.null domain_sep = payload
         | otherwise = BS.singleton (fromIntegral (BS.length domain_sep)) <> domain_sep <> payload
 
-verify :: BS.ByteString -> BS.ByteString -> BS.ByteString -> BS.ByteString -> Either T.Text ()
-verify domain_sep der_pk payload sig = DER.decode der_pk >>= \case
+verify :: BS.ByteString -> BS.ByteString -> BS.ByteString -> BS.ByteString -> BS.ByteString -> Either T.Text ()
+verify root_key domain_sep der_pk payload sig = DER.decode der_pk >>= \case
   (DER.WebAuthn, pk) -> WebAuthn.verify pk msg sig
 
   (DER.Ed25519, pk) -> do
@@ -109,6 +114,8 @@ verify domain_sep der_pk payload sig = DER.decode der_pk >>= \case
         when (BLS.verify pk payload sig) $
             throwError $ "domain separator " <> T.pack (show domain_sep) <> " missing"
         throwError "signature verification failed"
+
+  (DER.CanisterSig, pk) -> CanisterSig.verify root_key pk msg sig
 
   where
     msg = BS.singleton (fromIntegral (BS.length domain_sep)) <> domain_sep <> payload

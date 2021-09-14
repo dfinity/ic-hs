@@ -2,8 +2,9 @@
 module IC.HashTree.CBOR where
 
 import Codec.CBOR.Term
+import qualified Data.Text as T
 
-import IC.CBORPatterns
+import IC.CBOR.Patterns
 import IC.HashTree
 
 encodeHashTree :: HashTree -> Term
@@ -15,7 +16,7 @@ encodeHashTree = go
     go (Leaf v) =      TList [ TInteger 3, TBlob v ]
     go (Pruned h) =    TList [ TInteger 4, TBlob h ]
 
-parseHashTree :: Term -> Either String HashTree
+parseHashTree :: Term -> Either T.Text HashTree
 parseHashTree = go
   where
     go (TList_ [ TNat 0 ]) = return EmptyTree
@@ -23,4 +24,4 @@ parseHashTree = go
     go (TList_ [ TNat 2, TBlob l, t ]) = Labeled l <$> parseHashTree t
     go (TList_ [ TNat 3, TBlob v ]) = return $ Leaf v
     go (TList_ [ TNat 4, TBlob h ]) = return $ Pruned h
-    go t = Left $ "Cannot parse as a Hash Tree: " ++ show t
+    go t = Left $ "Cannot parse as a Hash Tree: " <> T.pack (show t)

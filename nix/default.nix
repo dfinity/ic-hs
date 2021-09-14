@@ -24,6 +24,7 @@ let
         (self: super: {
           sources = import sourcesnix { sourcesFile = ./sources.json; pkgs = super; };
 
+          subpath = import ./gitSource.nix;
 
           # nixpkgs's rustc does not inclue the wasm32-unknown-unknown target, so
           # lets add it here. With this we can build the universal canister with stock
@@ -39,8 +40,8 @@ let
           });
 
           all-cabal-hashes = self.fetchurl {
-            url = "https://github.com/commercialhaskell/all-cabal-hashes/archive/f18d8ab7adfbd15acfc5e994dfb973577a5aba5c.tar.gz";
-            sha256 = "0kn2wqilpw0nyx54jyz4vp7xrx1893zdv7d54yi9pjl677pnwcs9";
+            url = "https://github.com/commercialhaskell/all-cabal-hashes/archive/174d622dcd2324afe16a2f191ce1d319028d3935.tar.gz";
+            sha256 = "0arh58mszf3b11d9yxldd63l1f4hr6fz03vjcv5yfwnkwy5yyyda";
           };
         })
       ];

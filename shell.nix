@@ -1,2 +1,2 @@
 { system ? builtins.currentSystem }:
-(import ../default.nix {inherit system;}).ic-ref-shell
+(import ./default.nix {inherit system;}).ic-hs-shell

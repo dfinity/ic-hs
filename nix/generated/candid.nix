@@ -20,6 +20,7 @@
 , megaparsec
 , mtl
 , optparse-applicative
+, parser-combinators
 , prettyprinter
 , row-types
 , scientific
@@ -38,7 +39,7 @@
 }:
 mkDerivation {
   pname = "candid";
-  version = "0.1";
+  version = "0.2";
   src = pkgs.sources.haskell-candid;
   isLibrary = true;
   isExecutable = true;
@@ -55,6 +56,7 @@ mkDerivation {
     leb128-cereal
     megaparsec
     mtl
+    parser-combinators
     prettyprinter
     row-types
     scientific

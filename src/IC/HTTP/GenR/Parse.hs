@@ -14,6 +14,7 @@ import qualified Data.Text as T
 import qualified Data.ByteString.Lazy as BS
 import Control.Monad.State
 import Control.Monad.Writer
+import Control.Monad.Except
 import qualified Data.HashMap.Lazy as HM
 import GHC.Stack
 
@@ -27,6 +28,7 @@ class Monad m => Parse m where parseError :: HasCallStack => T.Text -> m a
 
 instance Parse (Either T.Text) where  parseError = Left
 instance (Monoid a, Parse m) => Parse (WriterT a m) where parseError = lift . parseError
+instance Monad m => Parse (ExceptT T.Text m ) where parseError = throwError
 
 record :: HasCallStack => Parse m => RecordM m a -> GenR -> m a
 record m (GRec hm) = (`evalStateT` hm) $ do

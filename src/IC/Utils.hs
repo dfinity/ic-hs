@@ -15,3 +15,4 @@ repeatWhileTrue :: Monad m => m Bool -> m ()
 repeatWhileTrue act = act >>= \case
     True -> repeatWhileTrue act
     False -> return ()
+
