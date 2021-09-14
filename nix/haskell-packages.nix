@@ -17,9 +17,6 @@ nix: subpath:
   row-types = super.callPackage generated/row-types.nix {};
   smallcheck = super.callPackage generated/smallcheck.nix {};
 
-  # need older version (for now)
-  row-types = super.callPackage generated/row-types.nix {};
-
   # Only the test suite of crc is broken
   # https://github.com/MichaelXavier/crc/issues/2
   crc = nix.haskell.lib.markUnbroken (nix.haskell.lib.dontCheck super.crc);
