@@ -11,6 +11,7 @@ The canister interface, presented imperatively (or impurely), i.e. without rollb
 module IC.Canister.Imp
  ( CanisterEntryPoint
  , ImpState(..)
+ , rawHeartbeat
  , rawInstantiate
  , rawInitialize
  , rawQuery
@@ -489,7 +490,7 @@ systemAPI esref =
       let msg = BSU.toString bytes
       throwError $ "canister trapped explicitly: " ++ msg
 
--- The state of an instance, consistig of
+-- The state of an instance, consisting of
 --  * the underlying Wasm state,
 --  * additional remembered information like the CanisterId
 --  * the 'ESRef' that the system api functions are accessing
@@ -549,6 +550,24 @@ rawInitialize caller env dat (ImpState esref inst sm wasm_mod) = do
         | accepted es' -> return $ Trap "cannot accept_message here"
         | not (null (calls es')) -> return $ Trap "cannot call from init"
         | otherwise        -> return $ Return $ canisterActions es'
+
+rawHeartbeat :: Env -> ImpState s -> ST s (TrapOr UpdateResult)
+rawHeartbeat env (ImpState esref inst sm wasm_mod) = do
+  result <- runExceptT $ do
+    let es = initialExecutionState inst sm env cantRespond
+
+    if "canister_heartbeat" `elem` exportedFunctions wasm_mod
+    then withES esref es $ void $ invokeExport inst "canister_heartbeat" []
+    else return ((), es)
+
+  case result of
+    Left  err -> return $ Trap err
+    Right (_, es')
+      | accepted es' -> return $ Trap "cannot accept_message here"
+      | otherwise    -> return $ Return $
+        ( CallActions (calls es') (cycles_accepted es') (response es')
+        , canisterActions es'
+        )
 
 rawPreUpgrade :: EntityId -> Env -> ImpState s -> ST s (TrapOr (CanisterActions, Blob))
 rawPreUpgrade caller env (ImpState esref inst sm wasm_mod) = do

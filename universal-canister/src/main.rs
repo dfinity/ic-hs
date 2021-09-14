@@ -260,6 +260,8 @@ fn eval(ops : Ops) {
           api::call_on_cleanup(callback, cleanup_env);
         }
 
+          // canister heartbeat script
+          45 => set_heartbeat(stack.pop_blob()),
 
         _ => api::trap_with(&format!("unknown op {}", op)),
       }
@@ -299,6 +301,12 @@ fn post_upgrade() {
 fn inspect_message() {
   setup();
   eval(&get_inspect_message());
+}
+
+#[export_name = "canister_heartbeat"]
+fn heartbeat() {
+    setup();
+    eval(&get_heartbeat());
 }
 
 /* A global variable */
@@ -368,6 +376,16 @@ fn callback(env: u32) {
     eval(&get_callback(env));
 }
 
+/* A variable to store what to execute in canister_heartbeat */
+lazy_static! {
+    static ref HEARTBEAT: Mutex<Vec<u8>> = Mutex::new(Vec::new());
+}
+fn set_heartbeat(data: Vec<u8>) {
+    *HEARTBEAT.lock().unwrap() = data;
+}
+fn get_heartbeat() -> Vec<u8> {
+    HEARTBEAT.lock().unwrap().clone()
+}
 
 /* Panic setup */
 

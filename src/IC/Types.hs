@@ -117,7 +117,7 @@ type ExistingCanisters = [CanisterId]
 -- Canister actions (independent of calls)
 newtype CanisterActions = CanisterActions
   { set_certified_data :: Maybe Blob
-  }
+  } deriving (Show)
 
 instance Semigroup CanisterActions where
     ca1 <> ca2 = CanisterActions (set_certified_data ca1 `setter` set_certified_data ca2)
@@ -133,7 +133,7 @@ data CallActions = CallActions
   { ca_new_calls :: [MethodCall]
   , ca_accept :: Cycles
   , ca_response :: Maybe Response
-  }
+  } deriving (Show)
 
 noCallActions :: CallActions
 noCallActions = CallActions [] 0 Nothing
