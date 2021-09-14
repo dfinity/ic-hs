@@ -1150,6 +1150,17 @@ setAllTimesTo :: ICM m => Timestamp -> m ()
 setAllTimesTo ts = modify $
   \ic -> ic { canisters = M.map (\cs -> cs { time = ts }) (canisters ic) }
 
+<<<<<<< HEAD
+=======
+hasHeartbeat :: ICM m => CanisterId -> m Bool
+hasHeartbeat cid = do
+  is_running <- getRunStatus cid >>= \case
+    IsRunning -> return True
+    _ -> return False
+  empty <- isCanisterEmpty cid
+  return $ (not empty) && is_running
+
+>>>>>>> origin/marcin/heartbeat
 newHeartbeat :: ICM m => CanisterId -> m ()
 newHeartbeat cid = do
   new_ctxt_id <- newCallContext $ CallContext
@@ -1168,7 +1179,12 @@ newHeartbeat cid = do
 enqueueHeartbeats :: ICM m => m ()
 enqueueHeartbeats = do
   cs <- gets (M.keys . canisters)
+<<<<<<< HEAD
   forM_ cs newHeartbeat
+=======
+  cs_with_hb <- filterM (\x -> return True) cs
+  forM_ cs_with_hb newHeartbeat
+>>>>>>> origin/marcin/heartbeat
 
 -- | Returns true if a step was taken
 runStep :: ICM m => m Bool
