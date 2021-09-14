@@ -37,6 +37,7 @@ module IC.Ref
   , handleReadState
   , runStep
   , runToCompletion
+  , enqueueHeartbeats
   -- $ Exported for use as a library, e.g. in testing
   , setAllTimesTo
   , createEmptyCanister
@@ -144,6 +145,7 @@ data CanState = CanState
 data EntryPoint
   = Public MethodName Blob
   | Closure Callback Response Cycles
+  | Heartbeat
   deriving (Show)
 
 type CallId = Int
@@ -161,6 +163,7 @@ data CallContext = CallContext
 data CallOrigin
   = FromUser RequestID
   | FromCanister CallId Callback
+  | FromHeartbeat
   deriving (Show)
 
 data Message
@@ -249,10 +252,6 @@ canisterMustExist cid =
 
 isCanisterEmpty :: ICM m => CanisterId -> m Bool
 isCanisterEmpty cid = isNothing . content <$> getCanister cid
-
-
--- the following functions assume the canister does exist;
--- it would be an internal error if they dont
 
 getCanister :: ICM m => CanisterId -> m CanState
 getCanister cid =
@@ -659,6 +658,7 @@ callerOfCallID ctxt_id = do
   case origin ctxt of
     FromUser rid -> callerOfRequest rid
     FromCanister other_ctxt_id _callback -> calleeOfCallID other_ctxt_id
+    FromHeartbeat -> return $ canister ctxt
 
 calleeOfCallID :: ICM m => CallId -> m EntityId
 calleeOfCallID ctxt_id = canister <$> getCallContext ctxt_id
@@ -712,6 +712,7 @@ processMessage m = case m of
   ResponseMessage ctxt_id response refunded_cycles -> do
     ctxt <- getCallContext ctxt_id
     case origin ctxt of
+      FromHeartbeat -> return ()
       FromUser rid -> setReqStatus rid $ CallResponse $
         -- NB: Here cycles disappear
         case response of
@@ -808,6 +809,7 @@ invokeManagementCanister caller ctxt_id (Public method_name arg) =
         Right x -> method (raw_reply . encode @b) x
 
 invokeManagementCanister _ _ Closure{} = error "closure invoked on management function "
+invokeManagementCanister _ _ Heartbeat = error "heartbeat invoked on management function "
 
 icCreateCanister :: (ICM m, CanReject m) => EntityId -> CallId -> ICManagement m .! "create_canister"
 icCreateCanister caller ctxt_id r = do
@@ -1056,6 +1058,10 @@ invokeEntry ctxt_id wasm_state can_mod env entry = do
                         Return (wasm_state', (noCallActions, noCanisterActions))
                 Nothing -> Trap err
             Return (wasm_state, actions) -> Return (wasm_state, actions)
+      Heartbeat -> return $ do
+        case heartbeat can_mod env wasm_state of
+            Trap err -> Trap err
+            Return ur -> Return (wasm_state, ur)
   where
     lookupUpdate method can_mod
         | Just f <- M.lookup method (update_methods can_mod) = Just f
@@ -1142,6 +1148,34 @@ setAllTimesTo :: ICM m => Timestamp -> m ()
 setAllTimesTo ts = modify $
   \ic -> ic { canisters = M.map (\cs -> cs { time = ts }) (canisters ic) }
 
+hasHeartbeat :: ICM m => CanisterId -> m Bool
+hasHeartbeat cid = do
+  is_running <- getRunStatus cid >>= \case
+    IsRunning -> return True
+    _ -> return False
+  empty <- isCanisterEmpty cid
+  return $ (not empty) && is_running
+
+newHeartbeat :: ICM m => CanisterId -> m ()
+newHeartbeat cid = do
+  new_ctxt_id <- newCallContext $ CallContext
+    { canister = cid
+    , origin = FromHeartbeat
+    , responded = Responded False
+    , deleted = False
+    , last_trap = Nothing
+    , available_cycles = 0
+    }
+  enqueueMessage $ CallMessage
+    { call_context = new_ctxt_id
+    , entry = Heartbeat
+    }
+
+enqueueHeartbeats :: ICM m => m ()
+enqueueHeartbeats = do
+  cs <- gets (M.keys . canisters)
+  cs_with_hb <- filterM (\x -> return True) cs
+  forM_ cs_with_hb newHeartbeat
 
 -- | Returns true if a step was taken
 runStep :: ICM m => m Bool

@@ -1034,6 +1034,14 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
       checkNoUpgrade cid
     ]
 
+  , testGroup "heartbeat"
+    [ testCase "called once" $ do
+      cid <- install $ onHeartbeat $ heartbeat $ setGlobal "FOO"
+      -- Heartbeat is triggered after each query call, so 'BAR' is expected to be overridden with 'FOO'.
+      call_ cid (setGlobal "BAR" >>> reply)
+      query cid (replyData getGlobal) >>= is "FOO"
+    ]
+
   , testGroup "reinstall"
     [ testCase "succeeding" $ do
       cid <- install $
