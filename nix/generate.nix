@@ -78,6 +78,7 @@ let
     QuickCheck = pkgs.haskellPackages.hackage2nix "QuickCheck" "2.14.2";
     row-types = pkgs.haskellPackages.hackage2nix "row-types" "1.0.1.0";
     smallcheck = pkgs.haskellPackages.hackage2nix "smallcheck" "1.2.1";
+    prettyprinter = pkgs.haskellPackages.hackage2nix "prettyprinter" "1.7.0";
   };
 
   allGenerated = pkgs.runCommandNoCC "generated" {
