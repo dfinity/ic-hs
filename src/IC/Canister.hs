@@ -29,7 +29,7 @@ type WasmState = CanisterSnapshot
 type InitFunc = EntityId -> Env -> Blob -> TrapOr (WasmState, CanisterActions)
 type UpdateFunc = WasmState -> TrapOr (WasmState, UpdateResult)
 type QueryFunc = WasmState -> TrapOr Response
-type HeartbeatFunc = Env -> WasmState -> TrapOr (UpdateResult)
+type HeartbeatFunc = Env -> WasmState -> TrapOr (WasmState, UpdateResult)
 
 data CanisterModule = CanisterModule
   { raw_wasm :: Blob
@@ -86,7 +86,7 @@ parseCanister bytes =
                 invoke wasm_state0 (rawPostUpgrade caller env mem dat)
       , inspect_message = \method_name caller env arg wasm_state ->
             snd <$> invoke wasm_state (rawInspectMessage method_name caller env arg)
-      , heartbeat = \env wasm_state -> snd <$> invoke wasm_state (rawHeartbeat env)
+      , heartbeat = \env wasm_state -> invoke wasm_state (rawHeartbeat env)
       }
 
 instantiate :: Module -> TrapOr WasmState

@@ -254,7 +254,7 @@ isCanisterEmpty :: ICM m => CanisterId -> m Bool
 isCanisterEmpty cid = isNothing . content <$> getCanister cid
 
 -- the following functions assume the canister does exist;
--- it would be an internal error if they dont
+-- it would be an internal error if they donts
 getCanister :: ICM m => CanisterId -> m CanState
 getCanister cid =
   gets (M.lookup cid . canisters)
@@ -1063,7 +1063,7 @@ invokeEntry ctxt_id wasm_state can_mod env entry = do
       Heartbeat -> return $ do
         case heartbeat can_mod env wasm_state of
             Trap err -> Trap err
-            Return ur -> Return (wasm_state, ur)
+            Return x -> Return x
   where
     lookupUpdate method can_mod
         | Just f <- M.lookup method (update_methods can_mod) = Just f

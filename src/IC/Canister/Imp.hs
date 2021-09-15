@@ -563,8 +563,8 @@ rawHeartbeat env (ImpState esref inst sm wasm_mod) = do
   case result of
     Left  err -> return $ Trap err
     Right (_, es')
-      | accepted es' -> return $ Trap "cannot accept_message here"
-      | otherwise    -> return $ Return $
+      | isJust (response es') -> return $ Trap "cannot respond from heartbeat"
+      | otherwise             -> return $ Return $
         ( CallActions (calls es') (cycles_accepted es') (response es')
         , canisterActions es'
         )

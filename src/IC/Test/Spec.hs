@@ -529,7 +529,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     {-
     This section checks various API calls in various contexts, to see
     if they trap when they should
-    This mirros the table in https://sdk.dfinity.org/docs/interface-spec/index.html#system-api-imports
+    This mirrors the table in https://sdk.dfinity.org/docs/interface-spec/index.html#system-api-imports
 
     -}
     let
@@ -1036,13 +1036,18 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
 
   , testGroup "heartbeat"
     [ testCase "called once for all canisters" $ do
-      cid <- install $ onHeartbeat $ heartbeat $ setCertifiedData "FOO"
-      cid2 <- install $ onHeartbeat $ heartbeat $ setCertifiedData "BAR"
+      cid <- install $ onHeartbeat $ heartbeat $ ignore (stableGrow (int 1)) >>> stableWrite (int 0) "FOO"
+      cid2 <- install $ onHeartbeat $ heartbeat $ ignore (stableGrow (int 1)) >>> stableWrite (int 0) "BAR"
+      -- Heartbeat cannot respond. Should be rejected.
+      cid3 <- install $ onHeartbeat $ heartbeat $ setGlobal "FIZZ" >>> replyData "FIZZ"
+
       -- Send a dummy request to enforce execution of heartbeat functions.
-      -- (it's triggered for all canisters after each call request)
-      call_ cid (setGlobal "FIZZ" >>> reply)
-      query cid (replyData getCertificate) >>= extractCertData cid >>= is "FOO"
-      query cid2 (replyData getCertificate) >>= extractCertData cid2 >>= is "BAR"
+      -- (heartbeats are triggered for all running canisters after each call request)
+      call_ cid (setCertifiedData "DUMMY" >>> reply)
+
+      query cid (replyData (stableRead (int 0) (int 3))) >>= is "FOO"
+      query cid2 (replyData (stableRead (int 0) (int 3))) >>= is "BAR"
+      query cid3 (replyData getGlobal) >>= is ""
     ]
 
   , testGroup "reinstall"
