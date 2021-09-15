@@ -253,8 +253,10 @@ canisterMustExist cid =
 isCanisterEmpty :: ICM m => CanisterId -> m Bool
 isCanisterEmpty cid = isNothing . content <$> getCanister cid
 
--- the following functions assume the canister does exist;
--- it would be an internal error if they donts
+
+-- The following functions assume the canister does exist.
+-- It would be an internal error if they don't.
+
 getCanister :: ICM m => CanisterId -> m CanState
 getCanister cid =
   gets (M.lookup cid . canisters)
