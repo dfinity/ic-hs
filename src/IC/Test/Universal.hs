@@ -222,9 +222,6 @@ instance IsString (Exp 'B) where
 callback :: Prog -> Exp 'B
 callback = bytes . run
 
-heartbeat :: Prog -> Exp 'B
-heartbeat = bytes . run
-
 replyData :: Exp 'B -> Prog
 replyData a = replyDataAppend a >>> reply
 

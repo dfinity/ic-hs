@@ -1036,14 +1036,17 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
 
   , testGroup "heartbeat"
     [ testCase "called once for all canisters" $ do
-      cid <- install $ onHeartbeat $ heartbeat $ ignore (stableGrow (int 1)) >>> stableWrite (int 0) "FOO"
-      cid2 <- install $ onHeartbeat $ heartbeat $ ignore (stableGrow (int 1)) >>> stableWrite (int 0) "BAR"
-      -- Heartbeat cannot respond. Should be rejected.
-      cid3 <- install $ onHeartbeat $ heartbeat $ setGlobal "FIZZ" >>> replyData "FIZZ"
+      cid <- install $ onHeartbeat $ callback $ ignore (stableGrow (int 1)) >>> stableWrite (int 0) "FOO"
+      cid2 <- install $ onHeartbeat $ callback $ ignore (stableGrow (int 1)) >>> stableWrite (int 0) "BAR"
+      -- Heartbeat cannot respond. Should be trapped.
+      cid3 <- install $ onHeartbeat $ callback $ setGlobal "FIZZ" >>> replyData "FIZZ"
 
-      -- Send a dummy request to enforce execution of heartbeat functions.
-      -- (heartbeats are triggered for all running canisters after each call request)
-      call_ cid (setCertifiedData "DUMMY" >>> reply)
+      -- The spec currently gives no guarantee about when or how frequent heartbeats are executed.
+      -- But all implementations have the property: if update call B is submitted after call A is completed,
+      -- then a heartbeat runs before the execution of B.
+      -- We use this here to make sure that heartbeats have been attempted:
+      call_ cid reply
+      call_ cid reply
 
       query cid (replyData (stableRead (int 0) (int 3))) >>= is "FOO"
       query cid2 (replyData (stableRead (int 0) (int 3))) >>= is "BAR"
