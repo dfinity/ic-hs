@@ -16,6 +16,7 @@ nix: subpath:
   megaparsec = super.callPackage generated/megaparsec.nix {};
   row-types = super.callPackage generated/row-types.nix {};
   smallcheck = super.callPackage generated/smallcheck.nix {};
+  prettyprinter = nix.haskell.lib.dontCheck (super.callPackage generated/prettyprinter.nix {});
 
   # Only the test suite of crc is broken
   # https://github.com/MichaelXavier/crc/issues/2
@@ -50,7 +51,6 @@ nix: subpath:
   # wants older quickcheck
   quickcheck-instances = nix.haskell.lib.markBroken super.quickcheck-instances;
   aeson = nix.haskell.lib.dontCheck super.aeson;
-  prettyprinter = nix.haskell.lib.dontCheck super.prettyprinter;
   http-types = nix.haskell.lib.dontCheck super.http-types;
   vector-builder = nix.haskell.lib.dontCheck super.vector-builder;
   serialise = nix.haskell.lib.dontCheck super.serialise;
