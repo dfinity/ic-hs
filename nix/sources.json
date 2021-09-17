@@ -1,15 +1,15 @@
 {
     "haskell-candid": {
-        "branch": "smallcheck-1.2",
+        "branch": "master",
         "builtin": false,
         "description": "A candid library for Haskell",
         "homepage": null,
         "owner": "nomeata",
         "repo": "haskell-candid",
-        "rev": "9726ee7154ee83687ea1dca8e77b0a5ea403d0ff",
+        "rev": "0bdb1caeb6c6cd60f42bd591342675654a1cf589",
         "sha256": "0kwb5haac58baf9va4laa5lv2a70yzllgxi88vrxks38j5fjbc59",
         "type": "tarball",
-        "url": "https://github.com/nomeata/haskell-candid/archive/9726ee7154ee83687ea1dca8e77b0a5ea403d0ff.tar.gz",
+        "url": "https://github.com/nomeata/haskell-candid/archive/0bdb1caeb6c6cd60f42bd591342675654a1cf589.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "leb128-cereal": {
