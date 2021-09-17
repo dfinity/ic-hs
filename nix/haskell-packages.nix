@@ -22,9 +22,6 @@ nix: subpath:
   # https://github.com/MichaelXavier/crc/issues/2
   crc = nix.haskell.lib.markUnbroken (nix.haskell.lib.dontCheck super.crc);
 
-  #  # test
-  tasty-html = nix.haskell.lib.markUnbroken (nix.haskell.lib.dontCheck super.tasty-html);
-
   #  #base16-bytestring = nix.haskell.lib.dontCheck super.base16-bytestring;
 
   #  # We want random-1.2, but a lot of packages do not like that yet,
