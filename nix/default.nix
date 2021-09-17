@@ -6,19 +6,19 @@ let
   };
   nixpkgs_src = (import sourcesnix { sourcesFile = ./sources.json; inherit pkgs; }).nixpkgs;
 
-  bootstrap-pkgs = import nixpkgs_src {
-    system = builtins.currentSystem;
-  };
-
+  # dump nixpkgs patches here
   nixpkgs-patches = [];
 
-  nixpkgs-patched = if nixpkgs-patches == [] then
-    bootstrap-pkgs.applyPatches {
+  nixpkgs-patched = if nixpkgs-patches == [] then nixpkgs_src else
+    let
+      bootstrap-pkgs = import nixpkgs_src {
+        system = builtins.currentSystem;
+      };
+    in bootstrap-pkgs.applyPatches {
       name = "nixpkgs-patched";
       src = nixpkgs_src;
-      patches = [
-      ];
-    } else bootstrap-pkgs;
+      patches = nixpkgs-patches;
+    };
 
   pkgs =
     import nixpkgs-patched {

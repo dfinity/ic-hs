@@ -28,9 +28,8 @@ let haskellPackages = nixpkgs.haskellPackages.override {
   overrides = self: super:
     import nix/generated/all.nix self super //
     {
-      # Only the test suite of crc is broken
-      # https://github.com/MichaelXavier/crc/issues/2
-      crc = nixpkgs.haskell.lib.markUnbroken (nixpkgs.haskell.lib.dontCheck super.crc);
+      # here more adjustments can be made if needed, e.g.
+      # crc = nixpkgs.haskell.lib.markUnbroken (nixpkgs.haskell.lib.dontCheck super.crc);
     };
 }; in
 
