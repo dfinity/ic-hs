@@ -39,8 +39,8 @@ let
               then flag + ",wasm32-unknown-unknown"
               else flag) ++ [
                 # https://github.com/rust-lang/rust/issues/76526
-		"--set=build.docs=false"
-	      ];
+                "--set=build.docs=false"
+              ];
           });
 
           all-cabal-hashes = self.fetchurl {
