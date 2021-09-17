@@ -81,13 +81,16 @@ let
   } (
     ''
     mkdir -p $out
+    echo 'self: super: {' >> $out/all.nix
     '' + builtins.concatStringsSep "" (
       pkgs.lib.flip pkgs.lib.mapAttrsToList packages (
         n: pkg: ''
           cp ${pkg}/default.nix $out/${n}.nix
+          echo '  ${n} = super.callPackage ./${n}.nix { };' >> $out/all.nix
         ''
       )
     ) + ''
+      echo '}' >> $out/all.nix
       chmod u+w $out/*.nix
       nixpkgs-fmt $out/*.nix
       cat <<__END__ > $out/README.md

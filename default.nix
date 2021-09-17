@@ -25,7 +25,13 @@ let universal-canister = (naersk.buildPackage rec {
 
 
 let haskellPackages = nixpkgs.haskellPackages.override {
-  overrides = import nix/haskell-packages.nix nixpkgs subpath;
+  overrides = self: super:
+    import nix/generated/all.nix self super //
+    {
+      # Only the test suite of crc is broken
+      # https://github.com/MichaelXavier/crc/issues/2
+      crc = nixpkgs.haskell.lib.markUnbroken (nixpkgs.haskell.lib.dontCheck super.crc);
+    };
 }; in
 
 let
