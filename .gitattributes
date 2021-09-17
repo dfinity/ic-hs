@@ -1,0 +1,2 @@
+nix/generated/* linguist-generated
+cabal.project.freeze linguist-generated
