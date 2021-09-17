@@ -2,10 +2,6 @@ name: Haskell CI
 on: [push, pull_request]
 jobs:
   docs:
-    strategy:
-      matrix:
-        ghc:
-        - '8.10.7'
     runs-on: ubuntu-latest
     steps:
     - uses: actions/cache@v1
@@ -16,13 +12,11 @@ jobs:
         restore-keys: cabal-${{ runner.os }}-${{ matrix.ghc }}-
 
     - uses: actions/checkout@v2
-    - uses: actions/setup-haskell@v1
+    - uses: haskell/actions/setup@v1
       with:
-        ghc-version: ${{ matrix.ghc }}
+        ghc-version: '8.10'
     - name: Build
       run: |
-        ls -l /opt/ghc/
-        export PATH=/opt/ghc/bin:$PATH
         cabal --version
         ghc --version
         cabal update
