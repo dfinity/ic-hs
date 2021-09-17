@@ -13,6 +13,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - uses: cachix/install-nix-action@v13
+    - run: nix-env -iA nix-build-uncached -f nix/
     - uses: cachix/cachix-action@v10
       with:
         name: ic-hs-test
@@ -20,14 +21,15 @@ jobs:
     # until https://github.com/cachix/cachix-action/issues/86 is fixed:
     - run: cachix watch-store ic-hs-test &
 
-    - run: nix-build -A universal-canister
-    - run: nix-build -A ic-hs
-    - run: nix-build -A ic-hs-coverage
-    - run: nix-build -A coverage
-    - run: nix-build -A check-generated
-    - run: nix-build -A check-cabal-freeze
-    - run: nix-build -A ic-ref-dist
-    - run: nix-build -A ic-ref-test
-    - run: nix-build -A ic-hs-shell
+    # run a few targets explicitly, to get easier signal in the CI view
+    - run: nix-build-uncached -A universal-canister
+    - run: nix-build-uncached -A ic-hs
+    - run: nix-build-uncached -A ic-hs-coverage
+    - run: nix-build-uncached -A coverage
+    - run: nix-build-uncached -A check-generated
+    - run: nix-build-uncached -A check-cabal-freeze
+    - run: nix-build-uncached -A ic-ref-dist
+    - run: nix-build-uncached -A ic-ref-test
+    - run: nix-build-uncached -A ic-hs-shell
     # now the rest
-    - run: nix-build
+    - run: nix-build-uncached

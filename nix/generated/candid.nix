@@ -13,6 +13,7 @@
 , directory
 , dlist
 , doctest
+, file-embed
 , filepath
 , hex-text
 , leb128-cereal
@@ -52,6 +53,7 @@ mkDerivation {
     containers
     crc
     dlist
+    file-embed
     hex-text
     leb128-cereal
     megaparsec

@@ -1,4 +1,4 @@
-{ mkDerivation, base, logict, mtl, pretty, stdenv }:
+{ mkDerivation, base, lib, logict, mtl, pretty }:
 mkDerivation {
   pname = "smallcheck";
   version = "1.2.1";
@@ -6,5 +6,5 @@ mkDerivation {
   libraryHaskellDepends = [ base logict mtl pretty ];
   homepage = "https://github.com/Bodigrim/smallcheck";
   description = "A property-based testing library";
-  license = stdenv.lib.licenses.bsd3;
+  license = lib.licenses.bsd3;
 }

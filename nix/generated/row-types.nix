@@ -1,8 +1,8 @@
 { mkDerivation
 , base
 , constraints
-, criterion
 , deepseq
+, gauge
 , generic-lens
 , hashable
 , lib
@@ -12,8 +12,8 @@
 }:
 mkDerivation {
   pname = "row-types";
-  version = "0.4.0.0";
-  sha256 = "67b2f5667aa1cd46a1dea9b925794ba882d5704f7f8cf191369af2627c65dc90";
+  version = "1.0.1.0";
+  sha256 = "42e83595be831a7194ea50e8293aec8b9236f8dad68a2e769294415b8d0e5357";
   libraryHaskellDepends = [
     base
     constraints
@@ -25,7 +25,7 @@ mkDerivation {
     unordered-containers
   ];
   testHaskellDepends = [ base generic-lens ];
-  benchmarkHaskellDepends = [ base criterion deepseq ];
+  benchmarkHaskellDepends = [ base deepseq gauge ];
   homepage = "https://github.com/target/row-types";
   description = "Open Records and Variants";
   license = lib.licenses.mit;

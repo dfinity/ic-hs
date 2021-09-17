@@ -1,7 +1,13 @@
+<<<<<<< HEAD
 -- Run nix-shell .. -A check-cabal-freeze to update this file
 active-repositories: :none
 constraints: any.FloatingHex ==0.5,
              any.HUnit ==1.6.2.0,
+=======
+-- Run nix-shell . -A check-cabal-freeze to update this file
+constraints: any.FloatingHex ==0.4,
+             any.HUnit ==1.6.0.0,
+>>>>>>> fc1250f5ba8f9c8b68fa37afa397441c82e6c622
              any.MonadRandom ==0.5.2,
              any.QuickCheck ==2.14.2,
              any.StateVar ==1.2.1,
@@ -60,7 +66,12 @@ constraints: any.FloatingHex ==0.5,
              any.easy-file ==0.2.2,
              any.ed25519 ==0.0.5.0,
              any.exceptions ==0.10.4,
+<<<<<<< HEAD
              any.fast-logger ==3.0.3,
+=======
+             any.fast-logger ==3.0.1,
+             any.file-embed ==0.0.11.2,
+>>>>>>> fc1250f5ba8f9c8b68fa37afa397441c82e6c622
              any.filepath ==1.4.2.1,
              any.generic-deriving ==1.13.1,
              any.generic-lens ==2.0.0.0,
@@ -107,7 +118,11 @@ constraints: any.FloatingHex ==0.5,
              any.pem ==0.2.4,
              any.pretty ==1.1.3.6,
              any.prettyprinter ==1.7.0,
+<<<<<<< HEAD
              any.primitive ==0.7.1.0,
+=======
+             any.primitive ==0.7.0.1,
+>>>>>>> fc1250f5ba8f9c8b68fa37afa397441c82e6c622
              any.primitive-unaligned ==0.1.1.1,
              any.process ==1.6.9.0,
              any.profunctors ==5.5.2,

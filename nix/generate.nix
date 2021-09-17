@@ -32,7 +32,7 @@ let
         # See ./nix/generate.nix for instructions.\
 
       '';
-      inherit src_subst;
+      src_subst = pkgs.lib.replaceStrings ["\n"] [" "] src_subst;
       installPhase = oldAttrs.installPhase + ''
         sed -i "1i$message;s|src = .*|src = $src_subst;|" $out/default.nix
         # Accept `pkgs` as an argument in case the `src_subst` depends on it.
@@ -40,15 +40,19 @@ let
       '';
     });
 
-  # A variant of `haskellSrc2nixWithDoc` for local Haskell packages.
-  localHaskellSrc2nixWithDoc = name: path: extraCabal2nixOptions:
-    haskellSrc2nixWithDoc {
-      inherit name extraCabal2nixOptions;
-      src = import ./gitSource.nix path;
-      src_subst = "import ../gitSource.nix \"${path}\"";
+  packages = {
+    ic-hs = haskellSrc2nixWithDoc {
+      name = "ic-hs";
+      src = pkgs.subpath "/";
+      # since the haskell code now lives on the top-level,
+      # exclude some more files to avoid rebuilds
+      src_subst = ''
+        pkgs.lib.sourceByRegex (pkgs.subpath "/")
+          ["^src.*" "^ic-hs.cabal" "^cbits.*" "^LICENSE" "^ic.did"]
+      '';
+      extraCabal2nixOptions =  "--no-check -frelease";
     };
 
-  packages = {
     winter = haskellSrc2nixWithDoc {
       name = "winter";
       src = pkgs.sources.winter;
@@ -66,16 +70,15 @@ let
       src_subst = "pkgs.sources.haskell-candid";
     };
 
-    ic-ref = localHaskellSrc2nixWithDoc "ic-ref" "" "--no-check -frelease";
     base32 = pkgs.haskellPackages.hackage2nix "base32" "0.1.1.2";
     megaparsec = pkgs.haskellPackages.hackage2nix "megaparsec" "8.0.0";
     base64-bytestring = pkgs.haskellPackages.hackage2nix "base64-bytestring" "1.1.0.0";
     random = pkgs.haskellPackages.hackage2nix "random" "1.2.0";
     splitmix = pkgs.haskellPackages.hackage2nix "splitmix" "0.1.0.3";
     QuickCheck = pkgs.haskellPackages.hackage2nix "QuickCheck" "2.14.2";
-
-     # for haskell-candid, support for newer versions already on a branch
-    row-types = pkgs.haskellPackages.hackage2nix "row-types" "0.4.0.0";
+    row-types = pkgs.haskellPackages.hackage2nix "row-types" "1.0.1.0";
+    smallcheck = pkgs.haskellPackages.hackage2nix "smallcheck" "1.2.1";
+    prettyprinter = pkgs.haskellPackages.hackage2nix "prettyprinter" "1.7.0";
   };
 
   allGenerated = pkgs.runCommandNoCC "generated" {
@@ -92,7 +95,7 @@ let
     ) + ''
       chmod u+w $out/*.nix
       nixpkgs-fmt $out/*.nix
-      echo <<__END__ > $out/README.md
+      cat <<__END__ > $out/README.md
       The contents of this directory are automatically generated.
       To update, please run nix-shell generate.nix
       __END__
