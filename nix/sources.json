@@ -52,16 +52,16 @@
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "winter": {
-        "branch": "joachim/data-fix-0.3",
+        "branch": "master",
         "builtin": false,
         "description": "Haskell port of the WebAssembly OCaml reference interpreter",
         "homepage": "https://github.com/dfinity-side-projects/winter",
         "owner": "dfinity-side-projects",
         "repo": "winter",
-        "rev": "73187b3bc675c0960c6903210c69d8f588285483",
-        "sha256": "0fcz5bhnphk3ng697l5z3n28a6kw8wpm5xmkl6vmnyfhpx0ni88i",
+        "rev": "e62722796e11760947a94285734e7bc29d72c389",
+        "sha256": "1yfgk5bhyzrllnkhpg1plzp3mz7h1fgn3j0zfn36a3h892lknlds",
         "type": "tarball",
-        "url": "https://github.com/dfinity-side-projects/winter/archive/73187b3bc675c0960c6903210c69d8f588285483.tar.gz",
+        "url": "https://github.com/dfinity-side-projects/winter/archive/e62722796e11760947a94285734e7bc29d72c389.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     }
 }
