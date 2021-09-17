@@ -4,6 +4,8 @@ jobs:
   docs:
     runs-on: ubuntu-latest
     steps:
+    - uses: actions/checkout@v2
+
     - uses: actions/cache@v1
       name: Cache ~/.cabal/store
       with:
@@ -11,7 +13,6 @@ jobs:
         key: cabal-${{ runner.os }}-${{ matrix.ghc }}-${{ hashFiles('cabal.project', 'cabal.project.freeze') }}
         restore-keys: cabal-${{ runner.os }}-${{ matrix.ghc }}-
 
-    - uses: actions/checkout@v2
     - uses: haskell/actions/setup@v1
       with:
         ghc-version: '8.10'
