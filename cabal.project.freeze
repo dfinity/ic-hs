@@ -1,5 +1,4 @@
 -- Run nix-shell . -A check-cabal-freeze to update this file
-active-repositories: :none
 constraints: any.FloatingHex ==0.5,
              any.HUnit ==1.6.2.0,
              any.MonadRandom ==0.5.3,
