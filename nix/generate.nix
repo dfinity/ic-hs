@@ -70,15 +70,10 @@ let
       src_subst = "pkgs.sources.haskell-candid";
     };
 
-    base32 = pkgs.haskellPackages.hackage2nix "base32" "0.1.1.2";
-    megaparsec = pkgs.haskellPackages.hackage2nix "megaparsec" "8.0.0";
-    base64-bytestring = pkgs.haskellPackages.hackage2nix "base64-bytestring" "1.1.0.0";
-    random = pkgs.haskellPackages.hackage2nix "random" "1.2.0";
-    splitmix = pkgs.haskellPackages.hackage2nix "splitmix" "0.1.0.3";
-    QuickCheck = pkgs.haskellPackages.hackage2nix "QuickCheck" "2.14.2";
-    row-types = pkgs.haskellPackages.hackage2nix "row-types" "1.0.1.0";
-    smallcheck = pkgs.haskellPackages.hackage2nix "smallcheck" "1.2.1";
-    prettyprinter = pkgs.haskellPackages.hackage2nix "prettyprinter" "1.7.0";
+    # To pull other versios from hackage:
+    #
+    # base32 = pkgs.haskellPackages.hackage2nix "base32" "0.1.1.2";
+    # prettyprinter = pkgs.haskellPackages.hackage2nix "prettyprinter" "1.7.0";
   };
 
   allGenerated = pkgs.runCommandNoCC "generated" {
