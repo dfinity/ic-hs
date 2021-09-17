@@ -18,7 +18,7 @@ let universal-canister = (naersk.buildPackage rec {
     release = true;
 }).overrideAttrs (old: {
     postFixup = (old.postFixup or "") + ''
-      mv $out/bin/universal_canister $out/universal_canister.wasm
+      mv $out/bin/universal_canister.wasm $out/universal_canister.wasm
       rmdir $out/bin
     '';
 }); in
