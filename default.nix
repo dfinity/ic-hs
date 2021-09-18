@@ -90,18 +90,17 @@ let
     # (once we can use ghc-9.0 we can maybe use ghc-bignum native, which should be faster)
     else
       let
-        staticHaskell = import "${nixpkgs.sources.static-haskell-nix}/survey" { normalPkgs = nixpkgs; compiler = "ghc8107"; };
-        muslHaskellPackages = staticHaskell.haskellPackages.override {
+        muslHaskellPackages = nixpkgs.pkgsStatic.haskell.packages.integer-simple.ghc8107.override {
           overrides = self: super:
             let generated = import nix/generated/all.nix self super; in
             generated //
             {
               # the downgrade of cborg in nix/generated.nix makes cborgs test suite depend on
               # older versions of stuff, so let’s ignore the test suite.
-              # cborg = nixpkgs.haskell.lib.dontCheck (
-              #   generated.cborg.overrideAttrs(old: {
-              #   configureFlags = ["-f-optimize-gmp"];
-              # }));
+              cborg = nixpkgs.haskell.lib.dontCheck (
+                generated.cborg.overrideAttrs(old: {
+                configureFlags = ["-f-optimize-gmp"];
+              }));
 
               cryptonite = super.cryptonite.overrideAttrs(old: {
                 configureFlags = ["-f-integer-gmp"];
@@ -111,6 +110,7 @@ let
               # more test suites too slow withour integer-gmp
               scientific = nixpkgs.haskell.lib.dontCheck super.scientific;
               math-functions = nixpkgs.haskell.lib.dontCheck super.math-functions;
+
             };
         };
         ic-hs-musl =
@@ -119,9 +119,9 @@ let
               configureFlags = [
                 "-frelease"
                 "-f-library"
-                # "--ghc-option=-optl=-static"
-                # "--extra-lib-dirs=${nixpkgs.pkgsStatic.zlib}/lib"
-                # "--extra-lib-dirs=${nixpkgs.pkgsStatic.libffi.overrideAttrs (old: { dontDisableStatic = true; })}/lib"
+                "--ghc-option=-optl=-static"
+                "--extra-lib-dirs=${nixpkgs.pkgsStatic.zlib}/lib"
+                "--extra-lib-dirs=${nixpkgs.pkgsStatic.libffi.overrideAttrs (old: { dontDisableStatic = true; })}/lib"
               ];
             }
           );
