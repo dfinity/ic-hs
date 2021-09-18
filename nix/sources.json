@@ -39,16 +39,16 @@
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "nixpkgs": {
-        "branch": "master",
+        "branch": "ghc-musl-integer-simple",
         "builtin": true,
         "description": "Nixpkgs/NixOS branches that track the Nixpkgs/NixOS channels",
         "homepage": null,
-        "owner": "NixOS",
+        "owner": "nomeata",
         "repo": "nixpkgs",
-        "rev": "034b5a145c89b8ac1138393db617fd19cfd8080a",
-        "sha256": "0bb0licglhf8vsszs0a04pqdvmgyfvm4y8bji3w8sli9d7mblhly",
+        "rev": "28f28c295878885f2980651d6f5391d04fcbecba",
+        "sha256": "18zak9pvhgwzhssxilvw83cpy8m75490ms7p6880fdbd60kh32yl",
         "type": "tarball",
-        "url": "https://github.com/NixOS/nixpkgs/archive/034b5a145c89b8ac1138393db617fd19cfd8080a.tar.gz",
+        "url": "https://github.com/nomeata/nixpkgs/archive/28f28c295878885f2980651d6f5391d04fcbecba.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "winter": {
