@@ -90,7 +90,7 @@ let
     # (once we can use ghc-9.0 we can maybe use ghc-bignum native, which should be faster)
     else
       let
-        muslHaskellPackages = nixpkgs.pkgsMusl.haskell.packages.integer-simple.ghc884.override {
+        muslHaskellPackages = nixpkgs.pkgsMusl.haskell.packages.integer-simple.ghc8107.override {
           overrides = self: super:
             let generated = import nix/generated/all.nix self super; in
             generated //
