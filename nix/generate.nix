@@ -71,9 +71,10 @@ let
     };
 
     # To pull other versios from hackage:
-    #
-    # base32 = pkgs.haskellPackages.hackage2nix "base32" "0.1.1.2";
-    # prettyprinter = pkgs.haskellPackages.hackage2nix "prettyprinter" "1.7.0";
+
+    # 0.2.5.0 broke with ghc-8.10 and integer-simple,
+    # see https://github.com/well-typed/cborg/issues/267
+    cborg = pkgs.haskellPackages.hackage2nix "cborg" "0.2.4.0";
   };
 
   allGenerated = pkgs.runCommandNoCC "generated" {

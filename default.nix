@@ -26,8 +26,13 @@ let universal-canister = (naersk.buildPackage rec {
 
 let haskellPackages = nixpkgs.haskellPackages.override {
   overrides = self: super:
-    import nix/generated/all.nix self super //
+    let generated = import nix/generated/all.nix self super; in
+    generated //
     {
+      # the downgrade of cborg in nix/generated.nix makes cborgs test suite depend on
+      # older versions of stuff, so let’s ignore the test suite.
+      cborg = nixpkgs.haskell.lib.dontCheck generated.cborg;
+
       # here more adjustments can be made if needed, e.g.
       # crc = nixpkgs.haskell.lib.markUnbroken (nixpkgs.haskell.lib.dontCheck super.crc);
     };
@@ -87,15 +92,25 @@ let
       let
         muslHaskellPackages = nixpkgs.pkgsStatic.haskell.packages.integer-simple.ghc8107.override {
           overrides = self: super:
-            import nix/generated/all.nix self super //
+            let generated = import nix/generated/all.nix self super; in
+            generated //
             {
+              # the downgrade of cborg in nix/generated.nix makes cborgs test suite depend on
+              # older versions of stuff, so let’s ignore the test suite.
+              cborg = nixpkgs.haskell.lib.dontCheck (
+                generated.cborg.overrideAttrs(old: {
+                configureFlags = ["-f-optimize-gmp"];
+              }));
+
               cryptonite = super.cryptonite.overrideAttrs(old: {
                 configureFlags = ["-f-integer-gmp"];
                 doCheck = false; # test suite too slow without integer-gmp
               });
+
               # more test suites too slow withour integer-gmp
               scientific = nixpkgs.haskell.lib.dontCheck super.scientific;
               math-functions = nixpkgs.haskell.lib.dontCheck super.math-functions;
+
             };
         };
         ic-hs-musl =
