@@ -90,7 +90,7 @@ let
     # (once we can use ghc-9.0 we can maybe use ghc-bignum native, which should be faster)
     else
       let
-        muslHaskellPackages = nixpkgs.pkgsStatic.haskell.packages.integer-simple.ghc8107.override {
+        muslHaskellPackages = nixpkgs.pkgsMusl.haskell.packages.integer-simple.ghc884.override {
           overrides = self: super:
             let generated = import nix/generated/all.nix self super; in
             generated //
@@ -103,7 +103,7 @@ let
               }));
 
               cryptonite = super.cryptonite.overrideAttrs(old: {
-                configureFlags = ["-f-integer-gmp"];
+                configureFlags = "-f-integer-gmp";
                 doCheck = false; # test suite too slow without integer-gmp
               });
 
@@ -120,8 +120,8 @@ let
                 "-frelease"
                 "-f-library"
                 "--ghc-option=-optl=-static"
-                "--extra-lib-dirs=${nixpkgs.pkgsStatic.zlib}/lib"
-                "--extra-lib-dirs=${nixpkgs.pkgsStatic.libffi.overrideAttrs (old: { dontDisableStatic = true; })}/lib"
+                "--extra-lib-dirs=${nixpkgs.pkgsMusl.zlib.static}/lib"
+                "--extra-lib-dirs=${nixpkgs.pkgsMusl.libffi.overrideAttrs (old: { dontDisableStatic = true; })}/lib"
               ];
             }
           );
