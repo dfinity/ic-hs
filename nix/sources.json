@@ -39,16 +39,16 @@
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "nixpkgs": {
-        "branch": "ghc-musl-integer-simple",
+        "branch": "ghc-use-ghc8107-for-bootstrapping",
         "builtin": true,
         "description": "Nixpkgs/NixOS branches that track the Nixpkgs/NixOS channels",
         "homepage": null,
-        "owner": "nomeata",
+        "owner": "nh2",
         "repo": "nixpkgs",
-        "rev": "28f28c295878885f2980651d6f5391d04fcbecba",
-        "sha256": "18zak9pvhgwzhssxilvw83cpy8m75490ms7p6880fdbd60kh32yl",
+        "rev": "bc5a969d016d316972582307639b755718ac7b11",
+        "sha256": "0j5pl0y8fmhwyh0arbpfyhchbw3fg4p2c9clyrm8bnppv5371daw",
         "type": "tarball",
-        "url": "https://github.com/nomeata/nixpkgs/archive/28f28c295878885f2980651d6f5391d04fcbecba.tar.gz",
+        "url": "https://github.com/nh2/nixpkgs/archive/bc5a969d016d316972582307639b755718ac7b11.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "winter": {
