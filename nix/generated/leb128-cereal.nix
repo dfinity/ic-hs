@@ -6,7 +6,7 @@
 , base
 , bytestring
 , cereal
-, stdenv
+, lib
 , tasty
 , tasty-hunit
 , tasty-quickcheck
@@ -24,5 +24,5 @@ mkDerivation {
     tasty-quickcheck
   ];
   description = "LEB128 and SLEB128 encoding";
-  license = stdenv.lib.licenses.mit;
+  license = lib.licenses.mit;
 }

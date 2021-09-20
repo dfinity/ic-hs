@@ -6,10 +6,10 @@
         "homepage": null,
         "owner": "nomeata",
         "repo": "haskell-candid",
-        "rev": "0bdb1caeb6c6cd60f42bd591342675654a1cf589",
-        "sha256": "0kwb5haac58baf9va4laa5lv2a70yzllgxi88vrxks38j5fjbc59",
+        "rev": "1b0279928ac05ecabb0c913449b10c9559a0ec45",
+        "sha256": "0m0hi4gwdcr5kqwqbjvwf11v2i19mb5m15i19g7qp0dvvlgg2rqr",
         "type": "tarball",
-        "url": "https://github.com/nomeata/haskell-candid/archive/0bdb1caeb6c6cd60f42bd591342675654a1cf589.tar.gz",
+        "url": "https://github.com/nomeata/haskell-candid/archive/1b0279928ac05ecabb0c913449b10c9559a0ec45.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "leb128-cereal": {
@@ -32,23 +32,23 @@
         "homepage": "",
         "owner": "nmattia",
         "repo": "naersk",
-        "rev": "a82fd7dc31a58c462b6dfa9d9d886fa2cc75dfd4",
-        "sha256": "00bjwir52y6jbf0b22qy9qxramw35k5fc7kp9hymr1zgpmw9kbwg",
+        "rev": "08afb3d1dbfe016108b72e05b02ba0f6ecb3c8e1",
+        "sha256": "1nn8hyg3jqjmr2808vvsph5w914l7pf8n4sr05vivhhr60578s1c",
         "type": "tarball",
-        "url": "https://github.com/nmattia/naersk/archive/a82fd7dc31a58c462b6dfa9d9d886fa2cc75dfd4.tar.gz",
+        "url": "https://github.com/nmattia/naersk/archive/08afb3d1dbfe016108b72e05b02ba0f6ecb3c8e1.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "nixpkgs": {
-        "branch": "release-20.09",
+        "branch": "ghc-use-ghc8107-for-bootstrapping",
         "builtin": true,
         "description": "Nixpkgs/NixOS branches that track the Nixpkgs/NixOS channels",
         "homepage": null,
-        "owner": "NixOS",
+        "owner": "nh2",
         "repo": "nixpkgs",
-        "rev": "e12d6af863bfb6aa2d68321fd8cd6c08f8f240e6",
-        "sha256": "0wr62zii07s0hmyf3ai3plhgxqn7d4d7mclrq49zv65v4fnlk6ny",
+        "rev": "bc5a969d016d316972582307639b755718ac7b11",
+        "sha256": "0j5pl0y8fmhwyh0arbpfyhchbw3fg4p2c9clyrm8bnppv5371daw",
         "type": "tarball",
-        "url": "https://github.com/NixOS/nixpkgs/archive/e12d6af863bfb6aa2d68321fd8cd6c08f8f240e6.tar.gz",
+        "url": "https://github.com/nh2/nixpkgs/archive/bc5a969d016d316972582307639b755718ac7b11.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "winter": {
@@ -58,10 +58,10 @@
         "homepage": "https://github.com/dfinity-side-projects/winter",
         "owner": "dfinity-side-projects",
         "repo": "winter",
-        "rev": "2cc31576fe029d85c37d21fc9ea4902c5c64b5a9",
-        "sha256": "1mwjvk1a1qi7vw10pmq91psn2glsc25c1smbbxjmf6k767v1l0vf",
+        "rev": "e62722796e11760947a94285734e7bc29d72c389",
+        "sha256": "1yfgk5bhyzrllnkhpg1plzp3mz7h1fgn3j0zfn36a3h892lknlds",
         "type": "tarball",
-        "url": "https://github.com/dfinity-side-projects/winter/archive/2cc31576fe029d85c37d21fc9ea4902c5c64b5a9.tar.gz",
+        "url": "https://github.com/dfinity-side-projects/winter/archive/e62722796e11760947a94285734e7bc29d72c389.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     }
 }

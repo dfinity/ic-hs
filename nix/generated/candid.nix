@@ -17,6 +17,7 @@
 , filepath
 , hex-text
 , leb128-cereal
+, lib
 , megaparsec
 , mtl
 , optparse-applicative
@@ -26,7 +27,6 @@
 , scientific
 , smallcheck
 , split
-, stdenv
 , tasty
 , tasty-hunit
 , tasty-quickcheck
@@ -99,5 +99,5 @@ mkDerivation {
   ];
   homepage = "https://github.com/dfinity/candid";
   description = "Candid integration";
-  license = stdenv.lib.licenses.asl20;
+  license = lib.licenses.asl20;
 }

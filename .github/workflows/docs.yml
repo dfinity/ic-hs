@@ -1,32 +1,27 @@
-name: Haskell CI
+name: Build and deploy docs
 on: [push, pull_request]
 jobs:
   docs:
-    strategy:
-      matrix:
-        ghc:
-        - '8.8.4'
     runs-on: ubuntu-latest
     steps:
+    - uses: actions/checkout@v2
+
     - uses: actions/cache@v1
       name: Cache ~/.cabal/store
       with:
         path: ~/.cabal/store
-        key: cabal-${{ runner.os }}-${{ matrix.ghc }}-${{ hashFiles('cabal.project', 'cabal.project.freeze') }}
-        restore-keys: cabal-${{ runner.os }}-${{ matrix.ghc }}-
+        key: cabal-${{ runner.os }}-${{ hashFiles('cabal.project', 'cabal.project.freeze') }}
+        restore-keys: cabal-${{ runner.os }}-
 
-    - uses: actions/checkout@v2
-    - uses: actions/setup-haskell@v1
+    - uses: haskell/actions/setup@v1
       with:
-        ghc-version: ${{ matrix.ghc }}
+        ghc-version: '8.10'
     - name: Build
       run: |
-        ls -l /opt/ghc/
-        export PATH=/opt/ghc/bin:$PATH
         cabal --version
         ghc --version
         cabal update
-        cabal haddock -w ghc-${{ matrix.ghc }} --haddock-hyperlink-source --haddock-quickjump --haddock-html-location='https://hackage.haskell.org/package/$pkg-$version/docs'
+        cabal haddock --haddock-hyperlink-source --haddock-quickjump --haddock-html-location='https://hackage.haskell.org/package/$pkg-$version/docs'
         mv dist-newstyle/build/*/*/*/doc/html/ic-hs gh-page
         touch gh-page/.nojekyll
     - name: Deploy to Github Pages
