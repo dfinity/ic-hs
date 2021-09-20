@@ -29,7 +29,6 @@ type WasmState = CanisterSnapshot
 type InitFunc = EntityId -> Env -> Blob -> TrapOr (WasmState, CanisterActions)
 type UpdateFunc = WasmState -> TrapOr (WasmState, UpdateResult)
 type QueryFunc = WasmState -> TrapOr Response
-type HeartbeatFunc = Env -> WasmState -> TrapOr (WasmState, UpdateResult)
 
 data CanisterModule = CanisterModule
   { raw_wasm :: Blob
@@ -42,7 +41,7 @@ data CanisterModule = CanisterModule
   , pre_upgrade_method :: WasmState -> EntityId -> Env -> TrapOr (CanisterActions, Blob)
   , post_upgrade_method :: EntityId -> Env -> Blob -> Blob -> TrapOr (WasmState, CanisterActions)
   , inspect_message :: MethodName -> EntityId -> Env -> Blob -> WasmState -> TrapOr ()
-  , heartbeat :: HeartbeatFunc
+  , heartbeat :: Env -> WasmState -> TrapOr (WasmState, ([MethodCall], CanisterActions))
   }
 
 instance Show CanisterModule where

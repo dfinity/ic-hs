@@ -1065,7 +1065,7 @@ invokeEntry ctxt_id wasm_state can_mod env entry = do
       Heartbeat -> return $ do
         case heartbeat can_mod env wasm_state of
             Trap err -> Trap err
-            Return x -> Return x
+            Return (wasm_state, (calls, actions)) -> Return (wasm_state, (CallActions calls 0 Nothing, actions))
   where
     lookupUpdate method can_mod
         | Just f <- M.lookup method (update_methods can_mod) = Just f

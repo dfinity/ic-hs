@@ -551,7 +551,7 @@ rawInitialize caller env dat (ImpState esref inst sm wasm_mod) = do
         | not (null (calls es')) -> return $ Trap "cannot call from init"
         | otherwise        -> return $ Return $ canisterActions es'
 
-rawHeartbeat :: Env -> ImpState s -> ST s (TrapOr UpdateResult)
+rawHeartbeat :: Env -> ImpState s -> ST s (TrapOr ([MethodCall], CanisterActions))
 rawHeartbeat env (ImpState esref inst sm wasm_mod) = do
   result <- runExceptT $ do
     let es = (initialExecutionState inst sm env cantRespond)
@@ -566,7 +566,7 @@ rawHeartbeat env (ImpState esref inst sm wasm_mod) = do
       | accepted es'          -> return $ Trap "cannot accept_message here"
       | isJust (response es') -> return $ Trap "cannot respond from heartbeat"
       | otherwise             -> return $ Return $
-        ( CallActions (calls es') (cycles_accepted es') (response es')
+        ( calls es'
         , canisterActions es'
         )
 
