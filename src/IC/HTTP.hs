@@ -83,6 +83,7 @@ handle store req respond = case (requestMethod req, pathInfo req) of
         -- Here we make IC.Ref use “real time”
         lift getTimestamp >>= setAllTimesTo
         -- Enqueue heartbeat messages for all canisters
+        -- TODO: enqueueHeartbeats scans a list of all canisters. Rethink and optimize this logic!
         enqueueHeartbeats
         a
       -- begin processing in the background (it is important that
