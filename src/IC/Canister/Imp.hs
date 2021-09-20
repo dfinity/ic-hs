@@ -42,8 +42,8 @@ import Numeric.Natural
 import IC.Types
 import IC.Constants
 import IC.Wasm.Winter
-import IC.Wasm.WinterMemory as Mem
 import IC.Wasm.Imports
+import IC.Canister.StableMemory as Mem
 
 -- Parameters are the data that come from the caller
 

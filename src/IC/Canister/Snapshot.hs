@@ -12,6 +12,7 @@ import IC.Types
 import IC.Wasm.Winter (Module)
 import IC.Wasm.Winter.Persist
 import IC.Canister.Imp
+import IC.Canister.StableMemory
 import IC.Purify
 
 data CanisterSnapshot = CanisterSnapshot
@@ -23,11 +24,11 @@ data CanisterSnapshot = CanisterSnapshot
 instance SnapshotAble ImpState where
     type SnapshotOf ImpState = CanisterSnapshot
     persist (ImpState _ inst sm mod) = do
-        CanisterSnapshot mod <$> persistInstance inst <*> persistMemory sm
+        CanisterSnapshot mod <$> persistInstance inst <*> export sm
     recreate (CanisterSnapshot wasm_mod pinst pmem) = do
         rs <- rawInstantiate wasm_mod >>= trapToFail
         resumeInstance (isInstance rs) pinst
-        resumeMemory (isStableMem rs) pmem
+        resumeStableMemory (isStableMem rs) pmem
         return rs
       where
         trapToFail (Trap err) = fail $ "replay failed: " ++ show err

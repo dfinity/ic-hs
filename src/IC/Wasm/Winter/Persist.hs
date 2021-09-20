@@ -17,6 +17,7 @@ module IC.Wasm.Winter.Persist
   , resumeInstance
   , persistMemory
   , resumeMemory
+  , resumeStableMemory
   )
   where
 
@@ -27,6 +28,8 @@ import qualified Data.IntMap as IM
 import qualified Data.Map.Lazy as M
 import qualified Data.Vector as V
 import Data.ByteString.Lazy (ByteString)
+
+import qualified IC.Canister.StableMemory as Stable
 
 import qualified Wasm.Runtime.Global as W
 import qualified Wasm.Runtime.Instance as W
@@ -53,11 +56,20 @@ persistMemory i = persist i
 resumeMemory :: W.MemoryInst (ST s) -> ByteString -> ST s ()
 resumeMemory i p = resume i p
 
+resumeStableMemory :: Stable.Memory s -> ByteString -> ST s ()
+resumeStableMemory i p = resume i p
+
 class Monad (M a) => Persistable a where
   type Persisted a :: *
   type M a :: * -> *
   persist :: a -> M a (Persisted a)
   resume :: a -> Persisted a -> M a ()
+
+instance Persistable (Stable.Memory s) where
+  type Persisted (Stable.Memory s) = ByteString
+  type M (Stable.Memory s) = ST s
+  persist = Stable.export
+  resume = Stable.imp
 
 instance Persistable (W.MemoryInst (ST s)) where
   type Persisted (W.MemoryInst (ST s)) = ByteString
