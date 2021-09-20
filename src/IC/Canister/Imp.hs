@@ -424,12 +424,17 @@ systemAPI esref =
     stable_size :: () -> HostM s Int32
     stable_size () = do
       m <- gets stableMem
-      Mem.size m
+      fromIntegral <$> Mem.size m
 
     stable_grow :: Int32 -> HostM s Int32
     stable_grow delta = do
       m <- gets stableMem
-      Mem.grow m delta
+      n <- Mem.size m
+      if n > 65536 || ((fromIntegral delta) + n) > 65536
+      then
+        throwError "stable memory error: cannot grow larger than 4GiB"
+      else 
+        fromIntegral <$> Mem.grow m (fromIntegral delta)
 
     stable_write :: (Int32, Int32, Int32) -> HostM s ()
     stable_write (dst, src, size) = do
@@ -442,31 +447,31 @@ systemAPI esref =
     stable_read (dst, src, size) = do
       m <- gets stableMem
       i <- getsES esref inst
-      blob <- Mem.read m (fromIntegral src) size
+      blob <- Mem.read m (fromIntegral src) (fromIntegral size)
       setBytes i (fromIntegral dst) blob
 
     stable64_size :: () -> HostM s Word64
     stable64_size () = do
       m <- gets stableMem
-      fromIntegral <$> Mem.size m
+      Mem.size m
 
     stable64_grow :: Word64 -> HostM s Word64
     stable64_grow delta = do
       m <- gets stableMem
-      fromIntegral <$> Mem.grow m (fromIntegral delta)
+      Mem.grow m delta
 
     stable64_write :: (Word64, Word64, Word64) -> HostM s ()
     stable64_write (dst, src, size) = do
       m <- gets stableMem
       i <- getsES esref inst
       blob <- getBytes i (fromIntegral src) (fromIntegral size)
-      Mem.write m (fromIntegral dst) blob
+      Mem.write m dst blob
 
     stable64_read :: (Word64, Word64, Word64) -> HostM s ()
     stable64_read (dst, src, size) = do
       m <- gets stableMem
       i <- getsES esref inst
-      blob <- Mem.read m (fromIntegral src) (fromIntegral size)
+      blob <- Mem.read m src size
       setBytes i (fromIntegral dst) blob
 
     certified_data_set :: (Int32, Int32) -> HostM s ()
