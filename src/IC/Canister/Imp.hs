@@ -2,6 +2,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE FlexibleContexts #-}
 
@@ -208,10 +209,15 @@ systemAPI esref =
   , toImport "ic0" "call_cycles_add" call_cycles_add
   , toImport "ic0" "call_perform" call_perform
 
-  , toImport "ic0" "stable_size" stable_size
-  , toImport "ic0" "stable_grow" stable_grow
-  , toImport "ic0" "stable_write" stable_write
-  , toImport "ic0" "stable_read" stable_read
+  , toImport "ic0" "stable_size" (stable_size @ Int32)
+  , toImport "ic0" "stable_grow" (stable_grow @ Int32)
+  , toImport "ic0" "stable_write" (stable_write @ Int32)
+  , toImport "ic0" "stable_read" (stable_read @ Int32)
+
+  , toImport "ic0" "stable64_size" (stable_size @ Word64)
+  , toImport "ic0" "stable64_grow" (stable_grow @ Word64)
+  , toImport "ic0" "stable64_write" (stable_write @ Word64)
+  , toImport "ic0" "stable64_read" (stable_read @ Word64)
 
   , toImport "ic0" "certified_data_set" certified_data_set
   , toImport "ic0" "data_certificate_present" data_certificate_present
@@ -415,28 +421,28 @@ systemAPI esref =
       forM_ mpc $ \pc -> addBalance esref (call_transferred_cycles pc)
       modES esref $ \es -> es { pending_call = Nothing }
 
-    stable_size :: () -> HostM s Int32
+    stable_size :: (Integral t) => () -> HostM s t
     stable_size () = do
       m <- gets stableMem
-      Mem.size m
+      fromIntegral <$> Mem.size m
 
-    stable_grow :: Int32 -> HostM s Int32
+    stable_grow :: (Integral t) => t -> HostM s t
     stable_grow delta = do
       m <- gets stableMem
-      Mem.grow m delta
+      fromIntegral <$> Mem.grow m (fromIntegral delta)
 
-    stable_write :: (Int32, Int32, Int32) -> HostM s ()
+    stable_write :: (Integral t) => (t, t, t) -> HostM s ()
     stable_write (dst, src, size) = do
       m <- gets stableMem
       i <- getsES esref inst
-      blob <- getBytes i (fromIntegral src) size
+      blob <- getBytes i (fromIntegral src) (fromIntegral size)
       Mem.write m (fromIntegral dst) blob
 
-    stable_read :: (Int32, Int32, Int32) -> HostM s ()
+    stable_read :: (Integral t) => (t, t, t) -> HostM s ()
     stable_read (dst, src, size) = do
       m <- gets stableMem
       i <- getsES esref inst
-      blob <- Mem.read m (fromIntegral src) size
+      blob <- Mem.read m (fromIntegral src) (fromIntegral size)
       setBytes i (fromIntegral dst) blob
 
     certified_data_set :: (Int32, Int32) -> HostM s ()

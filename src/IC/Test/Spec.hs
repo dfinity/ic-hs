@@ -650,9 +650,13 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     , t "call_cycles_add"              never         $ callCyclesAdd (int64 0)
     , t "call_perform"                 never           callPerform
     , t "stable_size"                  star          $ ignore stableSize
-    , t "stable_grow"                  star          $ ignore $ stableGrow (int 1)
-    , t "stable_write"                 star          $ stableWrite (int 0) ""
-    , t "stable_read"                  star          $ ignore $ stableRead (int 0) (int 0)
+    , t "stable_grow"                  star          $ ignore $ stableGrow (int64 1)
+    , t "stable_write"                 star          $ stableWrite (int64 0) ""
+    , t "stable_read"                  star          $ ignore $ stableRead (int64 0) (int64 0)
+    , t "stable64_size"                star          $ ignore stable64Size
+    , t "stable64_grow"                star          $ ignore $ stable64Grow (int64 1)
+    , t "stable64_write"               star          $ stable64Write (int64 0) ""
+    , t "stable64_read"                star          $ ignore $ stable64Read (int64 0) (int64 0)
     , t "certified_data_set"           "I G U Ry Rt" $ setCertifiedData "foo"
     , t "data_certificate_present"     star          $ ignore getCertificatePresent
     , t "msg_method_name"              "F"           $ ignore methodName
