@@ -16,6 +16,7 @@
 , directory
 , filepath
 , FloatingHex
+, lib
 , lifted-base
 , microlens-platform
 , monad-control
@@ -25,7 +26,6 @@
 , primitive
 , primitive-unaligned
 , process
-, stdenv
 , tasty
 , tasty-hunit
 , tasty-quickcheck
@@ -105,5 +105,5 @@ mkDerivation {
   doCheck = false;
   homepage = "https://github.com/dfinity/winter";
   description = "Haskell port of the WebAssembly OCaml reference interpreter";
-  license = stdenv.lib.licenses.mit;
+  license = lib.licenses.mit;
 }

@@ -6,19 +6,19 @@ let
   };
   nixpkgs_src = (import sourcesnix { sourcesFile = ./sources.json; inherit pkgs; }).nixpkgs;
 
-  bootstrap-pkgs = import nixpkgs_src {
-    system = builtins.currentSystem;
-  };
+  # dump nixpkgs patches here
+  nixpkgs-patches = [];
 
-  nixpkgs-patched = bootstrap-pkgs.applyPatches {
-    name = "nixpkgs-patched";
-    src = nixpkgs_src;
-    patches = [
-      ./patches/0001-ghc865-binary-Use-binary-distribution-which-links-ag.patch
-      ./patches/0002-openblas-0.3.10-0.3.13.patch
-      ./patches/fb063991b26b2b93dece6d09f37041451a5ef4cb.patch
-    ];
-  };
+  nixpkgs-patched = if nixpkgs-patches == [] then nixpkgs_src else
+    let
+      bootstrap-pkgs = import nixpkgs_src {
+        system = builtins.currentSystem;
+      };
+    in bootstrap-pkgs.applyPatches {
+      name = "nixpkgs-patched";
+      src = nixpkgs_src;
+      patches = nixpkgs-patches;
+    };
 
   pkgs =
     import nixpkgs-patched {
@@ -32,12 +32,15 @@ let
           # nixpkgs's rustc does not inclue the wasm32-unknown-unknown target, so
           # lets add it here. With this we can build the universal canister with stock
           # nixpkgs + naersk, in particular no dependency on internal repositories.
-          rustc = super.rustc.overrideAttrs (old: {
+          # But rename this so that we do not rebuilt unrelated tools written in rust.
+          rustc-wasm = super.rustc.overrideAttrs (old: {
             configureFlags = self.lib.lists.forEach old.configureFlags (flag:
               if self.lib.strings.hasPrefix "--target=" flag
               then flag + ",wasm32-unknown-unknown"
-              else flag
-            );
+              else flag) ++ [
+                # https://github.com/rust-lang/rust/issues/76526
+                "--set=build.docs=false"
+              ];
           });
 
           all-cabal-hashes = self.fetchurl {

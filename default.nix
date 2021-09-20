@@ -6,26 +6,36 @@ let nixpkgs = import ./nix { inherit system; }; in
 let stdenv = nixpkgs.stdenv; in
 let subpath = nixpkgs.subpath; in
 
-let naersk = nixpkgs.callPackage nixpkgs.sources.naersk {}; in
+let naersk = nixpkgs.callPackage nixpkgs.sources.naersk { rustc = nixpkgs.rustc-wasm; }; in
 let universal-canister = (naersk.buildPackage rec {
     name = "universal-canister";
     src = subpath ./universal-canister;
     root = ./universal-canister;
-    CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_LINKER = "${nixpkgs.llvmPackages_9.lld}/bin/lld";
+    CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_LINKER = "${nixpkgs.llvmPackages_11.lld}/bin/lld";
     RUSTFLAGS = "-C link-arg=-s"; # much smaller wasm
     cargoBuildOptions = x : x ++ [ "--target wasm32-unknown-unknown" ];
     doCheck = false;
     release = true;
 }).overrideAttrs (old: {
     postFixup = (old.postFixup or "") + ''
-      mv $out/bin/universal_canister $out/universal_canister.wasm
+      mv $out/bin/universal_canister.wasm $out/universal_canister.wasm
       rmdir $out/bin
     '';
 }); in
 
 
 let haskellPackages = nixpkgs.haskellPackages.override {
-  overrides = import nix/haskell-packages.nix nixpkgs subpath;
+  overrides = self: super:
+    let generated = import nix/generated/all.nix self super; in
+    generated //
+    {
+      # the downgrade of cborg in nix/generated.nix makes cborgs test suite depend on
+      # older versions of stuff, so let’s ignore the test suite.
+      cborg = nixpkgs.haskell.lib.dontCheck generated.cborg;
+
+      # here more adjustments can be made if needed, e.g.
+      # crc = nixpkgs.haskell.lib.markUnbroken (nixpkgs.haskell.lib.dontCheck super.crc);
+    };
 }; in
 
 let
@@ -80,17 +90,27 @@ let
     # (once we can use ghc-9.0 we can maybe use ghc-bignum native, which should be faster)
     else
       let
-        muslHaskellPackages = nixpkgs.pkgsMusl.haskell.packages.integer-simple.ghc884.override {
+        muslHaskellPackages = nixpkgs.pkgsMusl.haskell.packages.integer-simple.ghc8107.override {
           overrides = self: super:
-            import nix/haskell-packages.nix nixpkgs subpath self super
-            // {
+            let generated = import nix/generated/all.nix self super; in
+            generated //
+            {
+              # the downgrade of cborg in nix/generated.nix makes cborgs test suite depend on
+              # older versions of stuff, so let’s ignore the test suite.
+              cborg = nixpkgs.haskell.lib.dontCheck (
+                generated.cborg.overrideAttrs(old: {
+                configureFlags = ["-f-optimize-gmp"];
+              }));
+
               cryptonite = super.cryptonite.overrideAttrs(old: {
                 configureFlags = "-f-integer-gmp";
                 doCheck = false; # test suite too slow without integer-gmp
               });
+
               # more test suites too slow withour integer-gmp
               scientific = nixpkgs.haskell.lib.dontCheck super.scientific;
               math-functions = nixpkgs.haskell.lib.dontCheck super.math-functions;
+
             };
         };
         ic-hs-musl =
@@ -180,7 +200,7 @@ rec {
       installPhase = ''
         mkdir -p $out
         echo "-- Run nix-shell . -A check-cabal-freeze to update this file" > $out/cabal.project.freeze
-        cat cabal.project.freeze >> $out/cabal.project.freeze
+        cat cabal.project.freeze |grep -v active-repositories >> $out/cabal.project.freeze
       '';
     });
 
