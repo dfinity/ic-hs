@@ -603,6 +603,12 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
             cid <- install (onInspectMessage (callback (prog >>> acceptMessage)))
             call'' cid reply
           )
+        , "H" =: boolTest (\prog -> do
+            cid <- install (onHeartbeat (callback (prog >>> setGlobal "Did not trap")))
+            call_ cid reply
+            g <- query cid $ replyData getGlobal
+            return (g == "Did not trap")
+          )
         ]
 
       -- context builder helpers
@@ -623,7 +629,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
         ]
         where s = S.fromList (T.words trapping)
 
-      star = "I G U Q Ry Rt C F"
+      star = "I G U Q Ry Rt C F H"
       never = ""
 
     in concat
@@ -645,21 +651,21 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
         callDataAppend "foo" >>>
         callCyclesAdd (int64 0) >>>
         callPerform
-    , t "call_set_cleanup"             never         $ callOnCleanup (callback noop)
-    , t "call_data_append"             never         $ callDataAppend "foo"
-    , t "call_cycles_add"              never         $ callCyclesAdd (int64 0)
-    , t "call_perform"                 never           callPerform
-    , t "stable_size"                  star          $ ignore stableSize
-    , t "stable_grow"                  star          $ ignore $ stableGrow (int 1)
-    , t "stable_write"                 star          $ stableWrite (int 0) ""
-    , t "stable_read"                  star          $ ignore $ stableRead (int 0) (int 0)
-    , t "certified_data_set"           "I G U Ry Rt" $ setCertifiedData "foo"
-    , t "data_certificate_present"     star          $ ignore getCertificatePresent
-    , t "msg_method_name"              "F"           $ ignore methodName
-    , t "accept_message"               never           acceptMessage -- due to double accept
-    , t "time"                         star          $ ignore getTime
-    , t "debug_print"                  star          $ debugPrint "hello"
-    , t "trap"                         never         $ trap "this better traps"
+    , t "call_set_cleanup"             never           $ callOnCleanup (callback noop)
+    , t "call_data_append"             never           $ callDataAppend "foo"
+    , t "call_cycles_add"              never           $ callCyclesAdd (int64 0)
+    , t "call_perform"                 never             callPerform
+    , t "stable_size"                  star            $ ignore stableSize
+    , t "stable_grow"                  star            $ ignore $ stableGrow (int 1)
+    , t "stable_write"                 star            $ stableWrite (int 0) ""
+    , t "stable_read"                  star            $ ignore $ stableRead (int 0) (int 0)
+    , t "certified_data_set"           "I G U Ry Rt H" $ setCertifiedData "foo"
+    , t "data_certificate_present"     star            $ ignore getCertificatePresent
+    , t "msg_method_name"              "F"             $ ignore methodName
+    , t "accept_message"               never             acceptMessage -- due to double accept
+    , t "time"                         star            $ ignore getTime
+    , t "debug_print"                  star            $ debugPrint "hello"
+    , t "trap"                         never           $ trap "this better traps"
     ]
 
   , simpleTestCase "self" $ \cid ->
