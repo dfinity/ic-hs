@@ -250,9 +250,13 @@ canisterMustExist cid =
       reject RC_DESTINATION_INVALID ("canister no longer exists: " ++ prettyID cid)
     _ -> return ()
 
+isCanisterRunning :: ICM m => CanisterId -> m Bool
+isCanisterRunning cid = getRunStatus cid >>= \case
+  IsRunning -> return True
+  _         -> return False
+
 isCanisterEmpty :: ICM m => CanisterId -> m Bool
 isCanisterEmpty cid = isNothing . content <$> getCanister cid
-
 
 -- The following functions assume the canister does exist.
 -- It would be an internal error if they don't.
@@ -400,9 +404,8 @@ handleQuery :: ICM m => Timestamp -> QueryRequest -> m ReqResponse
 handleQuery time (QueryRequest canister_id user_id method arg) =
   fmap QueryResponse $ onReject (return . Rejected) $ do
     canisterMustExist canister_id
-    getRunStatus canister_id >>= \case
-       IsRunning -> return ()
-       _ -> reject RC_CANISTER_ERROR "canister is stopped"
+    is_running <- isCanisterRunning canister_id
+    when (not is_running) $ reject RC_CANISTER_ERROR "canister is stopped"
     empty <- isCanisterEmpty canister_id
     when empty $ reject RC_DESTINATION_INVALID "canister is empty"
     wasm_state <- getCanisterState canister_id
@@ -1167,10 +1170,17 @@ newHeartbeat cid = do
     , entry = Heartbeat
     }
 
+hasHeartbeat :: ICM m => CanisterId -> m Bool
+hasHeartbeat cid = do
+  is_empty   <- isCanisterEmpty cid
+  is_running <- isCanisterRunning cid
+  return $ not is_empty && is_running
+
 enqueueHeartbeats :: ICM m => m ()
 enqueueHeartbeats = do
   cs <- gets (M.keys . canisters)
-  forM_ cs newHeartbeat
+  cs_with_hb <- filterM hasHeartbeat cs
+  forM_ cs_with_hb newHeartbeat
 
 -- | Returns true if a step was taken
 runStep :: ICM m => m Bool
