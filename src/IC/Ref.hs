@@ -1070,7 +1070,7 @@ invokeEntry ctxt_id wasm_state can_mod env entry = do
             Return (wasm_state, actions) -> Return (wasm_state, actions)
       Heartbeat -> return $ do
         case heartbeat can_mod env wasm_state of
-            Trap err -> Trap err
+            Trap _ -> Return (wasm_state, (noCallActions, noCanisterActions))
             Return (wasm_state, (calls, actions)) -> Return (wasm_state, (CallActions calls 0 Nothing, actions))
   where
     lookupUpdate method can_mod
