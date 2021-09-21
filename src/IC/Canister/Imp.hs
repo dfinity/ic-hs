@@ -421,23 +421,31 @@ systemAPI esref =
       forM_ mpc $ \pc -> addBalance esref (call_transferred_cycles pc)
       modES esref $ \es -> es { pending_call = Nothing }
 
+    checkStableMemorySize :: HostM s ()
+    checkStableMemorySize = do
+      m <- gets stableMem
+      n <- Mem.size m
+      when (n > 65536) $
+        throwError "stable memory error: cannot use 32 bit API once stable memory is above 4GiB"
+
     stable_size :: () -> HostM s Int32
     stable_size () = do
+      checkStableMemorySize
       m <- gets stableMem
       fromIntegral <$> Mem.size m
 
     stable_grow :: Int32 -> HostM s Int32
     stable_grow delta = do
+      checkStableMemorySize
       m <- gets stableMem
       n <- Mem.size m
-      if n > 65536 || ((fromIntegral delta) + n) > 65536
-      then
-        throwError "stable memory error: cannot grow larger than 4GiB"
-      else 
-        fromIntegral <$> Mem.grow m (fromIntegral delta)
+      if (fromIntegral delta + n) > 65536
+      then return (-1)
+      else fromIntegral <$> Mem.grow m (fromIntegral delta)
 
     stable_write :: (Int32, Int32, Int32) -> HostM s ()
     stable_write (dst, src, size) = do
+      checkStableMemorySize
       m <- gets stableMem
       i <- getsES esref inst
       blob <- getBytes i (fromIntegral src) size
@@ -445,6 +453,7 @@ systemAPI esref =
 
     stable_read :: (Int32, Int32, Int32) -> HostM s ()
     stable_read (dst, src, size) = do
+      checkStableMemorySize
       m <- gets stableMem
       i <- getsES esref inst
       blob <- Mem.read m (fromIntegral src) (fromIntegral size)

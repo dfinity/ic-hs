@@ -68,11 +68,15 @@ size = lift . memorySizeInPages
 
 grow :: Memory s -> Size -> HostM s Size
 grow mem delta = lift $ do
-  nPages <- memorySizeInPages mem
+  oldNumBytes <- memorySizeInBytes mem
+  oldNumPages <- memorySizeInPages mem
   arr <- readSTRef mem
-  newArr <- A.resizeMutableByteArray arr (fromIntegral $ pageSize * (delta + nPages))
+  let extraSize = pageSize * delta
+  let newNumBytes = oldNumBytes + extraSize
+  newArr <- A.resizeMutableByteArray arr (fromIntegral newNumBytes)
+  A.fillByteArray newArr (fromIntegral oldNumBytes) (fromIntegral extraSize) 0
   writeSTRef mem newArr
-  return nPages
+  return oldNumPages
 
 read :: Memory s -> Address -> Size -> HostM s ByteString
 read mem ptr len = do
@@ -83,10 +87,12 @@ write :: Memory s -> Address -> ByteString -> HostM s ()
 write mem ptr blob = do
   let n = fromIntegral $ BL.length blob
   checkAccess mem ptr n
-  lift $ do
-    dst <- readSTRef mem
-    forM_ [ptr .. ptr + n] $ \idx -> do
-      A.writeByteArray dst (fromIntegral idx) $ BL.index blob (fromIntegral idx)
+  if n > 0
+  then lift $ do
+         dst <- readSTRef mem
+         forM_ [0 .. n - 1] $ \idx ->
+           A.writeByteArray dst (fromIntegral ptr + fromIntegral idx) $ BL.index blob (fromIntegral idx)
+  else return ()
 
 export :: Memory s -> ST s ByteString
 export mem = do
