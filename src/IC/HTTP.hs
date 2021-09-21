@@ -82,9 +82,7 @@ handle store req respond = case (requestMethod req, pathInfo req) of
       x <- modifyStore store $ do
         -- Here we make IC.Ref use “real time”
         lift getTimestamp >>= setAllTimesTo
-        -- Enqueue heartbeat messages for all canisters
-        -- TODO: enqueueHeartbeats scans a list of all canisters. Rethink and optimize this logic!
-        enqueueHeartbeats
+        processHeartbeats
         a
       -- begin processing in the background (it is important that
       -- this thread returns, else warp is blocked somehow)

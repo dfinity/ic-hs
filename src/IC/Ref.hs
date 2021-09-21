@@ -37,7 +37,7 @@ module IC.Ref
   , handleReadState
   , runStep
   , runToCompletion
-  , enqueueHeartbeats
+  , processHeartbeats
   -- $ Exported for use as a library, e.g. in testing
   , setAllTimesTo
   , createEmptyCanister
@@ -137,11 +137,12 @@ data CanState = CanState
   , time :: Timestamp
   , cycle_balance :: Natural
   , certified_data :: Blob
+  , last_action :: Maybe EntryPoint
   }
   deriving (Show)
 
--- A canister entry point is either a publicly named function, or a closure
--- (callback + environment)
+-- A canister entry point is either a publicly named function, a closure
+-- (callback + environment) or a heartbeat.
 data EntryPoint
   = Public MethodName Blob
   | Closure Callback Response Cycles
@@ -239,6 +240,7 @@ createEmptyCanister cid controllers time = modify $ \ic ->
       , time = time
       , cycle_balance = 0
       , certified_data = ""
+      , last_action = Nothing
       }
 
 canisterMustExist :: (CanReject m, ICM m) => CanisterId -> m ()
@@ -712,6 +714,7 @@ processMessage m = case m of
           -- Eventually update cycle balance here
           rememberTrap ctxt_id msg
         Return (new_state, (call_actions, canister_actions)) -> do
+          modCanister callee $ \cs -> cs { last_action = Just entry }
           performCallActions ctxt_id call_actions
           performCanisterActions callee canister_actions
           setCanisterState callee new_state
@@ -1155,32 +1158,33 @@ setAllTimesTo :: ICM m => Timestamp -> m ()
 setAllTimesTo ts = modify $
   \ic -> ic { canisters = M.map (\cs -> cs { time = ts }) (canisters ic) }
 
-newHeartbeat :: ICM m => CanisterId -> m ()
-newHeartbeat cid = do
-  new_ctxt_id <- newCallContext $ CallContext
-    { canister = cid
-    , origin = FromHeartbeat
-    , responded = Responded False
-    , deleted = False
-    , last_trap = Nothing
-    , available_cycles = 0
-    }
-  enqueueMessage $ CallMessage
-    { call_context = new_ctxt_id
-    , entry = Heartbeat
-    }
+runHeartbeat :: ICM m => CanisterId -> m ()
+runHeartbeat cid = do
+  can <- getCanister cid
+  if idleSinceLastHeartbeat (last_action can)
+  then return ()
+  else do
+    new_ctxt_id <- newCallContext $ CallContext
+      { canister = cid
+      , origin = FromHeartbeat
+      , responded = Responded False
+      , deleted = False
+      , last_trap = Nothing
+      , available_cycles = 0
+      }
+    processMessage $ CallMessage
+      { call_context = new_ctxt_id
+      , entry = Heartbeat
+      }
 
-hasHeartbeat :: ICM m => CanisterId -> m Bool
-hasHeartbeat cid = do
-  is_empty   <- isCanisterEmpty cid
-  is_running <- isCanisterRunning cid
-  return $ not is_empty && is_running
-
-enqueueHeartbeats :: ICM m => m ()
-enqueueHeartbeats = do
+processHeartbeats :: ICM m => m ()
+processHeartbeats = do
   cs <- gets (M.keys . canisters)
-  cs_with_hb <- filterM hasHeartbeat cs
-  forM_ cs_with_hb newHeartbeat
+  forM_ cs runHeartbeat
+
+idleSinceLastHeartbeat :: Maybe EntryPoint -> Bool
+idleSinceLastHeartbeat (Just Heartbeat) = True
+idleSinceLastHeartbeat _                = False
 
 -- | Returns true if a step was taken
 runStep :: ICM m => m Bool
