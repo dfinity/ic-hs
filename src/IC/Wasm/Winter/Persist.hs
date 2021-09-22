@@ -28,6 +28,8 @@ import qualified Data.Map.Lazy as M
 import qualified Data.Vector as V
 import Data.ByteString.Lazy (ByteString)
 
+import qualified IC.Canister.StableMemory as Stable
+
 import qualified Wasm.Runtime.Global as W
 import qualified Wasm.Runtime.Instance as W
 import qualified Wasm.Runtime.Memory as W
@@ -58,6 +60,12 @@ class Monad (M a) => Persistable a where
   type M a :: * -> *
   persist :: a -> M a (Persisted a)
   resume :: a -> Persisted a -> M a ()
+
+instance Persistable (Stable.Memory s) where
+  type Persisted (Stable.Memory s) = Stable.Repr
+  type M (Stable.Memory s) = ST s
+  persist = Stable.export
+  resume = Stable.imp
 
 instance Persistable (W.MemoryInst (ST s)) where
   type Persisted (W.MemoryInst (ST s)) = ByteString

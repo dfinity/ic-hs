@@ -264,8 +264,25 @@ fn eval(ops: Ops) {
                 api::call_on_cleanup(callback, cleanup_env);
             }
 
+            // stable memory
+            45 => stack.push_int64(api::stable64_size()),
+            46 => {
+                let i = stack.pop_int64();
+                stack.push_int64(api::stable64_grow(i))
+            }
+            47 => {
+                let size = stack.pop_int64();
+                let offset = stack.pop_int64();
+                stack.push_blob(api::stable64_read(offset, size))
+            }
+            48 => {
+                let data = stack.pop_blob();
+                let offset = stack.pop_int64();
+                api::stable64_write(offset, &data)
+            }
+
             // canister heartbeat script
-            45 => set_heartbeat(stack.pop_blob()),
+            49 => set_heartbeat(stack.pop_blob()),
 
             _ => api::trap_with(&format!("unknown op {}", op)),
         }

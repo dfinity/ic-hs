@@ -47,6 +47,10 @@ mod ic0 {
         pub fn stable_grow(additional_pages: u32) -> u32;
         pub fn stable_read(dst: u32, offset: u32, size: u32) -> ();
         pub fn stable_write(offset: u32, src: u32, size: u32) -> ();
+        pub fn stable64_size() -> u64;
+        pub fn stable64_grow(additional_pages: u64) -> u64;
+        pub fn stable64_read(dst: u64, offset: u64, size: u64) -> ();
+        pub fn stable64_write(offset: u64, src: u64, size: u64) -> ();
         pub fn certified_data_set(src: u32, size: u32) -> ();
         pub fn data_certificate_present() -> u32;
         pub fn data_certificate_size() -> u32;
@@ -202,6 +206,28 @@ pub fn stable_read(offset: u32, size: u32) -> Vec<u8> {
 pub fn stable_write(offset: u32, data: &[u8]) {
     unsafe {
         ic0::stable_write(offset, data.as_ptr() as u32, data.len() as u32);
+    }
+}
+
+pub fn stable64_size() -> u64 {
+    unsafe { ic0::stable64_size() }
+}
+
+pub fn stable64_grow(additional_pages: u64) -> u64 {
+    unsafe { ic0::stable64_grow(additional_pages) }
+}
+
+pub fn stable64_read(offset: u64, size: u64) -> Vec<u8> {
+    let mut bytes = vec![0; size as usize];
+    unsafe {
+        ic0::stable64_read(bytes.as_mut_ptr() as u64, offset, size);
+    }
+    bytes
+}
+
+pub fn stable64_write(offset: u64, data: &[u8]) {
+    unsafe {
+        ic0::stable64_write(offset, data.as_ptr() as u64, data.len() as u64);
     }
 }
 
