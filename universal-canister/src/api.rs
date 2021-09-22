@@ -53,6 +53,7 @@ mod ic0 {
         pub fn data_certificate_copy(dst: u32, offset: u32, size: u32) -> ();
 
         pub fn time() -> u64;
+        pub fn performance_counter() -> u64;
     }
 }
 
@@ -227,6 +228,12 @@ pub fn data_certificate() -> Vec<u8> {
 pub fn time() -> u64 {
     unsafe {
         ic0::time()
+    }
+}
+
+pub fn performance_counter() -> u64 {
+    unsafe {
+        ic0::performance_counter()
     }
 }
 

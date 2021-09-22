@@ -136,6 +136,7 @@ data CanState = CanState
   , time :: Timestamp
   , cycle_balance :: Natural
   , certified_data :: Blob
+  , executed_instructions :: Natural
   }
   deriving (Show)
 
@@ -236,6 +237,7 @@ createEmptyCanister cid controllers time = modify $ \ic ->
       , time = time
       , cycle_balance = 0
       , certified_data = ""
+      , executed_instructions = 0
       }
 
 canisterMustExist :: (CanReject m, ICM m) => CanisterId -> m ()
@@ -323,6 +325,13 @@ getCanisterMod cid = can_mod . fromJust . content <$> getCanister cid
 getCanisterTime :: ICM m => CanisterId -> m Timestamp
 getCanisterTime cid = time <$> getCanister cid
 
+getExecutedInstructions :: ICM m => CanisterId -> m Natural
+getExecutedInstructions cid = executed_instructions <$> getCanister cid
+
+setExecutedInstructions :: ICM m => CanisterId -> Natural -> m ()
+setExecutedInstructions cid ei = modCanister cid $
+    \cs -> cs { executed_instructions = ei }
+
 
 module_hash :: CanState -> Maybe Blob
 module_hash = fmap (raw_wasm_hash . can_mod) . content
@@ -383,13 +392,22 @@ canisterEnv canister_id = do
       IsStopping _pending -> Stopping
       IsStopped -> Stopped
       IsDeleted -> error "deleted canister encountered"
+  env_executed_instructions <- getExecutedInstructions canister_id
   return $ Env
     { env_self = canister_id
     , env_time
     , env_balance
     , env_status
     , env_certificate = Nothing
+    , env_executed_instructions
     }
+
+updateCounterAndReturn :: ICM m => CanisterId -> TrapOr (CallResult r) -> m (TrapOr r)
+updateCounterAndReturn _ (Trap t) = return $ Trap t
+updateCounterAndReturn cid (Return (CallResult n ic)) = do
+    ei <- getExecutedInstructions cid
+    setExecutedInstructions cid (ei + ic)
+    return $ Return n
 
 -- Synchronous requests
 
@@ -411,7 +429,7 @@ handleQuery time (QueryRequest canister_id user_id method arg) =
     f <- return (M.lookup method (query_methods can_mod))
       `orElse` reject RC_DESTINATION_INVALID "query method does not exist"
 
-    case f user_id env arg wasm_state of
+    updateCounterAndReturn (env_self env) (f user_id env arg wasm_state) >>= \case
       Trap msg -> reject RC_CANISTER_ERROR $ "canister trapped: " ++ msg
       Return (Reject (rc,rm)) -> reject rc rm
       Return (Reply res) -> return $ Replied res
@@ -470,7 +488,7 @@ inspectIngress (CallRequest canister_id user_id method arg)
     can_mod <- getCanisterMod canister_id
     env <- canisterEnv canister_id
 
-    case inspect_message can_mod method user_id env arg wasm_state of
+    updateCounterAndReturn (env_self env) (inspect_message can_mod method user_id env arg wasm_state) >>= \case
       Trap msg -> throwError $ "canister trapped in inspect_message: " <> T.pack msg
       Return () -> return ()
 
@@ -880,7 +898,7 @@ icInstallCode caller r = do
 
     let
       reinstall = do
-        (wasm_state, ca) <- return (init_method new_can_mod caller env arg)
+        (wasm_state, ca) <- updateCounterAndReturn (env_self env) (init_method new_can_mod caller env arg)
           `onTrap` (\msg -> reject RC_CANISTER_ERROR $ "Initialization trapped: " ++ msg)
         setCanisterContent canister_id $ CanisterContent
             { can_mod = new_can_mod
@@ -898,12 +916,12 @@ icInstallCode caller r = do
           reject RC_DESTINATION_INVALID "canister is empty during upgrade"
         old_wasm_state <- getCanisterState canister_id
         old_can_mod <- getCanisterMod canister_id
-        (ca1, mem) <- return (pre_upgrade_method old_can_mod old_wasm_state caller env)
+        (ca1, mem) <- updateCounterAndReturn (env_self env) (pre_upgrade_method old_can_mod old_wasm_state caller env)
           `onTrap` (\msg -> reject RC_CANISTER_ERROR $ "Pre-upgrade trapped: " ++ msg)
         -- TODO: update balance in env based on ca1 here, once canister actions
         -- can change balances
         let env2 = env
-        (new_wasm_state, ca2) <- return (post_upgrade_method new_can_mod caller env2 mem arg)
+        (new_wasm_state, ca2) <- updateCounterAndReturn (env_self env) (post_upgrade_method new_can_mod caller env2 mem arg)
           `onTrap` (\msg -> reject RC_CANISTER_ERROR $ "Post-upgrade trapped: " ++ msg)
 
         setCanisterContent canister_id $ CanisterContent
@@ -1043,19 +1061,20 @@ invokeEntry ctxt_id wasm_state can_mod env entry = do
       Public method dat -> do
         caller <- callerOfCallID ctxt_id
         case lookupUpdate method can_mod of
-          Just f -> return $ f caller env responded available dat wasm_state
+          Just f -> updateCounterAndReturn (env_self env) (f caller env responded available dat wasm_state)
           Nothing -> do
             let reject = Reject (RC_DESTINATION_INVALID, "method does not exist: " ++ method)
             return $ Return (wasm_state, (noCallActions { ca_response = Just reject}, noCanisterActions))
-      Closure cb r refund -> return $ do
-        case callbacks can_mod cb env responded available r refund wasm_state of
+      Closure cb r refund -> do
+        updateCounterAndReturn (env_self env) (callbacks can_mod cb env responded available r refund wasm_state) >>= \case
             Trap err -> case cleanup_callback cb of
-                Just closure -> case cleanup can_mod closure env wasm_state of
-                    Trap err' -> Trap err'
-                    Return (wasm_state', ()) ->
-                        Return (wasm_state', (noCallActions, noCanisterActions))
-                Nothing -> Trap err
-            Return (wasm_state, actions) -> Return (wasm_state, actions)
+                Just closure -> do
+                    updateCounterAndReturn (env_self env) (cleanup can_mod closure env wasm_state) >>= \case
+                        Trap err' -> return $ Trap err'
+                        Return (wasm_state', ()) -> return $
+                            Return (wasm_state', (noCallActions, noCanisterActions))
+                Nothing -> return $ Trap err
+            Return (wasm_state, actions) -> return $ Return (wasm_state, actions)
   where
     lookupUpdate method can_mod
         | Just f <- M.lookup method (update_methods can_mod) = Just f

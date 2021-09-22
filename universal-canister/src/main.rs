@@ -260,6 +260,9 @@ fn eval(ops : Ops) {
           api::call_on_cleanup(callback, cleanup_env);
         }
 
+          // performance_counter
+          45 => stack.push_int64(api::performance_counter()),
+
 
         _ => api::trap_with(&format!("unknown op {}", op)),
       }

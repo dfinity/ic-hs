@@ -210,6 +210,9 @@ trapIfEq = op 43
 callOnCleanup :: Exp 'B -> Prog
 callOnCleanup = op 44
 
+performanceCounter :: Exp 'I64
+performanceCounter = op 45
+
 -- Some convenience combinators
 
 -- This allows us to write byte expressions as plain string literals

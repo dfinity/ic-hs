@@ -40,6 +40,7 @@ import Data.Default.Class (Default (..))
 import Data.Int
 import Data.Foldable
 import Data.MemoUgly
+import Numeric.Natural
 
 import qualified Wasm.Binary.Decode as W
 import qualified Wasm.Exec.Eval as W
@@ -94,13 +95,13 @@ initialize mod imps = withExceptT show $ do
           , W._miExports  = M.fromList
             [ (,) fname $ W.ExternFunc $
               W.allocHostEff (W.FuncType arg_ty ret_ty)
-                  (\ args -> runExceptT $ f args)
+                  (const (\ args -> runExceptT $ f args))
             | (fname, arg_ty, ret_ty, f) <- funcs
             ]
           }
         | (_name, funcs) <- by_mod
         ]
-  (ref, inst, start_err) <- W.initialize mod names mods
+  (ref, inst, start_err) <- W.runEvalT $ W.initialize mod names mods
   for_ start_err throwError
   let mods' = IM.insert ref inst mods
   return (mods', ref)
@@ -114,18 +115,26 @@ exportedFunctions wasm_mod =
   ]
 
 
-invokeExport :: Instance s -> FuncName -> [W.Value] -> HostM s [W.Value]
+invokeExport :: Instance s -> FuncName -> [W.Value] -> HostM s Natural
 invokeExport (mods', ref) method args = do
   let inst = mods' IM.! ref
-  withExceptT show $
-    W.invokeByName mods' inst (T.pack method) args
+  withExceptT show $ W.runEvalT $ do
+    _ <- W.invokeByName mods' inst (T.pack method) args
+    ic <- W.invoke mods' inst W.getInstructionCount []
+    case ic of
+        [W.I64 n] -> return $ fromIntegral n
+        _         -> error $ "incorrect output of getInstructionCount"
 
-invokeTable :: Instance s -> Int32 -> [W.Value] -> HostM s [W.Value]
+invokeTable :: Instance s -> Int32 -> [W.Value] -> HostM s Natural
 invokeTable (mods', ref) idx args = do
   let inst = mods' IM.! ref
-  withExceptT show $ do
+  withExceptT show $ W.runEvalT $ do
     func <- W.elem inst (0 W.@@ def) idx def
-    W.invoke mods' inst func args
+    _ <- W.invoke mods' inst func args
+    ic <- W.invoke mods' inst W.getInstructionCount []
+    case ic of
+        [W.I64 n] -> return $ fromIntegral n
+        _         -> error $ "incorrect output of getInstructionCount"
 
 getBytes :: Instance s -> W.Address -> W.Size -> HostM s BS.ByteString
 getBytes (mods', ref) ptr len = do
@@ -138,4 +147,3 @@ setBytes (mods', ref) ptr blob = do
   let inst = mods' IM.! ref
   let mem = V.head (W._miMemories inst)
   withExceptT show $ W.storeBytes mem (fromIntegral ptr) blob
-

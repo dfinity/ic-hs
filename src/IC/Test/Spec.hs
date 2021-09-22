@@ -658,6 +658,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     , t "msg_method_name"              "F"           $ ignore methodName
     , t "accept_message"               never           acceptMessage -- due to double accept
     , t "time"                         star          $ ignore getTime
+    , t "performance_counter"          star          $ ignore performanceCounter
     , t "debug_print"                  star          $ debugPrint "hello"
     , t "trap"                         never         $ trap "this better traps"
     ]
@@ -969,6 +970,12 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     , simpleTestCase "in post_upgrade" $ \cid -> do
       upgrade cid $ setGlobal getTimeTwice
       query cid (replyData getGlobal) >>= as2Word64 >>= bothSame
+    ]
+
+  , testGroup "performance_counter"
+    [ testCase "simple" $ do
+        cid <- install (setGlobal (i64tob performanceCounter))
+        query cid (replyData getGlobal) >>= asWord64 >>= is 16
     ]
 
   , testGroup "upgrades" $

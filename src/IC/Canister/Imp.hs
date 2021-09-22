@@ -11,6 +11,7 @@ The canister interface, presented imperatively (or impurely), i.e. without rollb
 module IC.Canister.Imp
  ( CanisterEntryPoint
  , ImpState(..)
+ , CallResult(..)
  , rawInstantiate
  , rawInitialize
  , rawQuery
@@ -44,6 +45,11 @@ import IC.Wasm.Winter
 import IC.Wasm.WinterMemory as Mem
 import IC.Wasm.Imports
 
+data CallResult a = CallResult {
+    crOutput :: a,
+    crExecutedInstructions :: Natural
+}
+
 -- Parameters are the data that come from the caller
 
 data Params = Params
@@ -74,6 +80,7 @@ data ExecutionState s = ExecutionState
   , calls :: [MethodCall]
   , new_certified_data :: Maybe Blob
   , accepted :: Bool -- for canister_inspect_message
+  , executed_instructions :: Natural
   }
 
 
@@ -94,6 +101,7 @@ initialExecutionState inst stableMem env responded = ExecutionState
   , calls = mempty
   , new_certified_data = Nothing
   , accepted = False
+  , executed_instructions = 0
   }
 
 -- Some bookkeeping to access the ExecutionState
@@ -111,18 +119,18 @@ newESRef = newSTRef Nothing
 withES :: PrimMonad m =>
   ESRef (PrimState m) ->
   ExecutionState (PrimState m) ->
-  m a -> m (a, ExecutionState (PrimState m))
+  m Natural -> m (ExecutionState (PrimState m))
 withES esref es f = do
   before <- stToPrim $ readSTRef esref
   unless (isNothing before) $ error "withES with non-empty es"
   stToPrim $ writeSTRef esref $ Just es
-  x <- f
+  ic <- f
   es' <- stToPrim $ readSTRef esref
   case es' of
     Nothing -> error "withES: ExecutionState lost"
     Just es' -> do
       stToPrim $ writeSTRef esref Nothing
-      return (x, es')
+      return $ es' { executed_instructions = executed_instructions es' + ic }
 
 getsES :: ESRef s -> (ExecutionState s -> b) -> HostM s b
 getsES esref f = lift (readSTRef esref) >>= \case
@@ -223,6 +231,7 @@ systemAPI esref =
   , toImport "ic0" "accept_message" accept_message
 
   , toImport "ic0" "time" get_time
+  , toImport "ic0" "performance_counter" performance_counter
 
   , toImport "ic0" "debug_print" debug_print
   , toImport "ic0" "trap" explicit_trap
@@ -476,6 +485,11 @@ systemAPI esref =
         Timestamp ns <- gets (env_time . env)
         return (fromIntegral ns)
 
+    performance_counter :: () -> HostM s Word64
+    performance_counter () = do
+        ic <- gets (env_executed_instructions . env)
+        return $ fromIntegral ic
+
     debug_print :: (Int32, Int32) -> HostM s ()
     debug_print (src, size) = do
       -- TODO: This should be a non-trapping copy
@@ -489,7 +503,7 @@ systemAPI esref =
       let msg = BSU.toString bytes
       throwError $ "canister trapped explicitly: " ++ msg
 
--- The state of an instance, consistig of
+-- The state of an instance, consisting of
 --  * the underlying Wasm state,
 --  * additional remembered information like the CanisterId
 --  * the 'ESRef' that the system api functions are accessing
@@ -525,7 +539,7 @@ canisterActions es = CanisterActions
 
 type CanisterEntryPoint r = forall s. (ImpState s -> ST s r)
 
-rawInitialize :: EntityId -> Env -> Blob -> ImpState s -> ST s (TrapOr CanisterActions)
+rawInitialize :: EntityId -> Env -> Blob -> ImpState s -> ST s (TrapOr (CallResult CanisterActions))
 rawInitialize caller env dat (ImpState esref inst sm wasm_mod) = do
   result <- runExceptT $ do
     let es = (initialExecutionState inst sm env cantRespond)
@@ -540,17 +554,17 @@ rawInitialize caller env dat (ImpState esref inst sm wasm_mod) = do
 
     --  invoke canister_init
     if "canister_init" `elem` exportedFunctions wasm_mod
-    then withES esref es $ void $ invokeExport inst "canister_init" []
-    else return ((), es)
+    then withES esref es $ invokeExport inst "canister_init" []
+    else return es
 
   case result of
     Left  err -> return $ Trap err
-    Right (_, es')
+    Right es'
         | accepted es' -> return $ Trap "cannot accept_message here"
         | not (null (calls es')) -> return $ Trap "cannot call from init"
-        | otherwise        -> return $ Return $ canisterActions es'
+        | otherwise        -> return $ Return $ CallResult (canisterActions es') (executed_instructions es')
 
-rawPreUpgrade :: EntityId -> Env -> ImpState s -> ST s (TrapOr (CanisterActions, Blob))
+rawPreUpgrade :: EntityId -> Env -> ImpState s -> ST s (TrapOr (CallResult (CanisterActions, Blob)))
 rawPreUpgrade caller env (ImpState esref inst sm wasm_mod) = do
   result <- runExceptT $ do
     let es = (initialExecutionState inst sm env cantRespond)
@@ -564,19 +578,19 @@ rawPreUpgrade caller env (ImpState esref inst sm wasm_mod) = do
               }
 
     if "canister_pre_upgrade" `elem` exportedFunctions wasm_mod
-    then withES esref es $ void $ invokeExport inst "canister_pre_upgrade" []
-    else return ((), es)
+    then withES esref es $ invokeExport inst "canister_pre_upgrade" []
+    else return es
 
   case result of
     Left  err -> return $ Trap err
-    Right (_, es')
+    Right es'
         | accepted es' -> return $ Trap "cannot accept_message here"
         | not (null (calls es')) -> return $ Trap "cannot call from pre_upgrade"
         | otherwise -> do
             stable_mem <- Mem.export (stableMem es')
-            return $ Return (canisterActions es', stable_mem)
+            return $ Return $ CallResult (canisterActions es', stable_mem) (executed_instructions es')
 
-rawPostUpgrade :: EntityId -> Env -> Blob -> Blob -> ImpState s -> ST s (TrapOr CanisterActions)
+rawPostUpgrade :: EntityId -> Env -> Blob -> Blob -> ImpState s -> ST s (TrapOr (CallResult CanisterActions))
 rawPostUpgrade caller env mem dat (ImpState esref inst sm wasm_mod) = do
   result <- runExceptT $ do
     let es = (initialExecutionState inst sm env cantRespond)
@@ -591,17 +605,17 @@ rawPostUpgrade caller env mem dat (ImpState esref inst sm wasm_mod) = do
     lift $ Mem.imp (stableMem es) mem
 
     if "canister_post_upgrade" `elem` exportedFunctions wasm_mod
-    then withES esref es $ void $ invokeExport inst "canister_post_upgrade" []
-    else return ((), es)
+    then withES esref es $ invokeExport inst "canister_post_upgrade" []
+    else return es
 
   case result of
     Left  err -> return $ Trap err
-    Right (_, es')
+    Right es'
         | accepted es' -> return $ Trap "cannot accept_message here"
         | not (null (calls es')) -> return $ Trap "cannot call from post_upgrade"
-        | otherwise -> return $ Return (canisterActions es')
+        | otherwise -> return $ Return $ CallResult (canisterActions es') (executed_instructions es')
 
-rawQuery :: MethodName -> EntityId -> Env -> Blob -> ImpState s -> ST s (TrapOr Response)
+rawQuery :: MethodName -> EntityId -> Env -> Blob -> ImpState s -> ST s (TrapOr (CallResult Response))
 rawQuery method caller env dat (ImpState esref inst sm _) = do
   let es = (initialExecutionState inst sm env canRespond)
             { params = Params
@@ -617,15 +631,15 @@ rawQuery method caller env dat (ImpState esref inst sm _) = do
 
   case result of
     Left err -> return $ Trap err
-    Right (_, es')
+    Right es'
       | Just _ <- new_certified_data es'
         -> return $ Trap "Cannot set certified data from a query method"
       | not (null (calls es')) -> return $ Trap "cannot call from query"
       | accepted es' -> return $ Trap "cannot accept_message here"
-      | Just r <- response es' -> return $ Return r
+      | Just r <- response es' -> return $ Return $ CallResult r (executed_instructions es')
       | otherwise -> return $ Trap "No response"
 
-rawUpdate :: MethodName -> EntityId -> Env -> Responded -> Cycles -> Blob -> ImpState s -> ST s (TrapOr UpdateResult)
+rawUpdate :: MethodName -> EntityId -> Env -> Responded -> Cycles -> Blob -> ImpState s -> ST s (TrapOr (CallResult UpdateResult))
 rawUpdate method caller env responded cycles_available dat (ImpState esref inst sm _) = do
   let es = (initialExecutionState inst sm env responded)
             { params = Params
@@ -642,14 +656,14 @@ rawUpdate method caller env responded cycles_available dat (ImpState esref inst 
     invokeExport inst ("canister_update " ++ method) []
   case result of
     Left  err -> return $ Trap err
-    Right (_, es')
+    Right es'
       | accepted es' -> return $ Trap "cannot accept_message here"
-      | otherwise    -> return $ Return
+      | otherwise    -> return $ Return $ CallResult
         ( CallActions (calls es') (cycles_accepted es') (response es')
         , canisterActions es'
-        )
+        ) (executed_instructions es')
 
-rawCallback :: Callback -> Env -> Responded -> Cycles -> Response -> Cycles -> ImpState s -> ST s (TrapOr UpdateResult)
+rawCallback :: Callback -> Env -> Responded -> Cycles -> Response -> Cycles -> ImpState s -> ST s (TrapOr (CallResult UpdateResult))
 rawCallback callback env responded cycles_available res refund (ImpState esref inst sm _) = do
   let params = case res of
         Reply dat ->
@@ -669,15 +683,15 @@ rawCallback callback env responded cycles_available res refund (ImpState esref i
     invokeTable inst fun_idx [I32 env]
   case result of
     Left  err -> return $ Trap err
-    Right (_, es')
+    Right es'
       | accepted es' -> return $ Trap "cannot accept_message here"
-      | otherwise    -> return $ Return
+      | otherwise    -> return $ Return $ CallResult
         ( CallActions (calls es') (cycles_accepted es') (response es')
         , canisterActions es'
-        )
+        ) (executed_instructions es')
 
--- Needs to be separate from rawCallback, as it is its own transaction
-rawCleanup :: WasmClosure -> Env -> ImpState s -> ST s (TrapOr ())
+-- Needs to be separate from rawCallback, as it is its cown transaction
+rawCleanup :: WasmClosure -> Env -> ImpState s -> ST s (TrapOr (CallResult ()))
 rawCleanup (WasmClosure fun_idx cb_env) env (ImpState esref inst sm _) = do
   let es = initialExecutionState inst sm env cantRespond
 
@@ -685,15 +699,15 @@ rawCleanup (WasmClosure fun_idx cb_env) env (ImpState esref inst sm _) = do
     invokeTable inst fun_idx [I32 cb_env]
   case result of
     Left  err -> return $ Trap err
-    Right (_, es')
+    Right es'
       | Just _ <- new_certified_data es'
         -> return $ Trap "Cannot set certified data from inspect_message"
       | not (null (calls es'))  -> return $ Trap "cannot call from inspect_message"
       | isJust (response es')   -> return $ Trap "cannot respond from inspect_message"
       | accepted es' -> return $ Trap "cannot accept_message here"
-      | otherwise    -> return $ Return ()
+      | otherwise    -> return $ Return $ CallResult () (executed_instructions es')
 
-rawInspectMessage :: MethodName -> EntityId -> Env -> Blob -> ImpState s -> ST s (TrapOr ())
+rawInspectMessage :: MethodName -> EntityId -> Env -> Blob -> ImpState s -> ST s (TrapOr (CallResult ()))
 rawInspectMessage method caller env dat (ImpState esref inst sm wasm_mod) = do
   result <- runExceptT $ do
     let es = (initialExecutionState inst sm env cantRespond)
@@ -708,15 +722,15 @@ rawInspectMessage method caller env dat (ImpState esref inst sm wasm_mod) = do
               }
 
     if "canister_inspect_message" `elem` exportedFunctions wasm_mod
-    then withES esref es $ void $ invokeExport inst "canister_inspect_message" []
-    else return ((), es { accepted = True } )
+    then withES esref es $ invokeExport inst "canister_inspect_message" []
+    else return $ es { accepted = True }
 
   case result of
     Left err -> return $ Trap err
-    Right (_, es')
+    Right es'
       | Just _ <- new_certified_data es'
         -> return $ Trap "Cannot set certified data from inspect_message"
       | not (null (calls es'))  -> return $ Trap "cannot call from inspect_message"
       | isJust (response es')   -> return $ Trap "cannot respond from inspect_message"
       | not (accepted es')      -> return $ Trap "message not accepted by inspect_message"
-      | otherwise -> return $ Return ()
+      | otherwise -> return $ Return $ CallResult () (executed_instructions es')

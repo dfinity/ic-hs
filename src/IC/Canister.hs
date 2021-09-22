@@ -6,6 +6,7 @@ module IC.Canister
     ( WasmState
     , parseCanister
     , CanisterModule(..)
+    , CallResult(..)
     , InitFunc, UpdateFunc, QueryFunc
     , asUpdate
     )
@@ -26,9 +27,9 @@ import IC.Hash
 type WasmState = CanisterSnapshot
 -- type WasmState = Replay ImpState
 
-type InitFunc = EntityId -> Env -> Blob -> TrapOr (WasmState, CanisterActions)
-type UpdateFunc = WasmState -> TrapOr (WasmState, UpdateResult)
-type QueryFunc = WasmState -> TrapOr Response
+type InitFunc = EntityId -> Env -> Blob -> TrapOr (CallResult (WasmState, CanisterActions))
+type UpdateFunc = WasmState -> TrapOr (CallResult (WasmState, UpdateResult))
+type QueryFunc = WasmState -> TrapOr (CallResult Response)
 
 data CanisterModule = CanisterModule
   { raw_wasm :: Blob
@@ -37,10 +38,10 @@ data CanisterModule = CanisterModule
   , update_methods :: MethodName ↦ (EntityId -> Env -> Responded -> Cycles -> Blob -> UpdateFunc)
   , query_methods :: MethodName ↦ (EntityId -> Env -> Blob -> QueryFunc)
   , callbacks :: Callback -> Env -> Responded -> Cycles -> Response -> Cycles -> UpdateFunc
-  , cleanup :: WasmClosure -> Env -> WasmState -> TrapOr (WasmState, ())
-  , pre_upgrade_method :: WasmState -> EntityId -> Env -> TrapOr (CanisterActions, Blob)
-  , post_upgrade_method :: EntityId -> Env -> Blob -> Blob -> TrapOr (WasmState, CanisterActions)
-  , inspect_message :: MethodName -> EntityId -> Env -> Blob -> WasmState -> TrapOr ()
+  , cleanup :: WasmClosure -> Env -> WasmState -> TrapOr (CallResult (WasmState, ()))
+  , pre_upgrade_method :: WasmState -> EntityId -> Env -> TrapOr (CallResult (CanisterActions, Blob))
+  , post_upgrade_method :: EntityId -> Env -> Blob -> Blob -> TrapOr (CallResult (WasmState, CanisterActions))
+  , inspect_message :: MethodName -> EntityId -> Env -> Blob -> WasmState -> TrapOr (CallResult ())
   }
 
 instance Show CanisterModule where
@@ -67,7 +68,7 @@ parseCanister bytes =
         ]
       , query_methods = M.fromList
         [ (m, \caller env arg wasm_state ->
-            snd <$> invoke wasm_state (rawQuery m caller env arg))
+            dropState $ invoke wasm_state (rawQuery m caller env arg))
         | n <- exportedFunctions wasm_mod
         , Just m <- return $ stripPrefix "canister_query " n
         ]
@@ -76,14 +77,14 @@ parseCanister bytes =
       , cleanup = \cb env wasm_state ->
         invoke wasm_state (rawCleanup cb env)
       , pre_upgrade_method = \wasm_state caller env ->
-            snd <$> invoke wasm_state (rawPreUpgrade caller env)
+            dropState $ invoke wasm_state (rawPreUpgrade caller env)
       , post_upgrade_method = \caller env mem dat ->
             case instantiate wasm_mod of
               Trap err -> Trap err
               Return wasm_state0 ->
                 invoke wasm_state0 (rawPostUpgrade caller env mem dat)
       , inspect_message = \method_name caller env arg wasm_state ->
-            snd <$> invoke wasm_state (rawInspectMessage method_name caller env arg)
+            dropState $ invoke wasm_state (rawInspectMessage method_name caller env arg)
       }
 
 instantiate :: Module -> TrapOr WasmState
@@ -93,11 +94,19 @@ instantiate wasm_mod =
       Trap err -> return ((), Left err)
       Return rs -> return ((), Right rs)
 
-invoke :: WasmState -> CanisterEntryPoint (TrapOr r) -> TrapOr (WasmState, r)
+unwrapResult :: TrapOr (CallResult r) -> TrapOr r
+unwrapResult (Trap s) = Trap s
+unwrapResult (Return (CallResult o ei)) = Return o
+
+dropState :: TrapOr (CallResult (WasmState, r)) -> TrapOr (CallResult r)
+dropState (Trap t) = Trap t
+dropState (Return (CallResult (_, o) ei)) = Return (CallResult o ei)
+
+invoke :: WasmState -> CanisterEntryPoint (TrapOr (CallResult r)) -> TrapOr (CallResult (WasmState, r))
 invoke s f =
   case perform f s of
     (_, Trap msg) -> Trap msg
-    (s', Return r) -> Return (s', r)
+    (s', Return (CallResult o ei)) -> Return $ CallResult (s', o) ei
 
 -- | Turns a query function into an update function
 asUpdate ::
@@ -106,5 +115,5 @@ asUpdate ::
 asUpdate f caller env (Responded responded) _cycles_available dat wasm_state
   | responded = error "asUpdate: responded == True"
   | otherwise =
-    (\res -> (wasm_state, (noCallActions { ca_response = Just res }, noCanisterActions))) <$>
-    f caller env dat wasm_state
+    (\res -> CallResult (wasm_state, (noCallActions { ca_response = Just res }, noCanisterActions)) 0) <$>
+    (unwrapResult $ f caller env dat wasm_state)
