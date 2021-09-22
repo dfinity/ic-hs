@@ -617,7 +617,7 @@ rawPreUpgrade caller env (ImpState esref inst sm wasm_mod) = do
         | accepted es' -> return $ Trap "cannot accept_message here"
         | not (null (calls es')) -> return $ Trap "cannot call from pre_upgrade"
         | otherwise -> do
-            stable_mem <- Mem.export (stableMem es')
+            stable_mem <- Mem.serialize <$> Mem.export (stableMem es')
             return $ Return (canisterActions es', stable_mem)
 
 rawPostUpgrade :: EntityId -> Env -> Blob -> Blob -> ImpState s -> ST s (TrapOr CanisterActions)
@@ -632,7 +632,7 @@ rawPostUpgrade caller env mem dat (ImpState esref inst sm wasm_mod) = do
                   , cycles_refunded = Nothing
                   }
               }
-    lift $ Mem.imp (stableMem es) mem
+    lift $ Mem.imp (stableMem es) (Mem.deserialize mem)
 
     if "canister_post_upgrade" `elem` exportedFunctions wasm_mod
     then withES esref es $ void $ invokeExport inst "canister_post_upgrade" []

@@ -21,6 +21,7 @@ import IC.Test.BLS
 import IC.Test.WebAuthn
 import IC.Test.ECDSA
 import IC.Test.Secp256k1
+import IC.Test.StableMemory
 import IC.HTTP.GenR
 import IC.HTTP.RequestId
 
@@ -44,6 +45,7 @@ tests = testGroup "ic-ref unit tests"
   , webAuthnTests
   , ecdsaTests
   , secp256k1Tests
+  , stableMemoryTests
   , testGroup "State serialization"
     [ testCase "with file" $
       withSystemTempFile "ic-ref-unit-test.state" $ \fn h -> do

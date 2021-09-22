@@ -462,6 +462,7 @@ test-suite unit-test
   other-modules: IC.Test.HashTree
   other-modules: IC.Test.Secp256k1
   other-modules: IC.Test.WebAuthn
+  other-modules: IC.Test.StableMemory
   other-modules: IC.Types
   other-modules: IC.Utils
   other-modules: IC.Wasm.Imports

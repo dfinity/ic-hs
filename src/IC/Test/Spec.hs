@@ -1009,6 +1009,13 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     query' cid (stableWrite (int 0) "BAZ") >>= isReject [5]
     query' cid (ignore $ stableRead (int 0) (int 3)) >>= isReject [5]
 
+    step "Using 64 bit API with large stable memory"
+    call cid (replyData (i64tob (stable64Grow (int64 1)))) >>= is "\x01\x00\x01\x00\x0\x0\x0\x0"
+    query cid (replyData (i64tob stable64Size)) >>= is "\x02\x00\x01\x00\x0\x0\x0\x0"
+    call cid (replyData (stable64Read (int64 0) (int64 3))) >>= is "BAR"
+    call_ cid $ stable64Write (int64 0) "BAZ" >>> reply
+    call cid (replyData (stable64Read (int64 0) (int64 3))) >>= is "BAZ"
+
   , testGroup "time" $
     let getTimeTwice = cat (i64tob getTime) (i64tob getTime) in
     [ simpleTestCase "in query" $ \cid ->

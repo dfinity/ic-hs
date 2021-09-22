@@ -17,7 +17,6 @@ module IC.Wasm.Winter.Persist
   , resumeInstance
   , persistMemory
   , resumeMemory
-  , resumeStableMemory
   )
   where
 
@@ -56,9 +55,6 @@ persistMemory i = persist i
 resumeMemory :: W.MemoryInst (ST s) -> ByteString -> ST s ()
 resumeMemory i p = resume i p
 
-resumeStableMemory :: Stable.Memory s -> ByteString -> ST s ()
-resumeStableMemory i p = resume i p
-
 class Monad (M a) => Persistable a where
   type Persisted a :: *
   type M a :: * -> *
@@ -66,7 +62,7 @@ class Monad (M a) => Persistable a where
   resume :: a -> Persisted a -> M a ()
 
 instance Persistable (Stable.Memory s) where
-  type Persisted (Stable.Memory s) = ByteString
+  type Persisted (Stable.Memory s) = Stable.Repr
   type M (Stable.Memory s) = ST s
   persist = Stable.export
   resume = Stable.imp
