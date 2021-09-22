@@ -653,6 +653,10 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     , t "stable_grow"                  star          $ ignore $ stableGrow (int 1)
     , t "stable_write"                 star          $ stableWrite (int 0) ""
     , t "stable_read"                  star          $ ignore $ stableRead (int 0) (int 0)
+    , t "stable64_size"                star          $ ignore stable64Size
+    , t "stable64_grow"                star          $ ignore $ stable64Grow (int64 1)
+    , t "stable64_write"               star          $ stable64Write (int64 0) ""
+    , t "stable64_read"                star          $ ignore $ stable64Read (int64 0) (int64 0)
     , t "certified_data_set"           "I G U Ry Rt" $ setCertifiedData "foo"
     , t "data_certificate_present"     star          $ ignore getCertificatePresent
     , t "msg_method_name"              "F"           $ ignore methodName
@@ -942,6 +946,9 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     step "Stable mem size is two"
     query cid (replyData (i2b stableSize)) >>= is "\x2\x0\x0\x0"
 
+    step "Try growing stable memory beyond 4GiB"
+    call cid (replyData (i2b (stableGrow (int 65535)))) >>= is "\xff\xff\xff\xff"
+
     step "Writing stable memory"
     call_ cid $ stableWrite (int 0) "FOO" >>> reply
 
@@ -950,6 +957,64 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
 
     step "Reading stable memory"
     call cid (replyData (stableRead (int 0) (int 3))) >>= is "FOO"
+
+  , testCaseSteps "64 bit stable memory" $ \step -> do
+    cid <- install noop
+
+    step "Stable mem size is zero"
+    query cid (replyData (i64tob stable64Size)) >>= is "\x0\x0\x0\x0\x0\x0\x0\x0"
+
+    step "Writing stable memory (failing)"
+    call' cid (stable64Write (int64 0) "FOO") >>= isReject [5]
+
+    step "Set stable mem (failing, query)"
+    query' cid (stable64Write (int64 0) "FOO") >>= isReject [5]
+
+    step "Growing stable memory"
+    call cid (replyData (i64tob (stable64Grow (int64 1)))) >>= is "\x0\x0\x0\x0\x0\x0\x0\x0"
+
+    step "Growing stable memory again"
+    call cid (replyData (i64tob (stable64Grow (int64 1)))) >>= is "\x1\x0\x0\x0\x0\x0\x0\x0"
+
+    step "Growing stable memory in query"
+    query cid (replyData (i64tob (stable64Grow (int64 1)))) >>= is "\x2\x0\x0\x0\x0\x0\x0\x0"
+
+    step "Stable mem size is two"
+    query cid (replyData (i2b stableSize)) >>= is "\x2\x0\x0\x0"
+    query cid (replyData (i64tob stable64Size)) >>= is "\x2\x0\x0\x0\x0\x0\x0\x0"
+
+    step "Writing stable memory"
+    call_ cid $ stable64Write (int64 0) "FOO" >>> reply
+
+    step "Writing stable memory (query)"
+    query_ cid $ stable64Write (int64 0) "BAR" >>> reply
+
+    step "Reading stable memory"
+    call cid (replyData (stable64Read (int64 0) (int64 3))) >>= is "FOO"
+    call cid (replyData (stableRead (int 0) (int 3))) >>= is "FOO"
+
+    step "Writing in 32 bit mode"
+    call_ cid $ stableWrite (int 0) "BAR" >>> reply
+
+    step "Reading back in 64 bit mode"
+    call cid (replyData (stable64Read (int64 0) (int64 3))) >>= is "BAR"
+
+    step "Growing stable memory beyond 4GiB"
+    call cid (replyData (i64tob (stable64Grow (int64 65535)))) >>= is "\x2\x0\x0\x0\x0\x0\x0\x0"
+    query cid (replyData (i64tob stable64Size)) >>= is "\x01\x00\x01\x00\x0\x0\x0\x0"
+
+    step "Using 32 bit API with large stable memory"
+    query' cid (ignore stableSize) >>= isReject [5]
+    query' cid (ignore $ stableGrow (int 1)) >>= isReject [5]
+    query' cid (stableWrite (int 0) "BAZ") >>= isReject [5]
+    query' cid (ignore $ stableRead (int 0) (int 3)) >>= isReject [5]
+
+    step "Using 64 bit API with large stable memory"
+    call cid (replyData (i64tob (stable64Grow (int64 1)))) >>= is "\x01\x00\x01\x00\x0\x0\x0\x0"
+    query cid (replyData (i64tob stable64Size)) >>= is "\x02\x00\x01\x00\x0\x0\x0\x0"
+    call cid (replyData (stable64Read (int64 0) (int64 3))) >>= is "BAR"
+    call_ cid $ stable64Write (int64 0) "BAZ" >>> reply
+    call cid (replyData (stable64Read (int64 0) (int64 3))) >>= is "BAZ"
 
   , testGroup "time" $
     let getTimeTwice = cat (i64tob getTime) (i64tob getTime) in

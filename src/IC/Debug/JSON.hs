@@ -23,6 +23,7 @@ import Data.Aeson
 import Data.Aeson.Types
 
 import qualified Data.ByteString.Lazy as BS
+import qualified IC.Canister.StableMemory as Stable
 import qualified Wasm.Syntax.Values as W
 import qualified Wasm.Syntax.AST as W
 import qualified Text.Hex as H
@@ -57,6 +58,9 @@ instance ToJSON (W.Module f) where
 
 instance ToJSON (Replay i) where
     toJSON = placeholder "(replay)"
+
+instance ToJSON (Stable.Repr) where
+    toJSON = toJSON . Stable.serialize
 
 placeholder :: String -> a -> Value
 placeholder s = const (String (T.pack s))

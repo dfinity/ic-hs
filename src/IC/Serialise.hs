@@ -21,6 +21,8 @@ import Codec.Serialise
 import GHC.Generics
 
 import qualified IC.Wasm.Winter as W
+import qualified IC.Canister.StableMemory as Stable
+
 import Control.Monad.Random.Lazy
 import System.Random.Internal (StdGen(..))
 import System.Random.SplitMix
@@ -119,6 +121,10 @@ instance Serialise CanisterContent where
 deriving instance Serialise EntityId
 
 deriving instance Serialise StdGen
+
+instance Serialise Stable.Repr where
+    encode = encode . Stable.serialize
+    decode = Stable.deserialize <$> decode
 
 instance Serialise SMGen where
     encode = encode  . unseedSMGen

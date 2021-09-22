@@ -124,6 +124,7 @@ executable ic-ref
   other-modules: IC.Canister
   other-modules: IC.Canister.Imp
   other-modules: IC.Canister.Snapshot
+  other-modules: IC.Canister.StableMemory
   other-modules: IC.CBOR.Parser
   other-modules: IC.CBOR.Patterns
   other-modules: IC.CBOR.Utils
@@ -166,7 +167,6 @@ executable ic-ref
   other-modules: IC.Version
   other-modules: IC.Wasm.Imports
   other-modules: IC.Wasm.Winter
-  other-modules: IC.Wasm.WinterMemory
   other-modules: IC.Wasm.Winter.Persist
   other-modules: SourceId
 
@@ -216,6 +216,7 @@ executable ic-ref-run
   other-modules: IC.Canister
   other-modules: IC.Canister.Imp
   other-modules: IC.Canister.Snapshot
+  other-modules: IC.Canister.StableMemory
   other-modules: IC.CBOR.Parser
   other-modules: IC.CBOR.Patterns
   other-modules: IC.CBOR.Utils
@@ -252,7 +253,6 @@ executable ic-ref-run
   other-modules: IC.Version
   other-modules: IC.Wasm.Imports
   other-modules: IC.Wasm.Winter
-  other-modules: IC.Wasm.WinterMemory
   other-modules: IC.Wasm.Winter.Persist
   other-modules: SourceId
 
@@ -424,6 +424,7 @@ test-suite unit-test
   other-modules: IC.Canister
   other-modules: IC.Canister.Imp
   other-modules: IC.Canister.Snapshot
+  other-modules: IC.Canister.StableMemory
   other-modules: IC.CBOR.Parser
   other-modules: IC.CBOR.Patterns
   other-modules: IC.CBOR.Utils
@@ -461,11 +462,11 @@ test-suite unit-test
   other-modules: IC.Test.HashTree
   other-modules: IC.Test.Secp256k1
   other-modules: IC.Test.WebAuthn
+  other-modules: IC.Test.StableMemory
   other-modules: IC.Types
   other-modules: IC.Utils
   other-modules: IC.Wasm.Imports
   other-modules: IC.Wasm.Winter
-  other-modules: IC.Wasm.WinterMemory
   other-modules: IC.Wasm.Winter.Persist
 
 library
@@ -540,6 +541,7 @@ library
   exposed-modules: IC.Canister
   exposed-modules: IC.Canister.Imp
   exposed-modules: IC.Canister.Snapshot
+  exposed-modules: IC.Canister.StableMemory
   exposed-modules: IC.CBOR.Parser
   exposed-modules: IC.CBOR.Patterns
   exposed-modules: IC.CBOR.Utils
@@ -591,6 +593,5 @@ library
   exposed-modules: IC.Version
   exposed-modules: IC.Wasm.Imports
   exposed-modules: IC.Wasm.Winter
-  exposed-modules: IC.Wasm.WinterMemory
   exposed-modules: IC.Wasm.Winter.Persist
   exposed-modules: SourceId

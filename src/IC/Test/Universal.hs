@@ -210,6 +210,18 @@ trapIfEq = op 43
 callOnCleanup :: Exp 'B -> Prog
 callOnCleanup = op 44
 
+stable64Size :: Exp 'I64
+stable64Size = op 45
+
+stable64Grow :: Exp 'I64 -> Exp 'I64
+stable64Grow = op 46
+
+stable64Read :: Exp 'I64 -> Exp 'I64 -> Exp 'B
+stable64Read = op 47
+
+stable64Write :: Exp 'I64 -> Exp 'B -> Prog
+stable64Write = op 48
+
 -- Some convenience combinators
 
 -- This allows us to write byte expressions as plain string literals

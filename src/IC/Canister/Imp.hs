@@ -2,6 +2,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE FlexibleContexts #-}
 
@@ -41,8 +42,8 @@ import Numeric.Natural
 import IC.Types
 import IC.Constants
 import IC.Wasm.Winter
-import IC.Wasm.WinterMemory as Mem
 import IC.Wasm.Imports
+import IC.Canister.StableMemory as Mem
 
 -- Parameters are the data that come from the caller
 
@@ -212,6 +213,11 @@ systemAPI esref =
   , toImport "ic0" "stable_grow" stable_grow
   , toImport "ic0" "stable_write" stable_write
   , toImport "ic0" "stable_read" stable_read
+
+  , toImport "ic0" "stable64_size" stable64_size
+  , toImport "ic0" "stable64_grow" stable64_grow
+  , toImport "ic0" "stable64_write" stable64_write
+  , toImport "ic0" "stable64_read" stable64_read
 
   , toImport "ic0" "certified_data_set" certified_data_set
   , toImport "ic0" "data_certificate_present" data_certificate_present
@@ -415,18 +421,31 @@ systemAPI esref =
       forM_ mpc $ \pc -> addBalance esref (call_transferred_cycles pc)
       modES esref $ \es -> es { pending_call = Nothing }
 
+    checkStableMemorySize :: HostM s ()
+    checkStableMemorySize = do
+      m <- gets stableMem
+      n <- Mem.size m
+      when (n > 65536) $
+        throwError "stable memory error: cannot use 32 bit API once stable memory is above 4GiB"
+
     stable_size :: () -> HostM s Int32
     stable_size () = do
+      checkStableMemorySize
       m <- gets stableMem
-      Mem.size m
+      fromIntegral <$> Mem.size m
 
     stable_grow :: Int32 -> HostM s Int32
     stable_grow delta = do
+      checkStableMemorySize
       m <- gets stableMem
-      Mem.grow m delta
+      n <- Mem.size m
+      if (fromIntegral delta + n) > 65536
+      then return (-1)
+      else fromIntegral <$> Mem.grow m (fromIntegral delta)
 
     stable_write :: (Int32, Int32, Int32) -> HostM s ()
     stable_write (dst, src, size) = do
+      checkStableMemorySize
       m <- gets stableMem
       i <- getsES esref inst
       blob <- getBytes i (fromIntegral src) size
@@ -434,9 +453,34 @@ systemAPI esref =
 
     stable_read :: (Int32, Int32, Int32) -> HostM s ()
     stable_read (dst, src, size) = do
+      checkStableMemorySize
       m <- gets stableMem
       i <- getsES esref inst
-      blob <- Mem.read m (fromIntegral src) size
+      blob <- Mem.read m (fromIntegral src) (fromIntegral size)
+      setBytes i (fromIntegral dst) blob
+
+    stable64_size :: () -> HostM s Word64
+    stable64_size () = do
+      m <- gets stableMem
+      Mem.size m
+
+    stable64_grow :: Word64 -> HostM s Word64
+    stable64_grow delta = do
+      m <- gets stableMem
+      Mem.grow m delta
+
+    stable64_write :: (Word64, Word64, Word64) -> HostM s ()
+    stable64_write (dst, src, size) = do
+      m <- gets stableMem
+      i <- getsES esref inst
+      blob <- getBytes i (fromIntegral src) (fromIntegral size)
+      Mem.write m dst blob
+
+    stable64_read :: (Word64, Word64, Word64) -> HostM s ()
+    stable64_read (dst, src, size) = do
+      m <- gets stableMem
+      i <- getsES esref inst
+      blob <- Mem.read m src size
       setBytes i (fromIntegral dst) blob
 
     certified_data_set :: (Int32, Int32) -> HostM s ()
@@ -573,7 +617,7 @@ rawPreUpgrade caller env (ImpState esref inst sm wasm_mod) = do
         | accepted es' -> return $ Trap "cannot accept_message here"
         | not (null (calls es')) -> return $ Trap "cannot call from pre_upgrade"
         | otherwise -> do
-            stable_mem <- Mem.export (stableMem es')
+            stable_mem <- Mem.serialize <$> Mem.export (stableMem es')
             return $ Return (canisterActions es', stable_mem)
 
 rawPostUpgrade :: EntityId -> Env -> Blob -> Blob -> ImpState s -> ST s (TrapOr CanisterActions)
@@ -588,7 +632,7 @@ rawPostUpgrade caller env mem dat (ImpState esref inst sm wasm_mod) = do
                   , cycles_refunded = Nothing
                   }
               }
-    lift $ Mem.imp (stableMem es) mem
+    lift $ Mem.imp (stableMem es) (Mem.deserialize mem)
 
     if "canister_post_upgrade" `elem` exportedFunctions wasm_mod
     then withES esref es $ void $ invokeExport inst "canister_post_upgrade" []
