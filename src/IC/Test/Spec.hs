@@ -2440,7 +2440,9 @@ isRelay = runGet $ Get.getWord32le >>= \case
       return $ Reject (fromIntegral c) (T.decodeUtf8With T.lenientDecode (BS.toStrict msg))
 
 
--- Shortcut for test cases that just need one canister
+-- Shortcut for test cases that just need one canister.
+-- Deletes the canister afterwards (so don’t use it for tests that
+-- delete canisters, or change the controller)
 
 simpleTestCase :: (HasCallStack, HasAgentConfig) => String -> (Blob -> IO ()) -> TestTree
 simpleTestCase name act = testCase name $ do
