@@ -1165,9 +1165,7 @@ setAllTimesTo ts = modify $
 runHeartbeat :: ICM m => CanisterId -> m ()
 runHeartbeat cid = do
   can <- getCanister cid
-  if idleSinceLastHeartbeat (last_action can)
-  then return ()
-  else do
+  unless (idleSinceLastHeartbeat (last_action can)) $ do
     new_ctxt_id <- newCallContext $ CallContext
       { canister = cid
       , origin = FromHeartbeat
