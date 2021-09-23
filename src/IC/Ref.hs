@@ -138,6 +138,10 @@ data CanState = CanState
   , cycle_balance :: Natural
   , certified_data :: Blob
   , last_action :: Maybe EntryPoint
+   -- ^ Not part of the spec, but in this implementation we schedule
+         heartbeats only for canisters who “did something else” since the
+         last heartbeat, so we remember the last action.
+         
   }
   deriving (Show)
 
@@ -1161,13 +1165,11 @@ setAllTimesTo ts = modify $
 runHeartbeat :: ICM m => CanisterId -> m ()
 runHeartbeat cid = do
   can <- getCanister cid
-  if idleSinceLastHeartbeat (last_action can)
-  then return ()
-  else do
+  unless (idleSinceLastHeartbeat (last_action can)) $ do
     new_ctxt_id <- newCallContext $ CallContext
       { canister = cid
       , origin = FromHeartbeat
-      , responded = Responded False
+      , responded = Responded True
       , deleted = False
       , last_trap = Nothing
       , available_cycles = 0
