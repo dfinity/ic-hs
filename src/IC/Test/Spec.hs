@@ -1365,8 +1365,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
           cid <- create
           addExpiry req >>= envelope defaultSK >>= postQueryCBOR cid >>= code4xx
 
-    , testCase "non-existing (deleted) canister" $ do
-        cid <- install noop
+    , simpleTestCase "non-existing (deleted) canister" $ \cid -> do
         ic_stop_canister ic00 cid
         ic_delete_canister ic00 cid
         query' cid reply >>= isReject [3]
@@ -2442,14 +2441,8 @@ isRelay = runGet $ Get.getWord32le >>= \case
 
 
 -- Shortcut for test cases that just need one canister.
--- Deletes the canister afterwards (so don’t use it for tests that
--- delete canisters, or change the controller)
-
 simpleTestCase :: (HasCallStack, HasAgentConfig) => String -> (Blob -> IO ()) -> TestTree
-simpleTestCase name act = testCase name $ do
-  cid <- install noop
-  act cid
-  ic_uninstall ic00 cid
+simpleTestCase name act = testCase name $ install noop >>= act
 
 -- * Programmatic test generation
 
