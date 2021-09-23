@@ -138,7 +138,7 @@ data CanState = CanState
   , cycle_balance :: Natural
   , certified_data :: Blob
   -- |Not part of the spec, but in this implementation we schedule
-  -- heartbeats only for canisters who “did something else” since the
+  -- heartbeats only for canisters who have not been idle since the
   -- last heartbeat, so we remember the last action.
   , last_action :: Maybe EntryPoint
   }
