@@ -137,11 +137,10 @@ data CanState = CanState
   , time :: Timestamp
   , cycle_balance :: Natural
   , certified_data :: Blob
+  -- |Not part of the spec, but in this implementation we schedule
+  -- heartbeats only for canisters who “did something else” since the
+  -- last heartbeat, so we remember the last action.
   , last_action :: Maybe EntryPoint
-   -- ^ Not part of the spec, but in this implementation we schedule
-         heartbeats only for canisters who “did something else” since the
-         last heartbeat, so we remember the last action.
-         
   }
   deriving (Show)
 
@@ -726,7 +725,7 @@ processMessage m = case m of
   ResponseMessage ctxt_id response refunded_cycles -> do
     ctxt <- getCallContext ctxt_id
     case origin ctxt of
-      FromHeartbeat -> return ()
+      FromHeartbeat -> error "Response from heartbeat"
       FromUser rid -> setReqStatus rid $ CallResponse $
         -- NB: Here cycles disappear
         case response of
@@ -822,8 +821,8 @@ invokeManagementCanister caller ctxt_id (Public method_name arg) =
         Left msg -> reject RC_CANISTER_ERROR $ "Candid failed to decode: " ++ msg
         Right x -> method (raw_reply . encode @b) x
 
-invokeManagementCanister _ _ Closure{} = error "closure invoked on management function "
-invokeManagementCanister _ _ Heartbeat = error "heartbeat invoked on management function "
+invokeManagementCanister _ _ Closure{} = error "closure invoked on management canister"
+invokeManagementCanister _ _ Heartbeat = error "heartbeat invoked on management canister"
 
 icCreateCanister :: (ICM m, CanReject m) => EntityId -> CallId -> ICManagement m .! "create_canister"
 icCreateCanister caller ctxt_id r = do
