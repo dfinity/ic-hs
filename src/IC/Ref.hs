@@ -1169,7 +1169,7 @@ runHeartbeat cid = do
     new_ctxt_id <- newCallContext $ CallContext
       { canister = cid
       , origin = FromHeartbeat
-      , responded = Responded False
+      , responded = Responded True
       , deleted = False
       , last_trap = Nothing
       , available_cycles = 0
