@@ -138,6 +138,10 @@ data CanState = CanState
   , cycle_balance :: Natural
   , certified_data :: Blob
   , last_action :: Maybe EntryPoint
+   -- ^ Not part of the spec, but in this implementation we schedule
+         heartbeats only for canisters who “did something else” since the
+         last heartbeat, so we remember the last action.
+         
   }
   deriving (Show)
 
