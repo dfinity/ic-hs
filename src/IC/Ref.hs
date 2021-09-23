@@ -725,7 +725,7 @@ processMessage m = case m of
   ResponseMessage ctxt_id response refunded_cycles -> do
     ctxt <- getCallContext ctxt_id
     case origin ctxt of
-      FromHeartbeat -> error "Response from heartbeat"
+      FromHeartbeat -> return ()
       FromUser rid -> setReqStatus rid $ CallResponse $
         -- NB: Here cycles disappear
         case response of
@@ -1168,7 +1168,7 @@ runHeartbeat cid = do
     new_ctxt_id <- newCallContext $ CallContext
       { canister = cid
       , origin = FromHeartbeat
-      , responded = Responded True
+      , responded = Responded False
       , deleted = False
       , last_trap = Nothing
       , available_cycles = 0
