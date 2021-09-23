@@ -7,7 +7,6 @@ import Test.Tasty.HUnit
 import Control.Monad.Except
 import Control.Monad.ST
 
-import qualified Data.ByteString.Lazy as BL
 import qualified IC.Canister.StableMemory as Stable
 
 runHostM :: ExceptT String (ST RealWorld) a -> IO (Either String a)
