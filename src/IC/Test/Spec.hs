@@ -605,7 +605,8 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
           )
         , "H" =: boolTest (\prog -> do
             cid <- install (onHeartbeat (callback (prog >>> setGlobal "Did not trap")))
-            call_ cid reply
+            call_ cid reply -- This assumes that after one update call returned, a heartbeat
+                            -- should have happened. Also see heartbeat tests below.
             g <- query cid $ replyData getGlobal
             return (g == "Did not trap")
           )
