@@ -41,8 +41,8 @@ instance Serialise W.Value
 deriving instance Generic Timestamp
 instance Serialise Timestamp where
 
-deriving instance Generic Responded
-instance Serialise Responded where
+deriving instance Generic NeedsResponse
+instance Serialise NeedsResponse where
 
 deriving instance Generic RejectCode
 instance Serialise RejectCode where

@@ -156,7 +156,7 @@ type CallId = Int
 data CallContext = CallContext
   { canister :: CanisterId
   , origin :: CallOrigin
-  , responded :: Responded
+  , needs_response :: NeedsResponse
   , deleted :: Bool
   , available_cycles :: Cycles
   , last_trap :: Maybe String
@@ -594,7 +594,7 @@ processRequest (rid, CallRequest canister_id _user_id method arg) =
     ctxt_id <- newCallContext $ CallContext
       { canister = canister_id
       , origin = FromUser rid
-      , responded = Responded False
+      , needs_response = NeedsResponse True
       , deleted = False
       , last_trap = Nothing
       , available_cycles = 0
@@ -631,12 +631,12 @@ respondCallContext ctxt_id response = do
   ctxt <- getCallContext ctxt_id
   when (deleted ctxt) $
     error "Internal error: response to deleted call context"
-  when (responded ctxt == Responded True) $
+  when (needs_response ctxt == NeedsResponse False) $
     error "Internal error: Double response"
   when (origin ctxt == FromHeartbeat) $
     error "Internal error: Heartbeats cannot be responded to"
   modifyCallContext ctxt_id $ \ctxt -> ctxt
-    { responded = Responded True
+    { needs_response = NeedsResponse False
     , available_cycles = 0
     }
   enqueueMessage $ ResponseMessage {
@@ -656,7 +656,7 @@ rejectCallContext ctxt_id r =
 deleteCallContext :: ICM m => CallId -> m ()
 deleteCallContext ctxt_id =
   modifyCallContext ctxt_id $ \ctxt ->
-    if (responded ctxt == Responded False)
+    if (needs_response ctxt == NeedsResponse True)
     then error "Internal error: deleteCallContext on non-responded call context"
     else if deleted ctxt
     then error "Internal error: deleteCallContext on deleted call context"
@@ -677,8 +677,8 @@ callerOfCallID ctxt_id = do
 calleeOfCallID :: ICM m => CallId -> m EntityId
 calleeOfCallID ctxt_id = canister <$> getCallContext ctxt_id
 
-respondedCallID :: ICM m => CallId -> m Responded
-respondedCallID ctxt_id = responded <$> getCallContext ctxt_id
+needsResponseCallID :: ICM m => CallId -> m NeedsResponse
+needsResponseCallID ctxt_id = needs_response <$> getCallContext ctxt_id
 
 deletedCallID :: ICM m => CallId -> m Bool
 deletedCallID ctxt_id = deleted <$> getCallContext ctxt_id
@@ -944,7 +944,7 @@ icUninstallCode r = do
       }
     -- reject all call open contexts of this canister
     gets (M.toList . call_contexts) >>= mapM_ (\(ctxt_id, ctxt) ->
-        when (canister ctxt == canister_id && responded ctxt == Responded False) $ do
+        when (canister ctxt == canister_id && needs_response ctxt == NeedsResponse True) $ do
             rejectCallContext ctxt_id (RC_CANISTER_REJECT, "Canister has been uninstalled")
             deleteCallContext ctxt_id
         )
@@ -1054,18 +1054,18 @@ invokeEntry :: ICM m =>
     CallId -> WasmState -> CanisterModule -> Env -> EntryPoint ->
     m (TrapOr (WasmState, UpdateResult))
 invokeEntry ctxt_id wasm_state can_mod env entry = do
-    responded <- respondedCallID ctxt_id
+    needs_response <- needsResponseCallID ctxt_id
     available <- getCallContextCycles ctxt_id
     case entry of
       Public method dat -> do
         caller <- callerOfCallID ctxt_id
         case lookupUpdate method can_mod of
-          Just f -> return $ f caller env responded available dat wasm_state
+          Just f -> return $ f caller env needs_response available dat wasm_state
           Nothing -> do
             let reject = Reject (RC_DESTINATION_INVALID, "method does not exist: " ++ method)
             return $ Return (wasm_state, (noCallActions { ca_response = Just reject}, noCanisterActions))
       Closure cb r refund -> return $ do
-        case callbacks can_mod cb env responded available r refund wasm_state of
+        case callbacks can_mod cb env needs_response available r refund wasm_state of
             Trap err -> case cleanup_callback cb of
                 Just closure -> case cleanup can_mod closure env wasm_state of
                     Trap err' -> Trap err'
@@ -1089,7 +1089,7 @@ newCall from_ctxt_id call = do
   new_ctxt_id <- newCallContext $ CallContext
     { canister = call_callee call
     , origin = FromCanister from_ctxt_id (call_callback call)
-    , responded = Responded False
+    , needs_response = NeedsResponse True
     , deleted = False
     , last_trap = Nothing
     , available_cycles = call_transferred_cycles call
@@ -1111,7 +1111,7 @@ willReceiveResponse :: IC -> CallId -> Bool
 willReceiveResponse ic c = c `elem`
   -- there is another call context promising to respond to this
   [ c'
-  | CallContext { responded = Responded False, deleted = False, origin = FromCanister c' _}
+  | CallContext { needs_response = NeedsResponse True, deleted = False, origin = FromCanister c' _}
       <- M.elems (call_contexts ic)
   ] ++
   -- there is an in-flight call or response message:
@@ -1128,7 +1128,7 @@ willReceiveResponse ic c = c `elem`
 nextStarved :: ICM m => m (Maybe CallId)
 nextStarved = gets $ \ic -> listToMaybe
   [ c
-  | (c, CallContext { responded = Responded False } ) <- M.toList (call_contexts ic)
+  | (c, CallContext { needs_response = NeedsResponse True } ) <- M.toList (call_contexts ic)
   , not $ willReceiveResponse ic c
   ]
 
@@ -1173,7 +1173,7 @@ runHeartbeat cid = do
     new_ctxt_id <- newCallContext $ CallContext
       { canister = cid
       , origin = FromHeartbeat
-      , responded = Responded True
+      , needs_response = NeedsResponse False
       , deleted = False
       , last_trap = Nothing
       , available_cycles = 0
