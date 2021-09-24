@@ -257,11 +257,16 @@ canisterMustExist cid =
 
 isCanisterRunning :: ICM m => CanisterId -> m Bool
 isCanisterRunning cid = getRunStatus cid >>= \case
-  IsRunning -> return True
-  _         -> return False
+    IsRunning -> return True
+    _         -> return False
 
 isCanisterEmpty :: ICM m => CanisterId -> m Bool
 isCanisterEmpty cid = isNothing . content <$> getCanister cid
+
+isOriginatedFromHeartbeat :: CallContext -> Bool
+isOriginatedFromHeartbeat ctx = case (origin ctx) of
+    FromHeartbeat -> True
+    _             -> False
 
 -- The following functions assume the canister does exist.
 -- It would be an internal error if they don't.
@@ -633,6 +638,8 @@ respondCallContext ctxt_id response = do
     error "Internal error: response to deleted call context"
   when (responded ctxt == Responded True) $
     error "Internal error: Double response"
+  when (isOriginatedFromHeartbeat ctxt) $
+    error "Internal error: Heartbeats cannot be responded to"
   modifyCallContext ctxt_id $ \ctxt -> ctxt
     { responded = Responded True
     , available_cycles = 0
@@ -654,7 +661,7 @@ rejectCallContext ctxt_id r =
 deleteCallContext :: ICM m => CallId -> m ()
 deleteCallContext ctxt_id =
   modifyCallContext ctxt_id $ \ctxt ->
-    if responded ctxt == Responded False
+    if (responded ctxt == Responded False && (not (isOriginatedFromHeartbeat ctxt)))
     then error "Internal error: deleteCallContext on non-responded call context"
     else if deleted ctxt
     then error "Internal error: deleteCallContext on deleted call context"
@@ -725,7 +732,7 @@ processMessage m = case m of
   ResponseMessage ctxt_id response refunded_cycles -> do
     ctxt <- getCallContext ctxt_id
     case origin ctxt of
-      FromHeartbeat -> return ()
+      FromHeartbeat -> error "Response from heartbeat"
       FromUser rid -> setReqStatus rid $ CallResponse $
         -- NB: Here cycles disappear
         case response of
@@ -943,7 +950,8 @@ icUninstallCode r = do
     -- reject all call open contexts of this canister
     gets (M.toList . call_contexts) >>= mapM_ (\(ctxt_id, ctxt) ->
         when (canister ctxt == canister_id && responded ctxt == Responded False) $ do
-            rejectCallContext ctxt_id (RC_CANISTER_REJECT, "Canister has been uninstalled")
+            when (not (isOriginatedFromHeartbeat ctxt)) $
+                rejectCallContext ctxt_id (RC_CANISTER_REJECT, "Canister has been uninstalled")
             deleteCallContext ctxt_id
         )
 
@@ -1074,7 +1082,8 @@ invokeEntry ctxt_id wasm_state can_mod env entry = do
       Heartbeat -> return $ do
         case heartbeat can_mod env wasm_state of
             Trap _ -> Return (wasm_state, (noCallActions, noCanisterActions))
-            Return (wasm_state, (calls, actions)) -> Return (wasm_state, (CallActions calls 0 Nothing, actions))
+            Return (wasm_state, (calls, actions)) ->
+                Return (wasm_state, (noCallActions { ca_new_calls = calls }, actions))
   where
     lookupUpdate method can_mod
         | Just f <- M.lookup method (update_methods can_mod) = Just f
@@ -1125,8 +1134,8 @@ willReceiveResponse ic c = c `elem`
 nextStarved :: ICM m => m (Maybe CallId)
 nextStarved = gets $ \ic -> listToMaybe
   [ c
-  | (c, CallContext { responded = Responded False } ) <- M.toList (call_contexts ic)
-  , not $ willReceiveResponse ic c
+  | (c, ctx@CallContext { responded = Responded False } ) <- M.toList (call_contexts ic)
+  , not $ (willReceiveResponse ic c) || (isOriginatedFromHeartbeat ctx)
   ]
 
 -- | Find a canister in stopping state that is, well, stopped
@@ -1164,7 +1173,9 @@ setAllTimesTo ts = modify $
 runHeartbeat :: ICM m => CanisterId -> m ()
 runHeartbeat cid = do
   can <- getCanister cid
-  unless (idleSinceLastHeartbeat (last_action can)) $ do
+  is_empty   <- isCanisterEmpty cid
+  is_running <- isCanisterRunning cid
+  unless (idleSinceLastHeartbeat (last_action can) || is_empty || (not is_running)) $ do
     new_ctxt_id <- newCallContext $ CallContext
       { canister = cid
       , origin = FromHeartbeat
