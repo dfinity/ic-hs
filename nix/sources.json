@@ -39,16 +39,16 @@
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "nixpkgs": {
-        "branch": "ghc-use-ghc8107-for-bootstrapping",
+        "branch": "haskell-updates",
         "builtin": true,
         "description": "Nixpkgs/NixOS branches that track the Nixpkgs/NixOS channels",
         "homepage": null,
-        "owner": "nh2",
+        "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "bc5a969d016d316972582307639b755718ac7b11",
-        "sha256": "0j5pl0y8fmhwyh0arbpfyhchbw3fg4p2c9clyrm8bnppv5371daw",
+        "rev": "291c46808ed98064931dcb5802073ab524e5db5e",
+        "sha256": "0b9w608gi0g32yr309inp5j2ph46h4h7fj6gv63cyi83z5b9spnh",
         "type": "tarball",
-        "url": "https://github.com/nh2/nixpkgs/archive/bc5a969d016d316972582307639b755718ac7b11.tar.gz",
+        "url": "https://github.com/NixOS/nixpkgs/archive/291c46808ed98064931dcb5802073ab524e5db5e.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "winter": {
