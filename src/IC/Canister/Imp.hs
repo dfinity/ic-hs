@@ -12,6 +12,7 @@ The canister interface, presented imperatively (or impurely), i.e. without rollb
 module IC.Canister.Imp
  ( CanisterEntryPoint
  , ImpState(..)
+ , rawHeartbeat
  , rawInstantiate
  , rawInitialize
  , rawQuery
@@ -68,7 +69,7 @@ data ExecutionState s = ExecutionState
   , cycles_available :: Maybe Cycles
   , cycles_accepted :: Cycles
   , balance :: Cycles
-  , responded :: Responded
+  , needs_response :: NeedsResponse
   , response :: Maybe Response
   , reply_data :: Blob
   , pending_call :: Maybe MethodCall
@@ -78,8 +79,8 @@ data ExecutionState s = ExecutionState
   }
 
 
-initialExecutionState :: Instance s -> Memory s -> Env -> Responded -> ExecutionState s
-initialExecutionState inst stableMem env responded = ExecutionState
+initialExecutionState :: Instance s -> Memory s -> Env -> NeedsResponse -> ExecutionState s
+initialExecutionState inst stableMem env needs_response = ExecutionState
   { inst
   , stableMem
   , params = Params Nothing Nothing Nothing Nothing Nothing
@@ -88,7 +89,7 @@ initialExecutionState inst stableMem env responded = ExecutionState
   , cycles_available = Nothing
   , balance = env_balance env
   , cycles_accepted = 0
-  , responded
+  , needs_response
   , response = Nothing
   , reply_data = mempty
   , pending_call = Nothing
@@ -296,9 +297,9 @@ systemAPI esref =
 
     assert_not_responded :: HostM s ()
     assert_not_responded = do
-      gets responded >>= \case
-        Responded False -> return ()
-        Responded True  -> throwError "This call has already been responded to earlier"
+      gets needs_response >>= \case
+        NeedsResponse True -> return ()
+        NeedsResponse False  -> throwError "This call has already been responded to earlier"
       gets response >>= \case
         Nothing -> return ()
         Just  _ -> throwError "This call has already been responded to in this function"
@@ -533,7 +534,7 @@ systemAPI esref =
       let msg = BSU.toString bytes
       throwError $ "canister trapped explicitly: " ++ msg
 
--- The state of an instance, consistig of
+-- The state of an instance, consisting of
 --  * the underlying Wasm state,
 --  * additional remembered information like the CanisterId
 --  * the 'ESRef' that the system api functions are accessing
@@ -556,11 +557,11 @@ rawInstantiate wasm_mod = do
     Left  err -> return $ Trap err
     Right (inst, sm) -> return $ Return $ ImpState esref inst sm wasm_mod
 
-cantRespond :: Responded
-cantRespond = Responded True
+cantRespond :: NeedsResponse
+cantRespond = NeedsResponse False
 
-canRespond :: Responded
-canRespond = Responded False
+canRespond :: NeedsResponse
+canRespond = NeedsResponse True
 
 canisterActions :: ExecutionState s -> CanisterActions
 canisterActions es = CanisterActions
@@ -593,6 +594,25 @@ rawInitialize caller env dat (ImpState esref inst sm wasm_mod) = do
         | accepted es' -> return $ Trap "cannot accept_message here"
         | not (null (calls es')) -> return $ Trap "cannot call from init"
         | otherwise        -> return $ Return $ canisterActions es'
+
+rawHeartbeat :: Env -> ImpState s -> ST s (TrapOr ([MethodCall], CanisterActions))
+rawHeartbeat env (ImpState esref inst sm wasm_mod) = do
+  result <- runExceptT $ do
+    let es = (initialExecutionState inst sm env cantRespond)
+
+    if "canister_heartbeat" `elem` exportedFunctions wasm_mod
+    then withES esref es $ void $ invokeExport inst "canister_heartbeat" []
+    else return ((), es)
+
+  case result of
+    Left  err -> return $ Trap err
+    Right (_, es')
+      | accepted es'          -> return $ Trap "cannot accept_message here"
+      | isJust (response es') -> return $ Trap "cannot respond from heartbeat"
+      | otherwise             -> return $ Return $
+        ( calls es'
+        , canisterActions es'
+        )
 
 rawPreUpgrade :: EntityId -> Env -> ImpState s -> ST s (TrapOr (CanisterActions, Blob))
 rawPreUpgrade caller env (ImpState esref inst sm wasm_mod) = do
@@ -669,9 +689,9 @@ rawQuery method caller env dat (ImpState esref inst sm _) = do
       | Just r <- response es' -> return $ Return r
       | otherwise -> return $ Trap "No response"
 
-rawUpdate :: MethodName -> EntityId -> Env -> Responded -> Cycles -> Blob -> ImpState s -> ST s (TrapOr UpdateResult)
-rawUpdate method caller env responded cycles_available dat (ImpState esref inst sm _) = do
-  let es = (initialExecutionState inst sm env responded)
+rawUpdate :: MethodName -> EntityId -> Env -> NeedsResponse -> Cycles -> Blob -> ImpState s -> ST s (TrapOr UpdateResult)
+rawUpdate method caller env needs_response cycles_available dat (ImpState esref inst sm _) = do
+  let es = (initialExecutionState inst sm env needs_response)
             { params = Params
                 { param_dat    = Just dat
                 , param_caller = Just caller
@@ -693,14 +713,14 @@ rawUpdate method caller env responded cycles_available dat (ImpState esref inst 
         , canisterActions es'
         )
 
-rawCallback :: Callback -> Env -> Responded -> Cycles -> Response -> Cycles -> ImpState s -> ST s (TrapOr UpdateResult)
-rawCallback callback env responded cycles_available res refund (ImpState esref inst sm _) = do
+rawCallback :: Callback -> Env -> NeedsResponse -> Cycles -> Response -> Cycles -> ImpState s -> ST s (TrapOr UpdateResult)
+rawCallback callback env needs_response cycles_available res refund (ImpState esref inst sm _) = do
   let params = case res of
         Reply dat ->
           Params { param_dat = Just dat, param_caller = Nothing, reject_code = Just 0, reject_message = Nothing, cycles_refunded = Just refund }
         Reject (rc, reject_message) ->
           Params { param_dat = Nothing, param_caller = Nothing, reject_code = Just (rejectCode rc), reject_message = Just reject_message, cycles_refunded = Just refund }
-  let es = (initialExecutionState inst sm env responded)
+  let es = (initialExecutionState inst sm env needs_response)
             { params
             , cycles_available = Just cycles_available
             }

@@ -529,7 +529,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     {-
     This section checks various API calls in various contexts, to see
     if they trap when they should
-    This mirros the table in https://sdk.dfinity.org/docs/interface-spec/index.html#system-api-imports
+    This mirrors the table in https://sdk.dfinity.org/docs/interface-spec/index.html#system-api-imports
 
     -}
     let
@@ -603,6 +603,13 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
             cid <- install (onInspectMessage (callback (prog >>> acceptMessage)))
             call'' cid reply
           )
+        , "H" =: boolTest (\prog -> do
+            cid <- install (onHeartbeat (callback (prog >>> setGlobal "Did not trap")))
+            call_ cid reply -- This assumes that after one update call returned, a heartbeat
+                            -- should have happened. Also see heartbeat tests below.
+            g <- query cid $ replyData getGlobal
+            return (g == "Did not trap")
+          )
         ]
 
       -- context builder helpers
@@ -623,7 +630,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
         ]
         where s = S.fromList (T.words trapping)
 
-      star = "I G U Q Ry Rt C F"
+      star = "I G U Q Ry Rt C F H"
       never = ""
 
     in concat
@@ -640,30 +647,30 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     , t "msg_cycles_accept"            "U Rt Ry"     $ ignore (acceptCycles (int64 0))
     , t "canister_self"                star          $ ignore self
     , t "canister_cycle_balance"       star          $ ignore getBalance
-    , t "call_new…call_perform"        "U Rt Ry"     $
+    , t "call_new…call_perform"        "U Rt Ry H"   $
         callNew "foo" "bar" "baz" "quux" >>>
         callDataAppend "foo" >>>
         callCyclesAdd (int64 0) >>>
         callPerform
-    , t "call_set_cleanup"             never         $ callOnCleanup (callback noop)
-    , t "call_data_append"             never         $ callDataAppend "foo"
-    , t "call_cycles_add"              never         $ callCyclesAdd (int64 0)
-    , t "call_perform"                 never           callPerform
-    , t "stable_size"                  star          $ ignore stableSize
-    , t "stable_grow"                  star          $ ignore $ stableGrow (int 1)
-    , t "stable_write"                 star          $ stableWrite (int 0) ""
-    , t "stable_read"                  star          $ ignore $ stableRead (int 0) (int 0)
-    , t "stable64_size"                star          $ ignore stable64Size
-    , t "stable64_grow"                star          $ ignore $ stable64Grow (int64 1)
-    , t "stable64_write"               star          $ stable64Write (int64 0) ""
-    , t "stable64_read"                star          $ ignore $ stable64Read (int64 0) (int64 0)
-    , t "certified_data_set"           "I G U Ry Rt" $ setCertifiedData "foo"
-    , t "data_certificate_present"     star          $ ignore getCertificatePresent
-    , t "msg_method_name"              "F"           $ ignore methodName
-    , t "accept_message"               never           acceptMessage -- due to double accept
-    , t "time"                         star          $ ignore getTime
-    , t "debug_print"                  star          $ debugPrint "hello"
-    , t "trap"                         never         $ trap "this better traps"
+    , t "call_set_cleanup"             never           $ callOnCleanup (callback noop)
+    , t "call_data_append"             never           $ callDataAppend "foo"
+    , t "call_cycles_add"              never           $ callCyclesAdd (int64 0)
+    , t "call_perform"                 never             callPerform
+    , t "stable_size"                  star            $ ignore stableSize
+    , t "stable_grow"                  star            $ ignore $ stableGrow (int 1)
+    , t "stable_write"                 star            $ stableWrite (int 0) ""
+    , t "stable_read"                  star            $ ignore $ stableRead (int 0) (int 0)
+    , t "stable64_size"                star            $ ignore stable64Size
+    , t "stable64_grow"                star            $ ignore $ stable64Grow (int64 1)
+    , t "stable64_write"               star            $ stable64Write (int64 0) ""
+    , t "stable64_read"                star            $ ignore $ stable64Read (int64 0) (int64 0)
+    , t "certified_data_set"           "I G U Ry Rt H" $ setCertifiedData "foo"
+    , t "data_certificate_present"     star            $ ignore getCertificatePresent
+    , t "msg_method_name"              "F"             $ ignore methodName
+    , t "accept_message"               never             acceptMessage -- due to double accept
+    , t "time"                         star            $ ignore getTime
+    , t "debug_print"                  star            $ debugPrint "hello"
+    , t "trap"                         never           $ trap "this better traps"
     ]
 
   , simpleTestCase "self" $ \cid ->
@@ -1097,6 +1104,25 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
       do upgrade' cid $ inter_query cid defArgs{ other_side = noop }
         >>= isReject [5]
       checkNoUpgrade cid
+    ]
+
+  , testGroup "heartbeat"
+    [ testCase "called once for all canisters" $ do
+      cid <- install $ onHeartbeat $ callback $ ignore (stableGrow (int 1)) >>> stableWrite (int 0) "FOO"
+      cid2 <- install $ onHeartbeat $ callback $ ignore (stableGrow (int 1)) >>> stableWrite (int 0) "BAR"
+      -- Heartbeat cannot respond. Should be trapped.
+      cid3 <- install $ onHeartbeat $ callback $ setGlobal "FIZZ" >>> replyData "FIZZ"
+
+      -- The spec currently gives no guarantee about when or how frequent heartbeats are executed.
+      -- But all implementations have the property: if update call B is submitted after call A is completed,
+      -- then a heartbeat runs before the execution of B.
+      -- We use this here to make sure that heartbeats have been attempted:
+      call_ cid reply
+      call_ cid reply
+
+      query cid (replyData (stableRead (int 0) (int 3))) >>= is "FOO"
+      query cid2 (replyData (stableRead (int 0) (int 3))) >>= is "BAR"
+      query cid3 (replyData getGlobal) >>= is ""
     ]
 
   , testGroup "reinstall"
@@ -2414,8 +2440,7 @@ isRelay = runGet $ Get.getWord32le >>= \case
       return $ Reject (fromIntegral c) (T.decodeUtf8With T.lenientDecode (BS.toStrict msg))
 
 
--- Shortcut for test cases that just need one canister
-
+-- Shortcut for test cases that just need one canister.
 simpleTestCase :: (HasCallStack, HasAgentConfig) => String -> (Blob -> IO ()) -> TestTree
 simpleTestCase name act = testCase name $ install noop >>= act
 

@@ -222,6 +222,9 @@ stable64Read = op 47
 stable64Write :: Exp 'I64 -> Exp 'B -> Prog
 stable64Write = op 48
 
+onHeartbeat :: Exp 'B -> Prog
+onHeartbeat = op 49
+
 -- Some convenience combinators
 
 -- This allows us to write byte expressions as plain string literals

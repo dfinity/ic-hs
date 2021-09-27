@@ -50,7 +50,7 @@ prettyID (EntityId blob) =
     base32 = filter (/='=') . T.unpack . T.toLower . encodeBase32 . BS.toStrict
 
 
-newtype Responded = Responded Bool
+newtype NeedsResponse = NeedsResponse Bool
   deriving (Show, Eq)
 
 newtype Timestamp = Timestamp Natural
@@ -94,14 +94,14 @@ data WasmClosure = WasmClosure
   { closure_idx :: Int32
   , closure_env :: Int32
   }
-  deriving Show
+  deriving (Eq, Show)
 
 data Callback = Callback
   { reply_callback :: WasmClosure
   , reject_callback :: WasmClosure
   , cleanup_callback :: Maybe WasmClosure
   }
-  deriving Show
+  deriving (Eq, Show)
 
 data MethodCall = MethodCall
   { call_callee :: CanisterId

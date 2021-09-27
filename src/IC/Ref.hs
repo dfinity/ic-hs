@@ -37,6 +37,7 @@ module IC.Ref
   , handleReadState
   , runStep
   , runToCompletion
+  , processHeartbeats
   -- $ Exported for use as a library, e.g. in testing
   , setAllTimesTo
   , createEmptyCanister
@@ -136,21 +137,26 @@ data CanState = CanState
   , time :: Timestamp
   , cycle_balance :: Natural
   , certified_data :: Blob
+  -- |Not part of the spec, but in this implementation we schedule
+  -- heartbeats only for canisters who have not been idle since the
+  -- last heartbeat, so we remember the last action.
+  , last_action :: Maybe EntryPoint
   }
   deriving (Show)
 
--- A canister entry point is either a publicly named function, or a closure
--- (callback + environment)
+-- A canister entry point is either a publicly named function, a closure
+-- (callback + environment) or a heartbeat.
 data EntryPoint
   = Public MethodName Blob
   | Closure Callback Response Cycles
+  | Heartbeat
   deriving (Show)
 
 type CallId = Int
 data CallContext = CallContext
   { canister :: CanisterId
   , origin :: CallOrigin
-  , responded :: Responded
+  , needs_response :: NeedsResponse
   , deleted :: Bool
   , available_cycles :: Cycles
   , last_trap :: Maybe String
@@ -161,7 +167,8 @@ data CallContext = CallContext
 data CallOrigin
   = FromUser RequestID
   | FromCanister CallId Callback
-  deriving (Show)
+  | FromHeartbeat
+  deriving (Eq, Show)
 
 data Message
   = CallMessage
@@ -236,6 +243,7 @@ createEmptyCanister cid controllers time = modify $ \ic ->
       , time = time
       , cycle_balance = 0
       , certified_data = ""
+      , last_action = Nothing
       }
 
 canisterMustExist :: (CanReject m, ICM m) => CanisterId -> m ()
@@ -247,12 +255,16 @@ canisterMustExist cid =
       reject RC_DESTINATION_INVALID ("canister no longer exists: " ++ prettyID cid)
     _ -> return ()
 
+isCanisterRunning :: ICM m => CanisterId -> m Bool
+isCanisterRunning cid = getRunStatus cid >>= \case
+    IsRunning -> return True
+    _         -> return False
+
 isCanisterEmpty :: ICM m => CanisterId -> m Bool
 isCanisterEmpty cid = isNothing . content <$> getCanister cid
 
-
--- the following functions assume the canister does exist;
--- it would be an internal error if they dont
+-- The following functions assume the canister does exist.
+-- It would be an internal error if they don't.
 
 getCanister :: ICM m => CanisterId -> m CanState
 getCanister cid =
@@ -397,9 +409,8 @@ handleQuery :: ICM m => Timestamp -> QueryRequest -> m ReqResponse
 handleQuery time (QueryRequest canister_id user_id method arg) =
   fmap QueryResponse $ onReject (return . Rejected) $ do
     canisterMustExist canister_id
-    getRunStatus canister_id >>= \case
-       IsRunning -> return ()
-       _ -> reject RC_CANISTER_ERROR "canister is stopped"
+    is_running <- isCanisterRunning canister_id
+    when (not is_running) $ reject RC_CANISTER_ERROR "canister is stopped"
     empty <- isCanisterEmpty canister_id
     when empty $ reject RC_DESTINATION_INVALID "canister is empty"
     wasm_state <- getCanisterState canister_id
@@ -583,7 +594,7 @@ processRequest (rid, CallRequest canister_id _user_id method arg) =
     ctxt_id <- newCallContext $ CallContext
       { canister = canister_id
       , origin = FromUser rid
-      , responded = Responded False
+      , needs_response = NeedsResponse True
       , deleted = False
       , last_trap = Nothing
       , available_cycles = 0
@@ -620,10 +631,12 @@ respondCallContext ctxt_id response = do
   ctxt <- getCallContext ctxt_id
   when (deleted ctxt) $
     error "Internal error: response to deleted call context"
-  when (responded ctxt == Responded True) $
+  when (needs_response ctxt == NeedsResponse False) $
     error "Internal error: Double response"
+  when (origin ctxt == FromHeartbeat) $
+    error "Internal error: Heartbeats cannot be responded to"
   modifyCallContext ctxt_id $ \ctxt -> ctxt
-    { responded = Responded True
+    { needs_response = NeedsResponse False
     , available_cycles = 0
     }
   enqueueMessage $ ResponseMessage {
@@ -643,7 +656,7 @@ rejectCallContext ctxt_id r =
 deleteCallContext :: ICM m => CallId -> m ()
 deleteCallContext ctxt_id =
   modifyCallContext ctxt_id $ \ctxt ->
-    if responded ctxt == Responded False
+    if (needs_response ctxt == NeedsResponse True)
     then error "Internal error: deleteCallContext on non-responded call context"
     else if deleted ctxt
     then error "Internal error: deleteCallContext on deleted call context"
@@ -659,12 +672,13 @@ callerOfCallID ctxt_id = do
   case origin ctxt of
     FromUser rid -> callerOfRequest rid
     FromCanister other_ctxt_id _callback -> calleeOfCallID other_ctxt_id
+    FromHeartbeat -> return $ canister ctxt
 
 calleeOfCallID :: ICM m => CallId -> m EntityId
 calleeOfCallID ctxt_id = canister <$> getCallContext ctxt_id
 
-respondedCallID :: ICM m => CallId -> m Responded
-respondedCallID ctxt_id = responded <$> getCallContext ctxt_id
+needsResponseCallID :: ICM m => CallId -> m NeedsResponse
+needsResponseCallID ctxt_id = needs_response <$> getCallContext ctxt_id
 
 deletedCallID :: ICM m => CallId -> m Bool
 deletedCallID ctxt_id = deleted <$> getCallContext ctxt_id
@@ -705,6 +719,7 @@ processMessage m = case m of
           -- Eventually update cycle balance here
           rememberTrap ctxt_id msg
         Return (new_state, (call_actions, canister_actions)) -> do
+          modCanister callee $ \cs -> cs { last_action = Just entry }
           performCallActions ctxt_id call_actions
           performCanisterActions callee canister_actions
           setCanisterState callee new_state
@@ -712,6 +727,7 @@ processMessage m = case m of
   ResponseMessage ctxt_id response refunded_cycles -> do
     ctxt <- getCallContext ctxt_id
     case origin ctxt of
+      FromHeartbeat -> error "Response from heartbeat"
       FromUser rid -> setReqStatus rid $ CallResponse $
         -- NB: Here cycles disappear
         case response of
@@ -807,7 +823,8 @@ invokeManagementCanister caller ctxt_id (Public method_name arg) =
         Left msg -> reject RC_CANISTER_ERROR $ "Candid failed to decode: " ++ msg
         Right x -> method (raw_reply . encode @b) x
 
-invokeManagementCanister _ _ Closure{} = error "closure invoked on management function "
+invokeManagementCanister _ _ Closure{} = error "closure invoked on management canister"
+invokeManagementCanister _ _ Heartbeat = error "heartbeat invoked on management canister"
 
 icCreateCanister :: (ICM m, CanReject m) => EntityId -> CallId -> ICManagement m .! "create_canister"
 icCreateCanister caller ctxt_id r = do
@@ -927,7 +944,7 @@ icUninstallCode r = do
       }
     -- reject all call open contexts of this canister
     gets (M.toList . call_contexts) >>= mapM_ (\(ctxt_id, ctxt) ->
-        when (canister ctxt == canister_id && responded ctxt == Responded False) $ do
+        when (canister ctxt == canister_id && needs_response ctxt == NeedsResponse True) $ do
             rejectCallContext ctxt_id (RC_CANISTER_REJECT, "Canister has been uninstalled")
             deleteCallContext ctxt_id
         )
@@ -1037,18 +1054,18 @@ invokeEntry :: ICM m =>
     CallId -> WasmState -> CanisterModule -> Env -> EntryPoint ->
     m (TrapOr (WasmState, UpdateResult))
 invokeEntry ctxt_id wasm_state can_mod env entry = do
-    responded <- respondedCallID ctxt_id
+    needs_response <- needsResponseCallID ctxt_id
     available <- getCallContextCycles ctxt_id
     case entry of
       Public method dat -> do
         caller <- callerOfCallID ctxt_id
         case lookupUpdate method can_mod of
-          Just f -> return $ f caller env responded available dat wasm_state
+          Just f -> return $ f caller env needs_response available dat wasm_state
           Nothing -> do
             let reject = Reject (RC_DESTINATION_INVALID, "method does not exist: " ++ method)
             return $ Return (wasm_state, (noCallActions { ca_response = Just reject}, noCanisterActions))
       Closure cb r refund -> return $ do
-        case callbacks can_mod cb env responded available r refund wasm_state of
+        case callbacks can_mod cb env needs_response available r refund wasm_state of
             Trap err -> case cleanup_callback cb of
                 Just closure -> case cleanup can_mod closure env wasm_state of
                     Trap err' -> Trap err'
@@ -1056,6 +1073,11 @@ invokeEntry ctxt_id wasm_state can_mod env entry = do
                         Return (wasm_state', (noCallActions, noCanisterActions))
                 Nothing -> Trap err
             Return (wasm_state, actions) -> Return (wasm_state, actions)
+      Heartbeat -> return $ do
+        case heartbeat can_mod env wasm_state of
+            Trap _ -> Return (wasm_state, (noCallActions, noCanisterActions))
+            Return (wasm_state, (calls, actions)) ->
+                Return (wasm_state, (noCallActions { ca_new_calls = calls }, actions))
   where
     lookupUpdate method can_mod
         | Just f <- M.lookup method (update_methods can_mod) = Just f
@@ -1067,7 +1089,7 @@ newCall from_ctxt_id call = do
   new_ctxt_id <- newCallContext $ CallContext
     { canister = call_callee call
     , origin = FromCanister from_ctxt_id (call_callback call)
-    , responded = Responded False
+    , needs_response = NeedsResponse True
     , deleted = False
     , last_trap = Nothing
     , available_cycles = call_transferred_cycles call
@@ -1089,7 +1111,7 @@ willReceiveResponse :: IC -> CallId -> Bool
 willReceiveResponse ic c = c `elem`
   -- there is another call context promising to respond to this
   [ c'
-  | CallContext { responded = Responded False, deleted = False, origin = FromCanister c' _}
+  | CallContext { needs_response = NeedsResponse True, deleted = False, origin = FromCanister c' _}
       <- M.elems (call_contexts ic)
   ] ++
   -- there is an in-flight call or response message:
@@ -1106,7 +1128,7 @@ willReceiveResponse ic c = c `elem`
 nextStarved :: ICM m => m (Maybe CallId)
 nextStarved = gets $ \ic -> listToMaybe
   [ c
-  | (c, CallContext { responded = Responded False } ) <- M.toList (call_contexts ic)
+  | (c, CallContext { needs_response = NeedsResponse True } ) <- M.toList (call_contexts ic)
   , not $ willReceiveResponse ic c
   ]
 
@@ -1142,6 +1164,33 @@ setAllTimesTo :: ICM m => Timestamp -> m ()
 setAllTimesTo ts = modify $
   \ic -> ic { canisters = M.map (\cs -> cs { time = ts }) (canisters ic) }
 
+runHeartbeat :: ICM m => CanisterId -> m ()
+runHeartbeat cid = do
+  can <- getCanister cid
+  is_empty   <- isCanisterEmpty cid
+  is_running <- isCanisterRunning cid
+  unless (idleSinceLastHeartbeat (last_action can) || is_empty || not is_running) $ do
+    new_ctxt_id <- newCallContext $ CallContext
+      { canister = cid
+      , origin = FromHeartbeat
+      , needs_response = NeedsResponse False
+      , deleted = False
+      , last_trap = Nothing
+      , available_cycles = 0
+      }
+    processMessage $ CallMessage
+      { call_context = new_ctxt_id
+      , entry = Heartbeat
+      }
+
+processHeartbeats :: ICM m => m ()
+processHeartbeats = do
+  cs <- gets (M.keys . canisters)
+  forM_ cs runHeartbeat
+
+idleSinceLastHeartbeat :: Maybe EntryPoint -> Bool
+idleSinceLastHeartbeat (Just Heartbeat) = True
+idleSinceLastHeartbeat _                = False
 
 -- | Returns true if a step was taken
 runStep :: ICM m => m Bool
