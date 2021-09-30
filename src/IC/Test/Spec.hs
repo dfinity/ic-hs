@@ -1044,12 +1044,6 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
       query cid (replyData getGlobal) >>= as2Word64 >>= bothSame
     ]
 
-  , testGroup "performance counter" $
-    [ testCase "call once" $ do
-        cid <- install noop
-        query cid (replyData (i64tob performanceCounter)) >>= asWord64 >>= is 0
-    ]
-
   , testGroup "upgrades" $
     let installForUpgrade on_pre_upgrade = install $
             setGlobal "FOO" >>>
