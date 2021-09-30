@@ -39,16 +39,16 @@
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "nixpkgs": {
-        "branch": "haskell-updates",
+        "branch": "master",
         "builtin": true,
         "description": "Nixpkgs/NixOS branches that track the Nixpkgs/NixOS channels",
         "homepage": null,
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "291c46808ed98064931dcb5802073ab524e5db5e",
-        "sha256": "0b9w608gi0g32yr309inp5j2ph46h4h7fj6gv63cyi83z5b9spnh",
+        "rev": "89cf874d9d911ec46d6633ae32cb36eb8914c28c",
+        "sha256": "0f3g5myfxr4wv7rfhhirmpc71v8dcnc0az4r6fviiipggw9fkd9h",
         "type": "tarball",
-        "url": "https://github.com/NixOS/nixpkgs/archive/291c46808ed98064931dcb5802073ab524e5db5e.tar.gz",
+        "url": "https://github.com/NixOS/nixpkgs/archive/89cf874d9d911ec46d6633ae32cb36eb8914c28c.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "winter": {
