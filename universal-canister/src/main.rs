@@ -284,6 +284,8 @@ fn eval(ops: Ops) {
             // canister heartbeat script
             49 => set_heartbeat(stack.pop_blob()),
 
+            50 => stack.push_int64(api::performance_counter()),
+
             _ => api::trap_with(&format!("unknown op {}", op)),
         }
     }
