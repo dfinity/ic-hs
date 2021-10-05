@@ -70,8 +70,8 @@ instance ToJSON Timestamp where
     toJSON     = genericToJSON customOptions
     toEncoding = genericToEncoding customOptions
 
-deriving instance Generic NeedsResponse
-instance ToJSON NeedsResponse where
+deriving instance Generic NeedsToRespond
+instance ToJSON NeedsToRespond where
     toJSON     = genericToJSON customOptions
     toEncoding = genericToEncoding customOptions
 
