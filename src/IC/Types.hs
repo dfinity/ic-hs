@@ -50,7 +50,7 @@ prettyID (EntityId blob) =
     base32 = filter (/='=') . T.unpack . T.toLower . encodeBase32 . BS.toStrict
 
 
-newtype NeedsResponse = NeedsResponse Bool
+newtype NeedsToRespond = NeedsToRespond Bool
   deriving (Show, Eq)
 
 newtype Timestamp = Timestamp Natural

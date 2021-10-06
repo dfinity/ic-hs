@@ -34,9 +34,9 @@ data CanisterModule = CanisterModule
   { raw_wasm :: Blob
   , raw_wasm_hash :: Blob -- just caching, it’s worth it
   , init_method :: InitFunc
-  , update_methods :: MethodName ↦ (EntityId -> Env -> NeedsResponse -> Cycles -> Blob -> UpdateFunc)
+  , update_methods :: MethodName ↦ (EntityId -> Env -> NeedsToRespond -> Cycles -> Blob -> UpdateFunc)
   , query_methods :: MethodName ↦ (EntityId -> Env -> Blob -> QueryFunc)
-  , callbacks :: Callback -> Env -> NeedsResponse -> Cycles -> Response -> Cycles -> UpdateFunc
+  , callbacks :: Callback -> Env -> NeedsToRespond -> Cycles -> Response -> Cycles -> UpdateFunc
   , cleanup :: WasmClosure -> Env -> WasmState -> TrapOr (WasmState, ())
   , pre_upgrade_method :: WasmState -> EntityId -> Env -> TrapOr (CanisterActions, Blob)
   , post_upgrade_method :: EntityId -> Env -> Blob -> Blob -> TrapOr (WasmState, CanisterActions)
@@ -61,8 +61,8 @@ parseCanister bytes =
                 invoke wasm_state0 (rawInitialize caller env dat)
       , update_methods = M.fromList
         [ (m,
-          \caller env needs_response cycles_available dat wasm_state ->
-          invoke wasm_state (rawUpdate m caller env needs_response cycles_available dat))
+          \caller env needs_to_respond cycles_available dat wasm_state ->
+          invoke wasm_state (rawUpdate m caller env needs_to_respond cycles_available dat))
         | n <- exportedFunctions wasm_mod
         , Just m <- return $ stripPrefix "canister_update " n
         ]
@@ -72,8 +72,8 @@ parseCanister bytes =
         | n <- exportedFunctions wasm_mod
         , Just m <- return $ stripPrefix "canister_query " n
         ]
-      , callbacks = \cb env needs_response cycles_available res refund wasm_state ->
-        invoke wasm_state (rawCallback cb env needs_response cycles_available res refund)
+      , callbacks = \cb env needs_to_respond cycles_available res refund wasm_state ->
+        invoke wasm_state (rawCallback cb env needs_to_respond cycles_available res refund)
       , cleanup = \cb env wasm_state ->
         invoke wasm_state (rawCleanup cb env)
       , pre_upgrade_method = \wasm_state caller env ->
@@ -104,9 +104,9 @@ invoke s f =
 -- | Turns a query function into an update function
 asUpdate ::
   (EntityId -> Env -> Blob -> QueryFunc) ->
-  (EntityId -> Env -> NeedsResponse -> Cycles -> Blob -> UpdateFunc)
-asUpdate f caller env (NeedsResponse needs_response) _cycles_available dat wasm_state
-  | not needs_response = error "asUpdate: needs_response == False"
+  (EntityId -> Env -> NeedsToRespond -> Cycles -> Blob -> UpdateFunc)
+asUpdate f caller env (NeedsToRespond needs_to_respond) _cycles_available dat wasm_state
+  | not needs_to_respond = error "asUpdate: needs_to_respond == False"
   | otherwise =
     (\res -> (wasm_state, (noCallActions { ca_response = Just res }, noCanisterActions))) <$>
     f caller env dat wasm_state

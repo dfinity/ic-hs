@@ -69,7 +69,7 @@ data ExecutionState s = ExecutionState
   , cycles_available :: Maybe Cycles
   , cycles_accepted :: Cycles
   , balance :: Cycles
-  , needs_response :: NeedsResponse
+  , needs_to_respond :: NeedsToRespond
   , response :: Maybe Response
   , reply_data :: Blob
   , pending_call :: Maybe MethodCall
@@ -79,8 +79,8 @@ data ExecutionState s = ExecutionState
   }
 
 
-initialExecutionState :: Instance s -> Memory s -> Env -> NeedsResponse -> ExecutionState s
-initialExecutionState inst stableMem env needs_response = ExecutionState
+initialExecutionState :: Instance s -> Memory s -> Env -> NeedsToRespond -> ExecutionState s
+initialExecutionState inst stableMem env needs_to_respond = ExecutionState
   { inst
   , stableMem
   , params = Params Nothing Nothing Nothing Nothing Nothing
@@ -89,7 +89,7 @@ initialExecutionState inst stableMem env needs_response = ExecutionState
   , cycles_available = Nothing
   , balance = env_balance env
   , cycles_accepted = 0
-  , needs_response
+  , needs_to_respond
   , response = Nothing
   , reply_data = mempty
   , pending_call = Nothing
@@ -298,9 +298,9 @@ systemAPI esref =
 
     assert_not_responded :: HostM s ()
     assert_not_responded = do
-      gets needs_response >>= \case
-        NeedsResponse True -> return ()
-        NeedsResponse False  -> throwError "This call has already been responded to earlier"
+      gets needs_to_respond >>= \case
+        NeedsToRespond True -> return ()
+        NeedsToRespond False  -> throwError "This call has already been responded to earlier"
       gets response >>= \case
         Nothing -> return ()
         Just  _ -> throwError "This call has already been responded to in this function"
@@ -562,11 +562,11 @@ rawInstantiate wasm_mod = do
     Left  err -> return $ Trap err
     Right (inst, sm) -> return $ Return $ ImpState esref inst sm wasm_mod
 
-cantRespond :: NeedsResponse
-cantRespond = NeedsResponse False
+cantRespond :: NeedsToRespond
+cantRespond = NeedsToRespond False
 
-canRespond :: NeedsResponse
-canRespond = NeedsResponse True
+canRespond :: NeedsToRespond
+canRespond = NeedsToRespond True
 
 canisterActions :: ExecutionState s -> CanisterActions
 canisterActions es = CanisterActions
@@ -694,9 +694,9 @@ rawQuery method caller env dat (ImpState esref inst sm _) = do
       | Just r <- response es' -> return $ Return r
       | otherwise -> return $ Trap "No response"
 
-rawUpdate :: MethodName -> EntityId -> Env -> NeedsResponse -> Cycles -> Blob -> ImpState s -> ST s (TrapOr UpdateResult)
-rawUpdate method caller env needs_response cycles_available dat (ImpState esref inst sm _) = do
-  let es = (initialExecutionState inst sm env needs_response)
+rawUpdate :: MethodName -> EntityId -> Env -> NeedsToRespond -> Cycles -> Blob -> ImpState s -> ST s (TrapOr UpdateResult)
+rawUpdate method caller env needs_to_respond cycles_available dat (ImpState esref inst sm _) = do
+  let es = (initialExecutionState inst sm env needs_to_respond)
             { params = Params
                 { param_dat    = Just dat
                 , param_caller = Just caller
@@ -718,14 +718,14 @@ rawUpdate method caller env needs_response cycles_available dat (ImpState esref 
         , canisterActions es'
         )
 
-rawCallback :: Callback -> Env -> NeedsResponse -> Cycles -> Response -> Cycles -> ImpState s -> ST s (TrapOr UpdateResult)
-rawCallback callback env needs_response cycles_available res refund (ImpState esref inst sm _) = do
+rawCallback :: Callback -> Env -> NeedsToRespond -> Cycles -> Response -> Cycles -> ImpState s -> ST s (TrapOr UpdateResult)
+rawCallback callback env needs_to_respond cycles_available res refund (ImpState esref inst sm _) = do
   let params = case res of
         Reply dat ->
           Params { param_dat = Just dat, param_caller = Nothing, reject_code = Just 0, reject_message = Nothing, cycles_refunded = Just refund }
         Reject (rc, reject_message) ->
           Params { param_dat = Nothing, param_caller = Nothing, reject_code = Just (rejectCode rc), reject_message = Just reject_message, cycles_refunded = Just refund }
-  let es = (initialExecutionState inst sm env needs_response)
+  let es = (initialExecutionState inst sm env needs_to_respond)
             { params
             , cycles_available = Just cycles_available
             }
