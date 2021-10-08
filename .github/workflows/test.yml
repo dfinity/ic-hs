@@ -1,5 +1,8 @@
 name: "Nix builds"
-on: [push, pull_request]
+on:
+  push:
+     branches: [ master ]
+  pull_request: {}
 jobs:
   test:
     strategy:
@@ -34,11 +37,12 @@ jobs:
     - run: nix-build-uncached
 
     - run: |
-        res=$(nix-build-uncached -A ic-ref-dist)
+        res=$(nix-build --no-link -A ic-ref-dist)
         mkdir -p output
         cp $res output/ic-ref-dist
+
     - name: Test upload
-        uses: actions/upload-artifact@v2
-        with:
-          name: ic-ref-{{ matrix.os }}
-          path: output/ic-ref-dist
+      uses: actions/upload-artifact@v2
+      with:
+        name: ic-ref-{{ matrix.os }}
+        path: output/ic-ref-dist
