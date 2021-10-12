@@ -3,6 +3,7 @@ import Options.Applicative
 import Data.Foldable
 import Control.Concurrent
 import Control.Monad (join, forever)
+import Network.Wai.Middleware.Cors
 import Network.Wai.Middleware.RequestLogger
 import Network.Wai.Handler.Warp
 import qualified Data.Text as T
@@ -19,7 +20,7 @@ work portToUse writePortTo backingFile log = do
     putStrLn "Starting ic-ref..."
     BLS.init
     withApp backingFile $ \app -> do
-        let app' = if log then logStdoutDev app else app
+        let app' =  laxCorsSettings $ if log then logStdoutDev app else app
         case portToUse of
           Nothing ->
             withApplicationSettings settings (pure app') $ \port -> do
@@ -34,6 +35,14 @@ work portToUse writePortTo backingFile log = do
        for_ writePortTo $ \fn -> writeFile fn (show port)
 
     settings = setHost "127.0.0.1" defaultSettings
+
+    -- Make sure that we reply succesfully to preflight checks.
+    laxCorsSettings = cors $ \_ ->
+        Just simpleCorsResourcePolicy
+          { corsOrigins = Nothing,
+            corsMethods = [ "GET" ],
+            corsRequestHeaders = simpleHeaders ++ [ "X-Requested-With" ]
+          }
 
 main :: IO ()
 main = join . customExecParser (prefs showHelpOnError) $
