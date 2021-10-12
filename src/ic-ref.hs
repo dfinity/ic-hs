@@ -20,7 +20,7 @@ work portToUse writePortTo backingFile log = do
     putStrLn "Starting ic-ref..."
     BLS.init
     withApp backingFile $ \app -> do
-        let app' = cors (\_ -> Just simpleCorsResourcePolicy { corsOrigins = Nothing }) $ if log then logStdoutDev app else app
+        let app' = cors (\_ -> Just simpleCorsResourcePolicy { corsOrigins = Nothing , corsMethods = [ "GET" ], corsRequestHeaders = simpleHeaders ++ [ "X-Requested-With" ]  }) $ if log then logStdoutDev app else app
         case portToUse of
           Nothing ->
             withApplicationSettings settings (pure app') $ \port -> do
