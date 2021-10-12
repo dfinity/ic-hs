@@ -3,6 +3,7 @@ import Options.Applicative
 import Data.Foldable
 import Control.Concurrent
 import Control.Monad (join, forever)
+import Network.Wai.Middleware.Cors
 import Network.Wai.Middleware.RequestLogger
 import Network.Wai.Handler.Warp
 import qualified Data.Text as T
@@ -19,12 +20,13 @@ work portToUse writePortTo backingFile log = do
     putStrLn "Starting ic-ref..."
     BLS.init
     withApp backingFile $ \app -> do
-        let app' = if log then logStdoutDev app else app
+        let app' = cors (\_ -> Just simpleCorsResourcePolicy { corsOrigins = Nothing }) $ if log then logStdoutDev app else app
         case portToUse of
           Nothing ->
             withApplicationSettings settings (pure app') $ \port -> do
               greet port
               forever (threadDelay maxBound)
+
           Just port -> do
             greet port
             runSettings (setPort port settings) app'
