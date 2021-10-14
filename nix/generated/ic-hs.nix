@@ -60,6 +60,7 @@
 , utf8-string
 , vector
 , wai
+, wai-cors
 , wai-extra
 , warp
 , winter
@@ -129,6 +130,7 @@ mkDerivation {
     utf8-string
     vector
     wai
+    wai-cors
     wai-extra
     warp
     winter
@@ -188,6 +190,7 @@ mkDerivation {
     utf8-string
     vector
     wai
+    wai-cors
     wai-extra
     warp
     winter
