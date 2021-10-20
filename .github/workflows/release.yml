@@ -69,12 +69,12 @@ jobs:
         echo "::set-output name=out::$out_path"
 
     - run: |
-        gzip -c "${{ steps.buildit.outputs.out }}/bin/ic-ref" > ic-ref.gz
+        tar -C "${{ steps.buildit.outputs.out }}/bin" -czvf ic-ref.tar.gz .
 
         ref_short="$(echo "$GITHUB_SHA" | cut -c1-8)"
         version="${{ steps.get_version.outputs.version }}-$ref_short"
 
-        aws s3 cp ic-ref.gz "s3://dfinity-download/ic-ref/ic-ref-$version-$SYSTEM.gz"
+        aws s3 cp ic-ref.tar.gz "s3://dfinity-download/ic-ref/ic-ref-$version-$SYSTEM.tar.gz"
       env:
         SYSTEM: ${{ matrix.nix-system }}
         AWS_ACCESS_KEY_ID: '${{ secrets.AWS_ACCESS_KEY }}'
