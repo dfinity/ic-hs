@@ -69,7 +69,7 @@ jobs:
     - run: |
         gzip -c "${{ steps.buildit.outputs.out }}/bin/ic-ref" > ic-ref.gz
 
-        ref_short="$(echo "$GITHUB_REF" | cut -c1-8)"
+        ref_short="$(echo "$GITHUB_SHA" | cut -c1-8)"
         version="${{ steps.get_version.outputs.version }}-$ref_short"
 
         aws s3 cp ic-ref.gz "s3://dfinity-download/ic-ref/ic-ref-$version-$SYSTEM.gz"
