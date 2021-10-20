@@ -1,8 +1,10 @@
-name: "Nix builds"
+name: "Test and upload"
+
 on:
   push:
      branches: [ master ]
-  pull_request: {}
+  pull_request:
+
 jobs:
   test:
     strategy:
@@ -35,3 +37,17 @@ jobs:
     - run: nix-build-uncached -A check-cabal-freeze
     # now the rest
     - run: nix-build-uncached
+
+  release:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    needs: test
+    runs-on: ${{ matrix.os }}
+    steps:
+    - uses: actions/checkout@v2
+    - uses: cachix/install-nix-action@v12
+    - uses: cachix/cachix-action@v10
+      with:
+        name: ic-hs-test
+        authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
