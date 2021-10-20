@@ -58,7 +58,7 @@ jobs:
 
     - id: get_version
       run: |
-        ver="$(grep '^version' ic-hs.cabal | tr -s ' ' | cut -d' ' -f1)"
+        ver="$(grep '^version' ic-hs.cabal | tr -s ' ' | cut -d' ' -f2)"
         echo "::set-output name=version::$ver"
 
     - id: buildit
