@@ -1,44 +1,14 @@
-name: "Test and upload"
-
 on:
-  push:
-     branches: [ master ]
-  pull_request:
+  workflow_run:
+    workflows: ["test"]
+    branches: [master]
+    types:
+      - completed
 
 jobs:
-  test:
-    strategy:
-      matrix:
-        os:
-        - ubuntu-latest
-        - macos-latest
-        # TODO: - windows-latest
-    runs-on: ${{ matrix.os }}
-    steps:
-    - uses: actions/checkout@v2
-    - uses: cachix/install-nix-action@v13
-    - run: nix-env -iA nix-build-uncached -f nix/
-    - uses: cachix/cachix-action@v10
-      with:
-        name: ic-hs-test
-        authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
-    # until https://github.com/cachix/cachix-action/issues/86 is fixed:
-    - run: cachix watch-store ic-hs-test &
-
-    # run a few targets explicitly, to get easier signal in the CI view
-    - run: nix-build-uncached -A universal-canister
-    - run: nix-build-uncached -A ic-hs
-    - run: nix-build-uncached -A ic-hs-coverage
-    - run: nix-build-uncached -A coverage
-    - run: nix-build-uncached -A check-generated
-    - run: nix-build-uncached -A ic-ref-dist
-    - run: nix-build-uncached -A ic-ref-test
-    - run: nix-build-uncached -A ic-hs-shell
-    - run: nix-build-uncached -A check-cabal-freeze
-    # now the rest
-    - run: nix-build-uncached
-
   release:
+    # https://github.community/t/workflow-run-completed-event-triggered-by-failed-workflow/128001
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     strategy:
       matrix:
         include:
@@ -72,8 +42,7 @@ jobs:
         ref_short="$(echo "$GITHUB_SHA" | cut -c1-8)"
         version="${{ steps.get_version.outputs.version }}-$ref_short"
 
-        # FIXME: remove _tmp from the path and delete all the old artifacts before this is merged. this should only run on the master branch
-        aws s3 cp ic-ref.gz "s3://dfinity-download/ic-ref/_tmp/ic-ref-$version-$SYSTEM.gz"
+        aws s3 cp ic-ref.gz "s3://dfinity-download/ic-ref/ic-ref-$version-$SYSTEM.gz"
       env:
         SYSTEM: ${{ matrix.nix-system }}
         AWS_ACCESS_KEY_ID: '${{ secrets.AWS_ACCESS_KEY }}'
