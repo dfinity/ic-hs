@@ -57,6 +57,8 @@ import qualified Data.Row as R
 import qualified Data.Row.Variants as V
 import qualified Data.ByteString.Lazy as BS
 import qualified Data.Text as T
+import qualified Data.Text.Lazy as TL
+import qualified Data.Text.Lazy.Encoding as TL
 import qualified Data.Vector as Vec
 import qualified Data.Set as S
 import Data.List
@@ -75,6 +77,7 @@ import GHC.Stack
 import IC.Types
 import IC.Constants
 import IC.Canister
+import IC.Canister.Snapshot (CanisterSnapshot(wsModule))
 import IC.CBOR.Utils
 import IC.Id.Fresh
 import IC.Utils
@@ -84,6 +87,8 @@ import IC.Certificate
 import IC.Certificate.Value
 import IC.Certificate.CBOR
 import IC.Crypto
+
+import qualified Wasm.Syntax.AST as W
 
 -- Abstract HTTP Interface
 
@@ -339,6 +344,43 @@ getCanisterTime cid = time <$> getCanister cid
 module_hash :: CanState -> Maybe Blob
 module_hash = fmap (raw_wasm_hash . can_mod) . content
 
+data CustomSections = CustomSections {
+  public_custom_sections :: M.Map TL.Text Blob,
+  private_custom_sections :: M.Map TL.Text Blob
+  }
+
+custom_sections :: CanState -> CustomSections
+custom_sections state =
+  foldl'
+    (\sections cust ->
+         let custName = W._customName cust in
+         if "icp:public " `TL.isPrefixOf` custName
+             then sections {
+                 public_custom_sections =
+                     M.insert
+                         (TL.drop (genericLength "icp:public ")
+                                  custName)
+                         (W._customPayload cust)
+                         (public_custom_sections sections)
+             }
+             else if "icp:private " `TL.isPrefixOf` custName
+                  then sections {
+                      private_custom_sections =
+                          M.insert
+                              (TL.drop (genericLength "icp:private ")
+                                       custName)
+                              (W._customPayload cust)
+                              (private_custom_sections sections)
+                  }
+                  else sections)
+    (CustomSections {
+         public_custom_sections = M.empty,
+         private_custom_sections = M.empty
+     })
+    (case wasm_state <$> content state of
+      Nothing -> []
+      Just ws -> toList (W._moduleCustom (wsModule ws)))
+
 -- Authentication and authorization of requests
 --
 -- The envelope has already been validated. So this includes
@@ -376,6 +418,21 @@ authReadStateRequest t ecid ev (ReadStateRequest user_id paths) = do
         assertEffectiveCanisterId ecid (EntityId cid)
       ("canister":cid:"controllers":_) ->
         assertEffectiveCanisterId ecid (EntityId cid)
+      ("canister":cid:"metadata":name:_) -> do
+        ic <- get
+        case M.lookup (EntityId cid) (canisters ic) of
+            Nothing -> throwError "User is not authorized to read this request status"
+            Just cs -> do
+                let bname = TL.decodeUtf8 name
+                    sections = custom_sections cs
+                if M.member bname (public_custom_sections sections)
+                    then assertEffectiveCanisterId ecid (EntityId cid)
+                    else if M.member bname (private_custom_sections sections)
+                         then do
+                             assertEffectiveCanisterId ecid (EntityId cid)
+                             unless (S.member user_id (controllers cs)) $
+                                 throwError "User is not authorized to read this request status"
+                         else throwError "User is not authorized to read this request status"
       ("request_status" :rid: _) ->
         gets (findRequest rid) >>= \case
           Just (ar@(CallRequest cid _ meth arg),_) -> do
@@ -511,6 +568,11 @@ stateTree (Timestamp t) ic = node
     [ cid =: node (
       [ "certified_data" =: val (certified_data cs)
       , "controllers" =: val (encodePrincipalList (S.toList (controllers cs)))
+      , "metadata" =: node
+        (map (\(name, blob) -> TL.encodeUtf8 name =: val blob)
+             (M.assocs (public_custom_sections (custom_sections cs))) ++
+         map (\(name, blob) -> TL.encodeUtf8 name =: val blob)
+             (M.assocs (private_custom_sections (custom_sections cs))))
       ] ++
       [ "module_hash" =: val h | Just h <- pure $ module_hash cs ]
     )

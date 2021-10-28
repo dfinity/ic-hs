@@ -1423,6 +1423,11 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
         cert <- getStateCert defaultUser cid [["canister", cid, "module_hash"]]
         lookupPath (cert_tree cert) ["canister", cid, "module_hash"] @?= Absent
 
+    , testCase "public metadata of empty canister" $ do
+        cid <- create
+        cert <- getStateCert defaultUser cid [["canister", cid, "metadata", "foo"]]
+        lookupPath (cert_tree cert) ["canister", cid, "metadata", "foo"] @?= Absent
+
     , testCase "single controller of installed canister" $ do
         cid <- install noop
         -- also vary user, just for good measure
