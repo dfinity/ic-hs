@@ -1622,15 +1622,15 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
         call cid (replyData (i64tob (acceptCycles (int64 0)))) >>= asWord64 >>= is 0
     , simpleTestCase "can accept more than available cycles" $ \cid ->
         call cid (replyData (i64tob (acceptCycles (int64 1)))) >>= asWord64 >>= is 0
-   , simpleTestCase "cant accept absurd amount of cycles" $ \cid ->
-       call cid (replyData (i64tob (acceptCycles (int64 maxBound)))) >>= asWord64 >>= is 0
+    , simpleTestCase "can accept absurd amount of cycles" $ \cid ->
+        call cid (replyData (pairToB (acceptCycles128 (int64 maxBound) (int64 maxBound)))) >>= asPairWord64 >>= is (0,0)
 
     , testGroup "provisional_create_canister_with_cycles"
       [ testCase "balance as expected" $ do
         cid <- create noop
         queryBalance cid >>= isRoughly def_cycles
 
-      , testCaseSteps "default (i.e. max) (balance" $ \step -> do
+      , testCaseSteps "default (i.e. max) balance" $ \step -> do
         cid <- ic_provisional_create ic00 Nothing empty
         installAt cid noop
         cycles <- queryBalance128 cid
