@@ -383,8 +383,7 @@ authReadStateRequest t ecid ev (ReadStateRequest user_id paths) = do
         case do cs <- M.lookup (EntityId cid) (canisters ic)
                 c  <- content cs
                 pure (cs, c) of
-            Nothing ->
-              throwError "User is not authorized to read this request status"
+            Nothing -> pure ()
             Just (cs, c) -> do
                 let bname = TL.decodeUtf8 name
                 unless (M.member bname (public_custom_sections (can_mod c)) ||
