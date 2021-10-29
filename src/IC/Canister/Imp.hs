@@ -214,6 +214,7 @@ systemAPI esref =
   , toImport "ic0" "call_on_cleanup" call_on_cleanup
   , toImport "ic0" "call_data_append" call_data_append
   , toImport "ic0" "call_cycles_add" call_cycles_add
+  , toImport "ic0" "call_cycles_add128" call_cycles_add128
   , toImport "ic0" "call_perform" call_perform
 
   , toImport "ic0" "stable_size" stable_size
@@ -346,12 +347,12 @@ systemAPI esref =
         where highBits = flip shiftR 64
               lowBits = (.&.) (1 `shiftL` 64 - 1)
 
-    combineHighAndLowBits :: (Natural, Natural) -> Natural
-    combineHighAndLowBits (high, low) = 2^(64 :: Int) * high + low
+    combineHighAndLowBits :: Integral a => (a, a) -> Natural
+    combineHighAndLowBits (high, low) = fromIntegral $ 2^(64 :: Int) * high + low
 
     low64BitsOrErr :: (Word64, Word64) -> HostM s Word64
     low64BitsOrErr (0, low) = return low
-    low64BitsOrErr (high, low) = throwError $ "The number of cycles does not fit in 64 bits: " ++ show (combineHighAndLowBits (fromIntegral high, fromIntegral low))
+    low64BitsOrErr (high, low) = throwError $ "The number of cycles does not fit in 64 bits: " ++ show (combineHighAndLowBits (high, low))
 
     msg_cycles_refunded :: () -> HostM s Word64
     msg_cycles_refunded () =  msg_cycles_refunded128 () >>= low64BitsOrErr
@@ -375,7 +376,7 @@ systemAPI esref =
     msg_cycles_accept128 (max_amount_high, max_amount_low) = do
       available <- getAvailable esref
       balance <- gets balance
-      let max_amount = combineHighAndLowBits (fromIntegral max_amount_high, fromIntegral max_amount_low)
+      let max_amount = combineHighAndLowBits (max_amount_high, max_amount_low)
       let amount = minimum
             [ max_amount
             , available
@@ -419,8 +420,11 @@ systemAPI esref =
       changePendingCall $ \pc -> return $ pc { call_arg = call_arg pc <> arg }
 
     call_cycles_add :: Word64 -> HostM s ()
-    call_cycles_add amount = do
-      let cycles = fromIntegral amount
+    call_cycles_add amount = call_cycles_add128 (0, amount)
+
+    call_cycles_add128 :: (Word64, Word64) -> HostM s ()
+    call_cycles_add128 amount = do
+      let cycles = combineHighAndLowBits amount
       changePendingCall $ \pc -> do
         subtractBalance esref cycles
         return $ pc { call_transferred_cycles = call_transferred_cycles pc + cycles }

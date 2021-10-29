@@ -46,6 +46,7 @@ mod ic0 {
         pub fn call_on_cleanup(fun: u32, env: u32) -> ();
         pub fn call_data_append(src: u32, size: u32) -> ();
         pub fn call_cycles_add(amount: u64) -> ();
+        pub fn call_cycles_add128(amount_high: u64, amount_low: u64) -> ();
         pub fn call_perform() -> u32;
         pub fn stable_size() -> u32;
         pub fn stable_grow(additional_pages: u32) -> u32;
@@ -102,6 +103,12 @@ pub fn call_data_append(payload: &[u8]) {
 pub fn call_cycles_add(amount: u64) {
     unsafe {
         ic0::call_cycles_add(amount);
+    }
+}
+
+pub fn call_cycles_add128(amount_high: u64, amount_low: u64) {
+    unsafe {
+        ic0::call_cycles_add128(amount_high, amount_low);
     }
 }
 

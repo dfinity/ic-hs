@@ -526,8 +526,8 @@ asWord64 = runGet Get.getWord64le
 as2Word64 :: HasCallStack => Blob -> IO (Word64, Word64)
 as2Word64 = runGet $ (,) <$> Get.getWord64le <*> Get.getWord64le
 
-asPairI64 :: HasCallStack => Blob -> IO (Word64, Word64)
-asPairI64 = runGet $ flip (,) <$> Get.getWord64le <*> Get.getWord64le
+asPairWord64 :: HasCallStack => Blob -> IO (Word64, Word64)
+asPairWord64 = runGet $ flip (,) <$> Get.getWord64le <*> Get.getWord64le
 
 bothSame :: (Eq a, Show a) => (a, a) -> Assertion
 bothSame (x,y) = x @?= y

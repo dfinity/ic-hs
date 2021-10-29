@@ -240,8 +240,11 @@ getRefund128 = op 53
 acceptCycles128 :: Exp 'I64 -> Exp 'I64 -> Exp 'PairI64
 acceptCycles128 = op 54
 
+callCyclesAdd128 :: Exp 'I64 -> Exp 'I64 -> Prog
+callCyclesAdd128 = op 55
+
 pairToB :: Exp 'PairI64 -> Exp 'B
-pairToB = op 55
+pairToB = op 56
 
 -- Some convenience combinators
 

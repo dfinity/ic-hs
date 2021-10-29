@@ -299,6 +299,7 @@ fn eval(ops: Ops) {
 
             50 => stack.push_int64(api::performance_counter()),
 
+            // 128-bit cycles API
             51 => {
                 stack.push_pair_int64(api::balance128())
             },
@@ -313,9 +314,14 @@ fn eval(ops: Ops) {
                 let high = stack.pop_int64();
                 stack.push_pair_int64(api::accept128(high, low))
             },
+            55 => {
+                let low = stack.pop_int64();
+                let high = stack.pop_int64();
+                api::call_cycles_add128(high, low)
+            },
 
             // pair to blob
-            55 => {
+            56 => {
                 let p = stack.pop_pair_int64();
                 let mut bytes = p.1.to_le_bytes().to_vec();
                 bytes.append(&mut p.0.to_le_bytes().to_vec());
