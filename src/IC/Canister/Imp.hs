@@ -342,17 +342,17 @@ systemAPI esref =
         Stopping -> 2
         Stopped -> 3
 
-    splitIntoHighAndLowBits :: Natural -> (Word64, Word64)
-    splitIntoHighAndLowBits n = (fromIntegral $ highBits n, fromIntegral $ lowBits n)
+    splitBitsIntoHalves :: Natural -> (Word64, Word64)
+    splitBitsIntoHalves n = (fromIntegral $ highBits n, fromIntegral $ lowBits n)
         where highBits = flip shiftR 64
               lowBits = (.&.) (1 `shiftL` 64 - 1)
 
-    combineHighAndLowBits :: Integral a => (a, a) -> Natural
-    combineHighAndLowBits (high, low) = fromIntegral $ 2^(64 :: Int) * high + low
+    combineBitHalves :: (Word64, Word64) -> Natural
+    combineBitHalves (high, low) = fromIntegral high `shiftL` 64 + fromIntegral low
 
     low64BitsOrErr :: (Word64, Word64) -> HostM s Word64
     low64BitsOrErr (0, low) = return low
-    low64BitsOrErr (high, low) = throwError $ "The number of cycles does not fit in 64 bits: " ++ show (combineHighAndLowBits (high, low))
+    low64BitsOrErr (high, low) = throwError $ "The number of cycles does not fit in 64 bits: " ++ show (combineBitHalves (high, low))
 
     msg_cycles_refunded :: () -> HostM s Word64
     msg_cycles_refunded () =  msg_cycles_refunded128 () >>= low64BitsOrErr
@@ -367,16 +367,16 @@ systemAPI esref =
     canister_cycle_balance () = canister_cycle_balance128 () >>= low64BitsOrErr
 
     msg_cycles_refunded128 :: () -> HostM s (Word64, Word64)
-    msg_cycles_refunded128 () = splitIntoHighAndLowBits <$> getRefunded esref
+    msg_cycles_refunded128 () = splitBitsIntoHalves <$> getRefunded esref
 
     msg_cycles_available128 :: () -> HostM s (Word64, Word64)
-    msg_cycles_available128 () = splitIntoHighAndLowBits <$> getAvailable esref
+    msg_cycles_available128 () = splitBitsIntoHalves <$> getAvailable esref
 
     msg_cycles_accept128 :: (Word64, Word64) -> HostM s (Word64, Word64)
     msg_cycles_accept128 (max_amount_high, max_amount_low) = do
       available <- getAvailable esref
       balance <- gets balance
-      let max_amount = combineHighAndLowBits (max_amount_high, max_amount_low)
+      let max_amount = combineBitHalves (max_amount_high, max_amount_low)
       let amount = minimum
             [ max_amount
             , available
@@ -384,10 +384,10 @@ systemAPI esref =
       subtractAvailable esref amount
       addBalance esref amount
       addAccepted esref amount
-      return $ splitIntoHighAndLowBits amount
+      return $ splitBitsIntoHalves amount
 
     canister_cycle_balance128 :: () -> HostM s (Word64, Word64)
-    canister_cycle_balance128 () = splitIntoHighAndLowBits <$> gets balance
+    canister_cycle_balance128 () = splitBitsIntoHalves <$> gets balance
 
     call_new :: ( Int32, Int32, Int32, Int32, Int32, Int32, Int32, Int32 ) -> HostM s ()
     call_new ( callee_src, callee_size, name_src, name_size
@@ -424,7 +424,7 @@ systemAPI esref =
 
     call_cycles_add128 :: (Word64, Word64) -> HostM s ()
     call_cycles_add128 amount = do
-      let cycles = combineHighAndLowBits amount
+      let cycles = combineBitHalves amount
       changePendingCall $ \pc -> do
         subtractBalance esref cycles
         return $ pc { call_transferred_cycles = call_transferred_cycles pc + cycles }

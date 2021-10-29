@@ -659,7 +659,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     , t "call_set_cleanup"             never           $ callOnCleanup (callback noop)
     , t "call_data_append"             never           $ callDataAppend "foo"
     , t "call_cycles_add"              never           $ callCyclesAdd (int64 0)
-    , t "call_cycles_add128"           never           $ callCyclesAdd (int64 0) (int64 0)
+    , t "call_cycles_add128"           never           $ callCyclesAdd128 (int64 0) (int64 0)
     , t "call_perform"                 never             callPerform
     , t "stable_size"                  star            $ ignore stableSize
     , t "stable_grow"                  star            $ ignore $ stableGrow (int 1)
@@ -1544,13 +1544,14 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
 
   , testGroup "cycles" $
     let replyBalance = replyData (i64tob getBalance)
+        replyBalance128 = replyData (pairToB getBalance128)
         rememberBalance =
           ignore (stableGrow (int 1)) >>>
           stableWrite (int 0) (i64tob getBalance)
         recallBalance = replyData (stableRead (int 0) (int 8))
         acceptAll = ignore (acceptCycles getAvailableCycles)
         queryBalance cid = query cid replyBalance >>= asWord64
-        queryAvailable cid = query cid (replyData (pairToB getBalance128)) >>= asPairWord64
+        queryBalance128 cid = query cid replyBalance128 >>= asPairWord64
 
         -- At the time of writing, creating a canister needs at least 1T
         -- and the freezing limit is 5T
@@ -1583,15 +1584,16 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
           return cid2
     in
     [ testGroup "cycles API - backward compatibility" $
-        [ simpleTestCase "canister_cycle_balance = canister_cycle_balance128 for numbers firring in 64 bits" $ \cid -> do
-          a <- query cid (replyData (i64tob getBalance)) >>= asWord64
-          b <- query cid (replyData (pairToB getBalance128)) >>= asPairWord64
+        [ simpleTestCase "canister_cycle_balance = canister_cycle_balance128 for numbers fitting in 64 bits" $ \cid -> do
+          a <- queryBalance cid
+          b <- queryBalance128 cid
           bothSame ((0,a),b)
-        , simpleTestCase "msg_cycles_accept128" $ \cid -> do
-          call' cid (callCyclesAdd128 (int64 1) (int64 1) >>> reply) >>= isReject [5]
-          a <- query cid (replyData (i64tob (acceptCycles (int64 0)))) >>= asWord64
-          b <- query cid (replyData (pairToB (acceptCycles128 (int64 0) (int64 0)))) >>= asPairWord64
-          bothSame ((0,a),b)
+        , testCase "lagacy API traps when a result is too big" $ do
+          cid <- create noop
+          let large = 2^(65::Int)
+          ic_top_up ic00 cid large
+          query' cid replyBalance >>= isReject [5]
+          toI128 <$> queryBalance128 cid >>= isRoughly (large + fromIntegral def_cycles)
         ]
     , testGroup "can use balance API" $
         let getBalanceTwice = join cat (i64tob getBalance)
@@ -1626,22 +1628,18 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     , testGroup "provisional_create_canister_with_cycles"
       [ testCase "balance as expected" $ do
         cid <- create noop
-        queryBalance cid >>= isRoughly def_cycles,
+        queryBalance cid >>= isRoughly def_cycles
 
-        testCase "available as expected" $ do
-        cid <- create noop
-        queryAvailable cid >>= is (1,2)
-
-      , testCaseSteps "default (i.e. max) balance" $ \step -> do
+      , testCaseSteps "default (i.e. max) (balance" $ \step -> do
         cid <- ic_provisional_create ic00 Nothing empty
         installAt cid noop
-        cycles <- queryBalance cid
+        cycles <- queryBalance128 cid
         step $ "Cycle balance now at " ++ show cycles
 
       , testCaseSteps "> 2^128 succeeds" $ \step -> do
         cid <- ic_provisional_create ic00 (Just (10 * 2^(128::Int))) empty
         installAt cid noop
-        cycles <- queryBalance cid
+        cycles <- queryBalance128 cid
         step $ "Cycle balance now at " ++ show cycles
       ]
 
@@ -1842,7 +1840,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
       , testCaseSteps "more than 2^128" $ \step -> do
         cid <- create noop
         ic_top_up ic00 cid (10 * 2^(128::Int))
-        cycles <- queryBalance cid
+        cycles <- queryBalance128 cid
         step $ "Cycle balance now at " ++ show cycles
       , testCase "nonexisting canister" $ do
         ic_top_up' ic00 doesn'tExist (fromIntegral def_cycles)
