@@ -1545,6 +1545,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
         recallBalance = replyData (stableRead (int 0) (int 8))
         acceptAll = ignore (acceptCycles getAvailableCycles)
         queryBalance cid = query cid replyBalance >>= asWord64
+        queryAvailable cid = query cid (replyData (pairToB getBalance128)) >>= as2Word64
 
         -- At the time of writing, creating a canister needs at least 1T
         -- and the freezing limit is 5T
@@ -1603,13 +1604,17 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
         call cid (replyData (i64tob (acceptCycles (int64 0)))) >>= asWord64 >>= is 0
     , simpleTestCase "can accept more than available cycles" $ \cid ->
         call cid (replyData (i64tob (acceptCycles (int64 1)))) >>= asWord64 >>= is 0
-    , simpleTestCase "cant accept absurd amount of cycles" $ \cid ->
-        call cid (replyData (i64tob (acceptCycles (int64 maxBound)))) >>= asWord64 >>= is 0
+  --  , simpleTestCase "cant accept absurd amount of cycles" $ \cid ->
+   --     call cid (replyData (i64tob (acceptCycles (int64 maxBound)))) >>= asWord64 >>= is 0
 
     , testGroup "provisional_create_canister_with_cycles"
       [ testCase "balance as expected" $ do
         cid <- create noop
-        queryBalance cid >>= isRoughly def_cycles
+        queryBalance cid >>= isRoughly def_cycles,
+
+        testCase "available as expected" $ do
+        cid <- create noop
+        queryAvailable cid >>= is (1,2)
 
       , testCaseSteps "default (i.e. max) balance" $ \step -> do
         cid <- ic_provisional_create ic00 Nothing empty

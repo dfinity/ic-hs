@@ -8,6 +8,7 @@ enum Val {
     I32(u32),
     I64(u64),
     Blob(Vec<u8>),
+    PairI64(u64, u64),
 }
 
 struct Stack(Vec<Val>);
@@ -33,6 +34,10 @@ impl Stack {
         self.0.push(Val::Blob(x));
     }
 
+    fn push_pair_int64(self: &mut Self, p: (u64, u64)) {
+        self.0.push(Val::PairI64(p.0, p.1));
+    }
+
     fn pop_int(self: &mut Self) -> u32 {
         if let Some(Val::I32(i)) = self.0.pop() {
             i
@@ -54,6 +59,14 @@ impl Stack {
             blob
         } else {
             api::trap_with("did not find blob on stack")
+        }
+    }
+
+    fn pop_pair_int64(self: &mut Self) -> (u64, u64) {
+        if let Some(Val::PairI64(a,b)) = self.0.pop() {
+            (a, b)
+        } else {
+            api::trap_with("did not find pair of I64s on stack")
         }
     }
 }
@@ -285,6 +298,29 @@ fn eval(ops: Ops) {
             49 => set_heartbeat(stack.pop_blob()),
 
             50 => stack.push_int64(api::performance_counter()),
+
+            51 => {
+                stack.push_pair_int64(api::balance128())
+            },
+            52 => {
+                stack.push_pair_int64(api::cycles_available128())
+            },
+            53 => {
+                stack.push_pair_int64(api::cycles_refunded128())
+            },
+            54 => {
+                let low = stack.pop_int64();
+                let high = stack.pop_int64();
+                stack.push_pair_int64(api::accept128(high, low))
+            },
+
+            // pair to blob
+            55 => {
+                let p = stack.pop_pair_int64();
+                let mut bytes = p.1.to_le_bytes().to_vec();
+                bytes.append(&mut p.0.to_le_bytes().to_vec());
+                stack.push_blob(bytes)
+            }
 
             _ => api::trap_with(&format!("unknown op {}", op)),
         }

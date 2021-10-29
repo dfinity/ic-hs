@@ -24,9 +24,9 @@ import Data.ByteString.Builder
 import Data.Word
 import Data.String
 
--- The types of our little language are i32, i64 and blobs
+-- The types of our little language are i32, i64, pair of i64s and blobs
 
-data T = I | I64 | B
+data T = I | I64 | B | PairI64
 
 
 -- We deal with expressions (return a value, thus have a type) and programs (do
@@ -227,6 +227,21 @@ onHeartbeat = op 49
 
 performanceCounter :: Exp 'I64
 performanceCounter = op 50
+
+getBalance128 :: Exp 'PairI64
+getBalance128 = op 51
+
+getAvailableCycles128 :: Exp 'PairI64
+getAvailableCycles128 = op 52
+
+getRefund128 :: Exp 'PairI64
+getRefund128 = op 53
+
+acceptCycles128 :: Exp 'I64 -> Exp 'I64 -> Exp 'PairI64
+acceptCycles128 = op 54
+
+pairToB :: Exp 'PairI64 -> Exp 'B
+pairToB = op 55
 
 -- Some convenience combinators
 
