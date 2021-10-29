@@ -1,4 +1,5 @@
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeOperators #-}
 
@@ -13,15 +14,18 @@ module IC.Canister
   )
 where
 
+import Data.Foldable (toList)
 import Data.List
 import qualified Data.Map as M
 import Data.Text.Lazy (Text)
+import qualified Data.Text.Lazy as TL
 import IC.Canister.Imp
 import IC.Canister.Snapshot
 import IC.Hash
 import IC.Purify
 import IC.Types
 import IC.Wasm.Winter (Module, exportedFunctions, parseModule)
+import qualified Wasm.Syntax.AST as W
 
 -- Here we can swap out the purification machinery
 type WasmState = CanisterSnapshot
@@ -99,9 +103,22 @@ parseCanister bytes =
             inspect_message = \method_name caller env arg wasm_state ->
               snd <$> invoke wasm_state (rawInspectMessage method_name caller env arg),
             heartbeat = \env wasm_state -> invoke wasm_state (rawHeartbeat env),
-            public_custom_sections = M.empty,
-            private_custom_sections = M.empty
+            public_custom_sections = collect_sections wasm_mod "icp:public",
+            private_custom_sections = collect_sections wasm_mod "icp:private"
           }
+  where
+    collect_sections wasm_mod prefix =
+        foldl'
+            (\m cust ->
+                 let custName = W._customName cust in
+                 if (prefix <> " ") `TL.isPrefixOf` custName
+                     then M.insert
+                              (TL.drop (TL.length (prefix <> " ")) custName)
+                              (W._customPayload cust) m
+                     else m)
+            M.empty
+            (toList (W._moduleCustom wasm_mod))
+
 
 instantiate :: Module -> TrapOr WasmState
 instantiate wasm_mod =
