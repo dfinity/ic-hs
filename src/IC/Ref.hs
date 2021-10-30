@@ -119,7 +119,7 @@ data RunStatus
   | IsStopping [CallId]
   | IsStopped
   | IsDeleted -- not actually a run state, but convenient in this code
-  deriving (Show)
+  deriving (Eq, Show)
 
 data CanisterContent = CanisterContent
   { can_mod :: CanisterModule
@@ -246,6 +246,13 @@ createEmptyCanister cid controllers time = modify $ \ic ->
       , last_action = Nothing
       }
 
+doesCanisterExist :: ICM m => CanisterId -> m Bool
+doesCanisterExist cid =
+  gets (M.lookup cid . canisters) >>= \case
+    Nothing -> return False
+    Just CanState{ run_status = IsDeleted } -> return False
+    _ -> return True
+
 canisterMustExist :: (CanReject m, ICM m) => CanisterId -> m ()
 canisterMustExist cid =
   gets (M.lookup cid . canisters) >>= \case
@@ -335,7 +342,6 @@ getCanisterMod cid = can_mod . fromJust . content <$> getCanister cid
 getCanisterTime :: ICM m => CanisterId -> m Timestamp
 getCanisterTime cid = time <$> getCanister cid
 
-
 module_hash :: CanState -> Maybe Blob
 module_hash = fmap (raw_wasm_hash . can_mod) . content
 
@@ -376,7 +382,21 @@ authReadStateRequest t ecid ev (ReadStateRequest user_id paths) = do
         assertEffectiveCanisterId ecid (EntityId cid)
       ("canister":cid:"controllers":_) ->
         assertEffectiveCanisterId ecid (EntityId cid)
-      ("request_status" :rid: _) ->
+      ("canister":cid:"metadata":name:_) -> do
+        assertEffectiveCanisterId ecid (EntityId cid)
+        name <- case fromUtf8 name of
+            Nothing -> throwError "Invalid utf8 in metadata path"
+            Just name -> pure name
+        ex <- doesCanisterExist ecid
+        when ex $ do
+          mod <- getCanisterMod ecid
+          cs <- getControllers ecid
+          case M.lookup name (metadata mod) of
+            Just (False, _) -> -- private
+              unless (S.member user_id cs) $
+                throwError "User is not authorized to read this metadata field"
+            _ -> return () -- public or absent
+      ("request_status":rid: _) ->
         gets (findRequest rid) >>= \case
           Just (ar@(CallRequest cid _ meth arg),_) -> do
             checkEffectiveCanisterID ecid cid meth arg
@@ -512,9 +532,17 @@ stateTree (Timestamp t) ic = node
       [ "certified_data" =: val (certified_data cs)
       , "controllers" =: val (encodePrincipalList (S.toList (controllers cs)))
       ] ++
-      [ "module_hash" =: val h | Just h <- pure $ module_hash cs ]
+      ( case content cs of
+        Nothing -> []
+        Just cc -> 
+          [ "metadata" =: node
+            [ toUtf8 n =: val c | (n,(_,c)) <- M.toList (metadata (can_mod cc)) ]
+          , "module_hash" =: val (raw_wasm_hash (can_mod cc))
+          ]
+      )
     )
     | (EntityId cid, cs) <- M.toList (canisters ic)
+    , run_status cs /= IsDeleted
     ]
   ]
   where

@@ -26,7 +26,6 @@ module IC.Canister.Imp
 where
 
 import qualified Data.Text as T
-import qualified Data.Text.Encoding as T
 import qualified Data.ByteString.Lazy as BS
 import qualified Data.ByteString.Lazy.Char8 as BSC
 import qualified Data.ByteString.Lazy.UTF8 as BSU
@@ -45,6 +44,7 @@ import IC.Constants
 import IC.Wasm.Winter
 import IC.Wasm.Imports
 import IC.Canister.StableMemory as Mem
+import IC.Utils
 
 -- Parameters are the data that come from the caller
 
@@ -509,7 +509,7 @@ systemAPI esref =
     (msg_method_name_size, msg_method_name_copy) = size_and_copy $
       gets method_name >>=
         maybe (throwError "Cannot query method name here")
-              (return . BS.fromStrict . T.encodeUtf8 . T.pack)
+              (return . toUtf8 . T.pack)
 
     accept_message :: () -> HostM s ()
     accept_message () = do

@@ -29,10 +29,7 @@ import qualified Data.Aeson.Types as JSON
 import qualified IC.HTTP.CBOR as CBOR
 import Codec.CBOR.Term
 import Codec.CBOR.Write (toLazyByteString)
-import IC.CBOR.Parser
 import qualified Data.Map as M
-import IC.HTTP.GenR.Parse
-import IC.Hash
 import Control.Monad.Except
 import qualified Crypto.PubKey.ECC.ECDSA as EC
 import qualified Crypto.PubKey.ECC.Generate as EC
@@ -46,12 +43,17 @@ import Crypto.Hash.Algorithms (SHA256(..))
 import Data.ASN1.Types
 import Data.ASN1.Encoding
 import Data.ASN1.BinaryEncoding
+
+import IC.CBOR.Parser
+import IC.HTTP.GenR.Parse
+import IC.Hash
 import IC.Crypto.DER.Decode
+import IC.Utils
 
 parseSig :: BS.ByteString -> Either T.Text (BS.ByteString, BS.ByteString, BS.ByteString)
 parseSig = CBOR.decode >=> record do
       ad <- field blob "authenticator_data"
-      cdj <- BS.fromStrict . T.encodeUtf8 <$> field text "client_data_json"
+      cdj <- toUtf8 <$> field text "client_data_json"
       sig <- field blob "signature"
       return (ad, cdj, sig)
 

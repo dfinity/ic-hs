@@ -37,6 +37,7 @@ import qualified Data.Binary.Get as Get
 import Codec.Candid (Principal(..))
 import qualified Codec.Candid as Candid
 import Data.Row
+import Data.Serialize.LEB128 (toLEB128)
 
 import IC.Types (EntityId(..))
 import IC.HTTP.GenR
@@ -1486,6 +1487,62 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
 
     , simpleTestCase "access denied for fetching full state tree" $ \cid -> do
         getStateCert' otherUser cid [[]] >>= code4xx
+
+    , testGroup "metadata" $
+      let withCustomSection mod (name, content) = mod <> BS.singleton 0 <> sized (sized name <> content)
+            where sized x = BS.fromStrict (toLEB128 @Natural (fromIntegral (BS.length x))) <> x
+          withSections xs = foldl withCustomSection trivialWasmModule xs
+      in
+      [ simpleTestCase "absent" $ \cid -> do
+          cert <- getStateCert defaultUser cid [["canister", cid, "metadata", "foo"]]
+          lookupPath (cert_tree cert) ["canister", cid, "metadata", "foo"] @?= Absent
+      , testCase "public" $ do
+          let mod = withSections [("icp:public test", "bar")]
+          cid <- create
+          ic_install ic00 (enum #install) cid mod ""
+          cert <- getStateCert otherUser cid [["canister", cid, "metadata", "test"]]
+          lookupPath (cert_tree cert) ["canister", cid, "metadata", "test"] @?= Found "bar"
+          cert <- getStateCert anonymousUser cid [["canister", cid, "metadata", "test"]]
+          lookupPath (cert_tree cert) ["canister", cid, "metadata", "test"] @?= Found "bar"
+      , testCase "private" $ do
+          let mod = withSections [("icp:private test", "bar")]
+          cid <- create
+          ic_install ic00 (enum #install) cid mod ""
+          getStateCert' otherUser cid [["canister", cid, "metadata", "test"]] >>= code4xx
+          getStateCert' anonymousUser cid [["canister", cid, "metadata", "test"]] >>= code4xx
+          cert <- getStateCert defaultUser cid [["canister", cid, "metadata", "test"]]
+          lookupPath (cert_tree cert) ["canister", cid, "metadata", "test"] @?= Found "bar"
+      , testCase "duplicate public" $ do
+          let mod = withSections [("icp:public test", "bar"), ("icp:public test", "baz")]
+          cid <- create
+          ic_install' ic00 (enum #install) cid mod "" >>= isReject [5]
+      , testCase "duplicate private" $ do
+          let mod = withSections [("icp:private test", "bar"), ("icp:private test", "baz")]
+          cid <- create
+          ic_install' ic00 (enum #install) cid mod "" >>= isReject [5]
+      , testCase "duplicate mixed" $ do
+          let mod = withSections [("icp:private test", "bar"), ("icp:public test", "baz")]
+          cid <- create
+          ic_install' ic00 (enum #install) cid mod "" >>= isReject [5]
+      , testCase "invalid utf8 in module" $ do
+          let mod = withSections [("icp:public \xe2\x28\xa1", "baz")]
+          cid <- create
+          ic_install' ic00 (enum #install) cid mod "" >>= isReject [5]
+      , simpleTestCase "invalid utf8 in read_state" $ \cid -> do
+          getStateCert' defaultUser cid [["canister", cid, "metadata", "\xe2\x28\xa1"]] >>= code4xx
+      , testCase "unicode metadata name" $ do
+          let mod = withSections [("icp:public ☃️", "bar")]
+          cid <- create
+          ic_install ic00 (enum #install) cid mod ""
+          cert <- getStateCert anonymousUser cid [["canister", cid, "metadata", "☃️"]]
+          lookupPath (cert_tree cert) ["canister", cid, "metadata", "☃️"] @?= Found "bar"
+      , testCase "zero-length metadata name" $ do
+          let mod = withSections [("icp:public ", "bar")]
+          cid <- create
+          ic_install ic00 (enum #install) cid mod ""
+          cert <- getStateCert anonymousUser cid [["canister", cid, "metadata", ""]]
+          lookupPath (cert_tree cert) ["canister", cid, "metadata", ""] @?= Found "bar"
+      ]
     ]
 
   , testGroup "certified variables"
