@@ -845,4 +845,4 @@ shorten n s = a ++ (if null b then "" else "…")
   where (a,b) = splitAt n s
 
 toI128 :: (Word64, Word64) -> Natural
-toI128 (high, low) = fromIntegral high `shiftL` 64 + fromIntegral low
+toI128 (high, low) = fromIntegral high `shiftL` 64 .|. fromIntegral low

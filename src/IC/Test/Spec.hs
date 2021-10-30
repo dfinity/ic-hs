@@ -1588,7 +1588,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
           a <- queryBalance cid
           b <- queryBalance128 cid
           bothSame ((0,a),b)
-        , testCase "lagacy API traps when a result is too big" $ do
+        , testCase "legacy API traps when a result is too big" $ do
           cid <- create noop
           let large = 2^(65::Int)
           ic_top_up ic00 cid large

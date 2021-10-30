@@ -5,6 +5,7 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE NumericUnderscores #-}
 
 {-|
 The canister interface, presented imperatively (or impurely), i.e. without rollback
@@ -345,10 +346,10 @@ systemAPI esref =
     splitBitsIntoHalves :: Natural -> (Word64, Word64)
     splitBitsIntoHalves n = (fromIntegral $ highBits n, fromIntegral $ lowBits n)
         where highBits = flip shiftR 64
-              lowBits = (.&.) (1 `shiftL` 64 - 1)
+              lowBits = (0xFFFFFFFF_FFFFFFFF .&.)
 
     combineBitHalves :: (Word64, Word64) -> Natural
-    combineBitHalves (high, low) = fromIntegral high `shiftL` 64 + fromIntegral low
+    combineBitHalves (high, low) = fromIntegral high `shiftL` 64 .|. fromIntegral low
 
     low64BitsOrErr :: (Word64, Word64) -> HostM s Word64
     low64BitsOrErr (0, low) = return low
