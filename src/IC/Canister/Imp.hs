@@ -5,6 +5,7 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE NumericUnderscores #-}
 
 {-|
 The canister interface, presented imperatively (or impurely), i.e. without rollback
@@ -33,6 +34,7 @@ import qualified Data.ByteString.Lazy.UTF8 as BSU
 import Control.Monad.Primitive
 import Control.Monad.ST
 import Control.Monad.Except
+import Data.Bits
 import Data.STRef
 import Data.Maybe
 import Data.Int -- TODO: Should be Word32 in most cases
@@ -204,10 +206,16 @@ systemAPI esref =
   , toImport "ic0" "msg_cycles_accept" msg_cycles_accept
   , toImport "ic0" "canister_cycle_balance" canister_cycle_balance
 
+  , toImport "ic0" "msg_cycles_available128" msg_cycles_available128
+  , toImport "ic0" "msg_cycles_refunded128" msg_cycles_refunded128
+  , toImport "ic0" "msg_cycles_accept128" msg_cycles_accept128
+  , toImport "ic0" "canister_cycle_balance128" canister_cycle_balance128
+
   , toImport "ic0" "call_new" call_new
   , toImport "ic0" "call_on_cleanup" call_on_cleanup
   , toImport "ic0" "call_data_append" call_data_append
   , toImport "ic0" "call_cycles_add" call_cycles_add
+  , toImport "ic0" "call_cycles_add128" call_cycles_add128
   , toImport "ic0" "call_perform" call_perform
 
   , toImport "ic0" "stable_size" stable_size
@@ -335,27 +343,52 @@ systemAPI esref =
         Stopping -> 2
         Stopped -> 3
 
+    splitBitsIntoHalves :: Natural -> (Word64, Word64)
+    splitBitsIntoHalves n = (fromIntegral $ highBits n, fromIntegral $ lowBits n)
+        where highBits = flip shiftR 64
+              lowBits = (0xFFFFFFFF_FFFFFFFF .&.)
+
+    combineBitHalves :: (Word64, Word64) -> Natural
+    combineBitHalves (high, low) = fromIntegral high `shiftL` 64 .|. fromIntegral low
+
+    low64BitsOrErr :: (Word64, Word64) -> HostM s Word64
+    low64BitsOrErr (0, low) = return low
+    low64BitsOrErr (high, low) = throwError $ "The number of cycles does not fit in 64 bits: " ++ show (combineBitHalves (high, low))
+
     msg_cycles_refunded :: () -> HostM s Word64
-    msg_cycles_refunded () = fromIntegral <$> getRefunded esref
+    msg_cycles_refunded () =  msg_cycles_refunded128 () >>= low64BitsOrErr
 
     msg_cycles_available :: () -> HostM s Word64
-    msg_cycles_available () = fromIntegral <$> getAvailable esref
+    msg_cycles_available () = msg_cycles_available128 () >>= low64BitsOrErr
 
     msg_cycles_accept :: Word64 -> HostM s Word64
-    msg_cycles_accept max_amount = do
-      available <- fromIntegral <$> getAvailable esref
+    msg_cycles_accept max_amount = msg_cycles_accept128 (0, max_amount) >>= low64BitsOrErr
+
+    canister_cycle_balance :: () -> HostM s Word64
+    canister_cycle_balance () = canister_cycle_balance128 () >>= low64BitsOrErr
+
+    msg_cycles_refunded128 :: () -> HostM s (Word64, Word64)
+    msg_cycles_refunded128 () = splitBitsIntoHalves <$> getRefunded esref
+
+    msg_cycles_available128 :: () -> HostM s (Word64, Word64)
+    msg_cycles_available128 () = splitBitsIntoHalves <$> getAvailable esref
+
+    msg_cycles_accept128 :: (Word64, Word64) -> HostM s (Word64, Word64)
+    msg_cycles_accept128 (max_amount_high, max_amount_low) = do
+      available <- getAvailable esref
       balance <- gets balance
+      let max_amount = combineBitHalves (max_amount_high, max_amount_low)
       let amount = minimum
-            [ fromIntegral max_amount
+            [ max_amount
             , available
             , cMAX_CANISTER_BALANCE - balance]
       subtractAvailable esref amount
       addBalance esref amount
       addAccepted esref amount
-      return (fromIntegral amount)
+      return $ splitBitsIntoHalves amount
 
-    canister_cycle_balance :: () -> HostM s Word64
-    canister_cycle_balance () = fromIntegral <$> gets balance
+    canister_cycle_balance128 :: () -> HostM s (Word64, Word64)
+    canister_cycle_balance128 () = splitBitsIntoHalves <$> gets balance
 
     call_new :: ( Int32, Int32, Int32, Int32, Int32, Int32, Int32, Int32 ) -> HostM s ()
     call_new ( callee_src, callee_size, name_src, name_size
@@ -388,8 +421,11 @@ systemAPI esref =
       changePendingCall $ \pc -> return $ pc { call_arg = call_arg pc <> arg }
 
     call_cycles_add :: Word64 -> HostM s ()
-    call_cycles_add amount = do
-      let cycles = fromIntegral amount
+    call_cycles_add amount = call_cycles_add128 (0, amount)
+
+    call_cycles_add128 :: (Word64, Word64) -> HostM s ()
+    call_cycles_add128 amount = do
+      let cycles = combineBitHalves amount
       changePendingCall $ \pc -> do
         subtractBalance esref cycles
         return $ pc { call_transferred_cycles = call_transferred_cycles pc + cycles }

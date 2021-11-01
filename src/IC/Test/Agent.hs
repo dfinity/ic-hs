@@ -57,6 +57,7 @@ import Data.Time.Clock.POSIX
 import Codec.Candid (Principal(..), prettyPrincipal)
 import qualified Data.Binary.Get as Get
 import qualified Codec.Candid as Candid
+import Data.Bits
 import Data.Row
 import qualified Data.Row.Records as R
 import qualified Data.Row.Variants as V
@@ -526,6 +527,9 @@ asWord64 = runGet Get.getWord64le
 as2Word64 :: HasCallStack => Blob -> IO (Word64, Word64)
 as2Word64 = runGet $ (,) <$> Get.getWord64le <*> Get.getWord64le
 
+asPairWord64 :: HasCallStack => Blob -> IO (Word64, Word64)
+asPairWord64 = runGet $ flip (,) <$> Get.getWord64le <*> Get.getWord64le
+
 bothSame :: (Eq a, Show a) => (a, a) -> Assertion
 bothSame (x,y) = x @?= y
 
@@ -839,3 +843,6 @@ textual = T.unpack . prettyPrincipal . Principal
 shorten :: Int -> String -> String
 shorten n s = a ++ (if null b then "" else "…")
   where (a,b) = splitAt n s
+
+toI128 :: (Word64, Word64) -> Natural
+toI128 (high, low) = fromIntegral high `shiftL` 64 .|. fromIntegral low

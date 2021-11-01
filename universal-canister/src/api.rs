@@ -4,11 +4,19 @@ extern crate wee_alloc;
 #[global_allocator]
 static ALLOC: wee_alloc::WeeAlloc<'_> = wee_alloc::WeeAlloc::INIT;
 
+#[repr(C)]
+// Note: tuples are not FFI-safe causing the compiler to complain. To avoid this,
+// we represent pair as a tuple struct which has known memory layout and the same semantics as
+// a plain pair.
+pub struct Pair(pub u64, pub u64);
+
 mod ic0 {
+    use api::Pair;
     #[link(wasm_import_module = "ic0")]
     extern "C" {
         pub fn accept_message() -> ();
         pub fn canister_cycle_balance() -> u64;
+        pub fn canister_cycle_balance128() -> Pair;
         pub fn canister_self_copy(dst: u32, offset: u32, size: u32) -> ();
         pub fn canister_self_size() -> u32;
         pub fn canister_status() -> u32;
@@ -20,6 +28,9 @@ mod ic0 {
         pub fn msg_cycles_accept(max_amount: u64) -> u64;
         pub fn msg_cycles_available() -> u64;
         pub fn msg_cycles_refunded() -> u64;
+        pub fn msg_cycles_accept128(max_amount_high: u64, max_amount_low: u64) -> Pair;
+        pub fn msg_cycles_available128() -> Pair;
+        pub fn msg_cycles_refunded128() -> Pair;
         pub fn msg_method_name_copy(dst: u32, offset: u32, size: u32) -> ();
         pub fn msg_method_name_size() -> u32;
         pub fn msg_reject_code() -> u32;
@@ -42,6 +53,7 @@ mod ic0 {
         pub fn call_on_cleanup(fun: u32, env: u32) -> ();
         pub fn call_data_append(src: u32, size: u32) -> ();
         pub fn call_cycles_add(amount: u64) -> ();
+        pub fn call_cycles_add128(amount_high: u64, amount_low: u64) -> ();
         pub fn call_perform() -> u32;
         pub fn stable_size() -> u32;
         pub fn stable_grow(additional_pages: u32) -> u32;
@@ -98,6 +110,12 @@ pub fn call_data_append(payload: &[u8]) {
 pub fn call_cycles_add(amount: u64) {
     unsafe {
         ic0::call_cycles_add(amount);
+    }
+}
+
+pub fn call_cycles_add128(amount_high: u64, amount_low: u64) {
+    unsafe {
+        ic0::call_cycles_add128(amount_high, amount_low);
     }
 }
 
@@ -176,16 +194,32 @@ pub fn cycles_available() -> u64 {
     unsafe { ic0::msg_cycles_available() }
 }
 
+pub fn cycles_available128() -> Pair{
+    unsafe { ic0::msg_cycles_available128() }
+}
+
 pub fn cycles_refunded() -> u64 {
     unsafe { ic0::msg_cycles_refunded() }
+}
+
+pub fn cycles_refunded128() -> Pair {
+   unsafe { ic0::msg_cycles_refunded128() }
 }
 
 pub fn accept(amount: u64) -> u64 {
     unsafe { ic0::msg_cycles_accept(amount) }
 }
 
+pub fn accept128(high: u64, low: u64) -> Pair {
+   unsafe { ic0::msg_cycles_accept128(high, low) }
+}
+
 pub fn balance() -> u64 {
     unsafe { ic0::canister_cycle_balance() }
+}
+
+pub fn balance128() -> Pair {
+    unsafe { ic0::canister_cycle_balance128() }
 }
 
 pub fn stable_size() -> u32 {

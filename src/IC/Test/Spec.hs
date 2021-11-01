@@ -643,10 +643,14 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     , t "msg_reply"                    never           reply -- due to double reply
     , t "msg_reject"                   never         $ reject "rejecting" -- due to double reply
     , t "msg_cycles_available"         "U Rt Ry"     $ ignore getAvailableCycles
+    , t "msg_cycles_available128"      "U Rt Ry"     $ ignore getAvailableCycles128
     , t "msg_cycles_refunded"          "Rt Ry"       $ ignore getRefund
+    , t "msg_cycles_refunded128"       "Rt Ry"       $ ignore getRefund128
     , t "msg_cycles_accept"            "U Rt Ry"     $ ignore (acceptCycles (int64 0))
+    , t "msg_cycles_accept128"         "U Rt Ry"     $ ignore (acceptCycles128 (int64 0) (int64 0))
     , t "canister_self"                star          $ ignore self
     , t "canister_cycle_balance"       star          $ ignore getBalance
+    , t "canister_cycle_balance128"    star          $ ignore getBalance128
     , t "call_new…call_perform"        "U Rt Ry H"   $
         callNew "foo" "bar" "baz" "quux" >>>
         callDataAppend "foo" >>>
@@ -655,6 +659,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     , t "call_set_cleanup"             never           $ callOnCleanup (callback noop)
     , t "call_data_append"             never           $ callDataAppend "foo"
     , t "call_cycles_add"              never           $ callCyclesAdd (int64 0)
+    , t "call_cycles_add128"           never           $ callCyclesAdd128 (int64 0) (int64 0)
     , t "call_perform"                 never             callPerform
     , t "stable_size"                  star            $ ignore stableSize
     , t "stable_grow"                  star            $ ignore $ stableGrow (int 1)
@@ -1542,12 +1547,14 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
 
   , testGroup "cycles" $
     let replyBalance = replyData (i64tob getBalance)
+        replyBalance128 = replyData (pairToB getBalance128)
         rememberBalance =
           ignore (stableGrow (int 1)) >>>
           stableWrite (int 0) (i64tob getBalance)
         recallBalance = replyData (stableRead (int 0) (int 8))
         acceptAll = ignore (acceptCycles getAvailableCycles)
         queryBalance cid = query cid replyBalance >>= asWord64
+        queryBalance128 cid = query cid replyBalance128 >>= asPairWord64
 
         -- At the time of writing, creating a canister needs at least 1T
         -- and the freezing limit is 5T
@@ -1579,7 +1586,19 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
           ic_install (ic00via cid) (enum #install) cid2 universal_wasm (run noop)
           return cid2
     in
-    [ testGroup "can use balance API" $
+    [ testGroup "cycles API - backward compatibility" $
+        [ simpleTestCase "canister_cycle_balance = canister_cycle_balance128 for numbers fitting in 64 bits" $ \cid -> do
+          a <- queryBalance cid
+          b <- queryBalance128 cid
+          bothSame ((0,a),b)
+        , testCase "legacy API traps when a result is too big" $ do
+          cid <- create noop
+          let large = 2^(65::Int)
+          ic_top_up ic00 cid large
+          query' cid replyBalance >>= isReject [5]
+          toI128 <$> queryBalance128 cid >>= isRoughly (large + fromIntegral def_cycles)
+        ]
+    , testGroup "can use balance API" $
         let getBalanceTwice = join cat (i64tob getBalance)
             test = replyData getBalanceTwice
         in
@@ -1606,8 +1625,8 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
         call cid (replyData (i64tob (acceptCycles (int64 0)))) >>= asWord64 >>= is 0
     , simpleTestCase "can accept more than available cycles" $ \cid ->
         call cid (replyData (i64tob (acceptCycles (int64 1)))) >>= asWord64 >>= is 0
-    , simpleTestCase "cant accept absurd amount of cycles" $ \cid ->
-        call cid (replyData (i64tob (acceptCycles (int64 maxBound)))) >>= asWord64 >>= is 0
+    , simpleTestCase "can accept absurd amount of cycles" $ \cid ->
+        call cid (replyData (pairToB (acceptCycles128 (int64 maxBound) (int64 maxBound)))) >>= asPairWord64 >>= is (0,0)
 
     , testGroup "provisional_create_canister_with_cycles"
       [ testCase "balance as expected" $ do
@@ -1617,13 +1636,13 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
       , testCaseSteps "default (i.e. max) balance" $ \step -> do
         cid <- ic_provisional_create ic00 Nothing empty
         installAt cid noop
-        cycles <- queryBalance cid
+        cycles <- queryBalance128 cid
         step $ "Cycle balance now at " ++ show cycles
 
       , testCaseSteps "> 2^128 succeeds" $ \step -> do
         cid <- ic_provisional_create ic00 (Just (10 * 2^(128::Int))) empty
         installAt cid noop
-        cycles <- queryBalance cid
+        cycles <- queryBalance128 cid
         step $ "Cycle balance now at " ++ show cycles
       ]
 
@@ -1824,7 +1843,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
       , testCaseSteps "more than 2^128" $ \step -> do
         cid <- create noop
         ic_top_up ic00 cid (10 * 2^(128::Int))
-        cycles <- queryBalance cid
+        cycles <- queryBalance128 cid
         step $ "Cycle balance now at " ++ show cycles
       , testCase "nonexisting canister" $ do
         ic_top_up' ic00 doesn'tExist (fromIntegral def_cycles)
@@ -2349,7 +2368,7 @@ install prog = do
     return cid
 
 create :: (HasCallStack, HasAgentConfig) => IO Blob
-create = ic_provisional_create ic00 Nothing empty
+create = ic_provisional_create ic00 (Just (2^(60::Int))) empty
 
 upgrade' :: (HasCallStack, HasAgentConfig) => Blob -> Prog -> IO ReqResponse
 upgrade' cid prog = do
