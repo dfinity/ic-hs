@@ -8,7 +8,7 @@ enum Val {
     I32(u32),
     I64(u64),
     Blob(Vec<u8>),
-    PairI64(u64, u64),
+    PairI64(api::Pair),
 }
 
 struct Stack(Vec<Val>);
@@ -34,8 +34,8 @@ impl Stack {
         self.0.push(Val::Blob(x));
     }
 
-    fn push_pair_int64(self: &mut Self, p: (u64, u64)) {
-        self.0.push(Val::PairI64(p.0, p.1));
+    fn push_pair_int64(self: &mut Self, p: api::Pair) {
+        self.0.push(Val::PairI64(p));
     }
 
     fn pop_int(self: &mut Self) -> u32 {
@@ -62,9 +62,9 @@ impl Stack {
         }
     }
 
-    fn pop_pair_int64(self: &mut Self) -> (u64, u64) {
-        if let Some(Val::PairI64(a,b)) = self.0.pop() {
-            (a, b)
+    fn pop_pair_int64(self: &mut Self) -> api::Pair {
+        if let Some(Val::PairI64(p)) = self.0.pop() {
+            p
         } else {
             api::trap_with("did not find pair of I64s on stack")
         }
