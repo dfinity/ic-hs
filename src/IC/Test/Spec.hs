@@ -814,6 +814,9 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     , simpleTestCase "to nonexistant canister" $ \cid ->
       call cid (inter_call "foo" "bar" defArgs) >>= isRelay >>= isReject [3]
 
+    , simpleTestCase "to nonexistant canister (user id)" $ \cid ->
+      call cid (inter_call defaultUser "bar" defArgs) >>= isRelay >>= isReject [3]
+
     , simpleTestCase "to nonexistant method" $ \cid ->
       call cid (inter_call cid "bar" defArgs) >>= isRelay >>= isReject [3]
 
