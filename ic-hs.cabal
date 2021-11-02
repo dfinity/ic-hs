@@ -336,6 +336,7 @@ executable ic-ref-test
   other-modules: IC.Test.Universal
   other-modules: IC.Types
   other-modules: IC.Version
+  other-modules: IC.Utils
   other-modules: SourceId
 
 executable ic-request-id
@@ -367,6 +368,7 @@ executable ic-request-id
   other-modules: IC.Id.Forms
   other-modules: IC.Types
   other-modules: IC.Version
+  other-modules: IC.Utils
   other-modules: SourceId
 
 test-suite unit-test

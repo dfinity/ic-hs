@@ -4,12 +4,12 @@
 module IC.Certificate.Value (CertVal(..)) where
 
 import qualified Data.Text as T
-import qualified Data.Text.Encoding as T
 import qualified Data.ByteString.Lazy as BS
 import Data.Serialize.LEB128
 import Numeric.Natural
 
 import IC.Types
+import IC.Utils
 
 class CertVal a where
      toCertVal :: a -> Blob
@@ -20,8 +20,8 @@ instance CertVal Blob where
     fromCertVal = Just
 
 instance CertVal T.Text where
-    toCertVal = BS.fromStrict . T.encodeUtf8
-    fromCertVal = forgetLeft . T.decodeUtf8' . BS.toStrict
+    toCertVal = toUtf8
+    fromCertVal = fromUtf8
 
 instance CertVal Natural where
     toCertVal = BS.fromStrict . toLEB128

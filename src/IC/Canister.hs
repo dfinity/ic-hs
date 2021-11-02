@@ -1,6 +1,8 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE MultiWayIf #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module IC.Canister
     ( WasmState
@@ -12,15 +14,22 @@ module IC.Canister
     where
 
 import qualified Data.Map as M
+import qualified Data.Text as T
+import qualified Data.Text.Lazy as TL
 import Data.List
+import Control.Monad
+import Data.Foldable
+import Control.Monad.Except
 
 import IC.Types
 import IC.Wasm.Winter (parseModule, exportedFunctions, Module)
+import qualified Wasm.Syntax.AST as W
 
 import IC.Purify
 import IC.Canister.Snapshot
 import IC.Canister.Imp
 import IC.Hash
+import IC.Utils
 
 -- Here we can swap out the purification machinery
 type WasmState = CanisterSnapshot
@@ -29,6 +38,8 @@ type WasmState = CanisterSnapshot
 type InitFunc = EntityId -> Env -> Blob -> TrapOr (WasmState, CanisterActions)
 type UpdateFunc = WasmState -> TrapOr (WasmState, UpdateResult)
 type QueryFunc = WasmState -> TrapOr Response
+
+type IsPublic = Bool
 
 data CanisterModule = CanisterModule
   { raw_wasm :: Blob
@@ -42,51 +53,65 @@ data CanisterModule = CanisterModule
   , post_upgrade_method :: EntityId -> Env -> Blob -> Blob -> TrapOr (WasmState, CanisterActions)
   , inspect_message :: MethodName -> EntityId -> Env -> Blob -> WasmState -> TrapOr ()
   , heartbeat :: Env -> WasmState -> TrapOr (WasmState, ([MethodCall], CanisterActions))
+  , metadata :: T.Text ↦ (IsPublic, Blob)
   }
 
 instance Show CanisterModule where
     show _ = "CanisterModule{...}"
 
 parseCanister :: Blob -> Either String CanisterModule
-parseCanister bytes =
-  case parseModule bytes of
-    Left  err -> Left err
-    Right wasm_mod -> Right $ CanisterModule
-      { raw_wasm = bytes
-      , raw_wasm_hash = sha256 bytes
-      , init_method = \caller env dat ->
-            case instantiate wasm_mod of
-              Trap err -> Trap err
-              Return wasm_state0 ->
-                invoke wasm_state0 (rawInitialize caller env dat)
-      , update_methods = M.fromList
-        [ (m,
-          \caller env needs_to_respond cycles_available dat wasm_state ->
-          invoke wasm_state (rawUpdate m caller env needs_to_respond cycles_available dat))
-        | n <- exportedFunctions wasm_mod
-        , Just m <- return $ stripPrefix "canister_update " n
+parseCanister bytes = do
+  wasm_mod <- either throwError pure (parseModule bytes)
+  let icp_sections =
+        [ (icp_name, W._customPayload section)
+        | section <- toList (W._moduleCustom wasm_mod)
+        , Just icp_name <- pure $ T.stripPrefix "icp:" (TL.toStrict (W._customName section))
         ]
-      , query_methods = M.fromList
-        [ (m, \caller env arg wasm_state ->
-            snd <$> invoke wasm_state (rawQuery m caller env arg))
-        | n <- exportedFunctions wasm_mod
-        , Just m <- return $ stripPrefix "canister_query " n
-        ]
-      , callbacks = \cb env needs_to_respond cycles_available res refund wasm_state ->
-        invoke wasm_state (rawCallback cb env needs_to_respond cycles_available res refund)
-      , cleanup = \cb env wasm_state ->
-        invoke wasm_state (rawCleanup cb env)
-      , pre_upgrade_method = \wasm_state caller env ->
-            snd <$> invoke wasm_state (rawPreUpgrade caller env)
-      , post_upgrade_method = \caller env mem dat ->
-            case instantiate wasm_mod of
-              Trap err -> Trap err
-              Return wasm_state0 ->
-                invoke wasm_state0 (rawPostUpgrade caller env mem dat)
-      , inspect_message = \method_name caller env arg wasm_state ->
-            snd <$> invoke wasm_state (rawInspectMessage method_name caller env arg)
-      , heartbeat = \env wasm_state -> invoke wasm_state (rawHeartbeat env)
-      }
+  metadata <- forM icp_sections $ \(name,content) ->
+    if | Just n <- T.stripPrefix "public "  name -> return (n,(True,  content))
+       | Just n <- T.stripPrefix "private " name -> return (n,(False, content))
+       | otherwise -> throwError $ "Invalid custom section " <> show name
+
+  forM_ (duplicates (map fst metadata)) $ \name ->
+    throwError $ "Duplicate custom section " <> show name
+
+  return $ CanisterModule
+    { raw_wasm = bytes
+    , raw_wasm_hash = sha256 bytes
+    , init_method = \caller env dat ->
+          case instantiate wasm_mod of
+            Trap err -> Trap err
+            Return wasm_state0 ->
+              invoke wasm_state0 (rawInitialize caller env dat)
+    , update_methods = M.fromList
+      [ (m,
+        \caller env needs_to_respond cycles_available dat wasm_state ->
+        invoke wasm_state (rawUpdate m caller env needs_to_respond cycles_available dat))
+      | n <- exportedFunctions wasm_mod
+      , Just m <- pure $ stripPrefix "canister_update " n
+      ]
+    , query_methods = M.fromList
+      [ (m, \caller env arg wasm_state ->
+          snd <$> invoke wasm_state (rawQuery m caller env arg))
+      | n <- exportedFunctions wasm_mod
+      , Just m <- pure $ stripPrefix "canister_query " n
+      ]
+    , callbacks = \cb env needs_to_respond cycles_available res refund wasm_state ->
+      invoke wasm_state (rawCallback cb env needs_to_respond cycles_available res refund)
+    , cleanup = \cb env wasm_state ->
+      invoke wasm_state (rawCleanup cb env)
+    , pre_upgrade_method = \wasm_state caller env ->
+          snd <$> invoke wasm_state (rawPreUpgrade caller env)
+    , post_upgrade_method = \caller env mem dat ->
+          case instantiate wasm_mod of
+            Trap err -> Trap err
+            Return wasm_state0 ->
+              invoke wasm_state0 (rawPostUpgrade caller env mem dat)
+    , inspect_message = \method_name caller env arg wasm_state ->
+          snd <$> invoke wasm_state (rawInspectMessage method_name caller env arg)
+    , heartbeat = \env wasm_state -> invoke wasm_state (rawHeartbeat env)
+    , metadata = M.fromList metadata
+    }
 
 instantiate :: Module -> TrapOr WasmState
 instantiate wasm_mod =
