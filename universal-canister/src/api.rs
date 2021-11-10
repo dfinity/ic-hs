@@ -1,3 +1,5 @@
+use std::convert::{TryInto};
+
 // use `wee_alloc` as the global allocator.
 extern crate wee_alloc;
 
@@ -10,13 +12,20 @@ static ALLOC: wee_alloc::WeeAlloc<'_> = wee_alloc::WeeAlloc::INIT;
 // a plain pair.
 pub struct Pair(pub u64, pub u64);
 
+impl Pair {
+    pub fn new(input: u128) -> Self {
+        let low = (input >> 64) as u64;
+        let high = (input & 0xffff_ffff_ffff_ffff) as u64;
+        Self(high, low)
+    }
+}
+
 mod ic0 {
-    use api::Pair;
     #[link(wasm_import_module = "ic0")]
     extern "C" {
         pub fn accept_message() -> ();
         pub fn canister_cycle_balance() -> u64;
-        pub fn canister_cycle_balance128() -> Pair;
+        pub fn canister_cycle_balance128(dst: u32) -> ();
         pub fn canister_self_copy(dst: u32, offset: u32, size: u32) -> ();
         pub fn canister_self_size() -> u32;
         pub fn canister_status() -> u32;
@@ -28,9 +37,9 @@ mod ic0 {
         pub fn msg_cycles_accept(max_amount: u64) -> u64;
         pub fn msg_cycles_available() -> u64;
         pub fn msg_cycles_refunded() -> u64;
-        pub fn msg_cycles_accept128(max_amount_high: u64, max_amount_low: u64) -> Pair;
-        pub fn msg_cycles_available128() -> Pair;
-        pub fn msg_cycles_refunded128() -> Pair;
+        pub fn msg_cycles_accept128(max_amount_high: u64, max_amount_low: u64, dst: u32) -> ();
+        pub fn msg_cycles_available128(dst: u32) -> ();
+        pub fn msg_cycles_refunded128(dst: u32) -> ();
         pub fn msg_method_name_copy(dst: u32, offset: u32, size: u32) -> ();
         pub fn msg_method_name_size() -> u32;
         pub fn msg_reject_code() -> u32;
@@ -194,8 +203,11 @@ pub fn cycles_available() -> u64 {
     unsafe { ic0::msg_cycles_available() }
 }
 
-pub fn cycles_available128() -> Pair{
-    unsafe { ic0::msg_cycles_available128() }
+pub fn cycles_available128() -> Pair {
+    let size = 16;
+    let mut bytes = vec![0u8; size];
+    unsafe { ic0::msg_cycles_available128(bytes.as_mut_ptr() as u32) }
+    Pair::new(u128::from_le_bytes(bytes.try_into().unwrap()))
 }
 
 pub fn cycles_refunded() -> u64 {
@@ -203,7 +215,10 @@ pub fn cycles_refunded() -> u64 {
 }
 
 pub fn cycles_refunded128() -> Pair {
-   unsafe { ic0::msg_cycles_refunded128() }
+    let size = 16;
+    let mut bytes = vec![0u8; size];
+    unsafe { ic0::msg_cycles_refunded128(bytes.as_mut_ptr() as u32) }
+    Pair::new(u128::from_le_bytes(bytes.try_into().unwrap()))
 }
 
 pub fn accept(amount: u64) -> u64 {
@@ -211,7 +226,10 @@ pub fn accept(amount: u64) -> u64 {
 }
 
 pub fn accept128(high: u64, low: u64) -> Pair {
-   unsafe { ic0::msg_cycles_accept128(high, low) }
+    let size = 16;
+    let mut bytes = vec![0u8; size];
+    unsafe { ic0::msg_cycles_accept128(high, low, bytes.as_mut_ptr() as u32) }
+    Pair::new(u128::from_le_bytes(bytes.try_into().unwrap()))
 }
 
 pub fn balance() -> u64 {
@@ -219,7 +237,10 @@ pub fn balance() -> u64 {
 }
 
 pub fn balance128() -> Pair {
-    unsafe { ic0::canister_cycle_balance128() }
+    let size = 16;
+    let mut bytes = vec![0u8; size];
+    unsafe { ic0::canister_cycle_balance128(bytes.as_mut_ptr() as u32) }
+    Pair::new(u128::from_le_bytes(bytes.try_into().unwrap()))
 }
 
 pub fn stable_size() -> u32 {
