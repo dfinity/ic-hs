@@ -30,6 +30,7 @@ import qualified Data.Text as T
 import qualified Data.ByteString.Lazy as BS
 import qualified Data.ByteString.Lazy.Char8 as BSC
 import qualified Data.ByteString.Lazy.UTF8 as BSU
+import qualified Data.Binary as B
 import Control.Monad.Primitive
 import Control.Monad.ST
 import Control.Monad.Except
@@ -274,6 +275,19 @@ systemAPI esref =
         get_blob >>= \blob -> copy_to_canister dst offset size blob
       )
 
+    cycles_accept :: Natural -> HostM s Natural
+    cycles_accept max_amount = do
+      available <- getAvailable esref
+      balance <- gets balance
+      let amount = minimum
+            [ max_amount
+            , available
+            , cMAX_CANISTER_BALANCE - balance]
+      subtractAvailable esref amount
+      addBalance esref amount
+      addAccepted esref amount
+      return amount
+
     -- Unsafely print
     putBytes :: BS.ByteString -> HostM s ()
     putBytes bytes =
@@ -343,52 +357,61 @@ systemAPI esref =
         Stopping -> 2
         Stopped -> 3
 
-    splitBitsIntoHalves :: Natural -> (Word64, Word64)
-    splitBitsIntoHalves n = (fromIntegral $ highBits n, fromIntegral $ lowBits n)
-        where highBits = flip shiftR 64
-              lowBits = (0xFFFFFFFF_FFFFFFFF .&.)
+    highBits :: Natural -> Word64
+    highBits = fromIntegral . (flip shiftR 64)
+
+    lowBits :: Natural -> Word64
+    lowBits = fromIntegral . (0xFFFFFFFF_FFFFFFFF .&.)
+
+    to128le :: Natural -> BS.ByteString
+    to128le n = BS.reverse $ BS.append (B.encode (highBits n)) (B.encode (lowBits n))
 
     combineBitHalves :: (Word64, Word64) -> Natural
     combineBitHalves (high, low) = fromIntegral high `shiftL` 64 .|. fromIntegral low
 
-    low64BitsOrErr :: (Word64, Word64) -> HostM s Word64
-    low64BitsOrErr (0, low) = return low
-    low64BitsOrErr (high, low) = throwError $ "The number of cycles does not fit in 64 bits: " ++ show (combineBitHalves (high, low))
+    low64BitsOrErr :: Natural -> HostM s Word64
+    low64BitsOrErr n = if highBits n > 0
+      then
+        throwError $ "The number of cycles does not fit in 64 bits: " ++ show n
+      else
+        return $ fromIntegral $ lowBits n
 
     msg_cycles_refunded :: () -> HostM s Word64
-    msg_cycles_refunded () =  msg_cycles_refunded128 () >>= low64BitsOrErr
+    msg_cycles_refunded () =  getRefunded esref >>= low64BitsOrErr
 
     msg_cycles_available :: () -> HostM s Word64
-    msg_cycles_available () = msg_cycles_available128 () >>= low64BitsOrErr
+    msg_cycles_available () = getAvailable esref >>= low64BitsOrErr
 
     msg_cycles_accept :: Word64 -> HostM s Word64
-    msg_cycles_accept max_amount = msg_cycles_accept128 (0, max_amount) >>= low64BitsOrErr
+    msg_cycles_accept max_amount = cycles_accept (fromIntegral max_amount) >>= low64BitsOrErr
 
     canister_cycle_balance :: () -> HostM s Word64
-    canister_cycle_balance () = canister_cycle_balance128 () >>= low64BitsOrErr
+    canister_cycle_balance () = gets balance >>= low64BitsOrErr
 
-    msg_cycles_refunded128 :: () -> HostM s (Word64, Word64)
-    msg_cycles_refunded128 () = splitBitsIntoHalves <$> getRefunded esref
+    msg_cycles_refunded128 :: Int32 -> HostM s ()
+    msg_cycles_refunded128 dst = do
+      i <- getsES esref inst
+      amount <- getRefunded esref
+      setBytes i (fromIntegral dst) (to128le amount)
 
-    msg_cycles_available128 :: () -> HostM s (Word64, Word64)
-    msg_cycles_available128 () = splitBitsIntoHalves <$> getAvailable esref
+    msg_cycles_available128 :: Int32 -> HostM s ()
+    msg_cycles_available128 dst = do
+      i <- getsES esref inst
+      amount <- getAvailable esref
+      setBytes i (fromIntegral dst) (to128le amount)
 
-    msg_cycles_accept128 :: (Word64, Word64) -> HostM s (Word64, Word64)
-    msg_cycles_accept128 (max_amount_high, max_amount_low) = do
-      available <- getAvailable esref
-      balance <- gets balance
+    msg_cycles_accept128 :: (Word64, Word64, Int32) -> HostM s ()
+    msg_cycles_accept128 (max_amount_high, max_amount_low, dst) = do
       let max_amount = combineBitHalves (max_amount_high, max_amount_low)
-      let amount = minimum
-            [ max_amount
-            , available
-            , cMAX_CANISTER_BALANCE - balance]
-      subtractAvailable esref amount
-      addBalance esref amount
-      addAccepted esref amount
-      return $ splitBitsIntoHalves amount
+      amount <- cycles_accept max_amount
+      i <- getsES esref inst
+      setBytes i (fromIntegral dst) (to128le amount)
 
-    canister_cycle_balance128 :: () -> HostM s (Word64, Word64)
-    canister_cycle_balance128 () = splitBitsIntoHalves <$> gets balance
+    canister_cycle_balance128 :: Int32 -> HostM s ()
+    canister_cycle_balance128 dst = do
+      i <- getsES esref inst
+      amount <- gets balance
+      setBytes i (fromIntegral dst) (to128le amount)
 
     call_new :: ( Int32, Int32, Int32, Int32, Int32, Int32, Int32, Int32 ) -> HostM s ()
     call_new ( callee_src, callee_size, name_src, name_size
