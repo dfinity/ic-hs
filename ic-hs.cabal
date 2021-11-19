@@ -71,7 +71,7 @@ common ghc-flags
 executable ic-ref
   import: cbits, ghc-flags
   main-is: ic-ref.hs
-  build-depends: aeson
+  build-depends: aeson >=1.4.7
   build-depends: asn1-encoding
   build-depends: asn1-types
   build-depends: atomic-write
@@ -174,7 +174,7 @@ executable ic-ref
 executable ic-ref-run
   import: cbits, ghc-flags
   main-is: ic-ref-run.hs
-  build-depends: aeson
+  build-depends: aeson >=1.4.7
   build-depends: asn1-encoding
   build-depends: asn1-types
   build-depends: base32
@@ -261,7 +261,7 @@ executable ic-ref-run
 executable ic-ref-test
   import: ghc-flags, cbits
   main-is: ic-ref-test.hs
-  build-depends: aeson
+  build-depends: aeson >=1.4.7
   build-depends: asn1-encoding
   build-depends: asn1-types
   build-depends: base32
@@ -375,7 +375,7 @@ test-suite unit-test
   import: cbits, ghc-flags
   type: exitcode-stdio-1.0
   main-is: unit-tests.hs
-  build-depends: aeson
+  build-depends: aeson >=1.4.7
   build-depends: asn1-encoding
   build-depends: asn1-types
   build-depends: atomic-write
@@ -478,7 +478,7 @@ library
   if !flag(library)
     buildable: False
 
-  build-depends: aeson
+  build-depends: aeson >=1.4.7
   build-depends: asn1-encoding
   build-depends: asn1-types
   build-depends: atomic-write
