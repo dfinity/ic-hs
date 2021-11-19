@@ -14,8 +14,8 @@ pub struct Pair(pub u64, pub u64);
 
 impl Pair {
     pub fn new(input: u128) -> Self {
-        let low = (input >> 64) as u64;
-        let high = (input & 0xffff_ffff_ffff_ffff) as u64;
+        let high = (input >> 64) as u64;
+        let low = (input & 0xffff_ffff_ffff_ffff) as u64;
         Self(high, low)
     }
 }
