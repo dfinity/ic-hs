@@ -1604,14 +1604,14 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
 
   , testGroup "cycles" $
     let replyBalance = replyData (i64tob getBalance)
-        replyBalance128 = replyData (pairToB getBalance128)
+        replyBalance128 = replyData getBalance128
         rememberBalance =
           ignore (stableGrow (int 1)) >>>
           stableWrite (int 0) (i64tob getBalance)
         recallBalance = replyData (stableRead (int 0) (int 8))
         acceptAll = ignore (acceptCycles getAvailableCycles)
         queryBalance cid = query cid replyBalance >>= asWord64
-        queryBalance128 cid = query cid replyBalance128 >>= asPairWord64
+        queryBalance128 cid = query cid replyBalance128 >>= asWord128
 
         -- At the time of writing, creating a canister needs at least 1T
         -- and the freezing limit is 5T
@@ -1647,13 +1647,13 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
         [ simpleTestCase "canister_cycle_balance = canister_cycle_balance128 for numbers fitting in 64 bits" $ \cid -> do
           a <- queryBalance cid
           b <- queryBalance128 cid
-          bothSame ((0,a),b)
+          bothSame (a, fromIntegral b)
         , testCase "legacy API traps when a result is too big" $ do
           cid <- create noop
           let large = 2^(65::Int)
           ic_top_up ic00 cid large
           query' cid replyBalance >>= isReject [5]
-          toI128 <$> queryBalance128 cid >>= isRoughly (large + fromIntegral def_cycles)
+          queryBalance128 cid >>= isRoughly (large + fromIntegral def_cycles)
         ]
     , testGroup "can use balance API" $
         let getBalanceTwice = join cat (i64tob getBalance)
@@ -1683,7 +1683,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     , simpleTestCase "can accept more than available cycles" $ \cid ->
         call cid (replyData (i64tob (acceptCycles (int64 1)))) >>= asWord64 >>= is 0
     , simpleTestCase "can accept absurd amount of cycles" $ \cid ->
-        call cid (replyData (pairToB (acceptCycles128 (int64 maxBound) (int64 maxBound)))) >>= asPairWord64 >>= is (0,0)
+        call cid (replyData (acceptCycles128 (int64 maxBound) (int64 maxBound))) >>= asWord128 >>= is 0
 
     , testGroup "provisional_create_canister_with_cycles"
       [ testCase "balance as expected" $ do

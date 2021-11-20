@@ -1,24 +1,8 @@
-use std::convert::{TryInto};
-
 // use `wee_alloc` as the global allocator.
 extern crate wee_alloc;
 
 #[global_allocator]
 static ALLOC: wee_alloc::WeeAlloc<'_> = wee_alloc::WeeAlloc::INIT;
-
-#[repr(C)]
-// Note: tuples are not FFI-safe causing the compiler to complain. To avoid this,
-// we represent pair as a tuple struct which has known memory layout and the same semantics as
-// a plain pair.
-pub struct Pair(pub u64, pub u64);
-
-impl Pair {
-    pub fn new(input: u128) -> Self {
-        let high = (input >> 64) as u64;
-        let low = (input & 0xffff_ffff_ffff_ffff) as u64;
-        Self(high, low)
-    }
-}
 
 mod ic0 {
     #[link(wasm_import_module = "ic0")]
@@ -203,44 +187,44 @@ pub fn cycles_available() -> u64 {
     unsafe { ic0::msg_cycles_available() }
 }
 
-pub fn cycles_available128() -> Pair {
+pub fn cycles_available128() -> Vec<u8> {
     let size = 16;
     let mut bytes = vec![0u8; size];
     unsafe { ic0::msg_cycles_available128(bytes.as_mut_ptr() as u32) }
-    Pair::new(u128::from_le_bytes(bytes.try_into().unwrap()))
+    bytes
 }
 
 pub fn cycles_refunded() -> u64 {
     unsafe { ic0::msg_cycles_refunded() }
 }
 
-pub fn cycles_refunded128() -> Pair {
+pub fn cycles_refunded128() -> Vec<u8> {
     let size = 16;
     let mut bytes = vec![0u8; size];
     unsafe { ic0::msg_cycles_refunded128(bytes.as_mut_ptr() as u32) }
-    Pair::new(u128::from_le_bytes(bytes.try_into().unwrap()))
+    bytes
 }
 
 pub fn accept(amount: u64) -> u64 {
     unsafe { ic0::msg_cycles_accept(amount) }
 }
 
-pub fn accept128(high: u64, low: u64) -> Pair {
+pub fn accept128(high: u64, low: u64) -> Vec<u8> {
     let size = 16;
     let mut bytes = vec![0u8; size];
     unsafe { ic0::msg_cycles_accept128(high, low, bytes.as_mut_ptr() as u32) }
-    Pair::new(u128::from_le_bytes(bytes.try_into().unwrap()))
+    bytes
 }
 
 pub fn balance() -> u64 {
     unsafe { ic0::canister_cycle_balance() }
 }
 
-pub fn balance128() -> Pair {
+pub fn balance128() -> Vec<u8> {
     let size = 16;
     let mut bytes = vec![0u8; size];
     unsafe { ic0::canister_cycle_balance128(bytes.as_mut_ptr() as u32) }
-    Pair::new(u128::from_le_bytes(bytes.try_into().unwrap()))
+    bytes
 }
 
 pub fn stable_size() -> u32 {

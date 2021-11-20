@@ -26,8 +26,7 @@ import Data.String
 
 -- The types of our little language are i32, i64, pair of i64s and blobs
 
-data T = I | I64 | B | PairI64
-
+data T = I | I64 | B
 
 -- We deal with expressions (return a value, thus have a type) and programs (do
 -- something, but do not return a type). They are represented simply
@@ -228,23 +227,20 @@ onHeartbeat = op 49
 performanceCounter :: Exp 'I64
 performanceCounter = op 50
 
-getBalance128 :: Exp 'PairI64
+getBalance128 :: Exp 'B
 getBalance128 = op 51
 
-getAvailableCycles128 :: Exp 'PairI64
+getAvailableCycles128 :: Exp 'B
 getAvailableCycles128 = op 52
 
-getRefund128 :: Exp 'PairI64
+getRefund128 :: Exp 'B
 getRefund128 = op 53
 
-acceptCycles128 :: Exp 'I64 -> Exp 'I64 -> Exp 'PairI64
+acceptCycles128 :: Exp 'I64 -> Exp 'I64 -> Exp 'B
 acceptCycles128 = op 54
 
 callCyclesAdd128 :: Exp 'I64 -> Exp 'I64 -> Prog
 callCyclesAdd128 = op 55
-
-pairToB :: Exp 'PairI64 -> Exp 'B
-pairToB = op 56
 
 -- Some convenience combinators
 

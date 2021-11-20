@@ -30,7 +30,7 @@ import qualified Data.Text as T
 import qualified Data.ByteString.Lazy as BS
 import qualified Data.ByteString.Lazy.Char8 as BSC
 import qualified Data.ByteString.Lazy.UTF8 as BSU
-import qualified Data.Binary as B
+import qualified Data.Binary.Put as Put
 import Control.Monad.Primitive
 import Control.Monad.ST
 import Control.Monad.Except
@@ -364,17 +364,18 @@ systemAPI esref =
     lowBits = fromIntegral . (0xFFFFFFFF_FFFFFFFF .&.)
 
     to128le :: Natural -> BS.ByteString
-    to128le n = BS.reverse $ BS.append (B.encode (highBits n)) (B.encode (lowBits n))
+    to128le n = Put.runPut $ do
+      Put.putWord64le (lowBits n)
+      Put.putWord64le (highBits n)
 
     combineBitHalves :: (Word64, Word64) -> Natural
     combineBitHalves (high, low) = fromIntegral high `shiftL` 64 .|. fromIntegral low
 
     low64BitsOrErr :: Natural -> HostM s Word64
-    low64BitsOrErr n = if highBits n > 0
-      then
+    low64BitsOrErr n = do
+      unless (highBits n == 0) $
         throwError $ "The number of cycles does not fit in 64 bits: " ++ show n
-      else
-        return $ fromIntegral $ lowBits n
+      return $ fromIntegral $ lowBits n
 
     msg_cycles_refunded :: () -> HostM s Word64
     msg_cycles_refunded () =  getRefunded esref >>= low64BitsOrErr

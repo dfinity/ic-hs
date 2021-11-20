@@ -527,8 +527,11 @@ asWord64 = runGet Get.getWord64le
 as2Word64 :: HasCallStack => Blob -> IO (Word64, Word64)
 as2Word64 = runGet $ (,) <$> Get.getWord64le <*> Get.getWord64le
 
-asPairWord64 :: HasCallStack => Blob -> IO (Word64, Word64)
-asPairWord64 = runGet $ flip (,) <$> Get.getWord64le <*> Get.getWord64le
+asWord128 :: HasCallStack => Blob -> IO Natural
+asWord128 = runGet $ do
+    low <- Get.getWord64le
+    high <- Get.getWord64le
+    return $ fromIntegral high `shiftL` 64 .|. fromIntegral low
 
 bothSame :: (Eq a, Show a) => (a, a) -> Assertion
 bothSame (x,y) = x @?= y
@@ -843,6 +846,3 @@ textual = T.unpack . prettyPrincipal . Principal
 shorten :: Int -> String -> String
 shorten n s = a ++ (if null b then "" else "…")
   where (a,b) = splitAt n s
-
-toI128 :: (Word64, Word64) -> Natural
-toI128 (high, low) = fromIntegral high `shiftL` 64 .|. fromIntegral low
