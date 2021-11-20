@@ -27,10 +27,10 @@ module IC.Canister.Imp
 where
 
 import qualified Data.Text as T
+import qualified Data.ByteString.Builder as BS
 import qualified Data.ByteString.Lazy as BS
 import qualified Data.ByteString.Lazy.Char8 as BSC
 import qualified Data.ByteString.Lazy.UTF8 as BSU
-import qualified Data.Binary.Put as Put
 import Control.Monad.Primitive
 import Control.Monad.ST
 import Control.Monad.Except
@@ -364,9 +364,7 @@ systemAPI esref =
     lowBits = fromIntegral . (0xFFFFFFFF_FFFFFFFF .&.)
 
     to128le :: Natural -> BS.ByteString
-    to128le n = Put.runPut $ do
-      Put.putWord64le (lowBits n)
-      Put.putWord64le (highBits n)
+    to128le n = BS.toLazyByteString $ BS.word64LE (lowBits n) <> BS.word64LE (highBits n)
 
     combineBitHalves :: (Word64, Word64) -> Natural
     combineBitHalves (high, low) = fromIntegral high `shiftL` 64 .|. fromIntegral low
