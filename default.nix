@@ -12,7 +12,7 @@ let universal-canister = (naersk.buildPackage rec {
     src = subpath ./universal-canister;
     root = ./universal-canister;
     CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_LINKER = "${nixpkgs.llvmPackages_12.lld}/bin/lld";
-    RUSTFLAGS = "-C link-arg=-s -C target-feature=+multivalue"; # much smaller wasm
+    RUSTFLAGS = "-C link-arg=-s"; # much smaller wasm
     cargoBuildOptions = x : x ++ [ "--target wasm32-unknown-unknown" ];
     doCheck = false;
     release = true;
