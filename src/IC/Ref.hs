@@ -552,7 +552,7 @@ stateTree (Timestamp t) ic = node
     str = val @T.Text
     (=:) = M.singleton
 
-delegationTree :: Timestamp -> SubnetId -> (CanisterId, CanisterId) -> Blob -> LabeledTree
+delegationTree :: Timestamp -> SubnetId -> CanisterRange -> Blob -> LabeledTree
 delegationTree (Timestamp t) (EntityId subnet_id) cans_range subnet_pub_key = node
   [ "time" =: val t
   , "subnet" =: node
@@ -580,7 +580,7 @@ getPrunedCertificate time paths = do
   where
     fake_subnet_id = EntityId "\x01"
 
-signCertificate :: Timestamp -> SecretKey -> Maybe (EntityId, SecretKey, (CanisterId, CanisterId)) -> HashTree -> Certificate
+signCertificate :: Timestamp -> SecretKey -> Maybe (EntityId, SecretKey, CanisterRange) -> HashTree -> Certificate
 signCertificate time rootKey (Just (subnet_id, subnet_key, cans_range)) cert_tree =
     Certificate { cert_tree, cert_sig, cert_delegation }
  where
