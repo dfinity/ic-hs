@@ -553,12 +553,12 @@ stateTree (Timestamp t) ic = node
     (=:) = M.singleton
 
 delegationTree :: Timestamp -> SubnetId -> CanisterRange -> Blob -> LabeledTree
-delegationTree (Timestamp t) (EntityId subnet_id) cans_range subnet_pub_key = node
+delegationTree (Timestamp t) (EntityId subnet_id) can_ranges subnet_pub_key = node
   [ "time" =: val t
   , "subnet" =: node
     [ subnet_id =: node (
           [ "public_key" =: val subnet_pub_key
-          , "canister_ranges" =: val (encodeCanisterRangeList [cans_range])
+          , "canister_ranges" =: val (encodeCanisterRangeList [can_ranges])
           ]
       )
     ]
@@ -580,8 +580,8 @@ getPrunedCertificate time paths = do
   where
     fake_subnet_id = EntityId "\x01"
 
-signCertificate :: Timestamp -> SecretKey -> Maybe (EntityId, SecretKey, CanisterRange) -> HashTree -> Certificate
-signCertificate time rootKey (Just (subnet_id, subnet_key, cans_range)) cert_tree =
+signCertificate :: Timestamp -> SecretKey -> Maybe (SubnetId, SecretKey, CanisterRange) -> HashTree -> Certificate
+signCertificate time rootKey (Just (subnet_id, subnet_key, can_ranges)) cert_tree =
     Certificate { cert_tree, cert_sig, cert_delegation }
  where
     cert_sig = signPure "ic-state-root" subnet_key (reconstruct cert_tree)
@@ -591,7 +591,7 @@ signCertificate time rootKey (Just (subnet_id, subnet_key, cans_range)) cert_tre
       encodeCert $
       signCertificate time rootKey Nothing $
       construct $
-      delegationTree time subnet_id cans_range (toPublicKey subnet_key)
+      delegationTree time subnet_id can_ranges (toPublicKey subnet_key)
 
 signCertificate _time rootKey Nothing cert_tree =
     Certificate { cert_tree, cert_sig, cert_delegation = Nothing }
