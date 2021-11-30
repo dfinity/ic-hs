@@ -9,4 +9,4 @@ encodePrincipalList :: [EntityId] -> Blob
 encodePrincipalList entities = BS.toLazyByteString $ encode $ GList $ map (GBlob . rawEntityId) entities
 
 encodeCanisterRangeList :: [CanisterRange] -> Blob
-encodeCanisterRangeList ranges = BS.toLazyByteString $ encode $ GList $ map (\r -> GList $ map (GBlob . rawEntityId) [fst r, snd r]) ranges
+encodeCanisterRangeList ranges = BS.toLazyByteString $ encode $ GList $ map (\(l, u) -> GList $ map (GBlob . rawEntityId) [l, u]) ranges
