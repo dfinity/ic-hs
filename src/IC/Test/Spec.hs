@@ -1401,6 +1401,12 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
           getRequestStatus user cid (requestId req) >>= is (Responded (Reply "\xff\xff"))
 
           return (requestId req)
+        canister_id_in_canister_ranges cid (Just del) = do
+            del_cert <- decodeCert' (del_certificate del)
+            ranges <- certValue @Blob del_cert ["subnet", del_subnet_id del, "canister_ranges"] >>= asCBORBlobPairList
+            cid `isContainedIn` ranges
+            canister_id_in_canister_ranges cid (cert_delegation del_cert)
+        canister_id_in_canister_ranges _ Nothing = return ()
     in
     [ testGroup "required fields" $
         omitFields readStateEmpty $ \req -> do
@@ -1426,6 +1432,11 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
         cid <- create
         cert <- getStateCert defaultUser cid [["canister", cid, "controllers"]]
         certValue @Blob cert ["canister", cid, "controllers"] >>= asCBORBlobList >>= isSet [defaultUser]
+
+    , testCase "canister_id included in canister_ranges" $ do
+        cid <- create
+        cert <- getStateCert defaultUser cid [["subnet"]]
+        canister_id_in_canister_ranges cid (cert_delegation cert)
 
     , testCase "module_hash of empty canister" $ do
         cid <- create
@@ -2299,6 +2310,10 @@ is exp act = act @?= exp
 isSet :: (HasCallStack, Ord a, Show a) => [a] -> [a] -> Assertion
 isSet exp act = S.fromList exp @?= S.fromList act
 
+isContainedIn :: (HasCallStack, Ord a, Show a) => a -> [(a,a)] -> Assertion
+isContainedIn p ranges = assertBool (show p ++ " not contained in: " ++ show ranges) $
+    any (\(l,r) -> l <= p && p <= r) ranges
+
 -- * Simple Wasm
 
 trivialWasmModule :: Blob
@@ -2383,6 +2398,18 @@ asCBORBlobList blob = do
 cborToBlob :: GenR -> IO Blob
 cborToBlob (GBlob blob) = return blob
 cborToBlob r = assertFailure $ "Expected blob, got " <> show r
+
+asCBORBlobPairList :: Blob -> IO [(Blob, Blob)]
+asCBORBlobPairList blob = do
+    decoded <- asRight $ CBOR.decode blob
+    case decoded of
+        GList list -> do
+            mapM cborToBlobPair list
+        _ -> assertFailure $ "Failed to decode as CBOR encoded list of blob pairs: " <> show decoded
+
+cborToBlobPair :: GenR -> IO (Blob, Blob)
+cborToBlobPair (GList [GBlob x, GBlob y]) = return (x, y)
+cborToBlobPair r = assertFailure $ "Expected list of pairs, got: " <> show r
 
 -- Interaction with aaaaa-aa via the universal canister
 

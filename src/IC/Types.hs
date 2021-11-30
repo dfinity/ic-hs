@@ -31,6 +31,7 @@ newtype EntityId = EntityId { rawEntityId :: Blob }
     deriving (Show, Eq, Ord)
 
 type CanisterId = EntityId
+type CanisterRange = (CanisterId, CanisterId)
 type SubnetId = EntityId
 type UserId = EntityId
 type MethodName = String

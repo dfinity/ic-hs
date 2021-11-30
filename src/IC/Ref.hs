@@ -552,12 +552,15 @@ stateTree (Timestamp t) ic = node
     str = val @T.Text
     (=:) = M.singleton
 
-delegationTree :: Timestamp -> SubnetId -> Blob -> LabeledTree
-delegationTree (Timestamp t) (EntityId subnet_id) subnet_pub_key = node
+delegationTree :: Timestamp -> SubnetId -> Maybe CanisterRange -> Blob -> LabeledTree
+delegationTree (Timestamp t) (EntityId subnet_id) can_ranges subnet_pub_key = node
   [ "time" =: val t
   , "subnet" =: node
-    [ subnet_id =: node
-          [ "public_key" =: val subnet_pub_key ]
+    [ subnet_id =: node (
+          [ "public_key" =: val subnet_pub_key
+          , "canister_ranges" =: val (encodeCanisterRangeList (maybeToList can_ranges))
+          ]
+      )
     ]
   ]
   where
@@ -572,12 +575,16 @@ getPrunedCertificate time paths = do
     let cert_tree = prune full_tree (["time"] : paths)
     sk1 <- gets secretRootKey
     sk2 <- gets secretSubnetKey
-    return $ signCertificate time sk1 (Just (fake_subnet_id, sk2)) cert_tree
+    cans <- M.keys <$> gets canisters
+    let r = (\cs -> (minimum cs, maximum cs)) <$> list_to_maybe cans
+    return $ signCertificate time sk1 (Just (fake_subnet_id, sk2, r)) cert_tree
   where
     fake_subnet_id = EntityId "\x01"
+    list_to_maybe [] = Nothing
+    list_to_maybe x = Just x
 
-signCertificate :: Timestamp -> SecretKey -> Maybe (SubnetId, SecretKey) -> HashTree -> Certificate
-signCertificate time rootKey (Just (subnet_id, subnet_key)) cert_tree =
+signCertificate :: Timestamp -> SecretKey -> Maybe (SubnetId, SecretKey, Maybe CanisterRange) -> HashTree -> Certificate
+signCertificate time rootKey (Just (subnet_id, subnet_key, can_ranges)) cert_tree =
     Certificate { cert_tree, cert_sig, cert_delegation }
  where
     cert_sig = signPure "ic-state-root" subnet_key (reconstruct cert_tree)
@@ -587,7 +594,7 @@ signCertificate time rootKey (Just (subnet_id, subnet_key)) cert_tree =
       encodeCert $
       signCertificate time rootKey Nothing $
       construct $
-      delegationTree time subnet_id (toPublicKey subnet_key)
+      delegationTree time subnet_id can_ranges (toPublicKey subnet_key)
 
 signCertificate _time rootKey Nothing cert_tree =
     Certificate { cert_tree, cert_sig, cert_delegation = Nothing }
