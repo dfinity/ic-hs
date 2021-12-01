@@ -11,5 +11,11 @@ freshId :: [EntityId] -> EntityId
 freshId ids =
     head $
     filter (`notElem` ids) $
-    map (EntityId . mkOpaqueId . toLazyByteString . word64LE)
+    map wordToId
     [1024::Word64 ..]
+
+icCanisterIdRange :: (EntityId, EntityId)
+icCanisterIdRange = (wordToId minBound, wordToId maxBound)
+
+wordToId :: Word64 -> EntityId
+wordToId = EntityId . mkOpaqueId . toLazyByteString . word64LE
