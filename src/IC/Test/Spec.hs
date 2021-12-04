@@ -179,6 +179,81 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
       step "Start is noop"
       ic_start_canister ic00 cid
 
+  , testCaseSteps "canister stopping" $ \step -> do
+      cid <- install noop
+
+      step "Is running (via management)?"
+      cs <- ic_canister_status ic00 cid
+      cs .! #status @?= enum #running
+
+      step "Is running (local)?"
+      query cid (replyData (i2b getStatus)) >>= asWord32 >>= is 1
+
+      step "Create message hold"
+      (messageHold, release) <- createMessageHold
+
+      step "Create long-running call"
+      grs1 <- submitCall cid $ rec
+          [ "request_type" =: GText "call"
+          , "sender" =: GBlob defaultUser
+          , "canister_id" =: GBlob cid
+          , "method_name" =: GText "update"
+          , "arg" =: GBlob (run messageHold)
+          ]
+      grs1 >>= isPendingOrProcessing
+      
+      step "Normal call (to sync)"
+      call_ cid reply 
+
+      step "Stop"
+      grs2 <- submitCall cid $ rec
+          [ "request_type" =: GText "call"
+          , "sender" =: GBlob defaultUser
+          , "canister_id" =: GBlob ""
+          , "method_name" =: GText "stop_canister"
+          , "arg" =: GBlob (Candid.encode (#canister_id .== Principal cid))
+          ]
+      grs2 >>= isPendingOrProcessing
+
+      step "Is stopping (via management)?"
+      cs <- ic_canister_status ic00 cid
+      cs .! #status @?= enum #stopping
+
+      step "Next stop waits, too"
+      grs3 <- submitCall cid $ rec
+          [ "request_type" =: GText "call"
+          , "sender" =: GBlob defaultUser
+          , "canister_id" =: GBlob ""
+          , "method_name" =: GText "stop_canister"
+          , "arg" =: GBlob (Candid.encode (#canister_id .== Principal cid))
+          ]
+      grs3 >>= isPendingOrProcessing
+
+      step "Cannot call (update)?"
+      call'' cid reply >>= isErrOrReject [5]
+
+      step "Cannot call (query)?"
+      query' cid reply >>= isReject [5]
+
+      step "Release the held message"
+      release
+
+      step "Wait for calls to complete"
+      awaitStatus grs1 >>= isReply >>= is ""
+      awaitStatus grs2 >>= isReply >>= is (Candid.encode ())
+      awaitStatus grs3 >>= isReply >>= is (Candid.encode ())
+
+      step "Is stopped (via management)?"
+      cs <- ic_canister_status ic00 cid
+      cs .! #status @?= enum #stopped
+
+
+      step "Cannot call (update)?"
+      call'' cid reply >>= isErrOrReject [5]
+
+      step "Cannot call (query)?"
+      query' cid reply >>= isReject [5]
+
   , testCaseSteps "canister deletion" $ \step -> do
       cid <- install noop
 
@@ -2011,7 +2086,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
         -- sign request with delegations
         delegationEnv defaultSK dels req >>= postCallCBOR cid >>= code2xx
         -- wait for it
-        void $ awaitStatus defaultUser cid rid >>= isReply
+        void $ awaitStatus (getRequestStatus defaultUser cid rid) >>= isReply
         -- also read status with delegation
         sreq <- addExpiry $ rec
           [ "request_type" =: GText "read_state"
@@ -2031,7 +2106,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
         -- submit with plain signature
         envelope defaultSK req >>= postCallCBOR cid >>= code202
         -- wait for it
-        void $ awaitStatus defaultUser cid rid >>= isReply
+        void $ awaitStatus (getRequestStatus defaultUser cid rid) >>= isReply
         -- also read status with delegation
         sreq <- addExpiry $ rec
           [ "request_type" =: GText "read_state"
@@ -2126,7 +2201,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
       signed_req <- env req
       postCallCBOR cid signed_req >>= code2xx
 
-      awaitStatus user cid (requestId req) >>= isReply >>= is ""
+      awaitStatus (getRequestStatus user cid (requestId req)) >>= isReply >>= is ""
     ]
 
   , testGroup "signature checking" $
@@ -2382,7 +2457,7 @@ awaitCallTwice cid req = do
   res <- envelopeFor (senderOf req) req >>= postCallCBOR cid
   code202 res
   assertBool "Response body not empty" (BS.null (responseBody res))
-  awaitStatus (senderOf req) cid (requestId req)
+  awaitStatus (getRequestStatus (senderOf req) cid (requestId req))
 
 
 
@@ -2495,7 +2570,7 @@ callToQueryRequestAs user cid prog = rec
 callRequest :: (HasCallStack, HasAgentConfig) => Blob -> Prog -> GenR
 callRequest cid prog = callRequestAs defaultUser cid prog
 
-callToQuery'' :: (HasCallStack, HasAgentConfig) => Blob -> Prog -> IO HTTPErrOrReqResponse
+callToQuery'' :: (HasCallStack, HasAgentConfig) => Blob -> Prog -> IO (HTTPErrOr ReqResponse)
 callToQuery'' cid prog = awaitCall' cid $ callToQueryRequestAs defaultUser cid prog
 
 -- The following variants of the call combinator differ in how much failure they allow:
@@ -2505,7 +2580,7 @@ callToQuery'' cid prog = awaitCall' cid $ callToQueryRequestAs defaultUser cid p
 --   call   requires a reply response
 --   call_  requires a reply response with an empty blob (a common case)
 
-call'' :: (HasCallStack, HasAgentConfig) => Blob -> Prog -> IO HTTPErrOrReqResponse
+call'' :: (HasCallStack, HasAgentConfig) => Blob -> Prog -> IO (HTTPErrOr ReqResponse)
 call'' cid prog = awaitCall' cid (callRequest cid prog)
 
 call' :: (HasCallStack, HasAgentConfig) => Blob -> Prog -> IO ReqResponse
@@ -2591,3 +2666,54 @@ getTestWasm :: FilePath -> IO BS.ByteString
 getTestWasm base = do
   fp <- getTestFile $ base <.> "wasm"
   BS.readFile fp
+
+-- * Helper patterns
+
+-- A barrier
+
+-- This will stop and start all mentioned canisters. This guarantees
+-- that all outstanding callbacks are handled
+barrier :: HasAgentConfig => [Blob] -> IO ()
+barrier cids = do
+  mapM_ (ic_stop_canister ic00) cids
+  mapM_ (ic_start_canister ic00) cids
+
+
+-- A message hold
+--
+-- This allows the test driver to withhold the response to a message, and
+-- control when they are released, in order to produce situations with
+-- outstanding call contexts.
+--
+-- In an ideal world (from our pov), we could instrument and control the
+-- system's scheduler this way, but we can't. So instead, we use some tricks.
+-- Ideally, the details of this trick are irrelevant to the users of this
+-- function (yay, abstraction), and if we find better tricks, we can swap them
+-- out easily. We'll see if that holds water.
+--
+-- One problem with this approach is that a test failure could mean that the
+-- system doesn't pass the test, but it could also mean that the system has a
+-- bug that prevents this trick from working, so take care.
+--
+-- The current trick is: Create a canister (the "stopper"). Make it its own
+-- controller. Tell the canister to stop itself. This call will now hang,
+-- because a canister cannot stop itself. We can release the call (producing a
+-- reject) by starting the canister again.
+--
+-- Returns a program to be executed by any canister, which will cause this
+-- canister to send a message that will not be responded to, until the given
+-- IO action is performed.
+createMessageHold :: HasAgentConfig => IO (Prog, IO ())
+createMessageHold = do
+  cid <- install noop
+  ic_set_controllers ic00 cid [defaultUser, cid]
+  let holdMessage = inter_update cid defArgs
+        { other_side =
+            callNew "" "stop_canister" (callback (trap "createMessageHold: stopping succeeded?")) (callback reply) >>>
+            callDataAppend (bytes (Candid.encode (#canister_id .== Principal cid))) >>>
+            callPerform
+        }
+  let release = ic_start_canister ic00 cid
+  return (holdMessage, release)
+    
+
