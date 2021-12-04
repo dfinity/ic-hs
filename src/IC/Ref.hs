@@ -534,7 +534,7 @@ stateTree (Timestamp t) ic = node
       ] ++
       ( case content cs of
         Nothing -> []
-        Just cc -> 
+        Just cc ->
           [ "metadata" =: node
             [ toUtf8 n =: val c | (n,(_,c)) <- M.toList (metadata (can_mod cc)) ]
           , "module_hash" =: val (raw_wasm_hash (can_mod cc))
@@ -737,9 +737,12 @@ processMessage m = case m of
         invokeManagementCanister caller ctxt_id entry
     else do
       canisterMustExist callee
-      getRunStatus callee >>= \case
-          IsRunning -> return ()
-          _ -> reject RC_CANISTER_ERROR "canister is stopped" -- TODO: Not for callbacks
+      status <- getRunStatus callee
+      case (status, entry) of
+          (IsRunning, _) -> return ()
+          (IsStopping _, Closure{}) -> return ()
+          -- This is a hack, detecting callbacks via the entry, and demands refactoring
+          _ -> reject RC_CANISTER_ERROR "canister is not running"
       empty <- isCanisterEmpty callee
       when empty $ reject RC_DESTINATION_INVALID "canister is empty" -- TODO: what to do for callbacks
       wasm_state <- getCanisterState callee

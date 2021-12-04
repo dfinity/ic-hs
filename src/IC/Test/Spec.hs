@@ -201,9 +201,9 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
           , "arg" =: GBlob (run messageHold)
           ]
       grs1 >>= isPendingOrProcessing
-      
+
       step "Normal call (to sync)"
-      call_ cid reply 
+      call_ cid reply
 
       step "Stop"
       grs2 <- submitCall cid $ rec
@@ -2712,8 +2712,9 @@ createMessageHold = do
             callNew "" "stop_canister" (callback (trap "createMessageHold: stopping succeeded?")) (callback reply) >>>
             callDataAppend (bytes (Candid.encode (#canister_id .== Principal cid))) >>>
             callPerform
+        , on_reply = reply
         }
   let release = ic_start_canister ic00 cid
   return (holdMessage, release)
-    
+
 
