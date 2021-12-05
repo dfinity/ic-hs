@@ -43,7 +43,6 @@ import IC.Types (EntityId(..))
 import IC.HTTP.GenR
 import IC.HTTP.RequestId
 import qualified IC.HTTP.CBOR as CBOR
-import IC.Management
 import IC.Crypto
 import qualified IC.Crypto.CanisterSig as CanisterSig
 import qualified IC.Crypto.DER as DER
@@ -1282,22 +1281,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
       query cid (replyData (i2b stableSize)) >>= is "\1\0\0\0"
     ]
 
-  , testGroup "uninstall" $
-    let inter_management method_name cid on_reply =
-          callNew "" method_name (callback on_reply) (callback relayReject) >>>
-          callDataAppend (bytes (Candid.encode (#canister_id .== Principal cid))) >>>
-          callPerform
-
-        inter_install_code cid wasm_module on_reply =
-          callNew "" "install_code" (callback on_reply) (callback relayReject) >>>
-          callDataAppend (bytes (Candid.encode (empty
-            .+ #canister_id .== Principal cid
-            .+ #mode .== (enum #install :: InstallMode)
-            .+ #wasm_module .== wasm_module
-            .+ #arg .== run (setGlobal "NONE")
-          ))) >>>
-          callPerform
-    in
+  , testGroup "uninstall"
     [ testCase "uninstall empty canister" $ do
       cid <- create
       cs <- ic_canister_status ic00 cid
@@ -1352,91 +1336,133 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
       call'' cid (replyData "Hi") >>= isErrOrReject []
       query' cid (replyData "Hi") >>= isReject [3]
 
-    , testCase "open call contexts are rejected" $ do
-      cid1 <- install noop
-      cid2 <- install noop
-      ic_set_controllers ic00 cid1 [cid2]
-      -- Step A: 2 calls 1
-      -- Step B: 1 calls 2. Now 2 is waiting on a call from 1
-      -- Step C: 2 uninstalls 1
-      -- Step D: 2 replies "FOO"
-      -- What should happen: The system rejects the call from step A
-      -- What should not happen: The reply "FOO" makes it to canister 2
-      -- (This is not a great test, because even if the call context is
-      -- not rejected by the system during uninstallation it will somehow be rejected
-      -- later when the callback is delivered to the empty canister. Maybe the reject
-      -- code will catch it.)
-      do call cid2 $ inter_update cid1 defArgs
-          { other_side =
-            inter_update cid2 defArgs
-              { other_side =
-                  inter_management "uninstall_code" cid1 $
-                  replyData "FOO"
-              }
-          }
-       >>= isRelay >>= isReject [4]
+    , testCaseSteps "open call contexts are rejected" $ \step -> do
+      cid <- install noop
 
-    , testCase "deleted call contexts do not prevent stopping" $ do
-      -- Similar to above, but 2, after uninstalling, imediatelly
-      -- stops and deletes 1. This can only work if the call
-      -- contexts at 1 are indeed deleted
-      cid1 <- install noop
-      cid2 <- install noop
-      ic_set_controllers ic00 cid1 [cid2]
-      do call cid2 $ inter_update cid1 defArgs
-          { other_side =
-            inter_update cid2 defArgs
-              { other_side =
-                  inter_management "uninstall_code" cid1 $
-                  inter_management "stop_canister" cid1 $
-                  inter_management "delete_canister" cid1 $
-                  replyData "FOO"
-              }
-          }
-       >>= isRelay >>= isReject [4]
+      step "Create message hold"
+      (messageHold, release) <- createMessageHold
 
-      -- wait for cid2 to finish its stuff
-      barrier [cid2]
+      step "Create long-running call"
+      grs1 <- submitCall cid $ rec
+          [ "request_type" =: GText "call"
+          , "sender" =: GBlob defaultUser
+          , "canister_id" =: GBlob cid
+          , "method_name" =: GText "update"
+          , "arg" =: GBlob (run messageHold)
+          ]
+      grs1 >>= isPendingOrProcessing
 
-      -- check that cid1 is deleted
-      query' cid1 reply >>= isReject [3]
+      step "Uninstall"
+      ic_uninstall ic00 cid
 
-    , testCase "deleted call contexts are not delivered" $ do
-      -- This is a very tricky one:
-      -- Like above, but before replying, 2 installs code,
-      -- calls into 1, so that 1 can call back to 2. This
-      -- creates a new callback at 1, presumably with the same
-      -- internal `env` as the one from step B.
-      -- 2 rejects the new call, and replies to the original one.
-      -- Only the on_reject callback at 1 should be called, not the on_reply
-      -- We observe that using the “global”
-      cid1 <- install noop
-      cid2 <- install noop
+      step "Long-running call is rejected"
+      awaitStatus grs1 >>= isReject [4]
+
+      step "Now release"
+      release
+      awaitStatus grs1 >>= isReject [4] -- still a reject
+
+    , testCaseSteps "deleted call contexts do not prevent stopping" $ \step -> do
+      -- Similar to above, but after uninstalling, imediatelly
+      -- stops and deletes. This can only work if the call
+      -- contexts are indeed deleted
+      cid <- install noop
+
+      step "Create message hold"
+      (messageHold, release) <- createMessageHold
+
+      step "Create long-running call"
+      grs1 <- submitCall cid $ rec
+          [ "request_type" =: GText "call"
+          , "sender" =: GBlob defaultUser
+          , "canister_id" =: GBlob cid
+          , "method_name" =: GText "update"
+          , "arg" =: GBlob (run messageHold)
+          ]
+      grs1 >>= isPendingOrProcessing
+
+      step "Uninstall"
+      ic_uninstall ic00 cid
+
+      step "Long-running call is rejected"
+      awaitStatus grs1 >>= isReject [4]
+
+      step "Stop now"
+      ic_stop_canister ic00 cid
+
+      step "Delete now"
+      ic_delete_canister ic00 cid
+
+      -- deletion means query fails
+      query' cid reply >>= isReject [3]
+
+      step "Now release"
+      release
+      awaitStatus grs1 >>= isReject [4] -- still a reject
+      query' cid reply >>= isReject [3] -- still deleted
+
+
+
+    , testCaseSteps "deleted call contexts are not delivered" $ \step -> do
+      -- This is a tricky one: We make one long-running call,
+      -- then uninstall (rejecting the call), then re-install fresh code,
+      -- make another long-running call, then release the first one. The system
+      -- should not confuse the two callbacks.
+      cid <- install noop
+      helper <- install noop
+
+      step "Create message holds"
+      (messageHold1, release1) <- createMessageHold
+      (messageHold2, release2) <- createMessageHold
+
+      step "Create first long-running call"
+      grs1 <- submitCall cid $ rec
+          [ "request_type" =: GText "call"
+          , "sender" =: GBlob defaultUser
+          , "canister_id" =: GBlob cid
+          , "method_name" =: GText "update"
+          , "arg" =: GBlob (run (
+              inter_call helper "update" defArgs
+                { other_side = messageHold1
+                , on_reply = replyData "First"
+                }
+              ))
+          ]
+      grs1 >>= isPendingOrProcessing
+
+      step "Uninstall"
+      ic_uninstall ic00 cid
+      awaitStatus grs1 >>= isReject [4]
+
+      step "Reinstall"
       universal_wasm <- getTestWasm "universal_canister"
-      ic_set_controllers ic00 cid1 [cid2]
-      do call cid2 $ inter_update cid1 defArgs
-          { other_side =
-            inter_update cid2 defArgs
-              { other_side =
-                  inter_management "uninstall_code" cid1 $
-                  inter_install_code cid1 universal_wasm $
-                  inter_update cid1 defArgs {
-                    other_side =
-                      inter_update cid2 defArgs
-                      { other_side = reject "FOO"
-                      , on_reply = setGlobal "REPLY" >>> reply
-                      , on_reject = setGlobal "REJECT" >>> reply
-                      }
-                  }
-              }
-          }
-       >>= isRelay >>= isReject [4]
+      ic_install ic00 (enum #install) cid universal_wasm (run (setGlobal "BAR"))
 
-      -- wait for cid2 to finish its stuff
-      barrier [cid2]
+      step "Create second long-running call"
+      grs2 <- submitCall cid $ rec
+          [ "request_type" =: GText "call"
+          , "sender" =: GBlob defaultUser
+          , "canister_id" =: GBlob cid
+          , "method_name" =: GText "update"
+          , "arg" =: GBlob (run (
+              inter_call helper "update" defArgs
+                { other_side = messageHold2
+                , on_reply = replyData "Second"
+                }
+              ))
+          ]
+      awaitStatus grs1 >>= isReject [4]
+      grs2 >>= isPendingOrProcessing
 
-      -- check cid1’s global
-      query cid1 (replyData getGlobal) >>= is "REJECT"
+      step "Release first call"
+      release1
+      awaitStatus grs1 >>= isReject [4]
+      grs2 >>= isPendingOrProcessing
+
+      step "Release second call"
+      release2
+      awaitStatus grs1 >>= isReject [4]
+      awaitStatus grs2 >>= isReply >>= is "Second"
     ]
 
   , testGroup "debug facilities"
