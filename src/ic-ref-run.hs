@@ -22,7 +22,7 @@ import Control.Monad.Trans
 import Control.Monad.Trans.State
 import Text.Printf
 import Data.List
-import Data.Text.Prettyprint.Doc (pretty)
+import Prettyprint (pretty)
 import Data.Time.Clock.POSIX
 import Control.Monad.Random.Lazy
 
