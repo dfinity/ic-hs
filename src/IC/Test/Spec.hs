@@ -260,8 +260,40 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
       step "Deletion fails"
       ic_delete_canister' ic00 cid >>= isReject [5]
 
-      step "Stop"
-      ic_stop_canister ic00 cid
+      step "Create message hold"
+      (messageHold, release) <- createMessageHold
+
+      step "Create long-running call"
+      grs1 <- submitCall cid $ rec
+          [ "request_type" =: GText "call"
+          , "sender" =: GBlob defaultUser
+          , "canister_id" =: GBlob cid
+          , "method_name" =: GText "update"
+          , "arg" =: GBlob (run messageHold)
+          ]
+      grs1 >>= isPendingOrProcessing
+
+      step "Start stopping"
+      grs2 <- submitCall cid $ rec
+          [ "request_type" =: GText "call"
+          , "sender" =: GBlob defaultUser
+          , "canister_id" =: GBlob ""
+          , "method_name" =: GText "stop_canister"
+          , "arg" =: GBlob (Candid.encode (#canister_id .== Principal cid))
+          ]
+      grs2 >>= isPendingOrProcessing
+
+      step "Is stopping?"
+      cs <- ic_canister_status ic00 cid
+      cs .! #status @?= enum #stopping
+
+      step "Deletion fails"
+      ic_delete_canister' ic00 cid >>= isReject [5]
+
+      step "Let canister stop"
+      release
+      awaitStatus grs1 >>= isReply >>= is ""
+      awaitStatus grs2 >>= isReply >>= is (Candid.encode ())
 
       step "Is stopped?"
       cs <- ic_canister_status ic00 cid
