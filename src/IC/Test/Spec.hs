@@ -192,26 +192,14 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
       (messageHold, release) <- createMessageHold
 
       step "Create long-running call"
-      grs1 <- submitCall cid $ rec
-          [ "request_type" =: GText "call"
-          , "sender" =: GBlob defaultUser
-          , "canister_id" =: GBlob cid
-          , "method_name" =: GText "update"
-          , "arg" =: GBlob (run messageHold)
-          ]
+      grs1 <- submitCall cid $ callRequest cid messageHold
       grs1 >>= isPendingOrProcessing
 
       step "Normal call (to sync)"
       call_ cid reply
 
       step "Stop"
-      grs2 <- submitCall cid $ rec
-          [ "request_type" =: GText "call"
-          , "sender" =: GBlob defaultUser
-          , "canister_id" =: GBlob ""
-          , "method_name" =: GText "stop_canister"
-          , "arg" =: GBlob (Candid.encode (#canister_id .== Principal cid))
-          ]
+      grs2 <- submitCall cid $ stopRequest cid
       grs2 >>= isPendingOrProcessing
 
       step "Is stopping (via management)?"
@@ -219,13 +207,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
       cs .! #status @?= enum #stopping
 
       step "Next stop waits, too"
-      grs3 <- submitCall cid $ rec
-          [ "request_type" =: GText "call"
-          , "sender" =: GBlob defaultUser
-          , "canister_id" =: GBlob ""
-          , "method_name" =: GText "stop_canister"
-          , "arg" =: GBlob (Candid.encode (#canister_id .== Principal cid))
-          ]
+      grs3 <- submitCall cid $ stopRequest cid
       grs3 >>= isPendingOrProcessing
 
       step "Cannot call (update)?"
@@ -263,23 +245,11 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
       (messageHold, release) <- createMessageHold
 
       step "Create long-running call"
-      grs1 <- submitCall cid $ rec
-          [ "request_type" =: GText "call"
-          , "sender" =: GBlob defaultUser
-          , "canister_id" =: GBlob cid
-          , "method_name" =: GText "update"
-          , "arg" =: GBlob (run messageHold)
-          ]
+      grs1 <- submitCall cid $ callRequest cid messageHold
       grs1 >>= isPendingOrProcessing
 
       step "Start stopping"
-      grs2 <- submitCall cid $ rec
-          [ "request_type" =: GText "call"
-          , "sender" =: GBlob defaultUser
-          , "canister_id" =: GBlob ""
-          , "method_name" =: GText "stop_canister"
-          , "arg" =: GBlob (Candid.encode (#canister_id .== Principal cid))
-          ]
+      grs2 <- submitCall cid $ stopRequest cid
       grs2 >>= isPendingOrProcessing
 
       step "Is stopping?"
@@ -1343,13 +1313,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
       (messageHold, release) <- createMessageHold
 
       step "Create long-running call"
-      grs1 <- submitCall cid $ rec
-          [ "request_type" =: GText "call"
-          , "sender" =: GBlob defaultUser
-          , "canister_id" =: GBlob cid
-          , "method_name" =: GText "update"
-          , "arg" =: GBlob (run messageHold)
-          ]
+      grs1 <- submitCall cid $ callRequest cid messageHold
       grs1 >>= isPendingOrProcessing
 
       step "Uninstall"
@@ -1372,13 +1336,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
       (messageHold, release) <- createMessageHold
 
       step "Create long-running call"
-      grs1 <- submitCall cid $ rec
-          [ "request_type" =: GText "call"
-          , "sender" =: GBlob defaultUser
-          , "canister_id" =: GBlob cid
-          , "method_name" =: GText "update"
-          , "arg" =: GBlob (run messageHold)
-          ]
+      grs1 <- submitCall cid $ callRequest cid messageHold
       grs1 >>= isPendingOrProcessing
 
       step "Uninstall"
@@ -1416,18 +1374,11 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
       (messageHold2, release2) <- createMessageHold
 
       step "Create first long-running call"
-      grs1 <- submitCall cid $ rec
-          [ "request_type" =: GText "call"
-          , "sender" =: GBlob defaultUser
-          , "canister_id" =: GBlob cid
-          , "method_name" =: GText "update"
-          , "arg" =: GBlob (run (
-              inter_call helper "update" defArgs
-                { other_side = messageHold1
-                , on_reply = replyData "First"
-                }
-              ))
-          ]
+      grs1 <- submitCall cid $ callRequest cid $
+                inter_call helper "update" defArgs
+                  { other_side = messageHold1
+                  , on_reply = replyData "First"
+                  }
       grs1 >>= isPendingOrProcessing
 
       step "Uninstall"
@@ -1439,18 +1390,11 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
       ic_install ic00 (enum #install) cid universal_wasm (run (setGlobal "BAR"))
 
       step "Create second long-running call"
-      grs2 <- submitCall cid $ rec
-          [ "request_type" =: GText "call"
-          , "sender" =: GBlob defaultUser
-          , "canister_id" =: GBlob cid
-          , "method_name" =: GText "update"
-          , "arg" =: GBlob (run (
-              inter_call helper "update" defArgs
-                { other_side = messageHold2
-                , on_reply = replyData "Second"
-                }
-              ))
-          ]
+      grs2 <- submitCall cid $ callRequest cid $
+                inter_call helper "update" defArgs
+                  { other_side = messageHold2
+                  , on_reply = replyData "Second"
+                  }
       awaitStatus grs1 >>= isReject [4]
       grs2 >>= isPendingOrProcessing
 
@@ -2630,6 +2574,15 @@ callRequest cid prog = callRequestAs defaultUser cid prog
 
 callToQuery'' :: (HasCallStack, HasAgentConfig) => Blob -> Prog -> IO (HTTPErrOr ReqResponse)
 callToQuery'' cid prog = awaitCall' cid $ callToQueryRequestAs defaultUser cid prog
+
+stopRequest :: (HasCallStack, HasAgentConfig) => Blob -> GenR
+stopRequest cid = rec
+    [ "request_type" =: GText "call"
+    , "sender" =: GBlob defaultUser
+    , "canister_id" =: GBlob ""
+    , "method_name" =: GText "stop_canister"
+    , "arg" =: GBlob (Candid.encode (#canister_id .== Principal cid))
+    ]
 
 -- The following variants of the call combinator differ in how much failure they allow:
 --
