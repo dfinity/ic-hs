@@ -744,7 +744,7 @@ processMessage m = case m of
           -- This is a hack, detecting callbacks via the entry, and demands refactoring
           _ -> reject RC_CANISTER_ERROR "canister is not running"
       empty <- isCanisterEmpty callee
-      when empty $ reject RC_DESTINATION_INVALID "canister is empty" -- TODO: what to do for callbacks
+      when empty $ reject RC_DESTINATION_INVALID "canister is empty" -- NB: An empty canister cannot receive a callback.
       wasm_state <- getCanisterState callee
       can_mod <- getCanisterMod callee
       env <- canisterEnv callee
