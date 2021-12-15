@@ -289,13 +289,13 @@ queryCBOR :: (HasCallStack, HasAgentConfig) => Blob -> GenR -> IO GenR
 queryCBOR cid req = do
   addNonceExpiryEnv req >>= postQueryCBOR cid >>= okCBOR
 
--- | Add envelope to CBOR, and a nonce and expiry if not there, post to
--- "submit". Returns either a HTTP Error code, or if the status is 2xx, poll
--- for the request response, and return decoded CBOR
-type HTTPErrOrReqResponse = Either (Int,String) ReqResponse
+type HTTPErrOr a = Either (Int,String) a
 
-awaitCall' :: (HasCallStack, HasAgentConfig) => Blob -> GenR -> IO HTTPErrOrReqResponse
-awaitCall' cid req = do
+-- | Add envelope to CBOR, and a nonce and expiry if not there, post to
+-- "submit". Returns either a HTTP Error code, or if the status is 2xx, the
+-- request id.
+submitCall' :: (HasCallStack, HasAgentConfig) => Blob -> GenR -> IO (HTTPErrOr (IO ReqStatus))
+submitCall' cid req = do
   req <- addNonce req
   req <- addExpiry req
   res <- envelopeFor (senderOf req) req >>= postCallCBOR cid
@@ -303,17 +303,29 @@ awaitCall' cid req = do
   if 200 <= code && code < 300
   then do
      assertBool "Response body not empty" (BS.null (responseBody res))
-     Right <$> awaitStatus (senderOf req) cid (requestId req)
+     pure $ Right (getRequestStatus (senderOf req) cid (requestId req))
   else do
     let msg = T.unpack (T.decodeUtf8With T.lenientDecode (BS.toStrict (BS.take 200 (responseBody res))))
     pure $ Left (code, msg)
+
+submitCall :: (HasCallStack, HasAgentConfig) => Blob -> GenR -> IO (IO ReqStatus)
+submitCall cid req = submitCall' cid req >>= is2xx
+
+-- | Add envelope to CBOR, and a nonce and expiry if not there, post to
+-- "submit". Returns either a HTTP Error code, or if the status is 2xx, poll
+-- for the request response, and return decoded CBOR
+awaitCall' :: (HasCallStack, HasAgentConfig) => Blob -> GenR -> IO (HTTPErrOr ReqResponse)
+awaitCall' cid req = do
+  submitCall' cid req >>= \case
+    Left e -> pure (Left e)
+    Right getStatus -> Right <$> awaitStatus getStatus
 
 -- | Add envelope to CBOR, and a nonce and expiry if not there, post to
 -- "submit", poll for the request response, and return decoded CBOR
 awaitCall :: (HasCallStack, HasAgentConfig) => Blob -> GenR -> IO ReqResponse
 awaitCall cid req = awaitCall' cid req >>= is2xx
 
-is2xx :: HasCallStack => HTTPErrOrReqResponse -> IO ReqResponse
+is2xx :: HasCallStack => HTTPErrOr a -> IO a
 is2xx = \case
     Left (c,msg) -> assertFailure $ "Status " ++ show c ++ " is not 2xx:\n" ++ msg
     Right res -> pure res
@@ -435,8 +447,8 @@ getRequestStatus sender cid rid = do
       Unknown -> return UnknownStatus
       x -> assertFailure $ "Unexpected request status, got " ++ show x
 
-awaitStatus :: HasAgentConfig => Blob -> Blob -> Blob -> IO ReqResponse
-awaitStatus sender cid rid = loop $ pollDelay >> getRequestStatus sender cid rid >>= \case
+awaitStatus :: HasAgentConfig => IO ReqStatus -> IO ReqResponse
+awaitStatus get_status = loop $ pollDelay >> get_status >>= \case
     Responded x -> return $ Just x
     _ -> return Nothing
   where
@@ -447,6 +459,11 @@ awaitStatus sender cid rid = loop $ pollDelay >> getRequestStatus sender cid rid
         go n = act >>= \case
           Just r -> return r
           Nothing -> go (n+1)
+
+isPendingOrProcessing :: ReqStatus -> IO ()
+isPendingOrProcessing Pending = return ()
+isPendingOrProcessing Processing = return ()
+isPendingOrProcessing r = assertFailure $ "Expected pending or processing, got " <> show r
 
 pollDelay :: IO ()
 pollDelay = threadDelay $ 10 * 1000 -- 10 milliseonds
@@ -502,7 +519,7 @@ isReject codes (Reject n msg) = do
     ("Reject code " ++ show n ++ " not in " ++ show codes ++ "\n" ++ T.unpack msg)
     (n `elem` codes)
 
-isErrOrReject :: HasCallStack => [Natural] -> HTTPErrOrReqResponse -> IO ()
+isErrOrReject :: HasCallStack => [Natural] -> HTTPErrOr ReqResponse -> IO ()
 isErrOrReject _codes (Left (c, msg))
     | 400 <= c && c < 600 = return ()
     | otherwise = assertFailure $
@@ -594,7 +611,7 @@ ic00 :: HasAgentConfig => IC00
 ic00 = ic00as defaultUser
 
 -- A variant that allows non-200 responses to submit
-ic00as' :: HasAgentConfig => Blob -> Blob -> T.Text -> Blob -> IO HTTPErrOrReqResponse
+ic00as' :: HasAgentConfig => Blob -> Blob -> T.Text -> Blob -> IO (HTTPErrOr ReqResponse)
 ic00as' user cid method_name arg = awaitCall' cid $ rec
       [ "request_type" =: GText "call"
       , "sender" =: GBlob user
@@ -769,10 +786,10 @@ callIC'' :: forall s a b.
   KnownSymbol s =>
   (a -> IO b) ~ (ICManagement IO .! s) =>
   Candid.CandidArg a =>
-  Blob -> Blob -> Label s -> a -> IO HTTPErrOrReqResponse
+  Blob -> Blob -> Label s -> a -> IO (HTTPErrOr ReqResponse)
 callIC'' user ecid l x = ic00as' user ecid (T.pack (symbolVal l)) (Candid.encode x)
 
-ic_install'' :: (HasCallStack, HasAgentConfig) => Blob -> InstallMode -> Blob -> Blob -> Blob -> IO HTTPErrOrReqResponse
+ic_install'' :: (HasCallStack, HasAgentConfig) => Blob -> InstallMode -> Blob -> Blob -> Blob -> IO (HTTPErrOr ReqResponse)
 ic_install'' user mode canister_id wasm_module arg =
   callIC'' user canister_id #install_code $ empty
     .+ #mode .== mode
@@ -780,55 +797,46 @@ ic_install'' user mode canister_id wasm_module arg =
     .+ #wasm_module .== wasm_module
     .+ #arg .== arg
 
-ic_uninstall'' :: HasAgentConfig => Blob -> Blob -> IO HTTPErrOrReqResponse
+ic_uninstall'' :: HasAgentConfig => Blob -> Blob -> IO (HTTPErrOr ReqResponse)
 ic_uninstall'' user canister_id =
   callIC'' user canister_id #uninstall_code $ empty
     .+ #canister_id .== Principal canister_id
 
-ic_set_controllers'' :: HasAgentConfig => Blob -> Blob -> [Blob] -> IO HTTPErrOrReqResponse
+ic_set_controllers'' :: HasAgentConfig => Blob -> Blob -> [Blob] -> IO (HTTPErrOr ReqResponse)
 ic_set_controllers'' user canister_id new_controllers = do
   callIC'' user canister_id #update_settings $ empty
     .+ #canister_id .== Principal canister_id
     .+ #settings .== fromPartialSettings (#controllers .== Vec.fromList (map Principal new_controllers))
 
-ic_start_canister'' :: HasAgentConfig => Blob -> Blob -> IO HTTPErrOrReqResponse
+ic_start_canister'' :: HasAgentConfig => Blob -> Blob -> IO (HTTPErrOr ReqResponse)
 ic_start_canister'' user canister_id = do
   callIC'' user canister_id #start_canister $ empty
     .+ #canister_id .== Principal canister_id
 
-ic_stop_canister'' :: HasAgentConfig => Blob -> Blob -> IO HTTPErrOrReqResponse
+ic_stop_canister'' :: HasAgentConfig => Blob -> Blob -> IO (HTTPErrOr ReqResponse)
 ic_stop_canister'' user canister_id = do
   callIC'' user canister_id #stop_canister $ empty
     .+ #canister_id .== Principal canister_id
 
-ic_canister_status'' :: HasAgentConfig => Blob -> Blob -> IO HTTPErrOrReqResponse
+ic_canister_status'' :: HasAgentConfig => Blob -> Blob -> IO (HTTPErrOr ReqResponse)
 ic_canister_status'' user canister_id = do
   callIC'' user canister_id #canister_status $ empty
     .+ #canister_id .== Principal canister_id
 
-ic_delete_canister'' :: HasAgentConfig => Blob -> Blob -> IO HTTPErrOrReqResponse
+ic_delete_canister'' :: HasAgentConfig => Blob -> Blob -> IO (HTTPErrOr ReqResponse)
 ic_delete_canister'' user canister_id = do
   callIC'' user canister_id #delete_canister $ empty
     .+ #canister_id .== Principal canister_id
 
-ic_deposit_cycles'' :: HasAgentConfig => Blob -> Blob -> IO HTTPErrOrReqResponse
+ic_deposit_cycles'' :: HasAgentConfig => Blob -> Blob -> IO (HTTPErrOr ReqResponse)
 ic_deposit_cycles'' user canister_id = do
   callIC'' user canister_id #deposit_cycles $ empty
     .+ #canister_id .== Principal canister_id
 
-ic_raw_rand'' :: HasAgentConfig => Blob -> IO HTTPErrOrReqResponse
+ic_raw_rand'' :: HasAgentConfig => Blob -> IO (HTTPErrOr ReqResponse)
 ic_raw_rand'' user = do
   callIC'' user "" #raw_rand ()
 
-
--- A barrier
-
--- This will stop and start all mentioned canisters. This guarantees
--- that all outstanding callbacks are handled
-barrier :: HasAgentConfig => [Blob] -> IO ()
-barrier cids = do
-  mapM_ (ic_stop_canister ic00) cids
-  mapM_ (ic_start_canister ic00) cids
 
 -- Convenience around Data.Row.Variants used as enums
 

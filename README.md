@@ -227,7 +227,7 @@ For `ic-ref-test`, before running it, you make sure you have built the universal
 The symbolic link in `test-data/universal_canister.wasm` points to the
 build output produced by
 
-    cd universal_canister
+    cd universal-canister
     nix-shell --command 'cargo build --target wasm32-unknown-unknown --release'
 
 You can now run the test suite from the top-level directory with

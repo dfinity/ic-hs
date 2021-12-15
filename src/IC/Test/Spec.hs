@@ -43,7 +43,6 @@ import IC.Types (EntityId(..))
 import IC.HTTP.GenR
 import IC.HTTP.RequestId
 import qualified IC.HTTP.CBOR as CBOR
-import IC.Management
 import IC.Crypto
 import qualified IC.Crypto.CanisterSig as CanisterSig
 import qualified IC.Crypto.DER as DER
@@ -179,14 +178,91 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
       step "Start is noop"
       ic_start_canister ic00 cid
 
+  , testCaseSteps "canister stopping" $ \step -> do
+      cid <- install noop
+
+      step "Is running (via management)?"
+      cs <- ic_canister_status ic00 cid
+      cs .! #status @?= enum #running
+
+      step "Is running (local)?"
+      query cid (replyData (i2b getStatus)) >>= asWord32 >>= is 1
+
+      step "Create message hold"
+      (messageHold, release) <- createMessageHold
+
+      step "Create long-running call"
+      grs1 <- submitCall cid $ callRequest cid messageHold
+      grs1 >>= isPendingOrProcessing
+
+      step "Normal call (to sync)"
+      call_ cid reply
+
+      step "Stop"
+      grs2 <- submitCall cid $ stopRequest cid
+      grs2 >>= isPendingOrProcessing
+
+      step "Is stopping (via management)?"
+      cs <- ic_canister_status ic00 cid
+      cs .! #status @?= enum #stopping
+
+      step "Next stop waits, too"
+      grs3 <- submitCall cid $ stopRequest cid
+      grs3 >>= isPendingOrProcessing
+
+      step "Cannot call (update)?"
+      call'' cid reply >>= isErrOrReject [5]
+
+      step "Cannot call (query)?"
+      query' cid reply >>= isReject [5]
+
+      step "Release the held message"
+      release
+
+      step "Wait for calls to complete"
+      awaitStatus grs1 >>= isReply >>= is ""
+      awaitStatus grs2 >>= isReply >>= is (Candid.encode ())
+      awaitStatus grs3 >>= isReply >>= is (Candid.encode ())
+
+      step "Is stopped (via management)?"
+      cs <- ic_canister_status ic00 cid
+      cs .! #status @?= enum #stopped
+
+
+      step "Cannot call (update)?"
+      call'' cid reply >>= isErrOrReject [5]
+
+      step "Cannot call (query)?"
+      query' cid reply >>= isReject [5]
+
   , testCaseSteps "canister deletion" $ \step -> do
       cid <- install noop
 
       step "Deletion fails"
       ic_delete_canister' ic00 cid >>= isReject [5]
 
-      step "Stop"
-      ic_stop_canister ic00 cid
+      step "Create message hold"
+      (messageHold, release) <- createMessageHold
+
+      step "Create long-running call"
+      grs1 <- submitCall cid $ callRequest cid messageHold
+      grs1 >>= isPendingOrProcessing
+
+      step "Start stopping"
+      grs2 <- submitCall cid $ stopRequest cid
+      grs2 >>= isPendingOrProcessing
+
+      step "Is stopping?"
+      cs <- ic_canister_status ic00 cid
+      cs .! #status @?= enum #stopping
+
+      step "Deletion fails"
+      ic_delete_canister' ic00 cid >>= isReject [5]
+
+      step "Let canister stop"
+      release
+      awaitStatus grs1 >>= isReply >>= is ""
+      awaitStatus grs2 >>= isReply >>= is (Candid.encode ())
 
       step "Is stopped?"
       cs <- ic_canister_status ic00 cid
@@ -1175,22 +1251,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
       query cid (replyData (i2b stableSize)) >>= is "\1\0\0\0"
     ]
 
-  , testGroup "uninstall" $
-    let inter_management method_name cid on_reply =
-          callNew "" method_name (callback on_reply) (callback relayReject) >>>
-          callDataAppend (bytes (Candid.encode (#canister_id .== Principal cid))) >>>
-          callPerform
-
-        inter_install_code cid wasm_module on_reply =
-          callNew "" "install_code" (callback on_reply) (callback relayReject) >>>
-          callDataAppend (bytes (Candid.encode (empty
-            .+ #canister_id .== Principal cid
-            .+ #mode .== (enum #install :: InstallMode)
-            .+ #wasm_module .== wasm_module
-            .+ #arg .== run (setGlobal "NONE")
-          ))) >>>
-          callPerform
-    in
+  , testGroup "uninstall"
     [ testCase "uninstall empty canister" $ do
       cid <- create
       cs <- ic_canister_status ic00 cid
@@ -1245,91 +1306,107 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
       call'' cid (replyData "Hi") >>= isErrOrReject []
       query' cid (replyData "Hi") >>= isReject [3]
 
-    , testCase "open call contexts are rejected" $ do
-      cid1 <- install noop
-      cid2 <- install noop
-      ic_set_controllers ic00 cid1 [cid2]
-      -- Step A: 2 calls 1
-      -- Step B: 1 calls 2. Now 2 is waiting on a call from 1
-      -- Step C: 2 uninstalls 1
-      -- Step D: 2 replies "FOO"
-      -- What should happen: The system rejects the call from step A
-      -- What should not happen: The reply "FOO" makes it to canister 2
-      -- (This is not a great test, because even if the call context is
-      -- not rejected by the system during uninstallation it will somehow be rejected
-      -- later when the callback is delivered to the empty canister. Maybe the reject
-      -- code will catch it.)
-      do call cid2 $ inter_update cid1 defArgs
-          { other_side =
-            inter_update cid2 defArgs
-              { other_side =
-                  inter_management "uninstall_code" cid1 $
-                  replyData "FOO"
-              }
-          }
-       >>= isRelay >>= isReject [4]
+    , testCaseSteps "open call contexts are rejected" $ \step -> do
+      cid <- install noop
 
-    , testCase "deleted call contexts do not prevent stopping" $ do
-      -- Similar to above, but 2, after uninstalling, imediatelly
-      -- stops and deletes 1. This can only work if the call
-      -- contexts at 1 are indeed deleted
-      cid1 <- install noop
-      cid2 <- install noop
-      ic_set_controllers ic00 cid1 [cid2]
-      do call cid2 $ inter_update cid1 defArgs
-          { other_side =
-            inter_update cid2 defArgs
-              { other_side =
-                  inter_management "uninstall_code" cid1 $
-                  inter_management "stop_canister" cid1 $
-                  inter_management "delete_canister" cid1 $
-                  replyData "FOO"
-              }
-          }
-       >>= isRelay >>= isReject [4]
+      step "Create message hold"
+      (messageHold, release) <- createMessageHold
 
-      -- wait for cid2 to finish its stuff
-      barrier [cid2]
+      step "Create long-running call"
+      grs1 <- submitCall cid $ callRequest cid messageHold
+      grs1 >>= isPendingOrProcessing
 
-      -- check that cid1 is deleted
-      query' cid1 reply >>= isReject [3]
+      step "Uninstall"
+      ic_uninstall ic00 cid
 
-    , testCase "deleted call contexts are not delivered" $ do
-      -- This is a very tricky one:
-      -- Like above, but before replying, 2 installs code,
-      -- calls into 1, so that 1 can call back to 2. This
-      -- creates a new callback at 1, presumably with the same
-      -- internal `env` as the one from step B.
-      -- 2 rejects the new call, and replies to the original one.
-      -- Only the on_reject callback at 1 should be called, not the on_reply
-      -- We observe that using the “global”
-      cid1 <- install noop
-      cid2 <- install noop
-      universal_wasm <- getTestWasm "universal_canister"
-      ic_set_controllers ic00 cid1 [cid2]
-      do call cid2 $ inter_update cid1 defArgs
-          { other_side =
-            inter_update cid2 defArgs
-              { other_side =
-                  inter_management "uninstall_code" cid1 $
-                  inter_install_code cid1 universal_wasm $
-                  inter_update cid1 defArgs {
-                    other_side =
-                      inter_update cid2 defArgs
-                      { other_side = reject "FOO"
-                      , on_reply = setGlobal "REPLY" >>> reply
-                      , on_reject = setGlobal "REJECT" >>> reply
-                      }
+      step "Long-running call is rejected"
+      awaitStatus grs1 >>= isReject [4]
+
+      step "Now release"
+      release
+      awaitStatus grs1 >>= isReject [4] -- still a reject
+
+    , testCaseSteps "deleted call contexts do not prevent stopping" $ \step -> do
+      -- Similar to above, but after uninstalling, imediatelly
+      -- stops and deletes. This can only work if the call
+      -- contexts are indeed deleted
+      cid <- install noop
+
+      step "Create message hold"
+      (messageHold, release) <- createMessageHold
+
+      step "Create long-running call"
+      grs1 <- submitCall cid $ callRequest cid messageHold
+      grs1 >>= isPendingOrProcessing
+
+      step "Uninstall"
+      ic_uninstall ic00 cid
+
+      step "Long-running call is rejected"
+      awaitStatus grs1 >>= isReject [4]
+
+      step "Stop now"
+      ic_stop_canister ic00 cid
+
+      step "Delete now"
+      ic_delete_canister ic00 cid
+
+      -- deletion means query fails
+      query' cid reply >>= isReject [3]
+
+      step "Now release"
+      release
+      awaitStatus grs1 >>= isReject [4] -- still a reject
+      query' cid reply >>= isReject [3] -- still deleted
+
+
+
+    , testCaseSteps "deleted call contexts are not delivered" $ \step -> do
+      -- This is a tricky one: We make one long-running call,
+      -- then uninstall (rejecting the call), then re-install fresh code,
+      -- make another long-running call, then release the first one. The system
+      -- should not confuse the two callbacks.
+      cid <- install noop
+      helper <- install noop
+
+      step "Create message holds"
+      (messageHold1, release1) <- createMessageHold
+      (messageHold2, release2) <- createMessageHold
+
+      step "Create first long-running call"
+      grs1 <- submitCall cid $ callRequest cid $
+                inter_call helper "update" defArgs
+                  { other_side = messageHold1
+                  , on_reply = replyData "First"
                   }
-              }
-          }
-       >>= isRelay >>= isReject [4]
+      grs1 >>= isPendingOrProcessing
 
-      -- wait for cid2 to finish its stuff
-      barrier [cid2]
+      step "Uninstall"
+      ic_uninstall ic00 cid
+      awaitStatus grs1 >>= isReject [4]
 
-      -- check cid1’s global
-      query cid1 (replyData getGlobal) >>= is "REJECT"
+      step "Reinstall"
+      universal_wasm <- getTestWasm "universal_canister"
+      ic_install ic00 (enum #install) cid universal_wasm (run (setGlobal "BAR"))
+
+      step "Create second long-running call"
+      grs2 <- submitCall cid $ callRequest cid $
+                inter_call helper "update" defArgs
+                  { other_side = messageHold2
+                  , on_reply = replyData "Second"
+                  }
+      awaitStatus grs1 >>= isReject [4]
+      grs2 >>= isPendingOrProcessing
+
+      step "Release first call"
+      release1
+      awaitStatus grs1 >>= isReject [4]
+      grs2 >>= isPendingOrProcessing
+
+      step "Release second call"
+      release2
+      awaitStatus grs1 >>= isReject [4]
+      awaitStatus grs2 >>= isReply >>= is "Second"
     ]
 
   , testGroup "debug facilities"
@@ -2011,7 +2088,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
         -- sign request with delegations
         delegationEnv defaultSK dels req >>= postCallCBOR cid >>= code2xx
         -- wait for it
-        void $ awaitStatus defaultUser cid rid >>= isReply
+        void $ awaitStatus (getRequestStatus defaultUser cid rid) >>= isReply
         -- also read status with delegation
         sreq <- addExpiry $ rec
           [ "request_type" =: GText "read_state"
@@ -2031,7 +2108,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
         -- submit with plain signature
         envelope defaultSK req >>= postCallCBOR cid >>= code202
         -- wait for it
-        void $ awaitStatus defaultUser cid rid >>= isReply
+        void $ awaitStatus (getRequestStatus defaultUser cid rid) >>= isReply
         -- also read status with delegation
         sreq <- addExpiry $ rec
           [ "request_type" =: GText "read_state"
@@ -2126,7 +2203,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
       signed_req <- env req
       postCallCBOR cid signed_req >>= code2xx
 
-      awaitStatus user cid (requestId req) >>= isReply >>= is ""
+      awaitStatus (getRequestStatus user cid (requestId req)) >>= isReply >>= is ""
     ]
 
   , testGroup "signature checking" $
@@ -2382,7 +2459,7 @@ awaitCallTwice cid req = do
   res <- envelopeFor (senderOf req) req >>= postCallCBOR cid
   code202 res
   assertBool "Response body not empty" (BS.null (responseBody res))
-  awaitStatus (senderOf req) cid (requestId req)
+  awaitStatus (getRequestStatus (senderOf req) cid (requestId req))
 
 
 
@@ -2495,8 +2572,17 @@ callToQueryRequestAs user cid prog = rec
 callRequest :: (HasCallStack, HasAgentConfig) => Blob -> Prog -> GenR
 callRequest cid prog = callRequestAs defaultUser cid prog
 
-callToQuery'' :: (HasCallStack, HasAgentConfig) => Blob -> Prog -> IO HTTPErrOrReqResponse
+callToQuery'' :: (HasCallStack, HasAgentConfig) => Blob -> Prog -> IO (HTTPErrOr ReqResponse)
 callToQuery'' cid prog = awaitCall' cid $ callToQueryRequestAs defaultUser cid prog
+
+stopRequest :: (HasCallStack, HasAgentConfig) => Blob -> GenR
+stopRequest cid = rec
+    [ "request_type" =: GText "call"
+    , "sender" =: GBlob defaultUser
+    , "canister_id" =: GBlob ""
+    , "method_name" =: GText "stop_canister"
+    , "arg" =: GBlob (Candid.encode (#canister_id .== Principal cid))
+    ]
 
 -- The following variants of the call combinator differ in how much failure they allow:
 --
@@ -2505,7 +2591,7 @@ callToQuery'' cid prog = awaitCall' cid $ callToQueryRequestAs defaultUser cid p
 --   call   requires a reply response
 --   call_  requires a reply response with an empty blob (a common case)
 
-call'' :: (HasCallStack, HasAgentConfig) => Blob -> Prog -> IO HTTPErrOrReqResponse
+call'' :: (HasCallStack, HasAgentConfig) => Blob -> Prog -> IO (HTTPErrOr ReqResponse)
 call'' cid prog = awaitCall' cid (callRequest cid prog)
 
 call' :: (HasCallStack, HasAgentConfig) => Blob -> Prog -> IO ReqResponse
@@ -2591,3 +2677,55 @@ getTestWasm :: FilePath -> IO BS.ByteString
 getTestWasm base = do
   fp <- getTestFile $ base <.> "wasm"
   BS.readFile fp
+
+-- * Helper patterns
+
+-- A barrier
+
+-- This will stop and start all mentioned canisters. This guarantees
+-- that all outstanding callbacks are handled
+barrier :: HasAgentConfig => [Blob] -> IO ()
+barrier cids = do
+  mapM_ (ic_stop_canister ic00) cids
+  mapM_ (ic_start_canister ic00) cids
+
+
+-- A message hold
+--
+-- This allows the test driver to withhold the response to a message, and
+-- control when they are released, in order to produce situations with
+-- outstanding call contexts.
+--
+-- In an ideal world (from our pov), we could instrument and control the
+-- system's scheduler this way, but we can't. So instead, we use some tricks.
+-- Ideally, the details of this trick are irrelevant to the users of this
+-- function (yay, abstraction), and if we find better tricks, we can swap them
+-- out easily. We'll see if that holds water.
+--
+-- One problem with this approach is that a test failure could mean that the
+-- system doesn't pass the test, but it could also mean that the system has a
+-- bug that prevents this trick from working, so take care.
+--
+-- The current trick is: Create a canister (the "stopper"). Make it its own
+-- controller. Tell the canister to stop itself. This call will now hang,
+-- because a canister cannot stop itself. We can release the call (producing a
+-- reject) by starting the canister again.
+--
+-- Returns a program to be executed by any canister, which will cause this
+-- canister to send a message that will not be responded to, until the given
+-- IO action is performed.
+createMessageHold :: HasAgentConfig => IO (Prog, IO ())
+createMessageHold = do
+  cid <- install noop
+  ic_set_controllers ic00 cid [defaultUser, cid]
+  let holdMessage = inter_update cid defArgs
+        { other_side =
+            callNew "" "stop_canister" (callback (trap "createMessageHold: stopping succeeded?")) (callback reply) >>>
+            callDataAppend (bytes (Candid.encode (#canister_id .== Principal cid))) >>>
+            callPerform
+        , on_reply = reply
+        }
+  let release = ic_start_canister ic00 cid
+  return (holdMessage, release)
+
+

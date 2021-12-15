@@ -534,7 +534,7 @@ stateTree (Timestamp t) ic = node
       ] ++
       ( case content cs of
         Nothing -> []
-        Just cc -> 
+        Just cc ->
           [ "metadata" =: node
             [ toUtf8 n =: val c | (n,(_,c)) <- M.toList (metadata (can_mod cc)) ]
           , "module_hash" =: val (raw_wasm_hash (can_mod cc))
@@ -662,10 +662,10 @@ respondCallContext ctxt_id response = do
   ctxt <- getCallContext ctxt_id
   when (deleted ctxt) $
     error "Internal error: response to deleted call context"
-  when (needs_to_respond ctxt == NeedsToRespond False) $
-    error "Internal error: Double response"
   when (origin ctxt == FromHeartbeat) $
     error "Internal error: Heartbeats cannot be responded to"
+  when (needs_to_respond ctxt == NeedsToRespond False) $
+    error $ "Internal error: Double response when responding with " <> show response
   modifyCallContext ctxt_id $ \ctxt -> ctxt
     { needs_to_respond = NeedsToRespond False
     , available_cycles = 0
@@ -737,11 +737,14 @@ processMessage m = case m of
         invokeManagementCanister caller ctxt_id entry
     else do
       canisterMustExist callee
-      getRunStatus callee >>= \case
-          IsRunning -> return ()
-          _ -> reject RC_CANISTER_ERROR "canister is stopped"
+      status <- getRunStatus callee
+      case (status, entry) of
+          (IsRunning, _) -> return ()
+          (IsStopping _, Closure{}) -> return ()
+          -- This is a hack, detecting callbacks via the entry, and demands refactoring
+          _ -> reject RC_CANISTER_ERROR "canister is not running"
       empty <- isCanisterEmpty callee
-      when empty $ reject RC_DESTINATION_INVALID "canister is empty"
+      when empty $ reject RC_DESTINATION_INVALID "canister is empty" -- NB: An empty canister cannot receive a callback.
       wasm_state <- getCanisterState callee
       can_mod <- getCanisterMod callee
       env <- canisterEnv callee
@@ -991,8 +994,10 @@ icStartCanister r = do
     let canister_id = principalToEntityId (r .! #canister_id)
     getRunStatus canister_id >>= \case
         IsRunning -> return ()
-        IsStopping pending -> forM_ pending $ \ctxt_id ->
-            rejectCallContext ctxt_id (RC_CANISTER_ERROR, "Canister has been restarted")
+        IsStopping pending -> do
+            forM_ pending $ \ctxt_id ->
+                rejectCallContext ctxt_id (RC_CANISTER_ERROR, "Canister has been restarted")
+            setRunStatus canister_id IsRunning
         IsStopped -> setRunStatus canister_id IsRunning
         IsDeleted -> error "deleted canister encountered"
 
