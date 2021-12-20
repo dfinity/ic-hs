@@ -59,7 +59,7 @@
         "owner": "ggreif",
         "repo": "winter",
         "rev": "220b7ee600fb739c033ceef6ad24d0642019fe49",
-        "sha256": "1yfgk4bhyzrllnkhpg1plzp3mz7h1fgn3j0zfn36a3h892lknlds",
+        "sha256": "sha256-ulE7qUgIDmWGdR/IYZ8L8Pw67qc3vAunpTR/D1eZz/k",
         "type": "tarball",
         "url": "https://github.com/dfinity-side-projects/winter/archive/e62722796e11760947a94285734e7bc29d72c389.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
