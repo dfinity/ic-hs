@@ -70,7 +70,7 @@ let
       src_subst = "pkgs.sources.haskell-candid";
     };
 
-    # To pull other versios from hackage:
+    # To pull other versions from hackage:
 
     # 0.2.5.0 broke with ghc-8.10 and integer-simple,
     # see https://github.com/well-typed/cborg/issues/267
