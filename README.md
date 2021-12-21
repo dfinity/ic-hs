@@ -264,7 +264,7 @@ Updating Haskell Packages
 
 When the `.cabal` file of a Haskell package is changed you need to make sure the
 corresponding nix files `nix/generated/` are kept in sync with it. These are
-automatically generate, run
+automatically generated, run
 
     nix-shell nix/generate.nix
 
