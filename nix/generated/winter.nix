@@ -36,7 +36,7 @@
 }:
 mkDerivation {
   pname = "winter";
-  version = "1.0.0";
+  version = "1.1.0";
   src = pkgs.sources.winter;
   isLibrary = true;
   isExecutable = true;
@@ -103,7 +103,7 @@ mkDerivation {
     vector
   ];
   doCheck = false;
-  homepage = "https://github.com/dfinity/winter";
+  homepage = "https://github.com/dfinity-side-projects/winter";
   description = "Haskell port of the WebAssembly OCaml reference interpreter";
   license = lib.licenses.mit;
 }

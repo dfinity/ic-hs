@@ -119,7 +119,7 @@ executable ic-ref
   build-depends: wai-cors
   build-depends: wai-extra
   build-depends: warp
-  build-depends: winter
+  build-depends: winter == 1.1.0
   build-depends: uglymemo
   build-depends: zlib
   other-modules: IC.Canister
