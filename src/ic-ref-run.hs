@@ -93,6 +93,7 @@ submitAndRun :: CallRequest -> DRun ()
 submitAndRun r = do
     lift $ printCallRequest r
     rid <- lift mkRequestId
+    processHeartbeats
     submitRequest rid r
     runToCompletion
     r <- gets (snd . (M.! rid) . requests)
