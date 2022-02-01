@@ -97,7 +97,6 @@ executable ic-ref
   build-depends: http-client
   build-depends: http-client-tls
   build-depends: http-types
-  build-depends: http-common
   build-depends: leb128-cereal
   build-depends: memory
   build-depends: MonadRandom
