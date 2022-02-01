@@ -43,7 +43,6 @@ import Data.Functor
 import Numeric.Natural
 
 import IC.Types
-import IC.Constants
 import IC.Wasm.Winter
 import IC.Wasm.Imports
 import IC.Canister.StableMemory as Mem
@@ -161,7 +160,7 @@ getRefunded esref =
 
 addBalance :: ESRef s -> Cycles -> HostM s ()
 addBalance esref f = modES esref $ \es ->
-  es { balance = min (balance es + f) cMAX_CANISTER_BALANCE  }
+  es { balance = balance es + f }
 
 addAccepted :: ESRef s -> Cycles -> HostM s ()
 addAccepted esref f = modES esref $ \es ->
@@ -278,11 +277,7 @@ systemAPI esref =
     cycles_accept :: Natural -> HostM s Natural
     cycles_accept max_amount = do
       available <- getAvailable esref
-      balance <- gets balance
-      let amount = minimum
-            [ max_amount
-            , available
-            , cMAX_CANISTER_BALANCE - balance]
+      let amount = min max_amount available
       subtractAvailable esref amount
       addBalance esref amount
       addAccepted esref amount

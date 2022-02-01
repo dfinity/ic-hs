@@ -325,7 +325,7 @@ getBalance cid = cycle_balance <$> getCanister cid
 
 setBalance :: ICM m => CanisterId -> Natural -> m ()
 setBalance cid balance = modCanister cid $
-    \cs -> cs { cycle_balance = min cMAX_CANISTER_BALANCE balance }
+    \cs -> cs { cycle_balance = balance }
 
 setCertifiedData :: ICM m => CanisterId -> Blob -> m ()
 setCertifiedData cid b = modCanister cid $
@@ -899,7 +899,7 @@ icCreateCanister caller ctxt_id r = do
 icCreateCanisterWithCycles :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "provisional_create_canister_with_cycles"
 icCreateCanisterWithCycles caller r = do
     forM_ (r .! #settings) validateSettings
-    cid <- icCreateCanisterCommon caller (fromMaybe cMAX_CANISTER_BALANCE (r .! #amount))
+    cid <- icCreateCanisterCommon caller (fromMaybe cDEFAULT_PROVISIONAL_CYCLES_BALANCE (r .! #amount))
     forM_ (r .! #settings) $ applySettings cid
     return (#canister_id .== entityIdToPrincipal cid)
 
