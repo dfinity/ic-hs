@@ -1217,12 +1217,6 @@ popMessage = state $ \ic ->
     Empty -> (Nothing, ic)
     m :<| ms -> (Just m, ic { messages = ms })
 
--- popHttpRequest :: ICM m => m (Maybe CanisterHttpRequest)
--- popHttpRequest = state $ \ic ->
---   case http_requests ic of
---     Empty -> (Nothing, ic)
---     r :<| rs -> (Just r, ic { http_requests = rs })
-
 -- | Fake time increase
 bumpTime :: ICM m => m ()
 bumpTime = modify $
