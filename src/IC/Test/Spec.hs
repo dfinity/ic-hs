@@ -28,6 +28,7 @@ import Test.Tasty.HUnit
 import Control.Monad
 import Data.Word
 import Data.Functor
+import Data.Row as R
 import System.FilePath
 import System.Directory
 import System.Environment
@@ -36,7 +37,6 @@ import Data.Time.Clock.POSIX
 import qualified Data.Binary.Get as Get
 import Codec.Candid (Principal(..))
 import qualified Codec.Candid as Candid
-import Data.Row
 import Data.Serialize.LEB128 (toLEB128)
 
 import IC.Types (EntityId(..))
@@ -359,6 +359,16 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     BS.length r1 @?= 32
     BS.length r2 @?= 32
     assertBool "random blobs are different" $ r1 /= r2
+
+  , testGroup "canister http calls"
+    [ simpleTestCase "simple call" $ \cid -> do
+      resp <- ic_http_request (ic00via cid) cid "http://localhost:8003"
+      case trial' resp #ok of
+        Nothing -> error "response #error, not #ok"
+        Just r -> do
+          (r .! #status) @?= 200
+          (r .! #body) @?= "Hello world!"
+    ]
 
   , testGroup "simple calls"
     [ simpleTestCase "Call" $ \cid ->
@@ -2057,6 +2067,9 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
 
     , testCase "management canister: raw_rand not accepted" $ do
       ic_raw_rand'' defaultUser >>= isErrOrReject []
+
+    , testCase "management canister: http_request not accepted" $ do
+      ic_http_request'' defaultUser "http://localhost:8003" >>= isErrOrReject []
 
     , simpleTestCase "management canister: deposit_cycles not accepted" $ \cid -> do
       ic_deposit_cycles'' defaultUser cid >>= isErrOrReject []

@@ -59,6 +59,9 @@ import qualified Data.ByteString.Lazy as BS
 import qualified Data.Text as T
 import qualified Data.Vector as Vec
 import qualified Data.Set as S
+import qualified Network.HTTP.Client as C
+import Data.CaseInsensitive (original)
+import Data.Text.Encoding (decodeUtf8)
 import Data.List
 import Data.Maybe
 import Numeric.Natural
@@ -71,6 +74,7 @@ import Data.Foldable (toList)
 import Codec.Candid
 import Data.Row ((.==), (.+), (.!), type (.!))
 import GHC.Stack
+import Network.HTTP.Types.Status (statusCode)
 
 import IC.Types
 import IC.Constants
@@ -188,6 +192,7 @@ data IC = IC
   { canisters :: CanisterId ↦ CanState
   , requests :: RequestID ↦ (CallRequest, RequestStatus)
   , messages :: Seq Message
+--   , http_requests :: Seq CanisterHttpRequest
   , call_contexts :: CallId ↦ CallContext
   , rng :: StdGen
   , secretRootKey :: SecretKey
@@ -196,7 +201,7 @@ data IC = IC
   deriving (Show)
 
 -- The functions below want stateful access to a value of type 'IC'
-type ICM m = (MonadState IC m, HasCallStack)
+type ICM m = (MonadState IC m, HasCallStack, MonadIO m)
 
 initialIC :: IO IC
 initialIC = do
@@ -458,6 +463,7 @@ checkEffectiveCanisterID ecid cid method arg
   | cid == managementCanisterId = case method of
     "provisional_create_canister_with_cycles" -> pure ()
     "raw_rand" -> throwError "raw_rand() cannot be invoked via ingress calls"
+    "http_request" -> throwError "http_request() cannot be invoked via ingress calls"
     _ -> case Codec.Candid.decode @(R.Rec ("canister_id" R..== Principal)) arg of
         Left err ->
             throwError $ "call to management canister is not valid candid: " <> T.pack err
@@ -475,7 +481,7 @@ inspectIngress (CallRequest canister_id user_id method arg)
   | canister_id == managementCanisterId =
     if| method `elem` ["provisional_create_canister_with_cycles", "provisional_top_up_canister"]
       -> return ()
-      | method `elem` [ "raw_rand", "deposit_cycles" ]
+      | method `elem` [ "raw_rand", "deposit_cycles", "http_request" ]
       -> throwError $ "Management method " <> T.pack method <> " cannot be invoked via an ingress call"
       | method `elem` managementMethods
       -> case decode @(R.Rec ("canister_id" R..== Principal)) arg of
@@ -822,7 +828,7 @@ managementCanisterId = EntityId mempty
 
 
 invokeManagementCanister ::
-  forall m. (CanReject m, ICM m) => EntityId -> CallId -> EntryPoint -> m ()
+  forall m. (CanReject m, ICM m, MonadIO m) => EntityId -> CallId -> EntryPoint -> m ()
 invokeManagementCanister caller ctxt_id (Public method_name arg) =
   case method_name of
       "create_canister" -> atomic $ icCreateCanister caller ctxt_id
@@ -837,6 +843,7 @@ invokeManagementCanister caller ctxt_id (Public method_name arg) =
       "provisional_create_canister_with_cycles" -> atomic $ icCreateCanisterWithCycles caller
       "provisional_top_up_canister" -> atomic icTopUpCanister
       "raw_rand" -> atomic icRawRand
+      "http_request" -> atomic $ icHttpRequest caller ctxt_id
       _ -> reject RC_DESTINATION_INVALID $ "Unsupported management function " ++ method_name
   where
     -- always responds
@@ -859,6 +866,26 @@ invokeManagementCanister caller ctxt_id (Public method_name arg) =
 
 invokeManagementCanister _ _ Closure{} = error "closure invoked on management canister"
 invokeManagementCanister _ _ Heartbeat = error "heartbeat invoked on management canister"
+
+sendHttpRequest :: T.Text -> IO (C.Response BS.ByteString)
+sendHttpRequest url = do
+  m <- C.newManager C.defaultManagerSettings
+  initReq <- C.parseRequest (T.unpack url)
+  let req = initReq {
+      C.method = "GET"
+  }
+  C.httpLbs req m
+
+icHttpRequest :: (ICM m, CanReject m) => EntityId -> CallId -> ICManagement m .! "http_request"
+icHttpRequest caller ctxt_id r = do
+  response <- liftIO $ sendHttpRequest (r .! #url)
+  let code = statusCode $ C.responseStatus response
+  let headers = C.responseHeaders response
+  let body = C.responseBody response
+  return $ V.IsJust #ok $ R.empty
+    .+ #status .== (fromIntegral code)
+    .+ #headers .== (Vec.fromList $ map (\(n, v) -> (decodeUtf8 (original n), decodeUtf8 v)) headers)
+    .+ #body .== body
 
 icCreateCanister :: (ICM m, CanReject m) => EntityId -> CallId -> ICManagement m .! "create_canister"
 icCreateCanister caller ctxt_id r = do
@@ -1190,6 +1217,11 @@ popMessage = state $ \ic ->
     Empty -> (Nothing, ic)
     m :<| ms -> (Just m, ic { messages = ms })
 
+-- popHttpRequest :: ICM m => m (Maybe CanisterHttpRequest)
+-- popHttpRequest = state $ \ic ->
+--   case http_requests ic of
+--     Empty -> (Nothing, ic)
+--     r :<| rs -> (Just r, ic { http_requests = rs })
 
 -- | Fake time increase
 bumpTime :: ICM m => m ()

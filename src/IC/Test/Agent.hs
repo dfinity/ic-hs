@@ -719,6 +719,17 @@ ic_raw_rand :: HasAgentConfig => IC00 -> IO Blob
 ic_raw_rand ic00 =
   callIC ic00 "" #raw_rand ()
 
+ic_http_request ::
+    forall a b. (a -> IO b) ~ (ICManagement IO .! "http_request") =>
+    HasAgentConfig => IC00 -> Blob -> String -> IO b
+ic_http_request ic00 canister_id url =
+  callIC ic00 "" #http_request $ empty
+    .+ #url .== T.pack url
+    .+ #method .== enum #get
+    .+ #headers .== Vec.empty
+    .+ #body .== Nothing
+    .+ #transform .== Nothing -- (Just (V.IsJust #function (Candid.FuncRef (Principal canister_id) "xyz")))
+
 -- Primed variants return the response (reply or reject)
 callIC' :: forall s a b.
   HasAgentConfig =>
@@ -837,6 +848,14 @@ ic_raw_rand'' :: HasAgentConfig => Blob -> IO (HTTPErrOr ReqResponse)
 ic_raw_rand'' user = do
   callIC'' user "" #raw_rand ()
 
+ic_http_request'' ::HasAgentConfig => Blob -> String -> IO (HTTPErrOr ReqResponse)
+ic_http_request'' user url =
+  callIC'' user "" #http_request $ empty
+    .+ #url .== T.pack url
+    .+ #method .== enum #get
+    .+ #headers .== Vec.empty
+    .+ #body .== Nothing
+    .+ #transform .== Nothing
 
 -- Convenience around Data.Row.Variants used as enums
 

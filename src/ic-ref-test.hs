@@ -1,8 +1,14 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 module Main (main) where
 
+import Control.Concurrent (forkIO)
+import Network.Wai (responseLBS, Application)
+import Network.Wai.Handler.Warp (run)
+import Network.HTTP.Types (status200)
+import Network.HTTP.Types.Header (hContentType)
 import Test.Tasty
 import Test.Tasty.Ingredients
 import Test.Tasty.Ingredients.Basic
@@ -18,6 +24,7 @@ import qualified IC.Crypto.BLS as BLS
 
 main :: IO ()
 main = do
+    startEchoServer
     BLS.init
     os <- parseOptions ingredients (testGroup "dummy" [])
     ac <- preFlight os
@@ -30,3 +37,6 @@ main = do
         , antXMLRunner `composeReporters` htmlRunner `composeReporters` consoleTestReporter
         ]
       ]
+
+startEchoServer = forkIO $ run 8003 app
+  where app _ f = f $ responseLBS status200 [(hContentType, "text/plain")] "Hello world!"

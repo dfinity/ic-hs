@@ -16,7 +16,33 @@ type definite_canister_settings = record {
   freezing_threshold : nat;
 };
 
+type http_header = record {
+  0: text;
+  1: text
+};
+
+type http_response = record {
+  status: nat;
+  headers: vec http_header;
+  body: blob;
+};
+
+type error = variant {
+  no_consensus;
+  timeout;
+  bad_tls;
+};
+
 service ic : {
+  http_request : (record {
+    url : text;
+    method : variant { get };
+    headers : vec http_header;
+    body : opt blob;
+    transform : opt variant {
+      function: func (http_response) -> (http_response) query
+    };
+  }) -> (variant { ok : http_response; err : opt error });
   create_canister : (record {
     settings : opt canister_settings
   }) -> (record {canister_id : canister_id});
