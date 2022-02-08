@@ -85,7 +85,7 @@ import IC.Certificate
 import IC.Certificate.Value
 import IC.Certificate.CBOR
 import IC.Crypto
-import IC.HTTP.IO (sendHttpRequest)
+import IC.Ref.IO (sendHttpRequest)
 
 -- Abstract HTTP Interface
 
