@@ -30,10 +30,6 @@ type RunState = [candidType|
     variant { running; stopping; stopped }
   |]
 
-type HttpError = [candidType|
-    variant { no_consensus; timeout; bad_tls; transform_error }
-  |]
-
 type Settings = [candidType|
     record {
       controllers : opt vec principal;
