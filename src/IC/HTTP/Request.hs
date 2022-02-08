@@ -7,7 +7,6 @@ module IC.HTTP.Request where
 import qualified Data.Text as T
 import qualified Data.ByteString.Lazy as BS
 import qualified Data.HashMap.Lazy as HM
-import qualified Network.HTTP.Client as C
 import Control.Monad.Except
 import Control.Monad.Writer
 import Data.Foldable

@@ -60,9 +60,6 @@ import qualified Data.ByteString.Lazy as BS
 import qualified Data.Text as T
 import qualified Data.Vector as Vec
 import qualified Data.Set as S
-import qualified Network.HTTP.Client as C
-import Data.CaseInsensitive (original)
-import Data.Text.Encoding (decodeUtf8)
 import Data.List
 import Data.Maybe
 import Numeric.Natural
@@ -75,8 +72,6 @@ import Data.Foldable (toList)
 import Codec.Candid
 import Data.Row ((.==), (.+), (.!), type (.!))
 import GHC.Stack
-import Network.HTTP.Types.Status (statusCode)
-import Data.Time.Clock.POSIX
 
 import IC.Types
 import IC.Constants
@@ -90,6 +85,7 @@ import IC.Certificate
 import IC.Certificate.Value
 import IC.Certificate.CBOR
 import IC.Crypto
+import IC.HTTP.IO (sendHttpRequest)
 
 -- Abstract HTTP Interface
 
@@ -868,44 +864,28 @@ invokeManagementCanister caller ctxt_id (Public method_name arg) =
 invokeManagementCanister _ _ Closure{} = error "closure invoked on management canister"
 invokeManagementCanister _ _ Heartbeat = error "heartbeat invoked on management canister"
 
-sendHttpRequest :: T.Text -> IO (C.Response BS.ByteString)
-sendHttpRequest url = do
-  m <- C.newManager C.defaultManagerSettings
-  initReq <- C.parseRequest (T.unpack url)
-  let req = initReq {
-      C.method = "GET"
-  }
-  C.httpLbs req m
-
-getTimestamp :: IO Timestamp
-getTimestamp = do
-    t <- getPOSIXTime
-    return $ Timestamp $ round (t * 1000_000_000)
-
 icHttpRequest :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "http_request"
 icHttpRequest caller r = do
-    resp <- liftIO $ toHttpResponse <$> sendHttpRequest (r .! #url)
+    resp <- liftIO $ sendHttpRequest (r .! #url)
     case (r .! #transform) of
       Nothing -> return $ V.IsJust #ok resp
       Just t -> case V.trial' t #function of
         Nothing -> return $ V.IsJust #err (V.IsJust #transform_error ())
         Just (FuncRef p m) -> do
             let cid = principalToEntityId p
-            can_mod <- getCanisterMod cid
-            wasm_state <- getCanisterState cid
-            env <- canisterEnv cid
-            return $ case M.lookup (T.unpack m) (query_methods can_mod) of
-              Nothing -> V.IsJust #err (V.IsJust #no_consensus ())
-              Just f -> case f cid env (Codec.Candid.encode resp) wasm_state of
-                Return (Reply r) -> case Codec.Candid.decode @HttpResponse r of
-                  Left _ -> V.IsJust #err (V.IsJust #transform_error ())
-                  Right r -> V.IsJust #ok r
-                _ -> V.IsJust #err (V.IsJust #transform_error ())
-  where
-    toHttpResponse r = R.empty
-      .+ #status .== (fromIntegral (statusCode $ C.responseStatus r))
-      .+ #headers .== (Vec.fromList $ map (\(n, v) -> (decodeUtf8 (original n), decodeUtf8 v)) (C.responseHeaders r))
-      .+ #body .== (C.responseBody r)
+            if cid /= caller then
+              return $ V.IsJust #err (V.IsJust #transform_error ())
+            else do
+              can_mod <- getCanisterMod cid
+              wasm_state <- getCanisterState cid
+              env <- canisterEnv cid
+              case M.lookup (T.unpack m) (query_methods can_mod) of
+                Nothing -> return $ V.IsJust #err (V.IsJust #transform_error ())
+                Just f -> case f cid env (Codec.Candid.encode resp) wasm_state of
+                  Return (Reply r) -> case Codec.Candid.decode @HttpResponse r of
+                    Left _ -> reject RC_CANISTER_ERROR "could not decode the response"
+                    Right r -> return $ V.IsJust #ok r
+                  _ -> reject RC_CANISTER_ERROR "canister did not return a response properly"
 
 icCreateCanister :: (ICM m, CanReject m) => EntityId -> CallId -> ICManagement m .! "create_canister"
 icCreateCanister caller ctxt_id r = do

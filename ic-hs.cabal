@@ -157,6 +157,7 @@ executable ic-ref
   other-modules: IC.HTTP.CBOR
   other-modules: IC.HTTP.GenR
   other-modules: IC.HTTP.GenR.Parse
+  other-modules: IC.HTTP.IO
   other-modules: IC.HTTP.Request
   other-modules: IC.HTTP.RequestId
   other-modules: IC.HTTP.Status

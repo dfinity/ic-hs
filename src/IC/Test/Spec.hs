@@ -52,7 +52,9 @@ import IC.Test.Universal
 import IC.HashTree hiding (Blob, Label)
 import IC.Certificate
 import IC.Hash
+import IC.Utils
 import IC.Test.Agent
+import IC.Management (HttpResponse)
 
 type Blob = BS.ByteString
 
@@ -376,13 +378,13 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
         >>= is (V.IsJust #err (V.IsJust #transform_error ()))
 
     , testCase "simple transform function" $ do
-      cid <- install noop
+      cid <- install (onTransform (callback (replyData (bytes (Candid.encode dummyResponse)))))
       resp <- ic_http_request (ic00via cid) cid "http://localhost:8003" (Just "transform")
       case trial' resp #ok of
         Nothing -> error "response #error, not #ok"
         Just r -> do
-          (r .! #status) @?= 200
-          (r .! #body) @?= "Dummy"
+          (r .! #status) @?= 202
+          (r .! #body) @?= "Dummy!"
     ]
 
   , testGroup "simple calls"
@@ -2756,4 +2758,8 @@ createMessageHold = do
   let release = ic_start_canister ic00 cid
   return (holdMessage, release)
 
-
+dummyResponse :: HttpResponse
+dummyResponse = R.empty
+  .+ #status .== 202
+  .+ #headers .== Vec.empty
+  .+ #body .== (toUtf8 "Dummy!")
