@@ -365,7 +365,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
 
   , testGroup "canister http calls"
     [ simpleTestCase "simple call, no transform" $ \cid -> do
-      resp <- ic_http_request (ic00via cid) cid "http://localhost:8003" Nothing
+      resp <- ic_http_request (ic00via cid) cid Nothing
       case trial' resp #ok of
         Nothing -> error "response #error, not #ok"
         Just r -> do
@@ -374,12 +374,12 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
 
     , testCase "non-existent transform function" $ do
       cid <- install noop
-      do ic_http_request (ic00via cid) cid "http://localhost:8003" (Just "nonExistent")
+      do ic_http_request (ic00via cid) cid (Just "nonExistent")
         >>= is (V.IsJust #err (V.IsJust #transform_error ()))
 
     , testCase "simple call with transform" $ do
       cid <- install (onTransform (callback (replyData (bytes (Candid.encode dummyResponse)))))
-      resp <- ic_http_request (ic00via cid) cid "http://localhost:8003" (Just "transform")
+      resp <- ic_http_request (ic00via cid) cid (Just "transform")
       case trial' resp #ok of
         Nothing -> error "response #error, not #ok"
         Just r -> do
@@ -2086,7 +2086,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
       ic_raw_rand'' defaultUser >>= isErrOrReject []
 
     , testCase "management canister: http_request not accepted" $ do
-      ic_http_request'' defaultUser "http://localhost:8003" >>= isErrOrReject []
+      ic_http_request'' defaultUser >>= isErrOrReject []
 
     , simpleTestCase "management canister: deposit_cycles not accepted" $ \cid -> do
       ic_deposit_cycles'' defaultUser cid >>= isErrOrReject []

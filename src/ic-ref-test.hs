@@ -14,6 +14,7 @@ import Test.Tasty
 import Test.Tasty.Ingredients
 import Test.Tasty.Ingredients.Basic
 import Test.Tasty.Ingredients.Rerun
+import Test.Tasty.Options
 import Test.Tasty.Runners.AntXML
 import Test.Tasty.Runners.Html
 import Test.Tasty.Runners
@@ -25,9 +26,10 @@ import qualified IC.Crypto.BLS as BLS
 
 main :: IO ()
 main = do
-    startTestServer
     BLS.init
     os <- parseOptions ingredients (testGroup "dummy" [])
+    let TestPort tp = lookupOption os
+    startTestServer tp
     ac <- preFlight os
     defaultMainWithIngredients ingredients (icTests ac)
   where
@@ -38,5 +40,5 @@ main = do
         , antXMLRunner `composeReporters` htmlRunner `composeReporters` consoleTestReporter
         ]
       ]
-    startTestServer = void $ forkIO $ run 8003 app
+    startTestServer port = void $ forkIO $ run port app
       where app _ f = f $ responseLBS status200 [(hContentType, "text/plain")] "Hello world!"

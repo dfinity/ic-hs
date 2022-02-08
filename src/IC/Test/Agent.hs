@@ -86,10 +86,11 @@ data AgentConfig = AgentConfig
     { tc_root_key :: Blob
     , tc_manager :: Manager
     , tc_endPoint :: String
+    , tc_test_port :: Int
     }
 
-makeAgentConfig :: String -> IO AgentConfig
-makeAgentConfig ep' = do
+makeAgentConfig :: String -> Int -> IO AgentConfig
+makeAgentConfig ep' tp = do
     manager <- newTlsManagerWith $ tlsManagerSettings
       { managerResponseTimeout = responseTimeoutMicro 60_000_000 -- 60s
       }
@@ -105,6 +106,7 @@ makeAgentConfig ep' = do
         { tc_root_key = status_root_key s
         , tc_manager = manager
         , tc_endPoint = ep
+        , tc_test_port = tp
         }
   where
     -- strip trailing slash
@@ -115,15 +117,16 @@ makeAgentConfig ep' = do
 preFlight :: OptionSet -> IO AgentConfig
 preFlight os = do
     let Endpoint ep = lookupOption os
-    makeAgentConfig ep
+    let TestPort tp = lookupOption os
+    makeAgentConfig ep tp
 
 
 newtype ReplWrapper = R (forall a. (HasAgentConfig => a) -> a)
 
 -- |  This is for use from the Haskell REPL, see README.md
-connect :: String -> IO ReplWrapper
-connect ep = do
-    agentConfig <- makeAgentConfig ep
+connect :: String -> Int -> IO ReplWrapper
+connect ep tp = do
+    agentConfig <- makeAgentConfig ep tp
     let ?agentConfig = agentConfig
     return (R id)
 
@@ -143,6 +146,8 @@ endPoint = tc_endPoint agentConfig
 agentManager :: HasAgentConfig => Manager
 agentManager = tc_manager agentConfig
 
+testPort :: HasAgentConfig => Int
+testPort = tc_test_port agentConfig
 
 -- * Test data for some hardcoded user names
 
@@ -721,10 +726,10 @@ ic_raw_rand ic00 =
 
 ic_http_request ::
     forall a b. (a -> IO b) ~ (ICManagement IO .! "http_request") =>
-    HasAgentConfig => IC00 -> Blob -> String -> Maybe String -> IO b
-ic_http_request ic00 canister_id url transform =
+    HasAgentConfig => IC00 -> Blob -> Maybe String -> IO b
+ic_http_request ic00 canister_id transform =
   callIC ic00 "" #http_request $ empty
-    .+ #url .== T.pack url
+    .+ #url .== (T.pack $ "http://localhost:" ++ show testPort)
     .+ #method .== enum #get
     .+ #headers .== Vec.empty
     .+ #body .== Nothing
@@ -850,10 +855,10 @@ ic_raw_rand'' :: HasAgentConfig => Blob -> IO (HTTPErrOr ReqResponse)
 ic_raw_rand'' user = do
   callIC'' user "" #raw_rand ()
 
-ic_http_request'' ::HasAgentConfig => Blob -> String -> IO (HTTPErrOr ReqResponse)
-ic_http_request'' user url =
+ic_http_request'' ::HasAgentConfig => Blob -> IO (HTTPErrOr ReqResponse)
+ic_http_request'' user =
   callIC'' user "" #http_request $ empty
-    .+ #url .== T.pack url
+    .+ #url .== (T.pack $ "http://localhost:" ++ show testPort)
     .+ #method .== enum #get
     .+ #headers .== Vec.empty
     .+ #body .== Nothing
