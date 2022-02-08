@@ -471,6 +471,7 @@ test-suite unit-test
   other-modules: IC.Management
   other-modules: IC.Purify
   other-modules: IC.Ref
+  other-modules: IC.Ref.IO
   other-modules: IC.Serialise
   other-modules: IC.StateFile
   other-modules: IC.Test.BLS
