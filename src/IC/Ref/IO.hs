@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module IC.HTTP.IO where
+module IC.Ref.IO where
 
 import qualified Data.Row as R
 import qualified Data.Text as T
