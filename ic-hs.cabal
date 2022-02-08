@@ -496,6 +496,7 @@ library
   build-depends: bindings-DSL
   build-depends: bytestring
   build-depends: candid
+  build-depends: case-insensitive
   build-depends: cborg
   build-depends: cereal
   build-depends: containers

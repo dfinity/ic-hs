@@ -242,6 +242,9 @@ acceptCycles128 = op 54
 callCyclesAdd128 :: Exp 'I64 -> Exp 'I64 -> Prog
 callCyclesAdd128 = op 55
 
+-- onTransform :: Exp 'B -> Prog
+-- onTransform = op 56
+
 -- Some convenience combinators
 
 -- This allows us to write byte expressions as plain string literals

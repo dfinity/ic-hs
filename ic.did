@@ -31,6 +31,7 @@ type error = variant {
   no_consensus;
   timeout;
   bad_tls;
+  transform_error;
 };
 
 service ic : {
@@ -42,7 +43,7 @@ service ic : {
     transform : opt variant {
       function: func (http_response) -> (http_response) query
     };
-  }) -> (variant { ok : http_response; err : opt error });
+  }) -> (variant { ok : http_response; err : error });
   create_canister : (record {
     settings : opt canister_settings
   }) -> (record {canister_id : canister_id});

@@ -30,12 +30,24 @@ type RunState = [candidType|
     variant { running; stopping; stopped }
   |]
 
+type HttpError = [candidType|
+    variant { no_consensus; timeout; bad_tls; transform_error }
+  |]
+
 type Settings = [candidType|
     record {
       controllers : opt vec principal;
       compute_allocation : opt nat;
       memory_allocation : opt nat;
       freezing_threshold : opt nat;
+    }
+  |]
+
+type HttpResponse = [candidType|
+    record {
+      status: nat;
+      headers: vec record { 0 : text; 1 : text };
+      body: blob;
     }
   |]
 

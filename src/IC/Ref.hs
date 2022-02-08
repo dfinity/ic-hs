@@ -12,6 +12,7 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE MultiWayIf #-}
+{-# LANGUAGE NumericUnderscores #-}
 
 {-|
 This module implements the main abstract logic of the Internet Computer. It
@@ -75,6 +76,7 @@ import Codec.Candid
 import Data.Row ((.==), (.+), (.!), type (.!))
 import GHC.Stack
 import Network.HTTP.Types.Status (statusCode)
+import Data.Time.Clock.POSIX
 
 import IC.Types
 import IC.Constants
@@ -192,7 +194,6 @@ data IC = IC
   { canisters :: CanisterId ↦ CanState
   , requests :: RequestID ↦ (CallRequest, RequestStatus)
   , messages :: Seq Message
---   , http_requests :: Seq CanisterHttpRequest
   , call_contexts :: CallId ↦ CallContext
   , rng :: StdGen
   , secretRootKey :: SecretKey
@@ -843,7 +844,7 @@ invokeManagementCanister caller ctxt_id (Public method_name arg) =
       "provisional_create_canister_with_cycles" -> atomic $ icCreateCanisterWithCycles caller
       "provisional_top_up_canister" -> atomic icTopUpCanister
       "raw_rand" -> atomic icRawRand
-      "http_request" -> atomic $ icHttpRequest caller ctxt_id
+      "http_request" -> atomic $ icHttpRequest caller
       _ -> reject RC_DESTINATION_INVALID $ "Unsupported management function " ++ method_name
   where
     -- always responds
@@ -876,16 +877,35 @@ sendHttpRequest url = do
   }
   C.httpLbs req m
 
-icHttpRequest :: (ICM m, CanReject m) => EntityId -> CallId -> ICManagement m .! "http_request"
-icHttpRequest caller ctxt_id r = do
-  response <- liftIO $ sendHttpRequest (r .! #url)
-  let code = statusCode $ C.responseStatus response
-  let headers = C.responseHeaders response
-  let body = C.responseBody response
-  return $ V.IsJust #ok $ R.empty
-    .+ #status .== (fromIntegral code)
-    .+ #headers .== (Vec.fromList $ map (\(n, v) -> (decodeUtf8 (original n), decodeUtf8 v)) headers)
-    .+ #body .== body
+getTimestamp :: IO Timestamp
+getTimestamp = do
+    t <- getPOSIXTime
+    return $ Timestamp $ round (t * 1000_000_000)
+
+icHttpRequest :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "http_request"
+icHttpRequest caller r = do
+    resp <- liftIO $ toHttpResponse <$> sendHttpRequest (r .! #url)
+    case (r .! #transform) of
+      Nothing -> return $ V.IsJust #ok resp
+      Just t -> case V.trial' t #function of
+        Nothing -> return $ V.IsJust #err (V.IsJust #transform_error ())
+        Just (FuncRef p m) -> do
+            let cid = principalToEntityId p
+            can_mod <- getCanisterMod cid
+            wasm_state <- getCanisterState cid
+            env <- canisterEnv cid
+            return $ case M.lookup (T.unpack m) (query_methods can_mod) of
+              Nothing -> V.IsJust #err (V.IsJust #no_consensus ())
+              Just f -> case f cid env (Codec.Candid.encode resp) wasm_state of
+                Return (Reply r) -> case Codec.Candid.decode @HttpResponse r of
+                  Left _ -> V.IsJust #err (V.IsJust #transform_error ())
+                  Right r -> V.IsJust #ok r
+                _ -> V.IsJust #err (V.IsJust #transform_error ())
+  where
+    toHttpResponse r = R.empty
+      .+ #status .== (fromIntegral (statusCode $ C.responseStatus r))
+      .+ #headers .== (Vec.fromList $ map (\(n, v) -> (decodeUtf8 (original n), decodeUtf8 v)) (C.responseHeaders r))
+      .+ #body .== (C.responseBody r)
 
 icCreateCanister :: (ICM m, CanReject m) => EntityId -> CallId -> ICManagement m .! "create_canister"
 icCreateCanister caller ctxt_id r = do

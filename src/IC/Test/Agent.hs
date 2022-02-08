@@ -721,15 +721,17 @@ ic_raw_rand ic00 =
 
 ic_http_request ::
     forall a b. (a -> IO b) ~ (ICManagement IO .! "http_request") =>
-    HasAgentConfig => IC00 -> Blob -> String -> IO b
-ic_http_request ic00 canister_id url =
+    HasAgentConfig => IC00 -> Blob -> String -> Maybe String -> IO b
+ic_http_request ic00 canister_id url transform =
   callIC ic00 "" #http_request $ empty
     .+ #url .== T.pack url
     .+ #method .== enum #get
     .+ #headers .== Vec.empty
     .+ #body .== Nothing
-    .+ #transform .== Nothing -- (Just (V.IsJust #function (Candid.FuncRef (Principal canister_id) "xyz")))
-
+    .+ #transform .== (wrap transform canister_id)
+  where
+    wrap Nothing _ = Nothing
+    wrap (Just name) cid = Just (V.IsJust #function (Candid.FuncRef (Principal cid) (T.pack name)))
 -- Primed variants return the response (reply or reject)
 callIC' :: forall s a b.
   HasAgentConfig =>
