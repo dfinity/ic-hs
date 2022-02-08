@@ -364,7 +364,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     assertBool "random blobs are different" $ r1 /= r2
 
   , testGroup "canister http calls"
-    [ simpleTestCase "no transform" $ \cid -> do
+    [ simpleTestCase "simple call, no transform" $ \cid -> do
       resp <- ic_http_request (ic00via cid) cid "http://localhost:8003" Nothing
       case trial' resp #ok of
         Nothing -> error "response #error, not #ok"
@@ -377,7 +377,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
       do ic_http_request (ic00via cid) cid "http://localhost:8003" (Just "nonExistent")
         >>= is (V.IsJust #err (V.IsJust #transform_error ()))
 
-    , testCase "simple transform function" $ do
+    , testCase "simple call with transform" $ do
       cid <- install (onTransform (callback (replyData (bytes (Candid.encode dummyResponse)))))
       resp <- ic_http_request (ic00via cid) cid "http://localhost:8003" (Just "transform")
       case trial' resp #ok of

@@ -189,6 +189,7 @@ executable ic-ref-run
   build-depends: bindings-DSL
   build-depends: bytestring
   build-depends: candid
+  build-depends: case-insensitive
   build-depends: cborg
   build-depends: cereal
   build-depends: containers
@@ -199,6 +200,8 @@ executable ic-ref-run
   build-depends: filepath
   build-depends: hashable
   build-depends: hex-text
+  build-depends: http-client
+  build-depends: http-types
   build-depends: leb128-cereal
   build-depends: memory
   build-depends: MonadRandom
@@ -248,6 +251,7 @@ executable ic-ref-run
   other-modules: IC.HTTP.CBOR
   other-modules: IC.HTTP.GenR
   other-modules: IC.HTTP.GenR.Parse
+  other-modules: IC.HTTP.IO
   other-modules: IC.HTTP.RequestId
   other-modules: IC.Id.Forms
   other-modules: IC.Id.Fresh
@@ -276,6 +280,7 @@ executable ic-ref-test
   build-depends: bindings-DSL
   build-depends: bytestring
   build-depends: candid
+  build-depends: case-insensitive
   build-depends: cborg
   build-depends: cereal
   build-depends: containers
@@ -334,6 +339,7 @@ executable ic-ref-test
   other-modules: IC.HTTP.CBOR
   other-modules: IC.HTTP.GenR
   other-modules: IC.HTTP.GenR.Parse
+  other-modules: IC.HTTP.IO
   other-modules: IC.HTTP.RequestId
   other-modules: IC.Id.Forms
   other-modules: IC.Management
@@ -581,6 +587,7 @@ library
   exposed-modules: IC.HTTP.CBOR
   exposed-modules: IC.HTTP.GenR
   exposed-modules: IC.HTTP.GenR.Parse
+  exposed-modules: IC.HTTP.IO
   exposed-modules: IC.HTTP.Request
   exposed-modules: IC.HTTP.RequestId
   exposed-modules: IC.HTTP.Status
