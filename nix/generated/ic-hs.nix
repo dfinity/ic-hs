@@ -14,6 +14,7 @@
 , bindings-DSL
 , bytestring
 , candid
+, case-insensitive
 , cborg
 , cereal
 , containers
@@ -85,6 +86,7 @@ mkDerivation {
     bindings-DSL
     bytestring
     candid
+    case-insensitive
     cborg
     cereal
     containers
@@ -148,6 +150,7 @@ mkDerivation {
     bindings-DSL
     bytestring
     candid
+    case-insensitive
     cborg
     cereal
     containers
