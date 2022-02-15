@@ -400,6 +400,7 @@ test-suite unit-test
   build-depends: bindings-DSL
   build-depends: bytestring
   build-depends: candid
+  build-depends: case-insensitive
   build-depends: cborg
   build-depends: cereal
   build-depends: containers
@@ -412,6 +413,8 @@ test-suite unit-test
   build-depends: filepath
   build-depends: hashable
   build-depends: hex-text
+  build-depends: http-client
+  build-depends: http-types
   build-depends: leb128-cereal
   build-depends: memory
   build-depends: MonadRandom
