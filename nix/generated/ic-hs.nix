@@ -211,6 +211,7 @@ mkDerivation {
     bindings-DSL
     bytestring
     candid
+    case-insensitive
     cborg
     cereal
     containers
@@ -222,6 +223,8 @@ mkDerivation {
     filepath
     hashable
     hex-text
+    http-client
+    http-types
     leb128-cereal
     memory
     MonadRandom
