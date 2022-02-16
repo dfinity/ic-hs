@@ -307,6 +307,9 @@ fn eval(ops: Ops) {
                 api::call_cycles_add128(high, low)
             },
 
+            // canister heartbeat script
+            56 => set_transform(stack.pop_blob()),
+
             _ => api::trap_with(&format!("unknown op {}", op)),
         }
     }
@@ -321,6 +324,12 @@ fn update() {
 fn query() {
     setup();
     eval(&api::arg_data());
+}
+
+#[export_name = "canister_query transform"]
+fn transform() {
+    setup();
+    eval(&get_transform());
 }
 
 #[export_name = "canister_init"]
@@ -428,6 +437,16 @@ fn set_heartbeat(data: Vec<u8>) {
 }
 fn get_heartbeat() -> Vec<u8> {
     HEARTBEAT.lock().unwrap().clone()
+}
+
+lazy_static! {
+    static ref TRANSFORM: Mutex<Vec<u8>> = Mutex::new(Vec::new());
+}
+fn set_transform(data: Vec<u8>) {
+    *TRANSFORM.lock().unwrap() = data;
+}
+fn get_transform() -> Vec<u8> {
+    TRANSFORM.lock().unwrap().clone()
 }
 
 /* Panic setup */

@@ -39,6 +39,14 @@ type Settings = [candidType|
     }
   |]
 
+type HttpResponse = [candidType|
+    record {
+      status: nat;
+      headers: vec record { 0 : text; 1 : text };
+      body: blob;
+    }
+  |]
+
 type ICManagement m = [candidFile|ic.did|]
 
 managementMethods :: [String]

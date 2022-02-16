@@ -82,6 +82,7 @@ executable ic-ref
   build-depends: bindings-DSL
   build-depends: bytestring
   build-depends: candid
+  build-depends: case-insensitive
   build-depends: cborg
   build-depends: cereal
   build-depends: containers
@@ -93,6 +94,8 @@ executable ic-ref
   build-depends: filepath
   build-depends: hashable
   build-depends: hex-text
+  build-depends: http-client
+  build-depends: http-client-tls
   build-depends: http-types
   build-depends: leb128-cereal
   build-depends: memory
@@ -121,6 +124,7 @@ executable ic-ref
   build-depends: warp
   build-depends: winter
   build-depends: uglymemo
+  build-depends: warp
   build-depends: zlib
   other-modules: IC.Canister
   other-modules: IC.Canister.Imp
@@ -161,6 +165,7 @@ executable ic-ref
   other-modules: IC.Management
   other-modules: IC.Purify
   other-modules: IC.Ref
+  other-modules: IC.Ref.IO
   other-modules: IC.Serialise
   other-modules: IC.StateFile
   other-modules: IC.Types
@@ -184,6 +189,7 @@ executable ic-ref-run
   build-depends: bindings-DSL
   build-depends: bytestring
   build-depends: candid
+  build-depends: case-insensitive
   build-depends: cborg
   build-depends: cereal
   build-depends: containers
@@ -194,6 +200,8 @@ executable ic-ref-run
   build-depends: filepath
   build-depends: hashable
   build-depends: hex-text
+  build-depends: http-client
+  build-depends: http-types
   build-depends: leb128-cereal
   build-depends: memory
   build-depends: MonadRandom
@@ -249,6 +257,7 @@ executable ic-ref-run
   other-modules: IC.Management
   other-modules: IC.Purify
   other-modules: IC.Ref
+  other-modules: IC.Ref.IO
   other-modules: IC.Types
   other-modules: IC.Utils
   other-modules: IC.Version
@@ -271,6 +280,7 @@ executable ic-ref-test
   build-depends: bindings-DSL
   build-depends: bytestring
   build-depends: candid
+  build-depends: case-insensitive
   build-depends: cborg
   build-depends: cereal
   build-depends: containers
@@ -304,6 +314,8 @@ executable ic-ref-test
   build-depends: transformers
   build-depends: unordered-containers
   build-depends: vector
+  build-depends: wai
+  build-depends: warp
   other-modules: IC.CBOR.Parser
   other-modules: IC.CBOR.Patterns
   other-modules: IC.CBOR.Utils
@@ -330,6 +342,7 @@ executable ic-ref-test
   other-modules: IC.HTTP.RequestId
   other-modules: IC.Id.Forms
   other-modules: IC.Management
+  other-modules: IC.Ref.IO
   other-modules: IC.Test.Agent
   other-modules: IC.Test.Options
   other-modules: IC.Test.Spec
@@ -387,6 +400,7 @@ test-suite unit-test
   build-depends: bindings-DSL
   build-depends: bytestring
   build-depends: candid
+  build-depends: case-insensitive
   build-depends: cborg
   build-depends: cereal
   build-depends: containers
@@ -399,6 +413,8 @@ test-suite unit-test
   build-depends: filepath
   build-depends: hashable
   build-depends: hex-text
+  build-depends: http-client
+  build-depends: http-types
   build-depends: leb128-cereal
   build-depends: memory
   build-depends: MonadRandom
@@ -458,6 +474,7 @@ test-suite unit-test
   other-modules: IC.Management
   other-modules: IC.Purify
   other-modules: IC.Ref
+  other-modules: IC.Ref.IO
   other-modules: IC.Serialise
   other-modules: IC.StateFile
   other-modules: IC.Test.BLS
@@ -490,6 +507,7 @@ library
   build-depends: bindings-DSL
   build-depends: bytestring
   build-depends: candid
+  build-depends: case-insensitive
   build-depends: cborg
   build-depends: cereal
   build-depends: containers
@@ -581,6 +599,7 @@ library
   exposed-modules: IC.Management
   exposed-modules: IC.Purify
   exposed-modules: IC.Ref
+  exposed-modules: IC.Ref.IO
   exposed-modules: IC.Serialise
   exposed-modules: IC.StateFile
   exposed-modules: IC.Test.Agent

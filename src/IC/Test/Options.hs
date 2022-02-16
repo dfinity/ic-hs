@@ -18,6 +18,13 @@ instance IsOption Endpoint where
   optionHelp = return "Internet Computer endpoint to connect to (default: http://0.0.0.0:8001)"
   optionCLParser = mkOptionCLParser (metavar "URL")
 
+newtype TestPort = TestPort Int
+
+instance IsOption TestPort where
+  defaultValue = TestPort 8003
+  parseValue p = Just $ TestPort $ read p
+  optionName = return "test_port"
+  optionHelp = return "Port a test HTTP server listens on (default: 8003)"
 
 endpointOption :: OptionDescription
 endpointOption = Option (Proxy :: Proxy Endpoint)

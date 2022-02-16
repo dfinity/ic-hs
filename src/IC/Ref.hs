@@ -12,6 +12,7 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE MultiWayIf #-}
+{-# LANGUAGE NumericUnderscores #-}
 
 {-|
 This module implements the main abstract logic of the Internet Computer. It
@@ -84,6 +85,7 @@ import IC.Certificate
 import IC.Certificate.Value
 import IC.Certificate.CBOR
 import IC.Crypto
+import IC.Ref.IO (sendHttpRequest)
 
 -- Abstract HTTP Interface
 
@@ -196,7 +198,7 @@ data IC = IC
   deriving (Show)
 
 -- The functions below want stateful access to a value of type 'IC'
-type ICM m = (MonadState IC m, HasCallStack)
+type ICM m = (MonadState IC m, HasCallStack, MonadIO m)
 
 initialIC :: IO IC
 initialIC = do
@@ -458,6 +460,7 @@ checkEffectiveCanisterID ecid cid method arg
   | cid == managementCanisterId = case method of
     "provisional_create_canister_with_cycles" -> pure ()
     "raw_rand" -> throwError "raw_rand() cannot be invoked via ingress calls"
+    "http_request" -> throwError "http_request() cannot be invoked via ingress calls"
     _ -> case Codec.Candid.decode @(R.Rec ("canister_id" R..== Principal)) arg of
         Left err ->
             throwError $ "call to management canister is not valid candid: " <> T.pack err
@@ -475,7 +478,7 @@ inspectIngress (CallRequest canister_id user_id method arg)
   | canister_id == managementCanisterId =
     if| method `elem` ["provisional_create_canister_with_cycles", "provisional_top_up_canister"]
       -> return ()
-      | method `elem` [ "raw_rand", "deposit_cycles" ]
+      | method `elem` [ "raw_rand", "deposit_cycles", "http_request" ]
       -> throwError $ "Management method " <> T.pack method <> " cannot be invoked via an ingress call"
       | method `elem` managementMethods
       -> case decode @(R.Rec ("canister_id" R..== Principal)) arg of
@@ -822,7 +825,7 @@ managementCanisterId = EntityId mempty
 
 
 invokeManagementCanister ::
-  forall m. (CanReject m, ICM m) => EntityId -> CallId -> EntryPoint -> m ()
+  forall m. (CanReject m, ICM m, MonadIO m) => EntityId -> CallId -> EntryPoint -> m ()
 invokeManagementCanister caller ctxt_id (Public method_name arg) =
   case method_name of
       "create_canister" -> atomic $ icCreateCanister caller ctxt_id
@@ -837,6 +840,7 @@ invokeManagementCanister caller ctxt_id (Public method_name arg) =
       "provisional_create_canister_with_cycles" -> atomic $ icCreateCanisterWithCycles caller
       "provisional_top_up_canister" -> atomic icTopUpCanister
       "raw_rand" -> atomic icRawRand
+      "http_request" -> atomic $ icHttpRequest caller
       _ -> reject RC_DESTINATION_INVALID $ "Unsupported management function " ++ method_name
   where
     -- always responds
@@ -859,6 +863,29 @@ invokeManagementCanister caller ctxt_id (Public method_name arg) =
 
 invokeManagementCanister _ _ Closure{} = error "closure invoked on management canister"
 invokeManagementCanister _ _ Heartbeat = error "heartbeat invoked on management canister"
+
+icHttpRequest :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "http_request"
+icHttpRequest caller r = do
+    resp <- liftIO $ sendHttpRequest (r .! #url)
+    case (r .! #transform) of
+      Nothing -> return $ V.IsJust #ok resp
+      Just t -> case V.trial' t #function of
+        Nothing -> return $ V.IsJust #err (V.IsJust #transform_error ())
+        Just (FuncRef p m) -> do
+            let cid = principalToEntityId p
+            if cid /= caller then
+              return $ V.IsJust #err (V.IsJust #transform_error ())
+            else do
+              can_mod <- getCanisterMod cid
+              wasm_state <- getCanisterState cid
+              env <- canisterEnv cid
+              case M.lookup (T.unpack m) (query_methods can_mod) of
+                Nothing -> return $ V.IsJust #err (V.IsJust #transform_error ())
+                Just f -> case f cid env (Codec.Candid.encode resp) wasm_state of
+                  Return (Reply r) -> case Codec.Candid.decode @HttpResponse r of
+                    Left _ -> reject RC_CANISTER_ERROR "could not decode the response"
+                    Right r -> return $ V.IsJust #ok r
+                  _ -> reject RC_CANISTER_ERROR "canister did not return a response properly"
 
 icCreateCanister :: (ICM m, CanReject m) => EntityId -> CallId -> ICManagement m .! "create_canister"
 icCreateCanister caller ctxt_id r = do
@@ -1189,7 +1216,6 @@ popMessage = state $ \ic ->
   case messages ic of
     Empty -> (Nothing, ic)
     m :<| ms -> (Just m, ic { messages = ms })
-
 
 -- | Fake time increase
 bumpTime :: ICM m => m ()

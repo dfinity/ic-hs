@@ -28,6 +28,8 @@ import Test.Tasty.HUnit
 import Control.Monad
 import Data.Word
 import Data.Functor
+import Data.Row as R
+import qualified Data.Row.Variants as V
 import System.FilePath
 import System.Directory
 import System.Environment
@@ -36,7 +38,6 @@ import Data.Time.Clock.POSIX
 import qualified Data.Binary.Get as Get
 import Codec.Candid (Principal(..))
 import qualified Codec.Candid as Candid
-import Data.Row
 import Data.Serialize.LEB128 (toLEB128)
 
 import IC.Types (EntityId(..))
@@ -51,7 +52,9 @@ import IC.Test.Universal
 import IC.HashTree hiding (Blob, Label)
 import IC.Certificate
 import IC.Hash
+import IC.Utils
 import IC.Test.Agent
+import IC.Management (HttpResponse)
 
 type Blob = BS.ByteString
 
@@ -359,6 +362,30 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     BS.length r1 @?= 32
     BS.length r2 @?= 32
     assertBool "random blobs are different" $ r1 /= r2
+
+  , testGroup "canister http calls"
+    [ simpleTestCase "simple call, no transform" $ \cid -> do
+      resp <- ic_http_request (ic00via cid) cid Nothing
+      case trial' resp #ok of
+        Nothing -> error "response #error, not #ok"
+        Just r -> do
+          (r .! #status) @?= 200
+          (r .! #body) @?= "Hello world!"
+
+    , testCase "non-existent transform function" $ do
+      cid <- install noop
+      do ic_http_request (ic00via cid) cid (Just "nonExistent")
+        >>= is (V.IsJust #err (V.IsJust #transform_error ()))
+
+    , testCase "simple call with transform" $ do
+      cid <- install (onTransform (callback (replyData (bytes (Candid.encode dummyResponse)))))
+      resp <- ic_http_request (ic00via cid) cid (Just "transform")
+      case trial' resp #ok of
+        Nothing -> error "response #error, not #ok"
+        Just r -> do
+          (r .! #status) @?= 202
+          (r .! #body) @?= "Dummy!"
+    ]
 
   , testGroup "simple calls"
     [ simpleTestCase "Call" $ \cid ->
@@ -2058,6 +2085,9 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     , testCase "management canister: raw_rand not accepted" $ do
       ic_raw_rand'' defaultUser >>= isErrOrReject []
 
+    , testCase "management canister: http_request not accepted" $ do
+      ic_http_request'' defaultUser >>= isErrOrReject []
+
     , simpleTestCase "management canister: deposit_cycles not accepted" $ \cid -> do
       ic_deposit_cycles'' defaultUser cid >>= isErrOrReject []
 
@@ -2728,4 +2758,8 @@ createMessageHold = do
   let release = ic_start_canister ic00 cid
   return (holdMessage, release)
 
-
+dummyResponse :: HttpResponse
+dummyResponse = R.empty
+  .+ #status .== 202
+  .+ #headers .== Vec.empty
+  .+ #body .== (toUtf8 "Dummy!")
