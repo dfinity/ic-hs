@@ -1,3 +1,13 @@
+queue_rules:
+  - name: default
+    conditions:
+      - "#approved-reviews-by>=1"
+      - "#changes-requested-reviews-by=0"
+      - status-success=test (ubuntu-latest)
+      - status-success=test (macos-latest)
+      - base=master
+      - label=automerge-squash
+
 pull_request_rules:
   - name: Automatic merge (squash)
     conditions:
