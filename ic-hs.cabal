@@ -93,6 +93,8 @@ executable ic-ref
   build-depends: filepath
   build-depends: hashable
   build-depends: hex-text
+  build-depends: http-client >= 0.7.11
+  build-depends: http-client-tls
   build-depends: http-types
   build-depends: leb128-cereal
   build-depends: memory
@@ -194,6 +196,8 @@ executable ic-ref-run
   build-depends: filepath
   build-depends: hashable
   build-depends: hex-text
+  build-depends: http-client >= 0.7.11
+  build-depends: http-types
   build-depends: leb128-cereal
   build-depends: memory
   build-depends: MonadRandom
@@ -281,7 +285,7 @@ executable ic-ref-test
   build-depends: filepath
   build-depends: hashable
   build-depends: hex-text
-  build-depends: http-client
+  build-depends: http-client >= 0.7.11
   build-depends: http-client-tls
   build-depends: http-types
   build-depends: leb128-cereal
@@ -399,6 +403,8 @@ test-suite unit-test
   build-depends: filepath
   build-depends: hashable
   build-depends: hex-text
+  build-depends: http-client >= 0.7.11
+  build-depends: http-types
   build-depends: leb128-cereal
   build-depends: memory
   build-depends: MonadRandom
@@ -501,7 +507,7 @@ library
   build-depends: filepath
   build-depends: hashable
   build-depends: hex-text
-  build-depends: http-client
+  build-depends: http-client >= 0.7.11
   build-depends: http-client-tls
   build-depends: http-types
   build-depends: leb128-cereal
