@@ -26,6 +26,8 @@ mkDerivation {
   pname = "cborg";
   version = "0.2.4.0";
   sha256 = "34ae38afffa078f8d394325937d0e15431069d4428a7449f6af9d2d16539367f";
+  revision = "1";
+  editedCabalFile = "1vsqq3dwvhjh4sv7scsqb2kpm6n87ahmyyh7z7lm6h0lrzbn2kmr";
   libraryHaskellDepends = [
     array
     base

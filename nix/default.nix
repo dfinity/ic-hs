@@ -44,8 +44,8 @@ let
           });
 
           all-cabal-hashes = self.fetchurl {
-            url = "https://github.com/commercialhaskell/all-cabal-hashes/archive/174d622dcd2324afe16a2f191ce1d319028d3935.tar.gz";
-            sha256 = "0arh58mszf3b11d9yxldd63l1f4hr6fz03vjcv5yfwnkwy5yyyda";
+            url = "https://github.com/commercialhaskell/all-cabal-hashes/archive/d4d63b04cd9f6ed263db8df4cdd6dcc667f96ccd.tar.gz";
+            sha256 = "0pd9zfy8wwbwqg0qkgi28kfi2q3kwl1lwkq2k7b50wm5pb3nngrm";
           };
         })
       ];

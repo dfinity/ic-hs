@@ -70,11 +70,12 @@ let
       src_subst = "pkgs.sources.haskell-candid";
     };
 
-    # To pull other versios from hackage:
+    # To pull other versions from hackage:
 
     # 0.2.5.0 broke with ghc-8.10 and integer-simple,
     # see https://github.com/well-typed/cborg/issues/267
     cborg = pkgs.haskellPackages.hackage2nix "cborg" "0.2.4.0";
+    http-client = pkgs.haskellPackages.hackage2nix "http-client" "0.7.11";
   };
 
   allGenerated = pkgs.runCommandNoCC "generated" {
@@ -115,4 +116,3 @@ allGenerated.overrideAttrs (
       '' else null;
   }
 )
-
