@@ -647,7 +647,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     , t "msg_cycles_accept"            "U Rt Ry"     $ ignore (acceptCycles (int64 0))
     , t "canister_self"                star          $ ignore self
     , t "canister_cycle_balance"       star          $ ignore getBalance
-    , t "call_new…call_perform"        "U Rt Ry H"   $
+    , t "call_new_call_perform"        "U Rt Ry H"   $
         callNew "foo" "bar" "baz" "quux" >>>
         callDataAppend "foo" >>>
         callCyclesAdd (int64 0) >>>
