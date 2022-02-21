@@ -91,7 +91,7 @@ data AgentConfig = AgentConfig
 makeAgentConfig :: String -> IO AgentConfig
 makeAgentConfig ep' = do
     manager <- newTlsManagerWith $ tlsManagerSettings
-      { managerResponseTimeout = responseTimeoutMicro 60_000_000 -- 60s
+      { managerResponseTimeout = responseTimeoutMicro 120_000_000 -- 120s
       }
     request <- parseRequest $ ep ++ "/api/v2/status"
     putStrLn $ "Fetching endpoint status from " ++ show ep ++ "..."
@@ -274,6 +274,7 @@ postCBOR path gr = do
       { method = "POST"
       , requestBody = RequestBodyLBS $ BS.toLazyByteString $ encode gr
       , requestHeaders = [(hContentType, "application/cbor")]
+      , responseTimeout = responseTimeoutMicro 120_000_000 -- 120s
       }
     httpLbs request agentManager
 
