@@ -284,8 +284,6 @@ fn eval(ops: Ops) {
             // canister heartbeat script
             49 => set_heartbeat(stack.pop_blob()),
 
-            50 => stack.push_int64(api::performance_counter()),
-
             // 128-bit cycles API
             51 => {
                 stack.push_blob(api::balance128())
