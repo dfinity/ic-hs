@@ -25,6 +25,7 @@ import Numeric.Natural
 import Data.List
 import Test.Tasty
 import Test.Tasty.HUnit
+import Codec.Compression.GZip (compress)
 import Control.Monad
 import Data.Word
 import Data.Functor
@@ -103,6 +104,34 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
 
       step "Reinstall as new controller"
       ic_install (ic00as otherUser) (enum #reinstall) can_id trivialWasmModule ""
+
+  , testCaseSteps "install (gzip compressed)" $ \step -> do
+      cid <- create
+      let compressedModule = compress trivialWasmModule
+
+      step "Install compressed module"
+      ic_install ic00 (enum #install) cid compressedModule""
+
+      cs <- ic_canister_status ic00 cid
+      cs .! #module_hash @?= Just (sha256 compressedModule)
+
+      step "Reinstall compressed module"
+      ic_install ic00 (enum #reinstall) cid compressedModule ""
+
+      cs <- ic_canister_status ic00 cid
+      cs .! #module_hash @?= Just (sha256 compressedModule)
+
+      step "Install raw module"
+      ic_install ic00 (enum #reinstall) cid trivialWasmModule ""
+
+      cs <- ic_canister_status ic00 cid
+      cs .! #module_hash @?= Just (sha256 trivialWasmModule)
+
+      step "Upgrade to a compressed module"
+      ic_install ic00 (enum #upgrade) cid compressedModule ""
+
+      cs <- ic_canister_status ic00 cid
+      cs .! #module_hash @?= Just (sha256 compressedModule)
 
   , testCaseSteps "reinstall on empty" $ \step -> do
       step "Create"
@@ -325,6 +354,9 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
 
     step "Reinstall"
     ic_install (ic00via cid) (enum #reinstall) can_id trivialWasmModule ""
+
+    step "Reinstall (gzip compressed)"
+    ic_install (ic00via cid) (enum #reinstall) can_id (compress trivialWasmModule) ""
 
     step "Reinstall as wrong user"
     ic_install' (ic00via cid2) (enum #reinstall) can_id trivialWasmModule ""
