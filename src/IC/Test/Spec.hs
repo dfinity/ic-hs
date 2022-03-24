@@ -1643,10 +1643,9 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
           return cid2
     in
     [ testGroup "cycles API - backward compatibility" $
-        [ simpleTestCase "canister_cycle_balance = canister_cycle_balance128 for numbers fitting in 64 bits" $ \cid -> do
-          a <- queryBalance cid
-          b <- queryBalance128 cid
-          bothSame (a, fromIntegral b)
+        [ simpleTestCase "canister_cycle_balance ~ canister_cycle_balance128 for numbers fitting in 64 bits" $ \cid -> do
+          b <- queryBalance cid
+          queryBalance128 cid >>= isRoughly (fromIntegral b)
         , testCase "legacy API traps when a result is too big" $ do
           cid <- create noop
           let large = 2^(65::Int)
