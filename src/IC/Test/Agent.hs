@@ -403,7 +403,7 @@ validateStateCert' what cert = do
 validateStateCert :: (HasCallStack, HasAgentConfig) => Certificate -> IO ()
 validateStateCert = validateStateCert' "certificate"
 
-data ReqResponse = Reply Blob | Reject Natural T.Text
+data ReqResponse = Reply Blob | Reject Natural T.Text (Maybe T.Text)
   deriving (Eq, Show)
 data ReqStatus = Processing | Pending | Responded ReqResponse | UnknownStatus
   deriving (Eq, Show)
@@ -415,6 +415,14 @@ prettyBlob :: Blob -> String
 prettyBlob x =
   let s = map (chr . fromIntegral) (BS.unpack x) in
   if all isPrint s then s else asHex x
+
+maybeCertValue :: HasCallStack => CertVal a => Certificate -> [Blob] -> IO (Maybe a)
+maybeCertValue cert path = case lookupPath (cert_tree cert) path of
+    Found b -> case fromCertVal b of
+      Just x -> return (Just x)
+      Nothing -> assertFailure $ "Cannot parse " ++ prettyPath path ++ " from " ++ show b
+    Absent -> return Nothing
+    x -> assertFailure $ "Expected to find " ++ prettyPath path ++ ", but got " ++ show x
 
 certValue :: HasCallStack => CertVal a => Certificate -> [Blob] -> IO a
 certValue cert path = case lookupPath (cert_tree cert) path of
@@ -445,7 +453,8 @@ getRequestStatus sender cid rid = do
         certValueAbsent cert ["request_status", rid, "reply"]
         code <- certValue cert ["request_status", rid, "reject_code"]
         msg <- certValue cert ["request_status", rid, "reject_message"]
-        return $ Responded (Reject code msg)
+        errorCode <- maybeCertValue cert ["request_status", rid, "error_code"]
+        return $ Responded (Reject code msg errorCode)
       Found s -> assertFailure $ "Unexpected status " ++ show s
       -- This case should not happen with a compliant IC, but let
       -- us be liberal here, and strict in a dedicated test
@@ -513,13 +522,14 @@ queryResponse = asExceptT . record do
       "rejected" -> do
         code <- field nat "reject_code"
         msg <- field text "reject_message"
-        return $ Reject code msg
+        error_code <- optionalField text "error_code"
+        return $ Reject code msg error_code
       _ -> lift $ throwError $ "Unexpected status " <> T.pack (show s)
 
 isReject :: HasCallStack => [Natural] -> ReqResponse -> IO ()
 isReject _ (Reply r) =
   assertFailure $ "Expected reject, got reply:" ++ prettyBlob r
-isReject codes (Reject n msg) = do
+isReject codes (Reject n msg _) = do
   assertBool
     ("Reject code " ++ show n ++ " not in " ++ show codes ++ "\n" ++ T.unpack msg)
     (n `elem` codes)
@@ -535,8 +545,9 @@ isErrOrReject codes (Right res) = isReject codes res
 
 isReply :: HasCallStack => ReqResponse -> IO Blob
 isReply (Reply b) = return b
-isReply (Reject n msg) =
-  assertFailure $ "Unexpected reject (code " ++ show n ++ "): " ++ T.unpack msg
+isReply (Reject n msg error_code) =
+  assertFailure $ "Unexpected reject (code " ++ show n ++ (maybe "" showErrCode error_code) ++ "): " ++ T.unpack msg
+  where showErrCode ec = ", error_code: " ++ T.unpack ec
 
 -- Convenience decoders
 
