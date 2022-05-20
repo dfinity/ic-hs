@@ -22,9 +22,6 @@ import GHC.Generics
 
 import qualified IC.Wasm.Winter as W
 import qualified IC.Canister.StableMemory as Stable
-import qualified Data.Bytes.Serial as S
-import Data.Bytes.Get (runGetS)
-import Data.Bytes.Put (runPutS)
 import Haskoin.Keys.Extended
 import Control.Monad.Random.Lazy
 import System.Random.Internal (StdGen(..))

@@ -1125,6 +1125,9 @@ runRandIC a = state $ \ic ->
     let (x, g) = runRand a (rng ic)
     in (x, ic { rng = g })
 
+toWord32 :: BS.ByteString -> Word32
+toWord32 = Get.runGet Get.get
+
 toHash256 :: BS.ByteString -> Hash256
 toHash256 = Get.runGet Get.get
 
