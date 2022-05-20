@@ -18,14 +18,20 @@ Also, orphan instances are kinda ok in applications.
 module IC.Serialise () where
 
 import Codec.Serialise
+import Codec.Serialise.Decoding
 import GHC.Generics
 
 import qualified IC.Wasm.Winter as W
 import qualified IC.Canister.StableMemory as Stable
-import Haskoin.Keys.Extended
+import qualified Data.ByteString.Lazy as BS
 import Control.Monad.Random.Lazy
 import System.Random.Internal (StdGen(..))
 import System.Random.SplitMix
+import Haskoin.Keys.Extended (XPrvKey)
+
+import qualified Data.Binary.Get as Get
+import qualified Data.Binary.Put as Put
+import Data.Binary (get, put)
 
 import IC.Types
 import IC.Wasm.Winter.Persist
@@ -136,7 +142,8 @@ instance Serialise SecretKey where
     encode _ = error "IC.Serialise SecretKey: Only BLS supported"
     decode = BLS <$> decode
 
--- TODO: implement serialization
 instance Serialise XPrvKey where
-    encode = undefined 
-    decode = undefined
+    encode = encode . Put.runPut . put 
+    decode = do
+      bs <- decodeBytes
+      return $ Get.runGet get (BS.fromStrict bs)

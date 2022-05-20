@@ -766,7 +766,6 @@ ic_sign_with_ecdsa ic00 msg =
        .+ #name .== (T.pack "0")
     )
 
-
 -- Primed variants return the response (reply or reject)
 callIC' :: forall s a b.
   HasAgentConfig =>

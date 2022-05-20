@@ -213,7 +213,7 @@ initialIC :: IO IC
 initialIC = do
     let sk1 = createSecretKeyBLS "ic-ref's very secure secret key"
     let sk2 = createSecretKeyBLS "ic-ref's very secure subnet key"
-    let sk3 = HK.makeXPrvKey "tralala" -- createSecretKeySecp256k1 "ic-ref's ecdsa key"
+    let sk3 = HK.makeXPrvKey "ic-ref's very secure ecdsa key"
     IC mempty mempty mempty mempty <$> newStdGen <*> pure sk1 <*> pure sk2 <*> pure sk3
 
 -- Request handling
