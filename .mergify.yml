@@ -21,7 +21,7 @@ pull_request_rules:
       queue:
         method: squash
         name: default
-        commit_message_template:
+        commit_message_template: |
           {{title}}
 
           {{body}}
