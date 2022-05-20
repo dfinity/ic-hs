@@ -395,6 +395,20 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     BS.length r2 @?= 32
     assertBool "random blobs are different" $ r1 /= r2
 
+  , testCase "tECDSA" $ do
+    cid <- install noop
+    cid2 <- install noop
+    sig1 <- ic_sign_with_ecdsa (ic00via cid) (sha256 "internet computer")
+    sig2 <- ic_sign_with_ecdsa (ic00via cid2) (sha256 "internet computer")
+    -- if canister id is unset, default to a caller id
+    pk1 <- ic_ecdsa_public_key (ic00via cid) Nothing
+    pk2 <- ic_ecdsa_public_key (ic00via cid) (Just cid2)
+
+    assertBool "incorrect signature" $ verifySignature (sha256 "internet computer") (sig1 .! #signature) (pk1 .! #public_key)
+    assertBool "correct signature, should be incorrect" $ not $ verifySignature (sha256 "internet computer") (sig1 .! #signature) (pk2 .! #public_key)
+    assertBool "incorrect signature" $ not $ verifySignature (sha256 "internet computer") (sig2 .! #signature) (pk1 .! #public_key)
+    assertBool "correct signature, should be incorrect" $ verifySignature (sha256 "internet computer") (sig2 .! #signature) (pk2 .! #public_key)
+
   , testGroup "canister http calls"
     [ simpleTestCase "simple call, no transform" $ \cid -> do
       resp <- ic_http_request (ic00via cid) cid Nothing
@@ -2119,6 +2133,12 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
 
     , testCase "management canister: http_request not accepted" $ do
       ic_http_request'' defaultUser >>= isErrOrReject []
+
+    , testCase "management canister: ecdsa_public_key not accepted" $ do
+      ic_ecdsa_public_key'' defaultUser >>= isErrOrReject []
+
+    , testCase "management canister: sign_with_ecdsa not accepted" $ do
+      ic_sign_with_ecdsa'' defaultUser (sha256 "dummy") >>= isErrOrReject []
 
     , simpleTestCase "management canister: deposit_cycles not accepted" $ \cid -> do
       ic_deposit_cycles'' defaultUser cid >>= isErrOrReject []

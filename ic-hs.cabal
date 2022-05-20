@@ -93,6 +93,8 @@ executable ic-ref
   build-depends: ed25519
   build-depends: filepath
   build-depends: hashable
+  build-depends: haskoin-core
+  build-depends: secp256k1-haskell
   build-depends: hex-text
   build-depends: http-client >= 0.7.11
   build-depends: http-client-tls
@@ -199,6 +201,8 @@ executable ic-ref-run
   build-depends: ed25519
   build-depends: filepath
   build-depends: hashable
+  build-depends: haskoin-core
+  build-depends: secp256k1-haskell 
   build-depends: hex-text
   build-depends: http-client >= 0.7.11
   build-depends: http-types
@@ -291,6 +295,8 @@ executable ic-ref-test
   build-depends: ed25519
   build-depends: filepath
   build-depends: hashable
+  build-depends: haskoin-core
+  build-depends: secp256k1-haskell
   build-depends: hex-text
   build-depends: http-client >= 0.7.11
   build-depends: http-client-tls
@@ -520,6 +526,8 @@ library
   build-depends: ed25519
   build-depends: filepath
   build-depends: hashable
+  build-depends: haskoin-core
+  build-depends: secp256k1-haskell
   build-depends: hex-text
   build-depends: http-client >= 0.7.11
   build-depends: http-client-tls

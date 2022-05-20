@@ -26,15 +26,17 @@ let universal-canister = (naersk.buildPackage rec {
 
 let haskellPackages = nixpkgs.haskellPackages.override {
   overrides = self: super:
-    let generated = import nix/generated/all.nix self super; in
-    generated //
+   let generated = import nix/generated/all.nix self super; in
+   generated //
     {
       # the downgrade of cborg in nix/generated.nix makes cborgs test suite depend on
       # older versions of stuff, so let’s ignore the test suite.
-      cborg = nixpkgs.haskell.lib.dontCheck generated.cborg;
-
+      cborg = nixpkgs.haskell.lib.dontCheck generated.cborg;      
       # here more adjustments can be made if needed, e.g.
       # crc = nixpkgs.haskell.lib.markUnbroken (nixpkgs.haskell.lib.dontCheck super.crc);
+      murmur3 = nixpkgs.haskell.lib.markUnbroken super.murmur3;
+      secp256k1-haskell = nixpkgs.haskell.lib.markUnbroken super.secp256k1-haskell_0_6_0;
+      haskoin-core = nixpkgs.haskell.lib.dontCheck super.haskoin-core;
     };
 }; in
 
@@ -148,6 +150,8 @@ rec {
   inherit ic-ref-dist;
   inherit ic-hs-coverage;
   inherit universal-canister;
+
+  haskoin-core = haskellPackages.haskoin-core;
 
   ic-ref-test = nixpkgs.runCommandNoCC "ic-ref-test" {
       nativeBuildInputs = [ ic-hs ];

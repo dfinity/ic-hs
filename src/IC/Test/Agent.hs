@@ -55,6 +55,7 @@ import System.Random
 import System.Exit
 import Data.Time.Clock.POSIX
 import Codec.Candid (Principal(..), prettyPrincipal)
+import qualified Data.Binary as Get
 import qualified Data.Binary.Get as Get
 import qualified Codec.Candid as Candid
 import Data.Bits
@@ -63,6 +64,8 @@ import qualified Data.Row.Records as R
 import qualified Data.Row.Variants as V
 import qualified Data.Row.Internal as R
 import qualified Data.Row.Dictionaries as R
+import qualified Haskoin.Crypto.Signature as Haskoin
+import qualified Haskoin.Crypto.Hash as Haskoin
 
 import IC.Version
 import IC.HTTP.GenR
@@ -79,6 +82,7 @@ import IC.HashTree hiding (Blob, Label)
 import IC.Certificate
 import IC.Certificate.Value
 import IC.Certificate.CBOR
+import Crypto.Secp256k1
 
 -- * Agent configuration
 
@@ -737,6 +741,32 @@ ic_http_request ic00 canister_id transform =
   where
     wrap Nothing _ = Nothing
     wrap (Just name) cid = Just (V.IsJust #function (Candid.FuncRef (Principal cid) (T.pack name)))
+
+ic_ecdsa_public_key ::
+    forall a b. (a -> IO b) ~ (ICManagement IO .! "ecdsa_public_key") =>
+    HasAgentConfig => IC00 -> Maybe Blob -> IO b
+ic_ecdsa_public_key ic00 canister_id =
+  callIC ic00 "" #ecdsa_public_key $ empty
+    .+ #derivation_path .== Vec.empty
+    .+ #canister_id .== (fmap Principal canister_id)
+    .+ #key_id .== (empty
+       .+ #curve .== enum #secp256k1
+       .+ #name .== (T.pack "0")
+    )
+
+ic_sign_with_ecdsa ::
+    forall a b. (a -> IO b) ~ (ICManagement IO .! "sign_with_ecdsa") =>
+    HasAgentConfig => IC00 -> Blob -> IO b
+ic_sign_with_ecdsa ic00 msg =
+  callIC ic00 "" #sign_with_ecdsa $ empty
+    .+ #derivation_path .== Vec.empty
+    .+ #message_hash .== msg
+    .+ #key_id .== (empty
+       .+ #curve .== enum #secp256k1
+       .+ #name .== (T.pack "0")
+    )
+
+
 -- Primed variants return the response (reply or reject)
 callIC' :: forall s a b.
   HasAgentConfig =>
@@ -855,7 +885,7 @@ ic_raw_rand'' :: HasAgentConfig => Blob -> IO (HTTPErrOr ReqResponse)
 ic_raw_rand'' user = do
   callIC'' user "" #raw_rand ()
 
-ic_http_request'' ::HasAgentConfig => Blob -> IO (HTTPErrOr ReqResponse)
+ic_http_request'' :: HasAgentConfig => Blob -> IO (HTTPErrOr ReqResponse)
 ic_http_request'' user =
   callIC'' user "" #http_request $ empty
     .+ #url .== (T.pack $ "http://localhost:" ++ show testPort)
@@ -863,6 +893,26 @@ ic_http_request'' user =
     .+ #headers .== Vec.empty
     .+ #body .== Nothing
     .+ #transform .== Nothing
+
+ic_ecdsa_public_key'' :: HasAgentConfig => Blob -> IO (HTTPErrOr ReqResponse)
+ic_ecdsa_public_key'' user =
+  callIC'' user "" #ecdsa_public_key $ empty
+    .+ #derivation_path .== Vec.empty
+    .+ #canister_id .== Nothing
+    .+ #key_id .== (empty
+       .+ #curve .== enum #secp256k1
+       .+ #name .== (T.pack "0")
+    )
+
+ic_sign_with_ecdsa'' :: HasAgentConfig => Blob -> Blob -> IO (HTTPErrOr ReqResponse)
+ic_sign_with_ecdsa'' user msg =
+  callIC'' user "" #sign_with_ecdsa $ empty
+    .+ #derivation_path .== Vec.empty
+    .+ #message_hash .== msg
+    .+ #key_id .== (empty
+       .+ #curve .== enum #secp256k1
+       .+ #name .== (T.pack "0")
+    )
 
 -- Convenience around Data.Row.Variants used as enums
 
@@ -880,3 +930,11 @@ textual = T.unpack . prettyPrincipal . Principal
 shorten :: Int -> String -> String
 shorten n s = a ++ (if null b then "" else "…")
   where (a,b) = splitAt n s
+
+toHash256 :: Blob -> Haskoin.Hash256
+toHash256 = Get.runGet Get.get
+
+verifySignature :: Blob -> Blob -> Blob -> Bool
+verifySignature msg sig key = Haskoin.verifyHashSig (toHash256 msg) s pk
+  where Just pk = importPubKey $ BS.toStrict key
+        Just s  = importSig $ BS.toStrict sig

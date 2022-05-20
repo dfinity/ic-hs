@@ -25,6 +25,7 @@
 , ed25519
 , filepath
 , hashable
+, haskoin-core
 , hex-text
 , http-client
 , http-client-tls
@@ -161,6 +162,7 @@ mkDerivation {
     ed25519
     filepath
     hashable
+    haskoin-core
     hex-text
     http-client
     http-client-tls

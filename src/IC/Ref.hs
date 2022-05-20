@@ -57,11 +57,18 @@ import qualified Data.Map as M
 import qualified Data.Row as R
 import qualified Data.Row.Variants as V
 import qualified Data.ByteString.Lazy as BS
+import qualified Data.ByteString.Short as BSS
 import qualified Data.Text as T
 import qualified Data.Vector as Vec
 import qualified Data.Set as S
+import qualified Data.Binary.Get as Get
+import qualified Data.Binary as Get
+import qualified Haskoin.Keys.Extended as HK
+import qualified Haskoin.Crypto.Signature as HS
+import Crypto.Secp256k1
 import Data.List
 import Data.Maybe
+import Data.Word
 import Numeric.Natural
 import Data.Functor
 import Control.Monad.State.Class
@@ -72,6 +79,7 @@ import Data.Foldable (toList)
 import Codec.Candid
 import Data.Row ((.==), (.+), (.!), type (.!))
 import GHC.Stack
+import Haskoin.Crypto.Hash
 
 import IC.Types
 import IC.Constants
@@ -194,6 +202,7 @@ data IC = IC
   , rng :: StdGen
   , secretRootKey :: SecretKey
   , secretSubnetKey :: SecretKey
+  , ecdsaRootKey :: HK.XPrvKey
   }
   deriving (Show)
 
@@ -204,7 +213,8 @@ initialIC :: IO IC
 initialIC = do
     let sk1 = createSecretKeyBLS "ic-ref's very secure secret key"
     let sk2 = createSecretKeyBLS "ic-ref's very secure subnet key"
-    IC mempty mempty mempty mempty <$> newStdGen <*> pure sk1 <*> pure sk2
+    let sk3 = HK.makeXPrvKey "tralala" -- createSecretKeySecp256k1 "ic-ref's ecdsa key"
+    IC mempty mempty mempty mempty <$> newStdGen <*> pure sk1 <*> pure sk2 <*> pure sk3
 
 -- Request handling
 
@@ -457,15 +467,15 @@ handleReadState time (ReadStateRequest _sender paths) = do
 
 checkEffectiveCanisterID :: RequestValidation m => CanisterId -> CanisterId -> MethodName -> Blob -> m ()
 checkEffectiveCanisterID ecid cid method arg
-  | cid == managementCanisterId = case method of
-    "provisional_create_canister_with_cycles" -> pure ()
-    "raw_rand" -> throwError "raw_rand() cannot be invoked via ingress calls"
-    "http_request" -> throwError "http_request() cannot be invoked via ingress calls"
-    _ -> case Codec.Candid.decode @(R.Rec ("canister_id" R..== Principal)) arg of
-        Left err ->
-            throwError $ "call to management canister is not valid candid: " <> T.pack err
-        Right r ->
-            assertEffectiveCanisterId ecid (principalToEntityId (r .! #canister_id))
+  | cid == managementCanisterId =
+    if | method == "provisional_create_canister_with_cycles" -> pure ()
+       | method `elem` ["raw_rand", "http_request", "ecdsa_public_key", "sign_with_ecdsa"] -> 
+         throwError $ T.pack method <>  " cannot be invoked via ingress calls"
+       | otherwise -> case Codec.Candid.decode @(R.Rec ("canister_id" R..== Principal)) arg of
+                        Left err ->
+                          throwError $ "call to management canister is not valid candid: " <> T.pack err
+                        Right r ->
+                          assertEffectiveCanisterId ecid (principalToEntityId (r .! #canister_id))
   | otherwise = assertEffectiveCanisterId ecid cid
 
 assertEffectiveCanisterId :: RequestValidation m => CanisterId -> CanisterId -> m ()
@@ -478,7 +488,7 @@ inspectIngress (CallRequest canister_id user_id method arg)
   | canister_id == managementCanisterId =
     if| method `elem` ["provisional_create_canister_with_cycles", "provisional_top_up_canister"]
       -> return ()
-      | method `elem` [ "raw_rand", "deposit_cycles", "http_request" ]
+      | method `elem` [ "raw_rand", "deposit_cycles", "http_request", "ecdsa_public_key", "sign_with_ecdsa" ]
       -> throwError $ "Management method " <> T.pack method <> " cannot be invoked via an ingress call"
       | method `elem` managementMethods
       -> case decode @(R.Rec ("canister_id" R..== Principal)) arg of
@@ -841,6 +851,8 @@ invokeManagementCanister caller ctxt_id (Public method_name arg) =
       "provisional_top_up_canister" -> atomic icTopUpCanister
       "raw_rand" -> atomic icRawRand
       "http_request" -> atomic $ icHttpRequest caller
+      "ecdsa_public_key" -> atomic $ icEcdsaPublicKey caller
+      "sign_with_ecdsa" -> atomic $ icSignWithEcdsa caller
       _ -> reject RC_DESTINATION_INVALID $ "Unsupported management function " ++ method_name
   where
     -- always responds
@@ -1112,6 +1124,30 @@ runRandIC :: ICM m => Rand StdGen a -> m a
 runRandIC a = state $ \ic ->
     let (x, g) = runRand a (rng ic)
     in (x, ic { rng = g })
+
+toHash256 :: BS.ByteString -> Hash256
+toHash256 = Get.runGet Get.get
+
+icEcdsaPublicKey :: ICM m => EntityId -> ICManagement m .! "ecdsa_public_key"
+icEcdsaPublicKey callee r = do
+    key <- gets ecdsaRootKey
+    let cid = case (r .! #canister_id) of
+                Just cid -> principalToEntityId cid
+                Nothing -> callee
+    let Just derivation_path = HK.toSoft $ HK.listToPath $ Vec.toList $ Vec.map toWord32 $ Vec.cons (rawEntityId cid) (r .! #derivation_path)
+    let derived_pub_key = HK.derivePubPath derivation_path (HK.deriveXPubKey key)
+    return $ R.empty
+      .+ #public_key .== (BS.fromStrict (exportPubKey False (HK.xPubKey derived_pub_key)))
+      .+ #chain_code .== (BS.fromStrict (BSS.fromShort (getHash256 (HK.xPubChain derived_pub_key))))
+
+icSignWithEcdsa :: ICM m => EntityId -> ICManagement m .! "sign_with_ecdsa"
+icSignWithEcdsa callee r = do
+    key <- gets ecdsaRootKey
+    let derivation_path = HK.listToPath $ Vec.toList $ Vec.map toWord32 $ Vec.cons (rawEntityId callee) (r .! #derivation_path)
+    let derived_key = HK.derivePath derivation_path key
+    let msg = (r .! #message_hash)
+    return $ R.empty
+      .+ #signature .== (BS.fromStrict (exportSig (HS.signHash (HK.xPrvKey derived_key) (toHash256 msg))))
 
 invokeEntry :: ICM m =>
     CallId -> WasmState -> CanisterModule -> Env -> EntryPoint ->
