@@ -43,6 +43,7 @@
 , quickcheck-io
 , random
 , row-types
+, secp256k1-haskell
 , serialise
 , split
 , splitmix
@@ -98,6 +99,7 @@ mkDerivation {
     ed25519
     filepath
     hashable
+    haskoin-core
     hex-text
     http-client
     http-client-tls
@@ -114,6 +116,7 @@ mkDerivation {
     quickcheck-io
     random
     row-types
+    secp256k1-haskell
     serialise
     split
     splitmix
@@ -178,6 +181,7 @@ mkDerivation {
     process
     random
     row-types
+    secp256k1-haskell
     serialise
     split
     splitmix
@@ -224,6 +228,7 @@ mkDerivation {
     ed25519
     filepath
     hashable
+    haskoin-core
     hex-text
     http-client
     http-types
@@ -236,6 +241,7 @@ mkDerivation {
     quickcheck-io
     random
     row-types
+    secp256k1-haskell
     serialise
     split
     splitmix

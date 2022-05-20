@@ -94,7 +94,6 @@ executable ic-ref
   build-depends: filepath
   build-depends: hashable
   build-depends: haskoin-core
-  build-depends: secp256k1-haskell
   build-depends: hex-text
   build-depends: http-client >= 0.7.11
   build-depends: http-client-tls
@@ -111,6 +110,7 @@ executable ic-ref
   build-depends: random >= 1.2
   build-depends: row-types
   build-depends: serialise
+  build-depends: secp256k1-haskell
   build-depends: split
   build-depends: splitmix
   build-depends: template-haskell
@@ -202,7 +202,6 @@ executable ic-ref-run
   build-depends: filepath
   build-depends: hashable
   build-depends: haskoin-core
-  build-depends: secp256k1-haskell 
   build-depends: hex-text
   build-depends: http-client >= 0.7.11
   build-depends: http-types
@@ -217,6 +216,7 @@ executable ic-ref-run
   build-depends: process
   build-depends: row-types
   build-depends: split
+  build-depends: secp256k1-haskell
   build-depends: template-haskell
   build-depends: text
   build-depends: time
@@ -296,7 +296,6 @@ executable ic-ref-test
   build-depends: filepath
   build-depends: hashable
   build-depends: haskoin-core
-  build-depends: secp256k1-haskell
   build-depends: hex-text
   build-depends: http-client >= 0.7.11
   build-depends: http-client-tls
@@ -309,6 +308,7 @@ executable ic-ref-test
   build-depends: process
   build-depends: random
   build-depends: row-types
+  build-depends: secp256k1-haskell
   build-depends: split
   build-depends: tasty
   build-depends: tasty-ant-xml
@@ -420,6 +420,7 @@ test-suite unit-test
   build-depends: ed25519
   build-depends: filepath
   build-depends: hashable
+  build-depends: haskoin-core
   build-depends: hex-text
   build-depends: http-client >= 0.7.11
   build-depends: http-types
@@ -432,6 +433,7 @@ test-suite unit-test
   build-depends: quickcheck-io
   build-depends: random >= 1.2
   build-depends: row-types
+  build-depends: secp256k1-haskell
   build-depends: serialise
   build-depends: split
   build-depends: splitmix
