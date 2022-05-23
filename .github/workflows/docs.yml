@@ -19,7 +19,7 @@ jobs:
     - name: Build
       run: |
         sudo apt-get update
-        sudo apt-get install -y libsecp256k1-0
+        sudo apt-get install -y libsecp256k1-0 libsecp256k1-dev
         cabal --version
         ghc --version
         cabal update
