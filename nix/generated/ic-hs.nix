@@ -43,7 +43,6 @@
 , quickcheck-io
 , random
 , row-types
-, secp256k1-haskell
 , serialise
 , split
 , splitmix
@@ -116,7 +115,6 @@ mkDerivation {
     quickcheck-io
     random
     row-types
-    secp256k1-haskell
     serialise
     split
     splitmix
@@ -181,7 +179,6 @@ mkDerivation {
     process
     random
     row-types
-    secp256k1-haskell
     serialise
     split
     splitmix
@@ -241,7 +238,6 @@ mkDerivation {
     quickcheck-io
     random
     row-types
-    secp256k1-haskell
     serialise
     split
     splitmix

@@ -66,6 +66,7 @@ import qualified Data.Row.Internal as R
 import qualified Data.Row.Dictionaries as R
 import qualified Haskoin.Crypto.Signature as Haskoin
 import qualified Haskoin.Crypto.Hash as Haskoin
+import qualified Haskoin.Keys.Common as Haskoin
 
 import IC.Version
 import IC.HTTP.GenR
@@ -82,7 +83,6 @@ import IC.HashTree hiding (Blob, Label)
 import IC.Certificate
 import IC.Certificate.Value
 import IC.Certificate.CBOR
-import Crypto.Secp256k1
 
 -- * Agent configuration
 
@@ -935,5 +935,5 @@ toHash256 = Get.runGet Get.get
 
 verifySignature :: Blob -> Blob -> Blob -> Bool
 verifySignature msg sig key = Haskoin.verifyHashSig (toHash256 msg) s pk
-  where Just pk = importPubKey $ BS.toStrict key
-        Just s  = importSig $ BS.toStrict sig
+  where Just pk = Haskoin.importPubKey $ BS.toStrict key
+        Just s  = Haskoin.decodeStrictSig $ BS.toStrict sig

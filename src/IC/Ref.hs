@@ -64,8 +64,8 @@ import qualified Data.Set as S
 import qualified Data.Binary.Get as Get
 import qualified Data.Binary as Get
 import qualified Haskoin.Keys.Extended as HK
+import qualified Haskoin.Keys.Common as HK
 import qualified Haskoin.Crypto.Signature as HS
-import Crypto.Secp256k1
 import Data.List
 import Data.Maybe
 import Data.Word
@@ -1140,7 +1140,7 @@ icEcdsaPublicKey callee r = do
     let Just derivation_path = HK.toSoft $ HK.listToPath $ Vec.toList $ Vec.map toWord32 $ Vec.cons (rawEntityId cid) (r .! #derivation_path)
     let derived_pub_key = HK.derivePubPath derivation_path (HK.deriveXPubKey key)
     return $ R.empty
-      .+ #public_key .== (BS.fromStrict (exportPubKey False (HK.xPubKey derived_pub_key)))
+      .+ #public_key .== (BS.fromStrict (HK.exportPubKey False (HK.xPubKey derived_pub_key)))
       .+ #chain_code .== (BS.fromStrict (BSS.fromShort (getHash256 (HK.xPubChain derived_pub_key))))
 
 icSignWithEcdsa :: ICM m => EntityId -> ICManagement m .! "sign_with_ecdsa"
@@ -1150,7 +1150,7 @@ icSignWithEcdsa callee r = do
     let derived_key = HK.derivePath derivation_path key
     let msg = (r .! #message_hash)
     return $ R.empty
-      .+ #signature .== (BS.fromStrict (exportSig (HS.signHash (HK.xPrvKey derived_key) (toHash256 msg))))
+      .+ #signature .== (BS.fromStrict (HS.exportSig (HS.signHash (HK.xPrvKey derived_key) (toHash256 msg))))
 
 invokeEntry :: ICM m =>
     CallId -> WasmState -> CanisterModule -> Env -> EntryPoint ->
