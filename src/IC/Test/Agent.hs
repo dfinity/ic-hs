@@ -44,7 +44,6 @@ import Numeric.Natural
 import Data.Char
 import Test.Tasty.HUnit
 import Test.Tasty.Options
-import Control.Monad.Trans
 import Control.Monad.Except
 import Control.Concurrent
 import Control.Exception (catch)
@@ -132,7 +131,7 @@ connect :: String -> Int -> IO ReplWrapper
 connect ep tp = do
     agentConfig <- makeAgentConfig ep tp
     let ?agentConfig = agentConfig
-    return (R id)
+    return (R $ \x -> x)
 
 -- Yes, implicit arguments are frowned upon. But they are also very useful.
 

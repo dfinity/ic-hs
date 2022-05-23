@@ -7,11 +7,12 @@ module IC.Purify where
 
 import Control.Monad.ST
 import Data.Functor
+import Data.Kind (Type)
 import Data.Either
 import Data.Bifunctor
 
 class SnapshotAble i where
-  type SnapshotOf i :: *
+  type SnapshotOf i :: Type
   persist :: i s -> ST s (SnapshotOf i)
   recreate :: SnapshotOf i -> ST s (i s)
 
