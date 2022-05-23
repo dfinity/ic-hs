@@ -18,6 +18,7 @@ jobs:
         ghc-version: '8.10'
     - name: Build
       run: |
+        apt-get install libsecp256k1
         cabal --version
         ghc --version
         cabal update
