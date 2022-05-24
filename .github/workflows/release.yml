@@ -17,25 +17,26 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
     - uses: actions/checkout@v2
-    - id: setup_ssh
+    - name: Configure SSH such that GitHub can authenticate with nixbuild.net
       run: |
-        mkdir -p -m 700 /root/.ssh
+        sudo mkdir -p -m 700 /root/.ssh
 
-        touch /root/.ssh/nixbuild_id
-        chmod 600 /root/.ssh/nixbuild_id
-        cat << EOF > /root/.ssh/nixbuild_id
+        sudo touch /root/.ssh/nixbuild_id
+        sudo chmod 600 /root/.ssh/nixbuild_id
+        cat << EOF | sudo tee /root/.ssh/nixbuild_id > /dev/null
         ${{ secrets.SSH_KEY_FOR_NIXBUILD }}
         EOF
 
-        touch /root/.ssh/config
-        chmod 600 /root/.ssh/config
-        cat << EOF > /root/.ssh/config
+        sudo touch /root/.ssh/config
+        sudo chmod 600 /root/.ssh/config
+        cat << EOF | sudo tee --append /root/.ssh/config > /dev/null
         Host eu.nixbuild.net
           PubkeyAcceptedKeyTypes ssh-ed25519
           IdentityFile /root/.ssh/nixbuild_id
         EOF
 
-        echo 'eu.nixbuild.net ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPIQCZc54poJ8vqawd8TraNryQeJnvH1eLpIDgbiqymM' >> /etc/ssh/ssh_known_hosts
+        echo 'eu.nixbuild.net ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPIQCZc54poJ8vqawd8TraNryQeJnvH1eLpIDgbiqymM' \
+          | sudo tee --append /etc/ssh/ssh_known_hosts
 
     - uses: cachix/install-nix-action@v16
       with:
