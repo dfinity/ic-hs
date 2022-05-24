@@ -11,45 +11,24 @@ jobs:
       matrix:
         os:
         - ubuntu-latest
-        # TODO: - macos-latest
-        # TODO: - windows-latest
       fail-fast: false
     runs-on: ${{ matrix.os }}
     steps:
     - uses: actions/checkout@v2
-    - name: Configure SSH such that GitHub can authenticate with nixbuild.net
-      run: |
-        sudo mkdir -p -m 700 /root/.ssh
-
-        sudo touch /root/.ssh/nixbuild_id
-        sudo chmod 600 /root/.ssh/nixbuild_id
-        cat << EOF | sudo tee /root/.ssh/nixbuild_id > /dev/null
-        ${{ secrets.SSH_KEY_FOR_NIXBUILD }}
-        EOF
-
-        sudo touch /root/.ssh/config
-        sudo chmod 600 /root/.ssh/config
-        cat << EOF | sudo tee --append /root/.ssh/config > /dev/null
-        Host eu.nixbuild.net
-          PubkeyAcceptedKeyTypes ssh-ed25519
-          IdentityFile /root/.ssh/nixbuild_id
-        EOF
-
-        echo 'eu.nixbuild.net ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPIQCZc54poJ8vqawd8TraNryQeJnvH1eLpIDgbiqymM' \
-          | sudo tee --append /etc/ssh/ssh_known_hosts > /dev/null
-
-    - uses: cachix/install-nix-action@v16
+    - uses: nixbuild/nix-quick-install-action@v13
       with:
-        extra_nix_config: |
-          experimental-features = nix-command
+        nix_conf: experimental-features = nix-command
+    - uses: nixbuild/nixbuild-action@v10
+      with:
+        nixbuild_ssh_key: ${{ secrets.SSH_KEY_FOR_NIXBUILD }}
+    - run: nix-env -iA nix-build-uncached -f nix/
     - uses: cachix/cachix-action@v10
       with:
         name: ic-hs-test
         authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
 
-    # TODO: we might not need this if we go for remote store builds in nixbuild.net
     # until https://github.com/cachix/cachix-action/issues/86 is fixed:
-    #- run: cachix watch-store ic-hs-test &
+    - run: cachix watch-store ic-hs-test &
 
     # run a few targets explicitly, to get easier signal in the CI view
     - run: nix-build-uncached -A universal-canister
@@ -77,7 +56,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
     - uses: actions/checkout@v2
-    - uses: cachix/install-nix-action@v16
+    - uses: nixbuild/nix-quick-install-action@v13
+    - uses: nixbuild/nixbuild-action@v10
+      with:
+        nixbuild_ssh_key: ${{ secrets.SSH_KEY_FOR_NIXBUILD }}
     - uses: cachix/cachix-action@v10
       with:
         name: ic-hs-test
