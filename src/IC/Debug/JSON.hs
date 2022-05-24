@@ -28,7 +28,6 @@ import qualified Wasm.Syntax.Values as W
 import qualified Wasm.Syntax.AST as W
 import qualified Text.Hex as H
 import qualified Data.Text as T
-import qualified Haskoin.Keys.Extended as HK
 import Control.Monad.Random.Lazy
 
 import IC.Types
@@ -38,6 +37,7 @@ import IC.Canister.Snapshot
 import IC.Canister
 import IC.Ref
 import IC.Crypto
+import IC.Crypto.Bitcoin
 
 customOptions :: Options
 customOptions = defaultOptions
@@ -63,7 +63,7 @@ instance ToJSON (Replay i) where
 instance ToJSON (Stable.Repr) where
     toJSON = toJSON . Stable.serialize
 
-instance ToJSON HK.XPrvKey where
+instance ToJSON ExtendedSecretKey where
     toJSON = placeholder "(extended secret key)"
 
 placeholder :: String -> a -> Value

@@ -743,10 +743,10 @@ ic_http_request ic00 canister_id transform =
 
 ic_ecdsa_public_key ::
     forall a b. (a -> IO b) ~ (ICManagement IO .! "ecdsa_public_key") =>
-    HasAgentConfig => IC00 -> Maybe Blob -> IO b
-ic_ecdsa_public_key ic00 canister_id =
+    HasAgentConfig => IC00 -> Maybe Blob -> Vec.Vector Blob -> IO b
+ic_ecdsa_public_key ic00 canister_id path =
   callIC ic00 "" #ecdsa_public_key $ empty
-    .+ #derivation_path .== Vec.empty
+    .+ #derivation_path .== path
     .+ #canister_id .== (fmap Principal canister_id)
     .+ #key_id .== (empty
        .+ #curve .== enum #secp256k1
@@ -823,6 +823,16 @@ ic_top_up' ic00 canister_id amount = do
     .+ #canister_id .== Principal canister_id
     .+ #amount .== amount
 
+ic_ecdsa_public_key' :: HasAgentConfig => IC00 -> Blob -> Vec.Vector Blob -> IO ReqResponse
+ic_ecdsa_public_key' ic00 canister_id path =
+  callIC' ic00 canister_id #ecdsa_public_key $ empty
+    .+ #derivation_path .== path
+    .+ #canister_id .== Nothing
+    .+ #key_id .== (empty
+       .+ #curve .== enum #secp256k1
+       .+ #name .== (T.pack "0")
+    )
+
 -- Double primed variants are only for requests from users (so they take the user,
 -- not a generic ic00 thing), and return the HTTP error code or the response
 -- (reply or reject)
@@ -895,7 +905,7 @@ ic_http_request'' user =
 ic_ecdsa_public_key'' :: HasAgentConfig => Blob -> IO (HTTPErrOr ReqResponse)
 ic_ecdsa_public_key'' user =
   callIC'' user "" #ecdsa_public_key $ empty
-    .+ #derivation_path .== Vec.empty
+    .+ #derivation_path .== Vec.empty 
     .+ #canister_id .== Nothing
     .+ #key_id .== (empty
        .+ #curve .== enum #secp256k1

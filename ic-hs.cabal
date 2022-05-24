@@ -127,6 +127,7 @@ executable ic-ref
   build-depends: uglymemo
   build-depends: warp
   build-depends: zlib
+  build-depends: either
   other-modules: IC.Canister
   other-modules: IC.Canister.Imp
   other-modules: IC.Canister.Snapshot
@@ -140,6 +141,7 @@ executable ic-ref
   other-modules: IC.Certificate.Value
   other-modules: IC.Constants
   other-modules: IC.Crypto
+  other-modules: IC.Crypto.Bitcoin
   other-modules: IC.Crypto.BLS
   other-modules: IC.Crypto.CanisterSig
   other-modules: IC.Crypto.DER
@@ -225,6 +227,7 @@ executable ic-ref-run
   build-depends: winter
   build-depends: uglymemo
   build-depends: zlib
+  build-depends: either
   other-modules: IC.Canister
   other-modules: IC.Canister.Imp
   other-modules: IC.Canister.Snapshot
@@ -237,6 +240,7 @@ executable ic-ref-run
   other-modules: IC.Certificate.Validate
   other-modules: IC.Certificate.Value
   other-modules: IC.Constants
+  other-modules: IC.Crypto.Bitcoin
   other-modules: IC.Crypto
   other-modules: IC.Crypto.BLS
   other-modules: IC.Crypto.CanisterSig
@@ -321,6 +325,7 @@ executable ic-ref-test
   build-depends: wai
   build-depends: warp
   build-depends: zlib
+  build-depends: either
   other-modules: IC.CBOR.Parser
   other-modules: IC.CBOR.Patterns
   other-modules: IC.CBOR.Utils
@@ -328,6 +333,7 @@ executable ic-ref-test
   other-modules: IC.Certificate.CBOR
   other-modules: IC.Certificate.Validate
   other-modules: IC.Certificate.Value
+  other-modules: IC.Crypto.Bitcoin
   other-modules: IC.Crypto
   other-modules: IC.Crypto.BLS
   other-modules: IC.Crypto.CanisterSig
@@ -377,6 +383,7 @@ executable ic-request-id
   build-depends: template-haskell
   build-depends: text
   build-depends: unordered-containers
+  build-depends: either
   other-modules: IC.CBOR.Utils
   other-modules: IC.Hash
   other-modules: IC.HTTP.CBOR
@@ -446,6 +453,7 @@ test-suite unit-test
   build-depends: winter
   build-depends: uglymemo
   build-depends: zlib
+  build-depends: either
   other-modules: IC.Canister
   other-modules: IC.Canister.Imp
   other-modules: IC.Canister.Snapshot
@@ -459,6 +467,7 @@ test-suite unit-test
   other-modules: IC.Certificate.Value
   other-modules: IC.Constants
   other-modules: IC.Crypto
+  other-modules: IC.Crypto.Bitcoin
   other-modules: IC.Crypto.BLS
   other-modules: IC.Crypto.CanisterSig
   other-modules: IC.Crypto.DER
@@ -567,6 +576,7 @@ library
   build-depends: winter
   build-depends: uglymemo
   build-depends: zlib
+  build-depends: either
   exposed-modules: IC.Canister
   exposed-modules: IC.Canister.Imp
   exposed-modules: IC.Canister.Snapshot
@@ -580,6 +590,7 @@ library
   exposed-modules: IC.Certificate.Value
   exposed-modules: IC.Constants
   exposed-modules: IC.Crypto
+  exposed-modules: IC.Crypto.Bitcoin
   exposed-modules: IC.Crypto.BLS
   exposed-modules: IC.Crypto.CanisterSig
   exposed-modules: IC.Crypto.DER

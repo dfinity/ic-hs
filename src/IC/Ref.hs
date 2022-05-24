@@ -57,18 +57,11 @@ import qualified Data.Map as M
 import qualified Data.Row as R
 import qualified Data.Row.Variants as V
 import qualified Data.ByteString.Lazy as BS
-import qualified Data.ByteString.Short as BSS
 import qualified Data.Text as T
 import qualified Data.Vector as Vec
 import qualified Data.Set as S
-import qualified Data.Binary.Get as Get
-import qualified Data.Binary as Get
-import qualified Haskoin.Keys.Extended as HK
-import qualified Haskoin.Keys.Common as HK
-import qualified Haskoin.Crypto.Signature as HS
 import Data.List
 import Data.Maybe
-import Data.Word
 import Numeric.Natural
 import Data.Functor
 import Control.Monad.State.Class
@@ -79,7 +72,6 @@ import Data.Foldable (toList)
 import Codec.Candid
 import Data.Row ((.==), (.+), (.!), type (.!))
 import GHC.Stack
-import Haskoin.Crypto.Hash
 
 import IC.Types
 import IC.Constants
@@ -93,6 +85,7 @@ import IC.Certificate
 import IC.Certificate.Value
 import IC.Certificate.CBOR
 import IC.Crypto
+import IC.Crypto.Bitcoin as Bitcoin
 import IC.Ref.IO (sendHttpRequest)
 
 -- Abstract HTTP Interface
@@ -202,7 +195,7 @@ data IC = IC
   , rng :: StdGen
   , secretRootKey :: SecretKey
   , secretSubnetKey :: SecretKey
-  , ecdsaRootKey :: HK.XPrvKey
+  , ecdsaRootKey :: Bitcoin.ExtendedSecretKey
   }
   deriving (Show)
 
@@ -213,7 +206,7 @@ initialIC :: IO IC
 initialIC = do
     let sk1 = createSecretKeyBLS "ic-ref's very secure secret key"
     let sk2 = createSecretKeyBLS "ic-ref's very secure subnet key"
-    let sk3 = HK.makeXPrvKey "ic-ref's very secure ecdsa key"
+    let sk3 = Bitcoin.createExtendedKey "ic-ref's very secure ecdsa key"
     IC mempty mempty mempty mempty <$> newStdGen <*> pure sk1 <*> pure sk2 <*> pure sk3
 
 -- Request handling
@@ -1125,33 +1118,30 @@ runRandIC a = state $ \ic ->
     let (x, g) = runRand a (rng ic)
     in (x, ic { rng = g })
 
-toWord32 :: BS.ByteString -> Word32
-toWord32 = Get.runGet Get.get
-
-toHash256 :: BS.ByteString -> Hash256
-toHash256 = Get.runGet Get.get
-
-icEcdsaPublicKey :: ICM m => EntityId -> ICManagement m .! "ecdsa_public_key"
+icEcdsaPublicKey :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "ecdsa_public_key"
 icEcdsaPublicKey callee r = do
     key <- gets ecdsaRootKey
     let cid = case (r .! #canister_id) of
                 Just cid -> principalToEntityId cid
                 Nothing -> callee
-    let Just derivation_path = HK.toSoft $ HK.listToPath $ Vec.toList $ Vec.map toWord32 $ Vec.cons (rawEntityId cid) (r .! #derivation_path)
-    let derived_pub_key = HK.derivePubPath derivation_path (HK.deriveXPubKey key)
-    return $ R.empty
-      .+ #public_key .== (BS.fromStrict (HK.exportPubKey False (HK.xPubKey derived_pub_key)))
-      .+ #chain_code .== (BS.fromStrict (BSS.fromShort (getHash256 (HK.xPubChain derived_pub_key))))
+    case (Bitcoin.derivePublicKey key (Vec.toList (Vec.cons (rawEntityId cid) (r .! #derivation_path)))) of
+      Left err -> reject RC_CANISTER_ERROR err
+      Right k -> return $ R.empty
+                   .+ #public_key .== (publicKeyToDER k)
+                   .+ #chain_code .== (extractChainCode k)
 
-icSignWithEcdsa :: ICM m => EntityId -> ICManagement m .! "sign_with_ecdsa"
+icSignWithEcdsa :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "sign_with_ecdsa"
 icSignWithEcdsa callee r = do
     key <- gets ecdsaRootKey
-    let derivation_path = HK.listToPath $ Vec.toList $ Vec.map toWord32 $ Vec.cons (rawEntityId callee) (r .! #derivation_path)
-    let derived_key = HK.derivePath derivation_path key
-    let msg = (r .! #message_hash)
-    return $ R.empty
-      .+ #signature .== (BS.fromStrict (HS.exportSig (HS.signHash (HK.xPrvKey derived_key) (toHash256 msg))))
-
+    case (Bitcoin.derivePrivateKey key (Vec.toList (Vec.cons (rawEntityId callee) (r .! #derivation_path)))) of
+      Left err -> reject RC_CANISTER_ERROR err
+      Right k -> do
+        case (Bitcoin.toHash256 (r .! #message_hash)) of
+          Left err -> reject RC_CANISTER_ERROR err
+          Right h ->
+            return $ R.empty
+              .+ #signature .== (Bitcoin.sign k h)
+ 
 invokeEntry :: ICM m =>
     CallId -> WasmState -> CanisterModule -> Env -> EntryPoint ->
     m (TrapOr (WasmState, UpdateResult))
@@ -1339,5 +1329,4 @@ orElse a b = a >>= maybe b return
 
 onTrap :: Monad m => m (TrapOr a) -> (String -> m a) -> m a
 onTrap a b = a >>= \case { Trap msg -> b msg; Return x -> return x }
-
 

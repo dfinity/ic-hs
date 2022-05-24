@@ -23,6 +23,7 @@
 , data-default-class
 , directory
 , ed25519
+, either
 , filepath
 , hashable
 , haskoin-core
@@ -96,6 +97,7 @@ mkDerivation {
     data-default-class
     directory
     ed25519
+    either
     filepath
     hashable
     haskoin-core
@@ -161,6 +163,7 @@ mkDerivation {
     data-default-class
     directory
     ed25519
+    either
     filepath
     hashable
     haskoin-core
@@ -223,6 +226,7 @@ mkDerivation {
     data-default-class
     directory
     ed25519
+    either
     filepath
     hashable
     haskoin-core
