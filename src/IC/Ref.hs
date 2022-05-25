@@ -1126,11 +1126,11 @@ runRandIC a = state $ \ic ->
 
 icEcdsaPublicKey :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "ecdsa_public_key"
 icEcdsaPublicKey caller r = do
-    let cid = case (r .! #canister_id) of
+    let cid = case r .! #canister_id of
                 Just cid -> principalToEntityId cid
                 Nothing -> caller
     key <- getCanisterRootKey cid
-    case (Bitcoin.derivePublicKey key (Vec.toList (r .! #derivation_path))) of
+    case Bitcoin.derivePublicKey key (r .! #derivation_path) of
       Left err -> reject RC_CANISTER_ERROR err
       Right k -> return $ R.empty
                    .+ #public_key .== (publicKeyToDER k)
@@ -1139,10 +1139,10 @@ icEcdsaPublicKey caller r = do
 icSignWithEcdsa :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "sign_with_ecdsa"
 icSignWithEcdsa caller r = do
     key <- getCanisterRootKey caller
-    case (Bitcoin.derivePrivateKey key (Vec.toList (r .! #derivation_path))) of
+    case Bitcoin.derivePrivateKey key (r .! #derivation_path) of
       Left err -> reject RC_CANISTER_ERROR err
       Right k -> do
-        case (Bitcoin.toHash256 (r .! #message_hash)) of
+        case Bitcoin.toHash256 (r .! #message_hash) of
           Left err -> reject RC_CANISTER_ERROR err
           Right h ->
             return $ R.empty

@@ -14,6 +14,7 @@ import qualified Data.ByteString.Lazy as BS
 import qualified Data.ByteString.Short as BSS
 import qualified Data.Binary as Get
 import qualified Data.Binary.Get as Get
+import qualified Data.Vector as Vec
 import qualified Haskoin.Keys.Common as Haskoin
 import qualified Haskoin.Keys.Extended as Haskoin
 import qualified Haskoin.Crypto.Signature as Haskoin
@@ -27,11 +28,11 @@ newtype ExtendedSecretKey = ExtendedSecretKey Haskoin.XPrvKey
 createExtendedKey :: BS.ByteString -> ExtendedSecretKey
 createExtendedKey seed = ExtendedSecretKey $ Haskoin.makeXPrvKey $ BS.toStrict seed 
 
-derivePrivateKey :: ExtendedSecretKey -> [BS.ByteString] -> Either String Haskoin.XPrvKey
-derivePrivateKey (ExtendedSecretKey sk) path = mapRight (\p -> Haskoin.derivePath p sk) (parseSoftDerivationPath path)
+derivePrivateKey :: ExtendedSecretKey -> Vec.Vector BS.ByteString -> Either String Haskoin.XPrvKey
+derivePrivateKey (ExtendedSecretKey sk) path = mapRight (\p -> Haskoin.derivePath p sk) $ parseSoftDerivationPath $ Vec.toList path
 
-derivePublicKey :: ExtendedSecretKey -> [BS.ByteString] -> Either String Haskoin.XPubKey
-derivePublicKey (ExtendedSecretKey sk) path = mapRight (\p -> Haskoin.derivePubPath p (Haskoin.deriveXPubKey sk)) (parseSoftDerivationPath path)
+derivePublicKey :: ExtendedSecretKey -> Vec.Vector BS.ByteString -> Either String Haskoin.XPubKey
+derivePublicKey (ExtendedSecretKey sk) path = mapRight (\p -> Haskoin.derivePubPath p (Haskoin.deriveXPubKey sk)) $ parseSoftDerivationPath $ Vec.toList path
 
 sign :: Haskoin.XPrvKey -> Haskoin.Hash256 -> BS.ByteString
 sign key msg = BS.fromStrict $ Haskoin.exportSig $ Haskoin.signHash (Haskoin.xPrvKey key) msg
