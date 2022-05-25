@@ -278,7 +278,7 @@ isCanisterEmpty cid = isNothing . content <$> getCanister cid
 getCanisterRootKey :: (CanReject m, ICM m) => CanisterId -> m Bitcoin.ExtendedSecretKey
 getCanisterRootKey cid =
   gets (M.lookup cid . canisterRootKeys) >>= \case
-    Nothing -> reject RC_CANISTER_ERROR "root key does not exist for a canister"
+    Nothing -> reject RC_CANISTER_ERROR "canister root key does not exist"
     Just k  -> return k
 
 -- The following functions assume the canister does exist.

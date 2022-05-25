@@ -414,7 +414,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
       ic_ecdsa_public_key' (ic00via cid) Nothing (Vec.singleton "clearly not Word32") >>= isReject [5]
 
     , simpleTestCase "id of non-existent canister" $ \cid -> do
-      ic_ecdsa_public_key' (ic00via cid) (Just $ EntityId "Clearly not a valid EntityId") Vec.empty >>= isReject[3]
+      ic_ecdsa_public_key' (ic00via cid) (Just "Clearly not a valid EntityId") Vec.empty >>= isReject [5]
     ]
   , testGroup "canister http calls"
     [ simpleTestCase "simple call, no transform" $ \cid -> do
