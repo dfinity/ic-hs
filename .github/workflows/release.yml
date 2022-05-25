@@ -11,16 +11,40 @@ jobs:
       matrix:
         os:
         - ubuntu-latest
-        - macos-latest
-        # TODO: - windows-latest
+
+        # TODO: nixbuild.net currently does not have x86_64-darwin nor aarch64-darwin support but they're working on it:
+        #
+        # | I do have another question: do you support x86_64-darwin builds and
+        # | ideally aarch64-darwin as well (I just got a new M1 MacBook)?
+        #
+        # Our long-term goal is to support x86_64-darwin and aarch64-darwin, but
+        # we don't do it today. The reason is that we really like all builds to
+        # run inside our virtualized sandbox (with our own virtual file system),
+        # since it gives us full control and also lots of insights about the
+        # builds. We have not yet ported this sandbox to MacOS, but it is
+        # definitely something we want to do.
+        #
+        # We actually _have_ aarch64-darwin machines in our build cluster,
+        # running build sandboxes for aarch64-linux. We use a mix of Hetzner
+        # instances (https://www.hetzner.com/dedicated-rootserver/mac-mini-m1)
+        # and self-hosted M1 machines for this. The aarch64-linux support is EA
+        # in nixbuild.net, so we are still experimenting a bit.
+        #
+        # - macos-latest
       fail-fast: false
     runs-on: ${{ matrix.os }}
+    env:
+      SSH_KEY_FOR_NIXBUILD: secrets.SSH_KEY_FOR_NIXBUILD
     steps:
     - uses: actions/checkout@v2
-    - uses: cachix/install-nix-action@v16
+    - uses: nixbuild/nix-quick-install-action@v13
       with:
-        extra_nix_config: |
-          experimental-features = nix-command
+        nix_conf: experimental-features = nix-command
+    - name: Configure Nix to use nixbuild.net as a remote builder
+      if: env.SSH_KEY_FOR_NIXBUILD != ''
+      uses: nixbuild/nixbuild-action@v10
+      with:
+        nixbuild_ssh_key: ${{ secrets.SSH_KEY_FOR_NIXBUILD }}
     - run: nix-env -iA nix-build-uncached -f nix/
     - uses: cachix/cachix-action@v10
       with:
@@ -50,12 +74,13 @@ jobs:
         include:
           - os: ubuntu-latest
             nix-system: x86_64-linux
-          - os: macos-latest
-            nix-system: x86_64-darwin
     runs-on: ${{ matrix.os }}
     steps:
     - uses: actions/checkout@v2
-    - uses: cachix/install-nix-action@v16
+    - uses: nixbuild/nix-quick-install-action@v13
+    - uses: nixbuild/nixbuild-action@v10
+      with:
+        nixbuild_ssh_key: ${{ secrets.SSH_KEY_FOR_NIXBUILD }}
     - uses: cachix/cachix-action@v10
       with:
         name: ic-hs-test
