@@ -275,11 +275,8 @@ isCanisterRunning cid = getRunStatus cid >>= \case
 isCanisterEmpty :: ICM m => CanisterId -> m Bool
 isCanisterEmpty cid = isNothing . content <$> getCanister cid
 
-getCanisterRootKey :: (CanReject m, ICM m) => CanisterId -> m Bitcoin.ExtendedSecretKey
-getCanisterRootKey cid =
-  gets (M.lookup cid . canisterRootKeys) >>= \case
-    Nothing -> reject RC_CANISTER_ERROR "canister root key does not exist"
-    Just k  -> return k
+getCanisterRootKey :: CanisterId -> Bitcoin.ExtendedSecretKey
+getCanisterRootKey cid = Bitcoin.createExtendedKey $ rawEntityId cid 
 
 -- The following functions assume the canister does exist.
 -- It would be an internal error if they don't.
@@ -1129,7 +1126,8 @@ icEcdsaPublicKey caller r = do
     let cid = case r .! #canister_id of
                 Just cid -> principalToEntityId cid
                 Nothing -> caller
-    key <- getCanisterRootKey cid
+    canisterMustExist cid
+    let key = getCanisterRootKey cid
     case Bitcoin.derivePublicKey key (r .! #derivation_path) of
       Left err -> reject RC_CANISTER_ERROR err
       Right k -> return $ R.empty
@@ -1138,7 +1136,7 @@ icEcdsaPublicKey caller r = do
 
 icSignWithEcdsa :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "sign_with_ecdsa"
 icSignWithEcdsa caller r = do
-    key <- getCanisterRootKey caller
+    let key = getCanisterRootKey caller
     case Bitcoin.derivePrivateKey key (r .! #derivation_path) of
       Left err -> reject RC_CANISTER_ERROR err
       Right k -> do
