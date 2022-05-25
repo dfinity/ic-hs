@@ -1129,7 +1129,7 @@ icEcdsaPublicKey caller r = do
     canisterMustExist cid
     let key = getCanisterRootKey cid
     case Bitcoin.derivePublicKey key (r .! #derivation_path) of
-      Left err -> reject RC_CANISTER_ERROR err
+      Left err -> reject RC_CANISTER_ERROR err (Just EC_INVALID_ENCODING)
       Right k -> return $ R.empty
                    .+ #public_key .== (publicKeyToDER k)
                    .+ #chain_code .== (extractChainCode k)
@@ -1138,10 +1138,10 @@ icSignWithEcdsa :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "sign_w
 icSignWithEcdsa caller r = do
     let key = getCanisterRootKey caller
     case Bitcoin.derivePrivateKey key (r .! #derivation_path) of
-      Left err -> reject RC_CANISTER_ERROR err
+      Left err -> reject RC_CANISTER_ERROR err  (Just EC_INVALID_ENCODING)
       Right k -> do
         case Bitcoin.toHash256 (r .! #message_hash) of
-          Left err -> reject RC_CANISTER_ERROR err
+          Left err -> reject RC_CANISTER_ERROR err (Just EC_INVALID_ENCODING)
           Right h ->
             return $ R.empty
               .+ #signature .== (Bitcoin.sign k h)
