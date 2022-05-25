@@ -74,8 +74,6 @@ jobs:
         include:
           - os: ubuntu-latest
             nix-system: x86_64-linux
-          - os: macos-latest
-            nix-system: x86_64-darwin
     runs-on: ${{ matrix.os }}
     steps:
     - uses: actions/checkout@v2
