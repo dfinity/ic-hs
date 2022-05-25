@@ -27,6 +27,7 @@ import qualified Data.IntMap as IM
 import qualified Data.Map.Lazy as M
 import qualified Data.Vector as V
 import Data.ByteString.Lazy (ByteString)
+import Data.Kind (Type)
 
 import qualified IC.Canister.StableMemory as Stable
 
@@ -56,8 +57,8 @@ resumeMemory :: W.MemoryInst (ST s) -> ByteString -> ST s ()
 resumeMemory i p = resume i p
 
 class Monad (M a) => Persistable a where
-  type Persisted a :: *
-  type M a :: * -> *
+  type Persisted a :: Type
+  type M a :: Type -> Type
   persist :: a -> M a (Persisted a)
   resume :: a -> Persisted a -> M a ()
 
