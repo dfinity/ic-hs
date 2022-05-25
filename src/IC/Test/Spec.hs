@@ -2692,7 +2692,7 @@ isRelay = runGet $ Get.getWord32le >>= \case
     0x4c444944 -> fail "Encountered Candid when expectin relayed data. Did you forget to use isRelay?"
     c -> do
       msg <- Get.getRemainingLazyByteString
-      return $ Reject (fromIntegral c) (T.decodeUtf8With T.lenientDecode (BS.toStrict msg))
+      return $ Reject (fromIntegral c) (T.decodeUtf8With T.lenientDecode (BS.toStrict msg)) Nothing
 
 
 -- Shortcut for test cases that just need one canister.

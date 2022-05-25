@@ -59,7 +59,7 @@ printQueryRequest (QueryRequest _ _ method arg) =
     printf "→ query %s%s\n" method (shorten 60 (candidOrPretty arg))
 
 printCallResponse :: CallResponse -> IO ()
-printCallResponse (Rejected (c, s)) =
+printCallResponse (Rejected (c, s, _err)) =
     printf "← rejected (%s): %s\n" (show c) s
 printCallResponse (Replied blob) =
     printf "← replied: %s\n" (shorten 100 (candidOrPretty blob))
