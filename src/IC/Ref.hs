@@ -195,7 +195,6 @@ data IC = IC
   , rng :: StdGen
   , secretRootKey :: SecretKey
   , secretSubnetKey :: SecretKey
-  , canisterRootKeys :: CanisterId ↦ Bitcoin.ExtendedSecretKey
   }
   deriving (Show)
 
@@ -206,7 +205,7 @@ initialIC :: IO IC
 initialIC = do
     let sk1 = createSecretKeyBLS "ic-ref's very secure secret key"
     let sk2 = createSecretKeyBLS "ic-ref's very secure subnet key"
-    IC mempty mempty mempty mempty <$> newStdGen <*> pure sk1 <*> pure sk2 <*> mempty
+    IC mempty mempty mempty mempty <$> newStdGen <*> pure sk1 <*> pure sk2
 
 -- Request handling
 
@@ -236,7 +235,6 @@ callerOfRequest rid = gets (M.lookup rid . requests) >>= \case
 createEmptyCanister :: ICM m => CanisterId -> S.Set EntityId -> Timestamp -> m ()
 createEmptyCanister cid controllers time = modify $ \ic ->
     ic { canisters = M.insert cid can (canisters ic) }
-       { canisterRootKeys = M.insert cid (Bitcoin.createExtendedKey (rawEntityId cid)) (canisterRootKeys ic) }
   where
     can = CanState
       { content = Nothing

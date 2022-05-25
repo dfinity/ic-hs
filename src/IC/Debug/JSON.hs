@@ -37,7 +37,6 @@ import IC.Canister.Snapshot
 import IC.Canister
 import IC.Ref
 import IC.Crypto
-import IC.Crypto.Bitcoin
 
 customOptions :: Options
 customOptions = defaultOptions
@@ -62,9 +61,6 @@ instance ToJSON (Replay i) where
 
 instance ToJSON (Stable.Repr) where
     toJSON = toJSON . Stable.serialize
-
-instance ToJSON ExtendedSecretKey where
-    toJSON = placeholder "(extended secret key)"
 
 placeholder :: String -> a -> Value
 placeholder s = const (String (T.pack s))
@@ -194,3 +190,4 @@ instance ToJSON StdGen where
 
 instance ToJSON SecretKey where
     toJSON = placeholder "(secret key)"
+
