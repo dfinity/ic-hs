@@ -46,6 +46,9 @@ instance Serialise NeedsToRespond where
 deriving instance Generic RejectCode
 instance Serialise RejectCode where
 
+deriving instance Generic ErrorCode
+instance Serialise ErrorCode where
+
 deriving instance Generic Response
 instance Serialise Response where
 
