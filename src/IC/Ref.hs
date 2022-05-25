@@ -195,7 +195,7 @@ data IC = IC
   , rng :: StdGen
   , secretRootKey :: SecretKey
   , secretSubnetKey :: SecretKey
-  , ecdsaRootKey :: Bitcoin.ExtendedSecretKey
+  , canisterRootKeys :: CanisterId ↦ Bitcoin.ExtendedSecretKey
   }
   deriving (Show)
 
@@ -206,8 +206,7 @@ initialIC :: IO IC
 initialIC = do
     let sk1 = createSecretKeyBLS "ic-ref's very secure secret key"
     let sk2 = createSecretKeyBLS "ic-ref's very secure subnet key"
-    let sk3 = Bitcoin.createExtendedKey "ic-ref's very secure ecdsa key"
-    IC mempty mempty mempty mempty <$> newStdGen <*> pure sk1 <*> pure sk2 <*> pure sk3
+    IC mempty mempty mempty mempty <$> newStdGen <*> pure sk1 <*> pure sk2 <*> mempty
 
 -- Request handling
 
@@ -237,6 +236,7 @@ callerOfRequest rid = gets (M.lookup rid . requests) >>= \case
 createEmptyCanister :: ICM m => CanisterId -> S.Set EntityId -> Timestamp -> m ()
 createEmptyCanister cid controllers time = modify $ \ic ->
     ic { canisters = M.insert cid can (canisters ic) }
+       { canisterRootKeys = M.insert cid (Bitcoin.createExtendedKey (rawEntityId cid)) (canisterRootKeys ic) }
   where
     can = CanState
       { content = Nothing
@@ -274,6 +274,12 @@ isCanisterRunning cid = getRunStatus cid >>= \case
 
 isCanisterEmpty :: ICM m => CanisterId -> m Bool
 isCanisterEmpty cid = isNothing . content <$> getCanister cid
+
+getCanisterRootKey :: (CanReject m, ICM m) => CanisterId -> m Bitcoin.ExtendedSecretKey
+getCanisterRootKey cid =
+  gets (M.lookup cid . canisterRootKeys) >>= \case
+    Nothing -> reject RC_CANISTER_ERROR "root key does not exist for a canister"
+    Just k  -> return k
 
 -- The following functions assume the canister does exist.
 -- It would be an internal error if they don't.
@@ -1119,21 +1125,21 @@ runRandIC a = state $ \ic ->
     in (x, ic { rng = g })
 
 icEcdsaPublicKey :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "ecdsa_public_key"
-icEcdsaPublicKey callee r = do
-    key <- gets ecdsaRootKey
+icEcdsaPublicKey caller r = do
     let cid = case (r .! #canister_id) of
                 Just cid -> principalToEntityId cid
-                Nothing -> callee
-    case (Bitcoin.derivePublicKey key (Vec.toList (Vec.cons (rawEntityId cid) (r .! #derivation_path)))) of
+                Nothing -> caller
+    key <- getCanisterRootKey cid
+    case (Bitcoin.derivePublicKey key (Vec.toList (r .! #derivation_path))) of
       Left err -> reject RC_CANISTER_ERROR err
       Right k -> return $ R.empty
                    .+ #public_key .== (publicKeyToDER k)
                    .+ #chain_code .== (extractChainCode k)
 
 icSignWithEcdsa :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "sign_with_ecdsa"
-icSignWithEcdsa callee r = do
-    key <- gets ecdsaRootKey
-    case (Bitcoin.derivePrivateKey key (Vec.toList (Vec.cons (rawEntityId callee) (r .! #derivation_path)))) of
+icSignWithEcdsa caller r = do
+    key <- getCanisterRootKey caller
+    case (Bitcoin.derivePrivateKey key (Vec.toList (r .! #derivation_path))) of
       Left err -> reject RC_CANISTER_ERROR err
       Right k -> do
         case (Bitcoin.toHash256 (r .! #message_hash)) of

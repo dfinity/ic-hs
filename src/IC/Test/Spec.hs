@@ -411,7 +411,10 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
       assertBool "correct signature, should be incorrect" $ verifySignature (sha256 "internet computer") (sig2 .! #signature) (pk2 .! #public_key)
  
     , simpleTestCase "invalid derivation path" $ \cid -> do
-      ic_ecdsa_public_key' (ic00via cid) cid (Vec.singleton "clearly not Word32") >>= isReject [5] 
+      ic_ecdsa_public_key' (ic00via cid) Nothing (Vec.singleton "clearly not Word32") >>= isReject [5]
+
+    , simpleTestCase "id of non-existent canister" $ \cid -> do
+      ic_ecdsa_public_key' (ic00via cid) (Just $ EntityId "Clearly not a valid EntityId") Vec.empty >>= isReject[3]
     ]
   , testGroup "canister http calls"
     [ simpleTestCase "simple call, no transform" $ \cid -> do

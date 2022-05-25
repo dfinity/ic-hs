@@ -823,11 +823,11 @@ ic_top_up' ic00 canister_id amount = do
     .+ #canister_id .== Principal canister_id
     .+ #amount .== amount
 
-ic_ecdsa_public_key' :: HasAgentConfig => IC00 -> Blob -> Vec.Vector Blob -> IO ReqResponse
+ic_ecdsa_public_key' :: HasAgentConfig => IC00 -> Maybe Blob -> Vec.Vector Blob -> IO ReqResponse
 ic_ecdsa_public_key' ic00 canister_id path =
-  callIC' ic00 canister_id #ecdsa_public_key $ empty
+  callIC' ic00 "" #ecdsa_public_key $ empty
     .+ #derivation_path .== path
-    .+ #canister_id .== Nothing
+    .+ #canister_id .== (Principal <$> canister_id)
     .+ #key_id .== (empty
        .+ #curve .== enum #secp256k1
        .+ #name .== (T.pack "0")

@@ -56,12 +56,11 @@ toWord32 :: BS.ByteString -> Either String Word32
 toWord32 = convert Get.getWord32be
 
 toHash256 :: BS.ByteString -> Either String Haskoin.Hash256
-toHash256 = Get.runGet Get.get 
+toHash256 = convert Get.get
 
 convert :: Get.Get a -> BS.ByteString -> Either String a
-convert get b = case (Get.runGetOrFail get b) of
+convert get bs = case (Get.runGetOrFail get bs) of
   Left (_, _, err) -> Left err
-  Right (_, 0, v) -> Right v
-  _ -> Left "Not all bytes consumed"
-
-
+  Right (un, n, v) -> if un == BS.empty
+    then Right v
+    else Left $ "Input ByteString too long: " ++ show un ++ " " ++ show n
