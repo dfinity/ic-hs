@@ -31,7 +31,7 @@ let haskellPackages = nixpkgs.haskellPackages.override {
     {
       # the downgrade of cborg in nix/generated.nix makes cborgs test suite depend on
       # older versions of stuff, so let’s ignore the test suite.
-      cborg = nixpkgs.haskell.lib.dontCheck generated.cborg;      
+      cborg = nixpkgs.haskell.lib.dontCheck generated.cborg;
       # here more adjustments can be made if needed, e.g.
       # crc = nixpkgs.haskell.lib.markUnbroken (nixpkgs.haskell.lib.dontCheck super.crc);
       murmur3 = nixpkgs.haskell.lib.markUnbroken super.murmur3;
@@ -104,6 +104,10 @@ let
                 generated.cborg.overrideAttrs(old: {
                 configureFlags = ["-f-optimize-gmp"];
               }));
+
+              murmur3 = nixpkgs.haskell.lib.markUnbroken super.murmur3;
+              secp256k1-haskell = nixpkgs.haskell.lib.markUnbroken super.secp256k1-haskell_0_6_0;
+              haskoin-core = nixpkgs.haskell.lib.dontCheck super.haskoin-core;
 
               cryptonite = super.cryptonite.overrideAttrs(old: {
                 configureFlags = "-f-integer-gmp";
