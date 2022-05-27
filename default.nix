@@ -105,9 +105,7 @@ let
               );
 
               murmur3 = nixpkgs.haskell.lib.markUnbroken super.murmur3;
-              secp256k1-haskell = nixpkgs.haskell.lib.addBuildDepend
-                (nixpkgs.haskell.lib.markUnbroken super.secp256k1-haskell_0_6_0)
-                nixpkgs.pkgsStatic.pkg-config;
+              secp256k1-haskell = nixpkgs.haskell.lib.markUnbroken super.secp256k1-haskell_0_6_0;
               haskoin-core = nixpkgs.haskell.lib.dontCheck super.haskoin-core;
 
               cryptonite = nixpkgs.haskell.lib.dontCheck (
