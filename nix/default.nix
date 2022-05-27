@@ -47,6 +47,8 @@ let
             url = "https://github.com/commercialhaskell/all-cabal-hashes/archive/d4d63b04cd9f6ed263db8df4cdd6dcc667f96ccd.tar.gz";
             sha256 = "0pd9zfy8wwbwqg0qkgi28kfi2q3kwl1lwkq2k7b50wm5pb3nngrm";
           };
+
+          secp256k1 = super.callPackage ./secp256k1 {};
         })
       ];
     };
