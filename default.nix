@@ -40,6 +40,40 @@ let haskellPackages = nixpkgs.haskellPackages.override {
     };
 }; in
 
+let staticHaskellPackages = nixpkgs.pkgsStatic.haskell.packages.integer-simple.ghc8107.override {
+  overrides = self: super:
+    let generated = import nix/generated/all.nix self super; in
+    generated //
+    {
+      # the downgrade of cborg in nix/generated.nix makes cborgs test suite depend on
+      # older versions of stuff, so let’s ignore the test suite.
+      cborg = nixpkgs.haskell.lib.dontCheck (
+        nixpkgs.haskell.lib.appendConfigureFlag generated.cborg "-f-optimize-gmp"
+      );
+
+      murmur3 = nixpkgs.haskell.lib.markUnbroken super.murmur3;
+      secp256k1-haskell = nixpkgs.haskell.lib.addBuildTool (nixpkgs.haskell.lib.markUnbroken super.secp256k1-haskell_0_6_0) nixpkgs.pkg-config;
+      haskoin-core = nixpkgs.haskell.lib.dontCheck super.haskoin-core;
+
+      cryptonite = nixpkgs.haskell.lib.dontCheck (
+        nixpkgs.haskell.lib.appendConfigureFlag super.cryptonite "-f-integer-gmp"
+      );
+
+      # more test suites too slow withour integer-gmp
+      scientific = nixpkgs.haskell.lib.dontCheck super.scientific;
+      math-functions = nixpkgs.haskell.lib.dontCheck super.math-functions;
+
+      # If we enable TemplateHaskell support in QuickCheck we get the following error:
+      #
+      # > Building library for QuickCheck-2.14.2..
+      # > [ 1 of 16] Compiling Test.QuickCheck.Exception ( src/Test/QuickCheck/Exception.hs, dist/build/Test/QuickCheck/Exception.o, dist/build/Test/QuickCheck/Exception.dyn_o )
+      # > [ 2 of 16] Compiling Test.QuickCheck.Random ( src/Test/QuickCheck/Random.hs, dist/build/Test/QuickCheck/Random.o, dist/build/Test/QuickCheck/Random.dyn_o )
+      # > [ 3 of 16] Compiling Test.QuickCheck.Gen ( src/Test/QuickCheck/Gen.hs, dist/build/Test/QuickCheck/Gen.o, dist/build/Test/QuickCheck/Gen.dyn_o )
+      # > attempting to use module ‘QuickCheck-2.14.2-FmmIi43N1T8HDWnA1W6fPq:Test.QuickCheck.Random’ (src/Test/QuickCheck/Random.hs) which is not loaded
+      QuickCheck = nixpkgs.haskell.lib.appendConfigureFlag super.QuickCheck "-f-templateHaskell";
+    };
+}; in
+
 let
   ic-hs = nixpkgs.haskell.lib.dontCheck (
     haskellPackages.ic-hs.overrideAttrs (old: {
@@ -93,39 +127,6 @@ let
     # (once we can use ghc-9.0 we can maybe use ghc-bignum native, which should be faster)
     else
       let
-        staticHaskellPackages = nixpkgs.pkgsStatic.haskell.packages.integer-simple.ghc8107.override {
-          overrides = self: super:
-            let generated = import nix/generated/all.nix self super; in
-            generated //
-            {
-              # the downgrade of cborg in nix/generated.nix makes cborgs test suite depend on
-              # older versions of stuff, so let’s ignore the test suite.
-              cborg = nixpkgs.haskell.lib.dontCheck (
-                nixpkgs.haskell.lib.appendConfigureFlag generated.cborg "-f-optimize-gmp"
-              );
-
-              murmur3 = nixpkgs.haskell.lib.markUnbroken super.murmur3;
-              secp256k1-haskell = nixpkgs.haskell.lib.markUnbroken super.secp256k1-haskell_0_6_0;
-              haskoin-core = nixpkgs.haskell.lib.dontCheck super.haskoin-core;
-
-              cryptonite = nixpkgs.haskell.lib.dontCheck (
-                nixpkgs.haskell.lib.appendConfigureFlag super.cryptonite "-f-integer-gmp"
-              );
-
-              # more test suites too slow withour integer-gmp
-              scientific = nixpkgs.haskell.lib.dontCheck super.scientific;
-              math-functions = nixpkgs.haskell.lib.dontCheck super.math-functions;
-
-              # If we enable TemplateHaskell support in QuickCheck we get the following error:
-              #
-              # > Building library for QuickCheck-2.14.2..
-              # > [ 1 of 16] Compiling Test.QuickCheck.Exception ( src/Test/QuickCheck/Exception.hs, dist/build/Test/QuickCheck/Exception.o, dist/build/Test/QuickCheck/Exception.dyn_o )
-              # > [ 2 of 16] Compiling Test.QuickCheck.Random ( src/Test/QuickCheck/Random.hs, dist/build/Test/QuickCheck/Random.o, dist/build/Test/QuickCheck/Random.dyn_o )
-              # > [ 3 of 16] Compiling Test.QuickCheck.Gen ( src/Test/QuickCheck/Gen.hs, dist/build/Test/QuickCheck/Gen.o, dist/build/Test/QuickCheck/Gen.dyn_o )
-              # > attempting to use module ‘QuickCheck-2.14.2-FmmIi43N1T8HDWnA1W6fPq:Test.QuickCheck.Random’ (src/Test/QuickCheck/Random.hs) which is not loaded
-              QuickCheck = nixpkgs.haskell.lib.appendConfigureFlag super.QuickCheck "-f-templateHaskell";
-            };
-        };
         ic-hs-static = nixpkgs.haskell.lib.appendConfigureFlags staticHaskellPackages.ic-hs [
           "-frelease"
           "-f-library"
