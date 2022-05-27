@@ -16,9 +16,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
     - uses: actions/checkout@v2
-    - if: matrix.os == "macos-latest"
+    - if: matrix.os == 'macos-latest'
       uses: cachix/install-nix-action@v16
-    - if: matrix.os == "ubuntu-latest"
+    - if: matrix.os == 'ubuntu-latest'
       uses: nixbuild/nix-quick-install-action@v13
       with:
         nix_conf: experimental-features = nix-command
