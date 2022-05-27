@@ -25,7 +25,7 @@ jobs:
     - name: Configure Nix to use nixbuild.net as a remote builder
       env:
         SSH_KEY_FOR_NIXBUILD: ${{ secrets.SSH_KEY_FOR_NIXBUILD }}
-      if: ${{ env.SSH_KEY_FOR_NIXBUILD != '' }}
+      if: matrix.os == 'ubuntu-latest' && ${{ env.SSH_KEY_FOR_NIXBUILD != '' }}
       uses: nixbuild/nixbuild-action@v10
       with:
         nixbuild_ssh_key: ${{ secrets.SSH_KEY_FOR_NIXBUILD }}
