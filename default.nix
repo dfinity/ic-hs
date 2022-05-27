@@ -93,7 +93,7 @@ let
     # (once we can use ghc-9.0 we can maybe use ghc-bignum native, which should be faster)
     else
       let
-        muslHaskellPackages = nixpkgs.pkgsMusl.haskell.packages.integer-simple.ghc8107.override {
+        staticHaskellPackages = nixpkgs.pkgsStatic.haskell.packages.integer-simple.ghc8107.override {
           overrides = self: super:
             let generated = import nix/generated/all.nix self super; in
             generated //
@@ -101,18 +101,16 @@ let
               # the downgrade of cborg in nix/generated.nix makes cborgs test suite depend on
               # older versions of stuff, so let’s ignore the test suite.
               cborg = nixpkgs.haskell.lib.dontCheck (
-                generated.cborg.overrideAttrs(old: {
-                configureFlags = ["-f-optimize-gmp"];
-              }));
+                nixpkgs.haskell.lib.appendConfigureFlag generated.cborg "-f-optimize-gmp"
+              );
 
               murmur3 = nixpkgs.haskell.lib.markUnbroken super.murmur3;
               secp256k1-haskell = nixpkgs.haskell.lib.markUnbroken super.secp256k1-haskell_0_6_0;
               haskoin-core = nixpkgs.haskell.lib.dontCheck super.haskoin-core;
 
-              cryptonite = super.cryptonite.overrideAttrs(old: {
-                configureFlags = "-f-integer-gmp";
-                doCheck = false; # test suite too slow without integer-gmp
-              });
+              cryptonite = nixpkgs.haskell.lib.dontCheck (
+                nixpkgs.haskell.lib.appendConfigureFlag super.cryptonite "-f-integer-gmp"
+              );
 
               # more test suites too slow withour integer-gmp
               scientific = nixpkgs.haskell.lib.dontCheck super.scientific;
@@ -120,23 +118,16 @@ let
 
             };
         };
-        ic-hs-musl =
-          muslHaskellPackages.ic-hs.overrideAttrs (
-            old: {
-              configureFlags = [
-                "-frelease"
-                "-f-library"
-                "--ghc-option=-optl=-static"
-                "--extra-lib-dirs=${nixpkgs.pkgsMusl.zlib.static}/lib"
-                "--extra-lib-dirs=${nixpkgs.pkgsMusl.libffi.overrideAttrs (old: { dontDisableStatic = true; })}/lib"
-              ];
-            }
-          );
+        ic-hs-static = nixpkgs.haskell.lib.appendConfigureFlags staticHaskellPackages.ic-hs [
+          "-frelease"
+          "-f-library"
+          "--ghc-option=-optl=-static"
+        ];
         in nixpkgs.runCommandNoCC "ic-ref-dist" {
           allowedRequisites = [];
         } ''
           mkdir -p $out/bin
-          cp ${ic-hs-musl}/bin/ic-ref $out/bin
+          cp ${ic-hs-static}/bin/ic-ref $out/bin
         '';
 
 
