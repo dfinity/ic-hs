@@ -576,8 +576,8 @@ systemAPI esref =
         return (fromIntegral ns)
 
     -- TODO: implement once semantics of performance_counter is known.
-    performance_counter :: () -> HostM s Word64
-    performance_counter () = return 0
+    performance_counter :: Int32 -> HostM s Word64
+    performance_counter _ = return 0
 
     debug_print :: (Int32, Int32) -> HostM s ()
     debug_print (src, size) = do
