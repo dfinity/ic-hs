@@ -358,6 +358,7 @@ executable ic-ref-test
   other-modules: IC.Test.Agent.Calls
   other-modules: IC.Test.Options
   other-modules: IC.Test.Spec
+  other-modules: IC.Test.Spec.TECDSA
   other-modules: IC.Test.Spec.Utils
   other-modules: IC.Test.Universal
   other-modules: IC.Types
@@ -630,6 +631,7 @@ library
   exposed-modules: IC.Test.Options
   exposed-modules: IC.Test.Secp256k1
   exposed-modules: IC.Test.Spec
+  exposed-modules: IC.Test.Spec.TECDSA
   exposed-modules: IC.Test.Spec.Utils
   exposed-modules: IC.Test.Universal
   exposed-modules: IC.Test.WebAuthn
