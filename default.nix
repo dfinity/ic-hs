@@ -116,6 +116,14 @@ let
               scientific = nixpkgs.haskell.lib.dontCheck super.scientific;
               math-functions = nixpkgs.haskell.lib.dontCheck super.math-functions;
 
+              # If we enable TemplateHaskell support in QuickCheck we get the following error:
+              #
+              # > Building library for QuickCheck-2.14.2..
+              # > [ 1 of 16] Compiling Test.QuickCheck.Exception ( src/Test/QuickCheck/Exception.hs, dist/build/Test/QuickCheck/Exception.o, dist/build/Test/QuickCheck/Exception.dyn_o )
+              # > [ 2 of 16] Compiling Test.QuickCheck.Random ( src/Test/QuickCheck/Random.hs, dist/build/Test/QuickCheck/Random.o, dist/build/Test/QuickCheck/Random.dyn_o )
+              # > [ 3 of 16] Compiling Test.QuickCheck.Gen ( src/Test/QuickCheck/Gen.hs, dist/build/Test/QuickCheck/Gen.o, dist/build/Test/QuickCheck/Gen.dyn_o )
+              # > attempting to use module ‘QuickCheck-2.14.2-FmmIi43N1T8HDWnA1W6fPq:Test.QuickCheck.Random’ (src/Test/QuickCheck/Random.hs) which is not loaded
+              QuickCheck = nixpkgs.haskell.lib.appendConfigureFlag super.QuickCheck "-f-templateHaskell";
             };
         };
         ic-hs-static = nixpkgs.haskell.lib.appendConfigureFlags staticHaskellPackages.ic-hs [
