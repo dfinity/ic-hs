@@ -14,6 +14,8 @@ jobs:
         - macos-latest
       fail-fast: false
     runs-on: ${{ matrix.os }}
+    env:
+      SSH_KEY_FOR_NIXBUILD: ${{ secrets.SSH_KEY_FOR_NIXBUILD }}
     steps:
     - uses: actions/checkout@v2
     - if: matrix.os == 'macos-latest'
@@ -23,8 +25,6 @@ jobs:
       with:
         nix_conf: experimental-features = nix-command
     - name: Configure Nix to use nixbuild.net as a remote builder
-      env:
-        SSH_KEY_FOR_NIXBUILD: ${{ secrets.SSH_KEY_FOR_NIXBUILD }}
       if: matrix.os == 'ubuntu-latest' && ${{ env.SSH_KEY_FOR_NIXBUILD != '' }}
       uses: nixbuild/nixbuild-action@v10
       with:
