@@ -11,7 +11,6 @@
 , base32
 , base64-bytestring
 , binary
-, bindings-DSL
 , bytestring
 , candid
 , case-insensitive
@@ -23,6 +22,7 @@
 , data-default-class
 , directory
 , ed25519
+, either
 , filepath
 , hashable
 , haskoin-core
@@ -43,7 +43,6 @@
 , quickcheck-io
 , random
 , row-types
-, secp256k1-haskell
 , serialise
 , split
 , splitmix
@@ -85,7 +84,6 @@ mkDerivation {
     base32
     base64-bytestring
     binary
-    bindings-DSL
     bytestring
     candid
     case-insensitive
@@ -97,6 +95,7 @@ mkDerivation {
     data-default-class
     directory
     ed25519
+    either
     filepath
     hashable
     haskoin-core
@@ -116,7 +115,6 @@ mkDerivation {
     quickcheck-io
     random
     row-types
-    secp256k1-haskell
     serialise
     split
     splitmix
@@ -143,121 +141,37 @@ mkDerivation {
     zlib
   ];
   executableHaskellDepends = [
-    aeson
-    asn1-encoding
-    asn1-types
-    atomic-write
     base
-    base32
-    base64-bytestring
-    binary
-    bindings-DSL
     bytestring
     candid
-    case-insensitive
-    cborg
-    cereal
     containers
-    crc
-    cryptonite
-    data-default-class
-    directory
-    ed25519
-    filepath
-    hashable
-    haskoin-core
     hex-text
-    http-client
-    http-client-tls
     http-types
-    leb128-cereal
-    memory
     MonadRandom
     mtl
     optparse-applicative
-    parallel
     prettyprinter
-    primitive
-    process
-    random
     row-types
-    secp256k1-haskell
-    serialise
-    split
-    splitmix
     tasty
     tasty-ant-xml
     tasty-html
-    tasty-hunit
     tasty-rerun
-    template-haskell
     text
     time
     transformers
-    uglymemo
     unordered-containers
-    utf8-string
-    vector
     wai
     wai-cors
     wai-extra
     warp
-    winter
-    zlib
   ];
   testHaskellDepends = [
-    aeson
-    asn1-encoding
-    asn1-types
-    atomic-write
     base
-    base32
-    base64-bytestring
-    binary
-    bindings-DSL
-    bytestring
-    candid
-    case-insensitive
-    cborg
-    cereal
     containers
-    crc
-    cryptonite
-    data-default-class
     directory
-    ed25519
-    filepath
-    hashable
-    haskoin-core
-    hex-text
-    http-client
-    http-types
-    leb128-cereal
-    memory
-    MonadRandom
-    mtl
-    parallel
-    primitive
-    quickcheck-io
-    random
-    row-types
-    secp256k1-haskell
-    serialise
-    split
-    splitmix
     tasty
     tasty-hunit
-    tasty-quickcheck
     temporary
-    text
-    time
-    transformers
-    uglymemo
-    unordered-containers
-    utf8-string
-    vector
-    winter
-    zlib
   ];
   doCheck = false;
   license = "LicenseRef-IC-1.0";

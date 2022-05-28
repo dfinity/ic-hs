@@ -20,6 +20,7 @@ import Data.List
 import Data.List.Split (chunksOf)
 import Numeric.Natural
 import Control.Monad.Except
+import Text.Printf (printf)
 
 type (↦) = M.Map
 
@@ -72,6 +73,26 @@ rejectCode RC_DESTINATION_INVALID = 3
 rejectCode RC_CANISTER_REJECT     = 4
 rejectCode RC_CANISTER_ERROR      = 5
 
+data ErrorCode
+    = EC_CANISTER_NOT_FOUND
+    | EC_METHOD_NOT_FOUND
+    | EC_CANISTER_EMPTY
+    | EC_CANISTER_NOT_EMPTY
+    | EC_CANISTER_STOPPED
+    | EC_CANISTER_NOT_STOPPED
+    | EC_CANISTER_NOT_RUNNING
+    | EC_CANISTER_RESTARTED
+    | EC_CANISTER_TRAPPED
+    | EC_CANISTER_REJECTED
+    | EC_CANISTER_DID_NOT_REPLY
+    | EC_INVALID_ENCODING
+    | EC_INVALID_ARGUMENT
+    | EC_INVALID_MODULE
+    | EC_NOT_AUTHORIZED
+  deriving (Show, Enum)
+
+errorCode :: ErrorCode -> String
+errorCode = printf "ICHS%04d" . fromEnum
 
 data Response = Reply Blob | Reject (RejectCode, String)
   deriving Show

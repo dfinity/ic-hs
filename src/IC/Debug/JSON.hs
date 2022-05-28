@@ -28,7 +28,6 @@ import qualified Wasm.Syntax.Values as W
 import qualified Wasm.Syntax.AST as W
 import qualified Text.Hex as H
 import qualified Data.Text as T
-import qualified Haskoin.Keys.Extended as HK
 import Control.Monad.Random.Lazy
 
 import IC.Types
@@ -63,9 +62,6 @@ instance ToJSON (Replay i) where
 instance ToJSON (Stable.Repr) where
     toJSON = toJSON . Stable.serialize
 
-instance ToJSON HK.XPrvKey where
-    toJSON = placeholder "(extended secret key)"
-
 placeholder :: String -> a -> Value
 placeholder s = const (String (T.pack s))
 
@@ -81,6 +77,11 @@ instance ToJSON NeedsToRespond where
 
 deriving instance Generic RejectCode
 instance ToJSON RejectCode where
+    toJSON     = genericToJSON customOptions
+    toEncoding = genericToEncoding customOptions
+
+deriving instance Generic ErrorCode
+instance ToJSON ErrorCode where
     toJSON     = genericToJSON customOptions
     toEncoding = genericToEncoding customOptions
 
@@ -194,3 +195,4 @@ instance ToJSON StdGen where
 
 instance ToJSON SecretKey where
     toJSON = placeholder "(secret key)"
+

@@ -47,6 +47,13 @@ let
             url = "https://github.com/commercialhaskell/all-cabal-hashes/archive/d4d63b04cd9f6ed263db8df4cdd6dcc667f96ccd.tar.gz";
             sha256 = "0pd9zfy8wwbwqg0qkgi28kfi2q3kwl1lwkq2k7b50wm5pb3nngrm";
           };
+
+          # We override secp256k1 since the version in nixpkgs doesn't provide a
+          # .a library needed for a static build of ic-hs.
+          #
+          # TODO: We can probably remove this override once we upgrade nixpkgs
+          # to release-22.05.
+          secp256k1 = super.callPackage ./secp256k1 {};
         })
       ];
     };

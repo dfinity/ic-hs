@@ -224,7 +224,7 @@ stable64Write = op 48
 onHeartbeat :: Exp 'B -> Prog
 onHeartbeat = op 49
 
-performanceCounter :: Exp 'I64
+performanceCounter :: Exp 'I -> Exp 'I64
 performanceCounter = op 50
 
 getBalance128 :: Exp 'B

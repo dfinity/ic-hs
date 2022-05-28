@@ -12,18 +12,22 @@ jobs:
         os:
         - ubuntu-latest
         - macos-latest
-        # TODO: - windows-latest
       fail-fast: false
     runs-on: ${{ matrix.os }}
+    env:
+      SSH_KEY_FOR_NIXBUILD: ${{ secrets.SSH_KEY_FOR_NIXBUILD }}
     steps:
     - uses: actions/checkout@v2
-    - uses: pierotofy/set-swap-space@master
+    - if: matrix.os == 'macos-latest'
+      uses: cachix/install-nix-action@v16
+    - if: matrix.os == 'ubuntu-latest'
+      uses: nixbuild/nix-quick-install-action@v13
       with:
-        swap-size-gb: 13
-    - uses: cachix/install-nix-action@v16
+        nix_conf: experimental-features = nix-command
+    - if: matrix.os == 'ubuntu-latest' && env.SSH_KEY_FOR_NIXBUILD != ''
+      uses: nixbuild/nixbuild-action@v10
       with:
-        extra_nix_config: |
-          experimental-features = nix-command
+        nixbuild_ssh_key: ${{ secrets.SSH_KEY_FOR_NIXBUILD }}
     - run: nix-env -iA nix-build-uncached -f nix/
     - uses: cachix/cachix-action@v10
       with:
@@ -53,12 +57,13 @@ jobs:
         include:
           - os: ubuntu-latest
             nix-system: x86_64-linux
-          - os: macos-latest
-            nix-system: x86_64-darwin
     runs-on: ${{ matrix.os }}
     steps:
     - uses: actions/checkout@v2
-    - uses: cachix/install-nix-action@v16
+    - uses: nixbuild/nix-quick-install-action@v13
+    - uses: nixbuild/nixbuild-action@v10
+      with:
+        nixbuild_ssh_key: ${{ secrets.SSH_KEY_FOR_NIXBUILD }}
     - uses: cachix/cachix-action@v10
       with:
         name: ic-hs-test

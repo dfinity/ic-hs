@@ -7,11 +7,8 @@ license-file:        LICENSE
 build-type:          Simple
 extra-source-files:  cbits/*.h ic.did
 
-flag release
-  default: False
-  description: Release build, warnings are errors
-
 executable ic-ref
+  default-language: Haskell2010
   hs-source-dirs: bin
   main-is: ic-ref.hs
   build-depends: base >=4.12 && <5
@@ -41,6 +38,7 @@ executable ic-ref-run
   build-depends: transformers
 
 executable ic-ref-test
+  default-language: Haskell2010
   hs-source-dirs: bin
   main-is: ic-ref-test.hs
   build-depends: base >=4.12 && <5
@@ -67,6 +65,7 @@ executable ic-request-id
 
 test-suite unit-test
   type: exitcode-stdio-1.0
+  default-language: Haskell2010
   hs-source-dirs: tests
   main-is: unit-tests.hs
   build-depends: base >=4.12 && <5
@@ -78,6 +77,7 @@ test-suite unit-test
   build-depends: temporary
 
 library
+  default-language: Haskell2010
   include-dirs: cbits
   c-sources: cbits/aes.c
   c-sources: cbits/rom_curve_BLS12381.c
@@ -100,12 +100,8 @@ library
   c-sources: cbits/rand.c
   c-sources: cbits/share.c
 
-  default-language:    Haskell2010
-  hs-source-dirs:      src
-  ghc-options:         -rtsopts
-  ghc-options:         -Wall -Wno-name-shadowing
-  if flag(release)
-    ghc-options:       -Werror
+  hs-source-dirs:   src
+  ghc-options:      -Wall -Wno-name-shadowing
 
   build-depends: aeson >=1.4.7
   build-depends: asn1-encoding
@@ -116,7 +112,6 @@ library
   build-depends: base >= 4 && < 5
   build-depends: base64-bytestring >= 1.1
   build-depends: binary
-  build-depends: bindings-DSL
   build-depends: bytestring
   build-depends: candid
   build-depends: case-insensitive
@@ -131,7 +126,6 @@ library
   build-depends: filepath
   build-depends: hashable
   build-depends: haskoin-core
-  build-depends: secp256k1-haskell
   build-depends: hex-text
   build-depends: http-client >= 0.7.11
   build-depends: http-client-tls
@@ -174,7 +168,7 @@ library
   build-depends: winter
   build-depends: uglymemo
   build-depends: zlib
-
+  build-depends: either
   exposed-modules: IC.Canister
   exposed-modules: IC.Canister.Imp
   exposed-modules: IC.Canister.Snapshot
@@ -188,6 +182,7 @@ library
   exposed-modules: IC.Certificate.Value
   exposed-modules: IC.Constants
   exposed-modules: IC.Crypto
+  exposed-modules: IC.Crypto.Bitcoin
   exposed-modules: IC.Crypto.BLS
   exposed-modules: IC.Crypto.CanisterSig
   exposed-modules: IC.Crypto.DER
@@ -218,6 +213,7 @@ library
   exposed-modules: IC.Serialise
   exposed-modules: IC.StateFile
   exposed-modules: IC.Test.Agent
+  exposed-modules: IC.Test.Agent.Calls
   exposed-modules: IC.Test.BLS
   exposed-modules: IC.Test.ECDSA
   exposed-modules: IC.Test.HashTree
@@ -225,6 +221,8 @@ library
   exposed-modules: IC.Test.Secp256k1
   exposed-modules: IC.Test.Spec
   exposed-modules: IC.Test.StableMemory
+  exposed-modules: IC.Test.Spec.TECDSA
+  exposed-modules: IC.Test.Spec.Utils
   exposed-modules: IC.Test.Universal
   exposed-modules: IC.Test.WebAuthn
   exposed-modules: IC.Types

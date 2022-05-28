@@ -27,7 +27,90 @@ This module can also be used in a REPL; see 'connect'.
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE DataKinds #-}
-module IC.Test.Agent where
+module IC.Test.Agent
+    (
+      HTTPErrOr,
+      HasAgentConfig,
+      IC00,
+      ReqResponse(..),
+      ReqStatus(..),
+      AgentConfig(..),
+      addExpiry,
+      addNonce,
+      addNonceExpiryEnv,
+      anonymousUser,
+      as2Word64,
+      asHex,
+      asRight,
+      asWord128,
+      asWord32,
+      asWord64,
+      awaitCall',
+      awaitCall,
+      awaitStatus,
+      bothSame,
+      certValue,
+      certValueAbsent,
+      code202,
+      code202_or_4xx,
+      code2xx,
+      code4xx,
+      connect,
+      decodeCert',
+      defaultSK,
+      defaultUser,
+      delegationEnv,
+      doesn'tExist,
+      ecdsaSK,
+      ecdsaUser,
+      enum,
+      envelope,
+      envelopeFor,
+      extractCertData,
+      getRequestStatus,
+      getStateCert',
+      getStateCert,
+      ic00,
+      ic00as,
+      ingressDelay,
+      is2xx,
+      isErrOrReject,
+      isPendingOrProcessing,
+      isReject,
+      isReply,
+      okCBOR,
+      otherSK,
+      otherUser,
+      makeAgentConfig,
+      postCBOR,
+      postCallCBOR,
+      postQueryCBOR,
+      postReadStateCBOR,
+      preFlight,
+      queryCBOR,
+      queryResponse,
+      runGet,
+      secp256k1SK,
+      secp256k1User,
+      senderOf,
+      shorten,
+      submitCall,
+      textual,
+      validateStateCert,
+      verifySignature,
+      webAuthnECDSASK,
+      webAuthnECDSAUser,
+      webAuthnRSASK,
+      webAuthnRSAUser,
+      withAgentConfig,
+
+      -- TODO: these are needed by IC.Test.Agent.Calls. Consider moving them to an Internal module
+      callIC,
+      callIC',
+      callIC'',
+      agentConfig,
+    )
+    where
 
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
@@ -36,7 +119,6 @@ import qualified Text.Hex as H
 import qualified Data.ByteString.Lazy as BS
 import qualified Data.ByteString.Builder as BS
 import qualified Data.HashMap.Lazy as HM
-import qualified Data.Vector as Vec
 import Network.HTTP.Client
 import Network.HTTP.Client.TLS
 import Network.HTTP.Types
@@ -44,7 +126,6 @@ import Numeric.Natural
 import Data.Char
 import Test.Tasty.HUnit
 import Test.Tasty.Options
-import Control.Monad.Trans
 import Control.Monad.Except
 import Control.Concurrent
 import Control.Exception (catch)
@@ -60,12 +141,10 @@ import qualified Data.Binary.Get as Get
 import qualified Codec.Candid as Candid
 import Data.Bits
 import Data.Row
-import qualified Data.Row.Records as R
 import qualified Data.Row.Variants as V
-import qualified Data.Row.Internal as R
-import qualified Data.Row.Dictionaries as R
 import qualified Haskoin.Crypto.Signature as Haskoin
 import qualified Haskoin.Crypto.Hash as Haskoin
+import qualified Haskoin.Keys.Common as Haskoin
 
 import IC.Version
 import IC.HTTP.GenR
@@ -82,7 +161,6 @@ import IC.HashTree hiding (Blob, Label)
 import IC.Certificate
 import IC.Certificate.Value
 import IC.Certificate.CBOR
-import Crypto.Secp256k1
 
 -- * Agent configuration
 
@@ -132,7 +210,7 @@ connect :: String -> Int -> IO ReplWrapper
 connect ep tp = do
     agentConfig <- makeAgentConfig ep tp
     let ?agentConfig = agentConfig
-    return (R id)
+    return (R $ \x -> x)
 
 -- Yes, implicit arguments are frowned upon. But they are also very useful.
 
@@ -149,9 +227,6 @@ endPoint = tc_endPoint agentConfig
 
 agentManager :: HasAgentConfig => Manager
 agentManager = tc_manager agentConfig
-
-testPort :: HasAgentConfig => Int
-testPort = tc_test_port agentConfig
 
 -- * Test data for some hardcoded user names
 
@@ -407,7 +482,7 @@ validateStateCert' what cert = do
 validateStateCert :: (HasCallStack, HasAgentConfig) => Certificate -> IO ()
 validateStateCert = validateStateCert' "certificate"
 
-data ReqResponse = Reply Blob | Reject Natural T.Text
+data ReqResponse = Reply Blob | Reject Natural T.Text (Maybe T.Text)
   deriving (Eq, Show)
 data ReqStatus = Processing | Pending | Responded ReqResponse | UnknownStatus
   deriving (Eq, Show)
@@ -419,6 +494,14 @@ prettyBlob :: Blob -> String
 prettyBlob x =
   let s = map (chr . fromIntegral) (BS.unpack x) in
   if all isPrint s then s else asHex x
+
+maybeCertValue :: HasCallStack => CertVal a => Certificate -> [Blob] -> IO (Maybe a)
+maybeCertValue cert path = case lookupPath (cert_tree cert) path of
+    Found b -> case fromCertVal b of
+      Just x -> return (Just x)
+      Nothing -> assertFailure $ "Cannot parse " ++ prettyPath path ++ " from " ++ show b
+    Absent -> return Nothing
+    x -> assertFailure $ "Expected to find " ++ prettyPath path ++ ", but got " ++ show x
 
 certValue :: HasCallStack => CertVal a => Certificate -> [Blob] -> IO a
 certValue cert path = case lookupPath (cert_tree cert) path of
@@ -449,7 +532,8 @@ getRequestStatus sender cid rid = do
         certValueAbsent cert ["request_status", rid, "reply"]
         code <- certValue cert ["request_status", rid, "reject_code"]
         msg <- certValue cert ["request_status", rid, "reject_message"]
-        return $ Responded (Reject code msg)
+        errorCode <- maybeCertValue cert ["request_status", rid, "error_code"]
+        return $ Responded (Reject code msg errorCode)
       Found s -> assertFailure $ "Unexpected status " ++ show s
       -- This case should not happen with a compliant IC, but let
       -- us be liberal here, and strict in a dedicated test
@@ -517,13 +601,14 @@ queryResponse = asExceptT . record do
       "rejected" -> do
         code <- field nat "reject_code"
         msg <- field text "reject_message"
-        return $ Reject code msg
+        error_code <- optionalField text "error_code"
+        return $ Reject code msg error_code
       _ -> lift $ throwError $ "Unexpected status " <> T.pack (show s)
 
 isReject :: HasCallStack => [Natural] -> ReqResponse -> IO ()
 isReject _ (Reply r) =
   assertFailure $ "Expected reject, got reply:" ++ prettyBlob r
-isReject codes (Reject n msg) = do
+isReject codes (Reject n msg _) = do
   assertBool
     ("Reject code " ++ show n ++ " not in " ++ show codes ++ "\n" ++ T.unpack msg)
     (n `elem` codes)
@@ -539,8 +624,9 @@ isErrOrReject codes (Right res) = isReject codes res
 
 isReply :: HasCallStack => ReqResponse -> IO Blob
 isReply (Reply b) = return b
-isReply (Reject n msg) =
-  assertFailure $ "Unexpected reject (code " ++ show n ++ "): " ++ T.unpack msg
+isReply (Reject n msg error_code) =
+  assertFailure $ "Unexpected reject (code " ++ show n ++ (maybe "" showErrCode error_code) ++ "): " ++ T.unpack msg
+  where showErrCode ec = ", error_code: " ++ T.unpack ec
 
 -- Convenience decoders
 
@@ -644,128 +730,6 @@ callIC ic00 ecid l x = do
         Left err -> assertFailure $ "Candid decoding error: " ++ err
         Right y -> pure y
 
--- The following line noise is me getting out of my way
--- to be able to use `ic_create` etc. by passing a record that contains
--- a subset of settings, without Maybe
-type family UnRec r where UnRec (R.Rec r) = r
-type PartialSettings r = (R.Forall r R.Unconstrained1, R.Map Maybe r .// UnRec Settings ≈ UnRec Settings)
-fromPartialSettings :: PartialSettings r => R.Rec r -> Settings
-fromPartialSettings r =
-    R.map' Just r .//
-    R.default' @(R.IsA R.Unconstrained1 Maybe) @(UnRec Settings) d
-  where
-    d :: forall a. R.IsA R.Unconstrained1 Maybe a => a
-    d = case R.as @R.Unconstrained1 @Maybe @a of R.As -> Nothing
-
-ic_create :: (HasCallStack, HasAgentConfig, PartialSettings r) => IC00 -> Rec r -> IO Blob
-ic_create ic00 ps = do
-  r <- callIC ic00 "" #create_canister $ empty
-    .+ #settings .== Just (fromPartialSettings ps)
-  return (rawPrincipal (r .! #canister_id))
-
-ic_provisional_create ::
-    (HasCallStack, HasAgentConfig, PartialSettings r) =>
-    IC00 -> Maybe Natural -> Rec r -> IO Blob
-ic_provisional_create ic00 cycles ps = do
-  r <- callIC ic00 "" #provisional_create_canister_with_cycles $ empty
-    .+ #amount .== cycles
-    .+ #settings .== Just (fromPartialSettings ps)
-  return (rawPrincipal (r .! #canister_id))
-
-ic_install :: (HasCallStack, HasAgentConfig) => IC00 -> InstallMode -> Blob -> Blob -> Blob -> IO ()
-ic_install ic00 mode canister_id wasm_module arg = do
-  callIC ic00 canister_id #install_code $ empty
-    .+ #mode .== mode
-    .+ #canister_id .== Principal canister_id
-    .+ #wasm_module .== wasm_module
-    .+ #arg .== arg
-
-ic_uninstall :: (HasCallStack, HasAgentConfig) => IC00 -> Blob -> IO ()
-ic_uninstall ic00 canister_id = do
-  callIC ic00 canister_id #uninstall_code $ empty
-    .+ #canister_id .== Principal canister_id
-
-ic_set_controllers :: HasAgentConfig => IC00 -> Blob -> [Blob] -> IO ()
-ic_set_controllers ic00 canister_id new_controllers = do
-  callIC ic00 canister_id #update_settings $ empty
-    .+ #canister_id .== Principal canister_id
-    .+ #settings .== fromPartialSettings (#controllers .== Vec.fromList (map Principal new_controllers))
-
-ic_start_canister :: HasAgentConfig => IC00 -> Blob -> IO ()
-ic_start_canister ic00 canister_id = do
-  callIC ic00 canister_id #start_canister $ empty
-    .+ #canister_id .== Principal canister_id
-
-ic_stop_canister :: HasAgentConfig => IC00 -> Blob -> IO ()
-ic_stop_canister ic00 canister_id = do
-  callIC ic00 canister_id #stop_canister $ empty
-    .+ #canister_id .== Principal canister_id
-
-ic_canister_status ::
-    forall a b. (a -> IO b) ~ (ICManagement IO .! "canister_status") =>
-    HasAgentConfig => IC00 -> Blob -> IO b
-ic_canister_status ic00 canister_id = do
-  callIC ic00 canister_id #canister_status $ empty
-    .+ #canister_id .== Principal canister_id
-
-ic_deposit_cycles :: HasAgentConfig => IC00 -> Blob -> IO ()
-ic_deposit_cycles ic00 canister_id = do
-  callIC ic00 canister_id #deposit_cycles $ empty
-    .+ #canister_id .== Principal canister_id
-
-ic_top_up :: HasAgentConfig => IC00 -> Blob -> Natural -> IO ()
-ic_top_up ic00 canister_id amount = do
-  callIC ic00 canister_id #provisional_top_up_canister $ empty
-    .+ #canister_id .== Principal canister_id
-    .+ #amount .== amount
-
-ic_delete_canister :: HasAgentConfig => IC00 -> Blob -> IO ()
-ic_delete_canister ic00 canister_id = do
-  callIC ic00 canister_id #delete_canister $ empty
-    .+ #canister_id .== Principal canister_id
-
-ic_raw_rand :: HasAgentConfig => IC00 -> IO Blob
-ic_raw_rand ic00 =
-  callIC ic00 "" #raw_rand ()
-
-ic_http_request ::
-    forall a b. (a -> IO b) ~ (ICManagement IO .! "http_request") =>
-    HasAgentConfig => IC00 -> Blob -> Maybe String -> IO b
-ic_http_request ic00 canister_id transform =
-  callIC ic00 "" #http_request $ empty
-    .+ #url .== (T.pack $ "http://localhost:" ++ show testPort)
-    .+ #method .== enum #get
-    .+ #headers .== Vec.empty
-    .+ #body .== Nothing
-    .+ #transform .== (wrap transform canister_id)
-  where
-    wrap Nothing _ = Nothing
-    wrap (Just name) cid = Just (V.IsJust #function (Candid.FuncRef (Principal cid) (T.pack name)))
-
-ic_ecdsa_public_key ::
-    forall a b. (a -> IO b) ~ (ICManagement IO .! "ecdsa_public_key") =>
-    HasAgentConfig => IC00 -> Maybe Blob -> IO b
-ic_ecdsa_public_key ic00 canister_id =
-  callIC ic00 "" #ecdsa_public_key $ empty
-    .+ #derivation_path .== Vec.empty
-    .+ #canister_id .== (fmap Principal canister_id)
-    .+ #key_id .== (empty
-       .+ #curve .== enum #secp256k1
-       .+ #name .== (T.pack "0")
-    )
-
-ic_sign_with_ecdsa ::
-    forall a b. (a -> IO b) ~ (ICManagement IO .! "sign_with_ecdsa") =>
-    HasAgentConfig => IC00 -> Blob -> IO b
-ic_sign_with_ecdsa ic00 msg =
-  callIC ic00 "" #sign_with_ecdsa $ empty
-    .+ #derivation_path .== Vec.empty
-    .+ #message_hash .== msg
-    .+ #key_id .== (empty
-       .+ #curve .== enum #secp256k1
-       .+ #name .== (T.pack "0")
-    )
-
 -- Primed variants return the response (reply or reject)
 callIC' :: forall s a b.
   HasAgentConfig =>
@@ -774,55 +738,6 @@ callIC' :: forall s a b.
   Candid.CandidArg a =>
   IC00 -> Blob -> Label s -> a -> IO ReqResponse
 callIC' ic00 ecid l x = ic00 ecid (T.pack (symbolVal l)) (Candid.encode x)
-
-ic_create' ::
-    (HasCallStack, HasAgentConfig, PartialSettings r) =>
-    IC00 -> Rec r -> IO ReqResponse
-ic_create' ic00 ps = do
-  callIC' ic00 "" #create_canister $ empty
-    .+ #settings .== Just (fromPartialSettings ps)
-
-ic_provisional_create' ::
-    (HasCallStack, HasAgentConfig, PartialSettings r) =>
-    IC00 -> Maybe Natural -> Rec r -> IO ReqResponse
-ic_provisional_create' ic00 cycles ps = do
-  callIC' ic00 "" #provisional_create_canister_with_cycles $ empty
-    .+ #amount .== cycles
-    .+ #settings .== Just (fromPartialSettings ps)
-
-ic_install' :: HasAgentConfig => IC00 -> InstallMode -> Blob -> Blob -> Blob -> IO ReqResponse
-ic_install' ic00 mode canister_id wasm_module arg =
-  callIC' ic00 canister_id #install_code $ empty
-    .+ #mode .== mode
-    .+ #canister_id .== Principal canister_id
-    .+ #wasm_module .== wasm_module
-    .+ #arg .== arg
-
-ic_update_settings' :: (HasAgentConfig, PartialSettings r) => IC00 -> Blob -> Rec r -> IO ReqResponse
-ic_update_settings' ic00 canister_id r = do
-  callIC' ic00 canister_id #update_settings $ empty
-    .+ #canister_id .== Principal canister_id
-    .+ #settings .== fromPartialSettings r
-
-ic_set_controllers' :: HasAgentConfig => IC00 -> Blob -> [Blob] -> IO ReqResponse
-ic_set_controllers' ic00 canister_id new_controllers = do
-  ic_update_settings' ic00 canister_id (#controllers .== Vec.fromList (map Principal new_controllers))
-
-ic_delete_canister' :: HasAgentConfig => IC00 -> Blob -> IO ReqResponse
-ic_delete_canister' ic00 canister_id = do
-  callIC' ic00 canister_id #delete_canister $ empty
-    .+ #canister_id .== Principal canister_id
-
-ic_deposit_cycles' :: HasAgentConfig => IC00 -> Blob -> IO ReqResponse
-ic_deposit_cycles' ic00 canister_id = do
-  callIC' ic00 canister_id #deposit_cycles $ empty
-    .+ #canister_id .== Principal canister_id
-
-ic_top_up' :: HasAgentConfig => IC00 -> Blob -> Natural -> IO ReqResponse
-ic_top_up' ic00 canister_id amount = do
-  callIC' ic00 canister_id #provisional_top_up_canister $ empty
-    .+ #canister_id .== Principal canister_id
-    .+ #amount .== amount
 
 -- Double primed variants are only for requests from users (so they take the user,
 -- not a generic ic00 thing), and return the HTTP error code or the response
@@ -835,83 +750,6 @@ callIC'' :: forall s a b.
   Candid.CandidArg a =>
   Blob -> Blob -> Label s -> a -> IO (HTTPErrOr ReqResponse)
 callIC'' user ecid l x = ic00as' user ecid (T.pack (symbolVal l)) (Candid.encode x)
-
-ic_install'' :: (HasCallStack, HasAgentConfig) => Blob -> InstallMode -> Blob -> Blob -> Blob -> IO (HTTPErrOr ReqResponse)
-ic_install'' user mode canister_id wasm_module arg =
-  callIC'' user canister_id #install_code $ empty
-    .+ #mode .== mode
-    .+ #canister_id .== Principal canister_id
-    .+ #wasm_module .== wasm_module
-    .+ #arg .== arg
-
-ic_uninstall'' :: HasAgentConfig => Blob -> Blob -> IO (HTTPErrOr ReqResponse)
-ic_uninstall'' user canister_id =
-  callIC'' user canister_id #uninstall_code $ empty
-    .+ #canister_id .== Principal canister_id
-
-ic_set_controllers'' :: HasAgentConfig => Blob -> Blob -> [Blob] -> IO (HTTPErrOr ReqResponse)
-ic_set_controllers'' user canister_id new_controllers = do
-  callIC'' user canister_id #update_settings $ empty
-    .+ #canister_id .== Principal canister_id
-    .+ #settings .== fromPartialSettings (#controllers .== Vec.fromList (map Principal new_controllers))
-
-ic_start_canister'' :: HasAgentConfig => Blob -> Blob -> IO (HTTPErrOr ReqResponse)
-ic_start_canister'' user canister_id = do
-  callIC'' user canister_id #start_canister $ empty
-    .+ #canister_id .== Principal canister_id
-
-ic_stop_canister'' :: HasAgentConfig => Blob -> Blob -> IO (HTTPErrOr ReqResponse)
-ic_stop_canister'' user canister_id = do
-  callIC'' user canister_id #stop_canister $ empty
-    .+ #canister_id .== Principal canister_id
-
-ic_canister_status'' :: HasAgentConfig => Blob -> Blob -> IO (HTTPErrOr ReqResponse)
-ic_canister_status'' user canister_id = do
-  callIC'' user canister_id #canister_status $ empty
-    .+ #canister_id .== Principal canister_id
-
-ic_delete_canister'' :: HasAgentConfig => Blob -> Blob -> IO (HTTPErrOr ReqResponse)
-ic_delete_canister'' user canister_id = do
-  callIC'' user canister_id #delete_canister $ empty
-    .+ #canister_id .== Principal canister_id
-
-ic_deposit_cycles'' :: HasAgentConfig => Blob -> Blob -> IO (HTTPErrOr ReqResponse)
-ic_deposit_cycles'' user canister_id = do
-  callIC'' user canister_id #deposit_cycles $ empty
-    .+ #canister_id .== Principal canister_id
-
-ic_raw_rand'' :: HasAgentConfig => Blob -> IO (HTTPErrOr ReqResponse)
-ic_raw_rand'' user = do
-  callIC'' user "" #raw_rand ()
-
-ic_http_request'' :: HasAgentConfig => Blob -> IO (HTTPErrOr ReqResponse)
-ic_http_request'' user =
-  callIC'' user "" #http_request $ empty
-    .+ #url .== (T.pack $ "http://localhost:" ++ show testPort)
-    .+ #method .== enum #get
-    .+ #headers .== Vec.empty
-    .+ #body .== Nothing
-    .+ #transform .== Nothing
-
-ic_ecdsa_public_key'' :: HasAgentConfig => Blob -> IO (HTTPErrOr ReqResponse)
-ic_ecdsa_public_key'' user =
-  callIC'' user "" #ecdsa_public_key $ empty
-    .+ #derivation_path .== Vec.empty
-    .+ #canister_id .== Nothing
-    .+ #key_id .== (empty
-       .+ #curve .== enum #secp256k1
-       .+ #name .== (T.pack "0")
-    )
-
-ic_sign_with_ecdsa'' :: HasAgentConfig => Blob -> Blob -> IO (HTTPErrOr ReqResponse)
-ic_sign_with_ecdsa'' user msg =
-  callIC'' user "" #sign_with_ecdsa $ empty
-    .+ #derivation_path .== Vec.empty
-    .+ #message_hash .== msg
-    .+ #key_id .== (empty
-       .+ #curve .== enum #secp256k1
-       .+ #name .== (T.pack "0")
-    )
 
 -- Convenience around Data.Row.Variants used as enums
 
@@ -935,5 +773,5 @@ toHash256 = Get.runGet Get.get
 
 verifySignature :: Blob -> Blob -> Blob -> Bool
 verifySignature msg sig key = Haskoin.verifyHashSig (toHash256 msg) s pk
-  where Just pk = importPubKey $ BS.toStrict key
-        Just s  = importSig $ BS.toStrict sig
+  where Just pk = Haskoin.importPubKey $ BS.toStrict key
+        Just s  = Haskoin.decodeStrictSig $ BS.toStrict sig
