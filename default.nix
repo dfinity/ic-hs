@@ -154,12 +154,11 @@ let
           nixpkgs.haskell.lib.justStaticExecutables
             (nixpkgs.haskell.lib.failOnAllWarnings
               staticHaskellPackages.ic-hs);
-      in nixpkgs.pkgsStatic.runCommandNoCC "ic-ref-dist" {
-        allowedRequisites = [];
-        ic_hs_static = ic-hs-static;
+      in nixpkgs.runCommandNoCC "ic-ref-dist" {
+        allowedReferences = [];
       } ''
         mkdir -p $out/bin
-        cp $ic_hs_static/bin/ic-ref $out/bin
+        cp ${ic-hs-static}/bin/ic-ref $out/bin
       '';
 
 
