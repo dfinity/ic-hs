@@ -86,6 +86,7 @@ let staticHaskellPackages = nixpkgs.pkgsStatic.haskell.packages.integer-simple.g
       #   Perhaps you haven't installed the "dyn" libraries for package ‘integer-simple-0.1.2.0’?
       cmdargs = nixpkgs.haskell.lib.dontHaddock super.cmdargs;
       file-embed = nixpkgs.haskell.lib.dontHaddock super.file-embed;
+      QuickCheck = nixpkgs.haskell.lib.dontHaddock super.QuickCheck;
     };
 }; in
 
