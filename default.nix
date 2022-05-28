@@ -150,17 +150,17 @@ let
     # (once we can use ghc-9.0 we can maybe use ghc-bignum native, which should be faster)
     else
       let
-        ic-hs-static = nixpkgs.haskell.lib.appendConfigureFlags staticHaskellPackages.ic-hs [
-          "-frelease"
-          "-f-library"
-          "--ghc-option=-optl=-static"
-        ];
-        in nixpkgs.runCommandNoCC "ic-ref-dist" {
-          allowedRequisites = [];
-        } ''
-          mkdir -p $out/bin
-          cp ${ic-hs-static}/bin/ic-ref $out/bin
-        '';
+        ic-hs-static =
+          nixpkgs.haskell.lib.justStaticExecutables
+            (nixpkgs.haskell.lib.failOnAllWarnings
+              staticHaskellPackages.ic-hs);
+      in nixpkgs.pkgsStatic.runCommandNoCC "ic-ref-dist" {
+        allowedRequisites = [];
+        ic_hs_static = ic-hs-static;
+      } ''
+        mkdir -p $out/bin
+        cp $ic_hs_static/bin/ic-ref $out/bin
+      '';
 
 
   # We run the unit test suite only as part of coverage checking.

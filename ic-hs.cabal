@@ -7,10 +7,6 @@ license-file:        LICENSE
 build-type:          Simple
 extra-source-files:  cbits/*.h ic.did
 
-flag release
-  default: False
-  description: Release build, warnings are errors
-
 flag library
   default: True
   description: Build library (useful to disable in musl builds)
@@ -65,8 +61,6 @@ common ghc-flags
   hs-source-dirs:      src
   ghc-options:         -rtsopts
   ghc-options:         -Wall -Wno-name-shadowing
-  if flag(release)
-    ghc-options:       -Werror
 
 executable ic-ref
   import: cbits, ghc-flags
