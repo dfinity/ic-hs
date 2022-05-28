@@ -93,7 +93,7 @@ let staticHaskellPackages = nixpkgs.pkgsStatic.haskell.packages.integer-simple.g
       file-embed = nixpkgs.haskell.lib.dontHaddock super.file-embed;
       QuickCheck = nixpkgs.haskell.lib.dontHaddock super.QuickCheck;
       candid = nixpkgs.haskell.lib.dontHaddock super.candid;
-      winter = nixpkgs.haskell.lib.dontHaddock super.winter;
+      winter = nixpkgs.haskell.lib.dontHaddock generated.winter;
     };
 }; in
 
