@@ -71,7 +71,7 @@
 mkDerivation {
   pname = "ic-hs";
   version = "0.0.1";
-  src = pkgs.lib.sourceByRegex (pkgs.subpath "/") [ "^src.*" "^ic-hs.cabal" "^cbits.*" "^LICENSE" "^ic.did" ];
+  src = pkgs.lib.sourceByRegex (pkgs.subpath "/") [ "^src.*" "^bin.*" "^test.*" "^ic-hs.cabal" "^cbits.*" "^LICENSE" "^ic.did" ];
   configureFlags = [ "-frelease" ];
   isLibrary = true;
   isExecutable = true;

@@ -195,7 +195,7 @@ rec {
       nativeBuildInputs = [ haskellPackages.ghc ic-hs-coverage ];
       # Prevent rebuilds whenever non-Haskell related files (like .nix) change.
       srcdir = nixpkgs.lib.sourceByRegex (nixpkgs.subpath ./.)
-        [ "^src.*" "^ic-hs.cabal" "^cbits.*" "^LICENSE" "^ic.did" ];
+        [ "^src.*" "^bin.*" "^test.*" "^ic-hs.cabal" "^cbits.*" "^LICENSE" "^ic.did" ];
     } ''
       function kill_ic_ref () { kill  %1; }
       ic-ref --pick-port --write-port-to port &
