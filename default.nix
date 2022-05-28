@@ -87,6 +87,7 @@ let staticHaskellPackages = nixpkgs.pkgsStatic.haskell.packages.integer-simple.g
       cmdargs = nixpkgs.haskell.lib.dontHaddock super.cmdargs;
       file-embed = nixpkgs.haskell.lib.dontHaddock super.file-embed;
       QuickCheck = nixpkgs.haskell.lib.dontHaddock super.QuickCheck;
+      candid = nixpkgs.haskell.lib.dontHaddock super.candid;
     };
 }; in
 
