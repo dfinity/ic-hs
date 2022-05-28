@@ -1,0 +1,1 @@
+../bin/ic-ref-test.hs
