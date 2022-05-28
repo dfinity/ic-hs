@@ -64,7 +64,12 @@ let staticHaskellPackages = nixpkgs.pkgsStatic.haskell.packages.integer-simple.g
       );
 
       murmur3 = nixpkgs.haskell.lib.markUnbroken super.murmur3;
-      secp256k1-haskell = nixpkgs.haskell.lib.addBuildTool (nixpkgs.haskell.lib.markUnbroken super.secp256k1-haskell_0_6_0) nixpkgs.pkg-config;
+
+      secp256k1-haskell =
+        nixpkgs.haskell.lib.addBuildTool
+          (nixpkgs.haskell.lib.markUnbroken super.secp256k1-haskell_0_6_0)
+          nixpkgs.pkg-config;
+
       haskoin-core = nixpkgs.haskell.lib.dontCheck super.haskoin-core;
 
       cryptonite = nixpkgs.haskell.lib.dontCheck (
@@ -88,6 +93,7 @@ let staticHaskellPackages = nixpkgs.pkgsStatic.haskell.packages.integer-simple.g
       file-embed = nixpkgs.haskell.lib.dontHaddock super.file-embed;
       QuickCheck = nixpkgs.haskell.lib.dontHaddock super.QuickCheck;
       candid = nixpkgs.haskell.lib.dontHaddock super.candid;
+      winter = nixpkgs.haskell.lib.dontHaddock super.winter;
     };
 }; in
 
