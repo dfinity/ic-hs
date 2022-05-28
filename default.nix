@@ -189,6 +189,9 @@ rec {
 
   coverage = nixpkgs.runCommandNoCC "ic-ref-test" {
       nativeBuildInputs = [ haskellPackages.ghc ic-hs-coverage ];
+      # Prevent rebuilds whenever non-Haskell related files (like .nix) change.
+      srcdir = nixpkgs.lib.sourceByRegex (nixpkgs.subpath ./.)
+        [ "^src.*" "^ic-hs.cabal" "^cbits.*" "^LICENSE" "^ic.did" ];
     } ''
       function kill_ic_ref () { kill  %1; }
       ic-ref --pick-port --write-port-to port &
@@ -201,7 +204,7 @@ rec {
       sleep 5 # wait for ic-ref.tix to be written
 
       find
-      LANG=C.UTF8 hpc markup ic-ref.tix --hpcdir=${ic-hs-coverage}/share/hpc/vanilla/mix/ic-ref --srcdir=${subpath ./.}  --destdir $out
+      LANG=C.UTF8 hpc markup ic-ref.tix --hpcdir=${ic-hs-coverage}/share/hpc/vanilla/mix/ic-ref --srcdir=$srcdir  --destdir $out
 
       mkdir -p $out/nix-support
       echo "report coverage $out hpc_index.html" >> $out/nix-support/hydra-build-products
