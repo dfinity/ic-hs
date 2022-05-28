@@ -74,6 +74,18 @@ let staticHaskellPackages = nixpkgs.pkgsStatic.haskell.packages.integer-simple.g
       # more test suites too slow withour integer-gmp
       scientific = nixpkgs.haskell.lib.dontCheck super.scientific;
       math-functions = nixpkgs.haskell.lib.dontCheck super.math-functions;
+
+      # We disable haddock to prevent the error:
+      #
+      #   Haddock coverage:
+      #   haddock: panic! (the 'impossible' happened)
+      #     (GHC version 8.10.7:
+      #           lookupGlobal
+      #
+      #   Failed to load interface for ‘GHC.Integer.Type’
+      #   Perhaps you haven't installed the "dyn" libraries for package ‘integer-simple-0.1.2.0’?
+      cmdargs = nixpkgs.haskell.lib.dontHaddock super.cmdargs;
+      file-embed = nixpkgs.haskell.lib.dontHaddock super.file-embed;
     };
 }; in
 
