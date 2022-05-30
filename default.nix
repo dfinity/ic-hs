@@ -39,10 +39,6 @@ let staticHaskellPackages = nixpkgs.pkgsStatic.haskellPackages.override {
     generated //
     {
       haskoin-core = nixpkgs.haskell.lib.dontCheck (nixpkgs.haskell.lib.markUnbroken super.haskoin-core);
-
-      cryptonite = nixpkgs.haskell.lib.dontCheck (
-        nixpkgs.haskell.lib.appendConfigureFlag super.cryptonite "-f-integer-gmp"
-      );
     };
 }; in
 
