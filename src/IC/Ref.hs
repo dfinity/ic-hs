@@ -875,24 +875,23 @@ icHttpRequest :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "http_req
 icHttpRequest caller r = do
     resp <- liftIO $ sendHttpRequest (r .! #url)
     case (r .! #transform) of
-      Nothing -> return $ V.IsJust #ok resp
+      Nothing -> return resp
       Just t -> case V.trial' t #function of
-        Nothing -> return $ V.IsJust #err (V.IsJust #transform_error ())
+        Nothing -> reject RC_CANISTER_REJECT "transform needs to be a function" (Just EC_INVALID_ARGUMENT)
         Just (FuncRef p m) -> do
             let cid = principalToEntityId p
-            if cid /= caller then
-              return $ V.IsJust #err (V.IsJust #transform_error ())
-            else do
-              can_mod <- getCanisterMod cid
-              wasm_state <- getCanisterState cid
-              env <- canisterEnv cid
-              case M.lookup (T.unpack m) (query_methods can_mod) of
-                Nothing -> return $ V.IsJust #err (V.IsJust #transform_error ())
-                Just f -> case f cid env (Codec.Candid.encode resp) wasm_state of
-                  Return (Reply r) -> case Codec.Candid.decode @HttpResponse r of
-                    Left _ -> reject RC_CANISTER_ERROR "could not decode the response" (Just EC_INVALID_ENCODING)
-                    Right r -> return $ V.IsJust #ok r
-                  _ -> reject RC_CANISTER_ERROR "canister did not return a response properly" (Just EC_CANISTER_DID_NOT_REPLY)
+            unless (cid == caller) $
+              reject RC_CANISTER_REJECT "transform needs to be exported by a caller canister" (Just EC_INVALID_ARGUMENT) 
+            can_mod <- getCanisterMod cid
+            wasm_state <- getCanisterState cid
+            env <- canisterEnv cid
+            case M.lookup (T.unpack m) (query_methods can_mod) of
+              Nothing -> reject RC_CANISTER_ERROR "transform function with a given name does not exist" (Just EC_INVALID_ARGUMENT)
+              Just f -> case f cid env (Codec.Candid.encode resp) wasm_state of
+                Return (Reply r) -> case Codec.Candid.decode @HttpResponse r of
+                  Left _ -> reject RC_CANISTER_ERROR "could not decode the response" (Just EC_INVALID_ENCODING)
+                  Right r -> return r
+                _ -> reject RC_CANISTER_ERROR "canister did not return a response properly" (Just EC_CANISTER_DID_NOT_REPLY)
 
 icCreateCanister :: (ICM m, CanReject m) => EntityId -> CallId -> ICManagement m .! "create_canister"
 icCreateCanister caller ctxt_id r = do
