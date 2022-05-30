@@ -16,10 +16,7 @@ type definite_canister_settings = record {
   freezing_threshold : nat;
 };
 
-type http_header = record {
-  0: text;
-  1: text
-};
+type http_header = record { name: text; value: text };
 
 type http_response = record {
   status: nat;
@@ -27,25 +24,9 @@ type http_response = record {
   body: blob;
 };
 
-type error = variant {
-  no_consensus;
-  timeout;
-  bad_tls;
-  transform_error;
-};
-
 type ecdsa_curve = variant { secp256k1; };
 
 service ic : {
-  http_request : (record {
-    url : text;
-    method : variant { get };
-    headers : vec http_header;
-    body : opt blob;
-    transform : opt variant {
-      function: func (http_response) -> (http_response) query
-    };
-  }) -> (variant { ok : http_response; err : error });
   create_canister : (record {
     settings : opt canister_settings
   }) -> (record {canister_id : canister_id});
@@ -72,16 +53,17 @@ service ic : {
   delete_canister : (record {canister_id : canister_id}) -> ();
   deposit_cycles : (record {canister_id : canister_id}) -> ();
   raw_rand : () -> (blob);
+  http_request : (record {
+    url : text;
+    method : variant { get };
+    headers: vec http_header;
+    body : opt blob;
+    transform : opt variant {
+      function: func (http_response) -> (http_response) query
+    };
+  }) -> (http_response);
 
-  // provisional interfaces for the pre-ledger world
-  provisional_create_canister_with_cycles : (record {
-    amount: opt nat;
-    settings : opt canister_settings
-  }) -> (record {canister_id : canister_id});
-  provisional_top_up_canister :
-    (record { canister_id: canister_id; amount: nat }) -> ();
-  
-// Threshold ECDSA signature
+  // Threshold ECDSA signature
   ecdsa_public_key : (record {
     canister_id : opt canister_id;
     derivation_path : vec blob;
@@ -93,4 +75,11 @@ service ic : {
     key_id : record { curve: ecdsa_curve; name: text };
   }) -> (record { signature : blob });
 
+  // provisional interfaces for the pre-ledger world
+  provisional_create_canister_with_cycles : (record {
+    amount: opt nat;
+    settings : opt canister_settings
+  }) -> (record {canister_id : canister_id});
+  provisional_top_up_canister :
+    (record { canister_id: canister_id; amount: nat }) -> ();
 }

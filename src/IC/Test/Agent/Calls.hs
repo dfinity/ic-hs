@@ -29,6 +29,7 @@ module IC.Test.Agent.Calls
       ic_ecdsa_public_key',
       ic_ecdsa_public_key,
       ic_http_request'',
+      ic_http_request',
       ic_http_request,
       ic_install'',
       ic_install',
@@ -149,10 +150,7 @@ ic_http_request ic00 canister_id transform =
     .+ #method .== enum #get
     .+ #headers .== Vec.empty
     .+ #body .== Nothing
-    .+ #transform .== (wrap transform canister_id)
-  where
-    wrap Nothing _ = Nothing
-    wrap (Just name) cid = Just (V.IsJust #function (Candid.FuncRef (Principal cid) (T.pack name)))
+    .+ #transform .== (toTransformFn transform canister_id)
 
 ic_ecdsa_public_key ::
     forall a b. (a -> IO b) ~ (ICManagement IO .! "ecdsa_public_key") =>
@@ -177,7 +175,6 @@ ic_sign_with_ecdsa ic00 msg =
        .+ #curve .== enum #secp256k1
        .+ #name .== (T.pack "0")
     )
-
 
 ic_create' ::
     (HasCallStack, HasAgentConfig, PartialSettings r) =>
@@ -237,6 +234,15 @@ ic_ecdsa_public_key' ic00 canister_id path =
        .+ #curve .== enum #secp256k1
        .+ #name .== (T.pack "0")
     )
+
+ic_http_request' :: HasAgentConfig => IC00 -> Blob -> (Maybe String, Blob) -> IO ReqResponse
+ic_http_request' ic00 canister_id (transform, cid) =
+  callIC' ic00 canister_id #http_request $ empty
+    .+ #url .== (T.pack $ "http://localhost:" ++ show testPort)
+    .+ #method .== enum #get
+    .+ #headers .== Vec.empty
+    .+ #body .== Nothing
+    .+ #transform .== (toTransformFn transform cid)
 
 ic_install'' :: (HasCallStack, HasAgentConfig) => Blob -> InstallMode -> Blob -> Blob -> Blob -> IO (HTTPErrOr ReqResponse)
 ic_install'' user mode canister_id wasm_module arg =
@@ -319,6 +325,10 @@ ic_sign_with_ecdsa'' user msg =
 
 testPort :: HasAgentConfig => Int
 testPort = tc_test_port agentConfig
+
+toTransformFn :: (AllUniqueLabels r1, (r1 .! "function") ~ Candid.FuncRef r2) => 
+                 Maybe String -> Blob -> Maybe (Var r1)
+toTransformFn name cid = fmap (\n -> V.IsJust #function (Candid.FuncRef (Principal cid) (T.pack n))) name
 
 -- The following line noise is me getting out of my way
 -- to be able to use `ic_create` etc. by passing a record that contains

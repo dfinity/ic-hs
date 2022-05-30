@@ -42,7 +42,7 @@ type Settings = [candidType|
 type HttpResponse = [candidType|
     record {
       status: nat;
-      headers: vec record { 0 : text; 1 : text };
+      headers: vec record { name : text; value : text };
       body: blob;
     }
   |]

@@ -23,7 +23,10 @@ sendHttpRequest url = do
     }
     toHttpResponse <$> C.httpLbs req m
   where
+    toHeaderEntry (n, v) = R.empty
+      .+ #name  .== (T.decodeUtf8 (original n))
+      .+ #value .== (T.decodeUtf8 v)
     toHttpResponse r = R.empty
       .+ #status .== (fromIntegral (statusCode $ C.responseStatus r))
-      .+ #headers .== (Vec.fromList $ map (\(n, v) -> (T.decodeUtf8 (original n), T.decodeUtf8 v)) (C.responseHeaders r))
+      .+ #headers .== (Vec.fromList $ map toHeaderEntry (C.responseHeaders r))
       .+ #body .== (C.responseBody r)
