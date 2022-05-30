@@ -1,8 +1,8 @@
 { system ? builtins.currentSystem }:
 let
   sourcesnix = builtins.fetchurl {
-    url = https://raw.githubusercontent.com/nmattia/niv/v0.2.19/nix/sources.nix;
-    sha256 = "1n92ka2rkdiib6ian6jh2b7fwvklnnwlp5yy5bv6ywm7m1y5hyfl";
+    url = https://raw.githubusercontent.com/nmattia/niv/v0.2.21/nix/sources.nix;
+    sha256 = "129xhkih5sjdifcdfgfy36vj0a9qlli3cgxlrpqq8qfz42avn93v";
   };
   nixpkgs_src = (import sourcesnix { sourcesFile = ./sources.json; inherit pkgs; }).nixpkgs;
 
@@ -44,15 +44,12 @@ let
           });
 
           all-cabal-hashes = self.fetchurl {
-            url = "https://github.com/commercialhaskell/all-cabal-hashes/archive/d4d63b04cd9f6ed263db8df4cdd6dcc667f96ccd.tar.gz";
-            sha256 = "0pd9zfy8wwbwqg0qkgi28kfi2q3kwl1lwkq2k7b50wm5pb3nngrm";
+            url = "https://github.com/commercialhaskell/all-cabal-hashes/archive/35f4996e28c5ba20a3a633346f21abe2072afeb6.tar.gz";
+            sha256 = "sha256-L/PmFUGlBOOd5rAx4NFxv+s2USI9q0YgOsfpdeRDyds=";
           };
 
           # We override secp256k1 since the version in nixpkgs doesn't provide a
           # .a library needed for a static build of ic-hs.
-          #
-          # TODO: We can probably remove this override once we upgrade nixpkgs
-          # to release-22.05.
           secp256k1 = super.callPackage ./secp256k1 {};
         })
       ];

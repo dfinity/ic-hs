@@ -33,7 +33,7 @@ let
 
       '';
       src_subst = pkgs.lib.replaceStrings ["\n"] [" "] src_subst;
-      installPhase = oldAttrs.installPhase + ''
+      buildCommand = (oldAttrs.buildCommand or "") + ''
         sed -i "1i$message;s|src = .*|src = $src_subst;|" $out/default.nix
         # Accept `pkgs` as an argument in case the `src_subst` depends on it.
         sed -i "s|{ mkDerivation|{ mkDerivation, pkgs|" $out/default.nix
@@ -69,13 +69,6 @@ let
       src = pkgs.sources.haskell-candid;
       src_subst = "pkgs.sources.haskell-candid";
     };
-
-    # To pull other versions from hackage:
-
-    # 0.2.5.0 broke with ghc-8.10 and integer-simple,
-    # see https://github.com/well-typed/cborg/issues/267
-    cborg = pkgs.haskellPackages.hackage2nix "cborg" "0.2.4.0";
-    http-client = pkgs.haskellPackages.hackage2nix "http-client" "0.7.11";
   };
 
   allGenerated = pkgs.runCommandNoCC "generated" {

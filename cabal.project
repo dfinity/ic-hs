@@ -3,9 +3,9 @@ packages: .
 source-repository-package
     type: git
     location: https://github.com/dfinity-side-projects/winter
-    tag: e62722796e11760947a94285734e7bc29d72c389
+    tag: 530d5e395bb9919187d47d3966c4d526e668b62a
 
 source-repository-package
     type: git
     location: https://github.com/nomeata/haskell-candid
-    tag: 1b0279928ac05ecabb0c913449b10c9559a0ec45
+    tag: bff9fcf23e6c60bb8cd7c1ac1ae3d39f6fc05ec0
