@@ -56,12 +56,12 @@
         "builtin": false,
         "description": "Haskell port of the WebAssembly OCaml reference interpreter",
         "homepage": "https://github.com/dfinity-side-projects/winter",
-        "owner": "dfinity-side-projects",
+        "owner": "ggreif",
         "repo": "winter",
-        "rev": "e62722796e11760947a94285734e7bc29d72c389",
-        "sha256": "1yfgk5bhyzrllnkhpg1plzp3mz7h1fgn3j0zfn36a3h892lknlds",
+        "rev": "618f679c7d8f9584a902081701b96edb34183f2d",
+        "sha256": "1b0lxcs5ig29js81s6sjflgwv8f7l83vf156y14wmcx44r1rj2ra",
         "type": "tarball",
-        "url": "https://github.com/dfinity-side-projects/winter/archive/e62722796e11760947a94285734e7bc29d72c389.tar.gz",
+        "url": "https://github.com/ggreif/winter/archive/618f679c7d8f9584a902081701b96edb34183f2d.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     }
 }

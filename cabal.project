@@ -2,8 +2,8 @@ packages: .
 
 source-repository-package
     type: git
-    location: https://github.com/dfinity-side-projects/winter
-    tag: e62722796e11760947a94285734e7bc29d72c389
+    location: https://github.com/ggreif/winter
+    tag: 618f679c7d8f9584a902081701b96edb34183f2d
 
 source-repository-package
     type: git
