@@ -23,23 +23,19 @@ let universal-canister = (naersk.buildPackage rec {
     '';
 }); in
 
-
-let haskellPackages = nixpkgs.haskellPackages.override {
-  overrides = self: super:
+let haskellOverrides = self: super:
     let generated = import nix/generated/all.nix self super; in
     generated //
     {
       haskoin-core = nixpkgs.haskell.lib.dontCheck (nixpkgs.haskell.lib.markUnbroken super.haskoin-core);
-    };
+    }; in
+
+let haskellPackages = nixpkgs.haskellPackages.override {
+  overrides = haskellOverrides;
 }; in
 
 let staticHaskellPackages = nixpkgs.pkgsStatic.haskellPackages.override {
-  overrides = self: super:
-    let generated = import nix/generated/all.nix self super; in
-    generated //
-    {
-      haskoin-core = nixpkgs.haskell.lib.dontCheck (nixpkgs.haskell.lib.markUnbroken super.haskoin-core);
-    };
+  overrides = haskellOverrides;
 }; in
 
 let
