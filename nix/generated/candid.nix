@@ -40,7 +40,7 @@
 }:
 mkDerivation {
   pname = "candid";
-  version = "0.2";
+  version = "0.3.1";
   src = pkgs.sources.haskell-candid;
   isLibrary = true;
   isExecutable = true;
@@ -97,7 +97,7 @@ mkDerivation {
     unordered-containers
     vector
   ];
-  homepage = "https://github.com/dfinity/candid";
+  homepage = "https://github.com/nomeata/haskell-candid";
   description = "Candid integration";
   license = lib.licenses.asl20;
 }

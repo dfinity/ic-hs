@@ -29,30 +29,11 @@ let haskellPackages = nixpkgs.haskellPackages.override {
     let generated = import nix/generated/all.nix self super; in
     generated //
     {
-      # the downgrade of cborg in nix/generated.nix makes cborgs test suite depend on
-      # older versions of stuff, so let’s ignore the test suite.
-      cborg = nixpkgs.haskell.lib.dontCheck generated.cborg;
-      # here more adjustments can be made if needed, e.g.
-      # crc = nixpkgs.haskell.lib.markUnbroken (nixpkgs.haskell.lib.dontCheck super.crc);
-      murmur3 = nixpkgs.haskell.lib.markUnbroken super.murmur3;
-      secp256k1-haskell = nixpkgs.haskell.lib.markUnbroken super.secp256k1-haskell_0_6_0;
-      haskoin-core = nixpkgs.haskell.lib.dontCheck super.haskoin-core;
+      haskoin-core = nixpkgs.haskell.lib.dontCheck (nixpkgs.haskell.lib.markUnbroken super.haskoin-core);
     };
 }; in
 
 let staticHaskellPackages = nixpkgs.pkgsStatic.haskell.packages.integer-simple.ghc8107.override {
-  # We override GHC such that TemplateHaskell doesn't require shared libraries
-  # which are not available in pkgsStatic.
-  # See: https://github.com/NixOS/nixpkgs/issues/61575#issuecomment-879403341
-  ghc = (nixpkgs.pkgsStatic.buildPackages.haskell.compiler.integer-simple.ghc8107.override {
-    enableRelocatedStaticLibs = true;
-    enableShared = false;
-  }).overrideAttrs (oldAttr: { preConfigure = ''
-      ${oldAttr.preConfigure or ""}
-      echo "GhcLibHcOpts += -fPIC -fexternal-dynamic-refs" >> mk/build.mk
-      echo "GhcRtsHcOpts += -fPIC -fexternal-dynamic-refs" >> mk/build.mk
-    '';
-  });
   overrides = self: super:
     let generated = import nix/generated/all.nix self super; in
     generated //
@@ -67,10 +48,10 @@ let staticHaskellPackages = nixpkgs.pkgsStatic.haskell.packages.integer-simple.g
 
       secp256k1-haskell =
         nixpkgs.haskell.lib.addBuildTool
-          (nixpkgs.haskell.lib.markUnbroken super.secp256k1-haskell_0_6_0)
+          (nixpkgs.haskell.lib.markUnbroken super.secp256k1-haskell)
           nixpkgs.pkg-config;
 
-      haskoin-core = nixpkgs.haskell.lib.dontCheck super.haskoin-core;
+      haskoin-core = nixpkgs.haskell.lib.dontCheck (nixpkgs.haskell.lib.markUnbroken super.haskoin-core);
 
       cryptonite = nixpkgs.haskell.lib.dontCheck (
         nixpkgs.haskell.lib.appendConfigureFlag super.cryptonite "-f-integer-gmp"
@@ -79,21 +60,6 @@ let staticHaskellPackages = nixpkgs.pkgsStatic.haskell.packages.integer-simple.g
       # more test suites too slow withour integer-gmp
       scientific = nixpkgs.haskell.lib.dontCheck super.scientific;
       math-functions = nixpkgs.haskell.lib.dontCheck super.math-functions;
-
-      # We disable haddock to prevent the error:
-      #
-      #   Haddock coverage:
-      #   haddock: panic! (the 'impossible' happened)
-      #     (GHC version 8.10.7:
-      #           lookupGlobal
-      #
-      #   Failed to load interface for ‘GHC.Integer.Type’
-      #   Perhaps you haven't installed the "dyn" libraries for package ‘integer-simple-0.1.2.0’?
-      cmdargs = nixpkgs.haskell.lib.dontHaddock super.cmdargs;
-      file-embed = nixpkgs.haskell.lib.dontHaddock super.file-embed;
-      QuickCheck = nixpkgs.haskell.lib.dontHaddock super.QuickCheck;
-      candid = nixpkgs.haskell.lib.dontHaddock super.candid;
-      winter = nixpkgs.haskell.lib.dontHaddock generated.winter;
     };
 }; in
 
@@ -328,6 +294,7 @@ rec {
       buildInputs = [
         nixpkgs.cabal-install
         nixpkgs.ghcid
+        haskellPackages.haskell-language-server
       ];
     };
 }
