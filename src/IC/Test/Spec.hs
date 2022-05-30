@@ -28,7 +28,6 @@ import Control.Monad
 import Data.Word
 import Data.Functor
 import Data.Row as R
-import qualified Data.Row.Variants as V
 import Data.Time.Clock.POSIX
 import Codec.Candid (Principal(..))
 import qualified Codec.Candid as Candid
@@ -390,25 +389,23 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
   , testGroup "canister http calls"
     [ simpleTestCase "simple call, no transform" $ \cid -> do
       resp <- ic_http_request (ic00via cid) cid Nothing
-      case trial' resp #ok of
-        Nothing -> error "response #error, not #ok"
-        Just r -> do
-          (r .! #status) @?= 200
-          (r .! #body) @?= "Hello world!"
+      (resp .! #status) @?= 200
+      (resp .! #body) @?= "Hello world!"
 
     , testCase "non-existent transform function" $ do
       cid <- install noop
-      do ic_http_request (ic00via cid) cid (Just "nonExistent")
-        >>= is (V.IsJust #err (V.IsJust #transform_error ()))
+      ic_http_request' (ic00via cid) cid (Just "nonExistent", cid) >>= isReject [5]
+
+    , testCase "reference to a transform function exposed by another canister" $ do
+      cid <- install noop
+      cid2 <- install (onTransform (callback (replyData (bytes (Candid.encode dummyResponse)))))
+      ic_http_request' (ic00via cid) cid (Just "transform", cid2) >>= isReject [5]
 
     , testCase "simple call with transform" $ do
       cid <- install (onTransform (callback (replyData (bytes (Candid.encode dummyResponse)))))
       resp <- ic_http_request (ic00via cid) cid (Just "transform")
-      case trial' resp #ok of
-        Nothing -> error "response #error, not #ok"
-        Just r -> do
-          (r .! #status) @?= 202
-          (r .! #body) @?= "Dummy!"
+      (resp .! #status) @?= 202
+      (resp .! #body) @?= "Dummy!"
     ]
 
   , testGroup "simple calls"
