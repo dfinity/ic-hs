@@ -26,6 +26,56 @@ type http_response = record {
 
 type ecdsa_curve = variant { secp256k1; };
 
+type satoshi = nat64;
+
+type bitcoin_network = variant {
+  mainnet;
+  testnet;
+};
+
+type bitcoin_address = text;
+
+type block_hash = blob;
+
+type outpoint = record {
+  txid : blob;
+  vout : nat32
+};
+
+type utxo = record {
+  outpoint: outpoint;
+  value: satoshi;
+  height: nat32;
+};
+
+type get_utxos_request = record {
+  address : bitcoin_address;
+  network: bitcoin_network;
+  filter: opt variant {
+    min_confirmations: nat32;
+    page: blob;
+  };
+};
+
+type get_utxos_response = record {
+  utxos: vec utxo;
+  tip_block_hash: block_hash;
+  tip_height: nat32;
+  next_page: opt blob;
+};
+
+
+type get_balance_request = record {
+  address : bitcoin_address;
+  network: bitcoin_network;
+  min_confirmations: opt nat32;
+};
+
+type send_transaction_request = record {
+  transaction: blob;
+  network: bitcoin_network;
+};
+
 service ic : {
   create_canister : (record {
     settings : opt canister_settings
@@ -74,6 +124,12 @@ service ic : {
     derivation_path : vec blob;
     key_id : record { curve: ecdsa_curve; name: text };
   }) -> (record { signature : blob });
+
+  // bitcoin interface
+  bitcoin_get_balance: (get_balance_request) -> (satoshi);
+  bitcoin_get_utxos: (get_utxos_request) -> (get_utxos_response);
+  bitcoin_send_transaction: (send_transaction_request) -> ();
+  bitcoin_get_current_fees: () -> (vec float32);
 
   // provisional interfaces for the pre-ledger world
   provisional_create_canister_with_cycles : (record {
