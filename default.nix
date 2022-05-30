@@ -33,33 +33,16 @@ let haskellPackages = nixpkgs.haskellPackages.override {
     };
 }; in
 
-let staticHaskellPackages = nixpkgs.pkgsStatic.haskell.packages.integer-simple.ghc902.override {
+let staticHaskellPackages = nixpkgs.pkgsStatic.haskellPackages.override {
   overrides = self: super:
     let generated = import nix/generated/all.nix self super; in
     generated //
     {
-      # the downgrade of cborg in nix/generated.nix makes cborgs test suite depend on
-      # older versions of stuff, so let’s ignore the test suite.
-      cborg = nixpkgs.haskell.lib.dontCheck (
-        nixpkgs.haskell.lib.appendConfigureFlag super.cborg "-f-optimize-gmp"
-      );
-
-      murmur3 = nixpkgs.haskell.lib.markUnbroken super.murmur3;
-
-      secp256k1-haskell =
-        nixpkgs.haskell.lib.addBuildTool
-          (nixpkgs.haskell.lib.markUnbroken super.secp256k1-haskell)
-          nixpkgs.pkg-config;
-
       haskoin-core = nixpkgs.haskell.lib.dontCheck (nixpkgs.haskell.lib.markUnbroken super.haskoin-core);
 
       cryptonite = nixpkgs.haskell.lib.dontCheck (
         nixpkgs.haskell.lib.appendConfigureFlag super.cryptonite "-f-integer-gmp"
       );
-
-      # more test suites too slow withour integer-gmp
-      scientific = nixpkgs.haskell.lib.dontCheck super.scientific;
-      math-functions = nixpkgs.haskell.lib.dontCheck super.math-functions;
     };
 }; in
 
