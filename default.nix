@@ -187,14 +187,11 @@ let
         remove-references-to -t ${staticHaskellPackages.warp} $out/bin/ic-ref
       '';
 
-
   # We run the unit test suite only as part of coverage checking.
   # It is enough to run it once, and we definitely want it as part of
   # of coverage checking.
   ic-hs-coverage = nixpkgs.haskell.lib.doCheck (nixpkgs.haskell.lib.doCoverage ic-hs);
 in
-
-
 
 rec {
   inherit ic-hs;
@@ -224,7 +221,7 @@ rec {
       nativeBuildInputs = [ haskellPackages.ghc ic-hs-coverage ];
       # Prevent rebuilds whenever non-Haskell related files (like .nix) change.
       srcdir = nixpkgs.lib.sourceByRegex (nixpkgs.subpath ./.)
-        [ "^src.*" "^ic-hs.cabal" "^cbits.*" "^LICENSE" "^ic.did" ];
+        [ "^src.*" "^bin.*" "^test.*" "^ic-hs.cabal" "^cbits.*" "^LICENSE" "^ic.did" ];
     } ''
       function kill_ic_ref () { kill  %1; }
       ic-ref --pick-port --write-port-to port &

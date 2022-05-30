@@ -48,7 +48,7 @@ let
       # exclude some more files to avoid rebuilds
       src_subst = ''
         pkgs.lib.sourceByRegex (pkgs.subpath "/")
-          ["^src.*" "^ic-hs.cabal" "^cbits.*" "^LICENSE" "^ic.did"]
+          ["^src.*" "^bin.*" "^test.*" "^ic-hs.cabal" "^cbits.*" "^LICENSE" "^ic.did"]
       '';
       extraCabal2nixOptions =  "--no-check -frelease";
     };
