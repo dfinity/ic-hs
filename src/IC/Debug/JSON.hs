@@ -195,3 +195,4 @@ instance ToJSON StdGen where
 
 instance ToJSON SecretKey where
     toJSON = placeholder "(secret key)"
+

@@ -85,6 +85,7 @@ import IC.Certificate
 import IC.Certificate.Value
 import IC.Certificate.CBOR
 import IC.Crypto
+import IC.Crypto.Bitcoin as Bitcoin
 import IC.Ref.IO (sendHttpRequest)
 
 -- Abstract HTTP Interface
@@ -272,6 +273,9 @@ isCanisterRunning cid = getRunStatus cid >>= \case
 isCanisterEmpty :: ICM m => CanisterId -> m Bool
 isCanisterEmpty cid = isNothing . content <$> getCanister cid
 
+getCanisterRootKey :: CanisterId -> Bitcoin.ExtendedSecretKey
+getCanisterRootKey cid = Bitcoin.createExtendedKey $ rawEntityId cid 
+
 -- The following functions assume the canister does exist.
 -- It would be an internal error if they don't.
 
@@ -457,15 +461,15 @@ handleReadState time (ReadStateRequest _sender paths) = do
 
 checkEffectiveCanisterID :: RequestValidation m => CanisterId -> CanisterId -> MethodName -> Blob -> m ()
 checkEffectiveCanisterID ecid cid method arg
-  | cid == managementCanisterId = case method of
-    "provisional_create_canister_with_cycles" -> pure ()
-    "raw_rand" -> throwError "raw_rand() cannot be invoked via ingress calls"
-    "http_request" -> throwError "http_request() cannot be invoked via ingress calls"
-    _ -> case Codec.Candid.decode @(R.Rec ("canister_id" R..== Principal)) arg of
-        Left err ->
-            throwError $ "call to management canister is not valid candid: " <> T.pack err
-        Right r ->
-            assertEffectiveCanisterId ecid (principalToEntityId (r .! #canister_id))
+  | cid == managementCanisterId =
+    if | method == "provisional_create_canister_with_cycles" -> pure ()
+       | method `elem` ["raw_rand", "http_request", "ecdsa_public_key", "sign_with_ecdsa"] -> 
+         throwError $ T.pack method <>  " cannot be invoked via ingress calls"
+       | otherwise -> case Codec.Candid.decode @(R.Rec ("canister_id" R..== Principal)) arg of
+                        Left err ->
+                          throwError $ "call to management canister is not valid candid: " <> T.pack err
+                        Right r ->
+                          assertEffectiveCanisterId ecid (principalToEntityId (r .! #canister_id))
   | otherwise = assertEffectiveCanisterId ecid cid
 
 assertEffectiveCanisterId :: RequestValidation m => CanisterId -> CanisterId -> m ()
@@ -478,7 +482,7 @@ inspectIngress (CallRequest canister_id user_id method arg)
   | canister_id == managementCanisterId =
     if| method `elem` ["provisional_create_canister_with_cycles", "provisional_top_up_canister"]
       -> return ()
-      | method `elem` [ "raw_rand", "deposit_cycles", "http_request" ]
+      | method `elem` [ "raw_rand", "deposit_cycles", "http_request", "ecdsa_public_key", "sign_with_ecdsa" ]
       -> throwError $ "Management method " <> T.pack method <> " cannot be invoked via an ingress call"
       | method `elem` managementMethods
       -> case decode @(R.Rec ("canister_id" R..== Principal)) arg of
@@ -842,6 +846,8 @@ invokeManagementCanister caller ctxt_id (Public method_name arg) =
       "provisional_top_up_canister" -> atomic icTopUpCanister
       "raw_rand" -> atomic icRawRand
       "http_request" -> atomic $ icHttpRequest caller
+      "ecdsa_public_key" -> atomic $ icEcdsaPublicKey caller
+      "sign_with_ecdsa" -> atomic $ icSignWithEcdsa caller
       _ -> reject RC_DESTINATION_INVALID ("Unsupported management function " ++ method_name) (Just EC_METHOD_NOT_FOUND)
   where
     -- always responds
@@ -1115,6 +1121,31 @@ runRandIC a = state $ \ic ->
     let (x, g) = runRand a (rng ic)
     in (x, ic { rng = g })
 
+icEcdsaPublicKey :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "ecdsa_public_key"
+icEcdsaPublicKey caller r = do
+    let cid = case r .! #canister_id of
+                Just cid -> principalToEntityId cid
+                Nothing -> caller
+    canisterMustExist cid
+    let key = getCanisterRootKey cid
+    case Bitcoin.derivePublicKey key (r .! #derivation_path) of
+      Left err -> reject RC_CANISTER_ERROR err (Just EC_INVALID_ENCODING)
+      Right k -> return $ R.empty
+                   .+ #public_key .== (publicKeyToDER k)
+                   .+ #chain_code .== (extractChainCode k)
+
+icSignWithEcdsa :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "sign_with_ecdsa"
+icSignWithEcdsa caller r = do
+    let key = getCanisterRootKey caller
+    case Bitcoin.derivePrivateKey key (r .! #derivation_path) of
+      Left err -> reject RC_CANISTER_ERROR err  (Just EC_INVALID_ENCODING)
+      Right k -> do
+        case Bitcoin.toHash256 (r .! #message_hash) of
+          Left err -> reject RC_CANISTER_ERROR err (Just EC_INVALID_ENCODING)
+          Right h ->
+            return $ R.empty
+              .+ #signature .== (Bitcoin.sign k h)
+ 
 invokeEntry :: ICM m =>
     CallId -> WasmState -> CanisterModule -> Env -> EntryPoint ->
     m (TrapOr (WasmState, UpdateResult))
@@ -1308,5 +1339,4 @@ orElse a b = a >>= maybe b return
 
 onTrap :: Monad m => m (TrapOr a) -> (String -> m a) -> m a
 onTrap a b = a >>= \case { Trap msg -> b msg; Return x -> return x }
-
 

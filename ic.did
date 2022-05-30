@@ -34,6 +34,8 @@ type error = variant {
   transform_error;
 };
 
+type ecdsa_curve = variant { secp256k1; };
+
 service ic : {
   http_request : (record {
     url : text;
@@ -78,4 +80,17 @@ service ic : {
   }) -> (record {canister_id : canister_id});
   provisional_top_up_canister :
     (record { canister_id: canister_id; amount: nat }) -> ();
+  
+// Threshold ECDSA signature
+  ecdsa_public_key : (record {
+    canister_id : opt canister_id;
+    derivation_path : vec blob;
+    key_id : record { curve: ecdsa_curve; name: text };
+  }) -> (record { public_key : blob; chain_code : blob; });
+  sign_with_ecdsa : (record {
+    message_hash : blob;
+    derivation_path : vec blob;
+    key_id : record { curve: ecdsa_curve; name: text };
+  }) -> (record { signature : blob });
+
 }

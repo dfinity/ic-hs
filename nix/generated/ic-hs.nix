@@ -11,7 +11,6 @@
 , base32
 , base64-bytestring
 , binary
-, bindings-DSL
 , bytestring
 , candid
 , case-insensitive
@@ -23,8 +22,10 @@
 , data-default-class
 , directory
 , ed25519
+, either
 , filepath
 , hashable
+, haskoin-core
 , hex-text
 , http-client
 , http-client-tls
@@ -83,7 +84,6 @@ mkDerivation {
     base32
     base64-bytestring
     binary
-    bindings-DSL
     bytestring
     candid
     case-insensitive
@@ -95,8 +95,10 @@ mkDerivation {
     data-default-class
     directory
     ed25519
+    either
     filepath
     hashable
+    haskoin-core
     hex-text
     http-client
     http-client-tls
@@ -147,7 +149,6 @@ mkDerivation {
     base32
     base64-bytestring
     binary
-    bindings-DSL
     bytestring
     candid
     case-insensitive
@@ -159,8 +160,10 @@ mkDerivation {
     data-default-class
     directory
     ed25519
+    either
     filepath
     hashable
+    haskoin-core
     hex-text
     http-client
     http-client-tls
@@ -208,7 +211,6 @@ mkDerivation {
     base32
     base64-bytestring
     binary
-    bindings-DSL
     bytestring
     candid
     case-insensitive
@@ -220,8 +222,10 @@ mkDerivation {
     data-default-class
     directory
     ed25519
+    either
     filepath
     hashable
+    haskoin-core
     hex-text
     http-client
     http-types

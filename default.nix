@@ -32,9 +32,68 @@ let haskellPackages = nixpkgs.haskellPackages.override {
       # the downgrade of cborg in nix/generated.nix makes cborgs test suite depend on
       # older versions of stuff, so let’s ignore the test suite.
       cborg = nixpkgs.haskell.lib.dontCheck generated.cborg;
-
       # here more adjustments can be made if needed, e.g.
       # crc = nixpkgs.haskell.lib.markUnbroken (nixpkgs.haskell.lib.dontCheck super.crc);
+      murmur3 = nixpkgs.haskell.lib.markUnbroken super.murmur3;
+      secp256k1-haskell = nixpkgs.haskell.lib.markUnbroken super.secp256k1-haskell_0_6_0;
+      haskoin-core = nixpkgs.haskell.lib.dontCheck super.haskoin-core;
+    };
+}; in
+
+let staticHaskellPackages = nixpkgs.pkgsStatic.haskell.packages.integer-simple.ghc8107.override {
+  # We override GHC such that TemplateHaskell doesn't require shared libraries
+  # which are not available in pkgsStatic.
+  # See: https://github.com/NixOS/nixpkgs/issues/61575#issuecomment-879403341
+  ghc = (nixpkgs.pkgsStatic.buildPackages.haskell.compiler.integer-simple.ghc8107.override {
+    enableRelocatedStaticLibs = true;
+    enableShared = false;
+  }).overrideAttrs (oldAttr: { preConfigure = ''
+      ${oldAttr.preConfigure or ""}
+      echo "GhcLibHcOpts += -fPIC -fexternal-dynamic-refs" >> mk/build.mk
+      echo "GhcRtsHcOpts += -fPIC -fexternal-dynamic-refs" >> mk/build.mk
+    '';
+  });
+  overrides = self: super:
+    let generated = import nix/generated/all.nix self super; in
+    generated //
+    {
+      # the downgrade of cborg in nix/generated.nix makes cborgs test suite depend on
+      # older versions of stuff, so let’s ignore the test suite.
+      cborg = nixpkgs.haskell.lib.dontCheck (
+        nixpkgs.haskell.lib.appendConfigureFlag generated.cborg "-f-optimize-gmp"
+      );
+
+      murmur3 = nixpkgs.haskell.lib.markUnbroken super.murmur3;
+
+      secp256k1-haskell =
+        nixpkgs.haskell.lib.addBuildTool
+          (nixpkgs.haskell.lib.markUnbroken super.secp256k1-haskell_0_6_0)
+          nixpkgs.pkg-config;
+
+      haskoin-core = nixpkgs.haskell.lib.dontCheck super.haskoin-core;
+
+      cryptonite = nixpkgs.haskell.lib.dontCheck (
+        nixpkgs.haskell.lib.appendConfigureFlag super.cryptonite "-f-integer-gmp"
+      );
+
+      # more test suites too slow withour integer-gmp
+      scientific = nixpkgs.haskell.lib.dontCheck super.scientific;
+      math-functions = nixpkgs.haskell.lib.dontCheck super.math-functions;
+
+      # We disable haddock to prevent the error:
+      #
+      #   Haddock coverage:
+      #   haddock: panic! (the 'impossible' happened)
+      #     (GHC version 8.10.7:
+      #           lookupGlobal
+      #
+      #   Failed to load interface for ‘GHC.Integer.Type’
+      #   Perhaps you haven't installed the "dyn" libraries for package ‘integer-simple-0.1.2.0’?
+      cmdargs = nixpkgs.haskell.lib.dontHaddock super.cmdargs;
+      file-embed = nixpkgs.haskell.lib.dontHaddock super.file-embed;
+      QuickCheck = nixpkgs.haskell.lib.dontHaddock super.QuickCheck;
+      candid = nixpkgs.haskell.lib.dontHaddock super.candid;
+      winter = nixpkgs.haskell.lib.dontHaddock generated.winter;
     };
 }; in
 
@@ -91,47 +150,42 @@ let
     # (once we can use ghc-9.0 we can maybe use ghc-bignum native, which should be faster)
     else
       let
-        muslHaskellPackages = nixpkgs.pkgsMusl.haskell.packages.integer-simple.ghc8107.override {
-          overrides = self: super:
-            let generated = import nix/generated/all.nix self super; in
-            generated //
-            {
-              # the downgrade of cborg in nix/generated.nix makes cborgs test suite depend on
-              # older versions of stuff, so let’s ignore the test suite.
-              cborg = nixpkgs.haskell.lib.dontCheck (
-                generated.cborg.overrideAttrs(old: {
-                configureFlags = ["-f-optimize-gmp"];
-              }));
+        ic-hs-static =
+          nixpkgs.haskell.lib.justStaticExecutables
+            (nixpkgs.haskell.lib.failOnAllWarnings
+              staticHaskellPackages.ic-hs);
+      in nixpkgs.runCommandNoCC "ic-ref-dist" {
+        allowedReferences = [];
+        nativeBuildInputs = [ nixpkgs.removeReferencesTo ];
+      } ''
+        mkdir -p $out/bin
+        cp ${ic-hs-static}/bin/ic-ref $out/bin
 
-              cryptonite = super.cryptonite.overrideAttrs(old: {
-                configureFlags = "-f-integer-gmp";
-                doCheck = false; # test suite too slow without integer-gmp
-              });
-
-              # more test suites too slow withour integer-gmp
-              scientific = nixpkgs.haskell.lib.dontCheck super.scientific;
-              math-functions = nixpkgs.haskell.lib.dontCheck super.math-functions;
-
-            };
-        };
-        ic-hs-musl =
-          muslHaskellPackages.ic-hs.overrideAttrs (
-            old: {
-              configureFlags = [
-                "-frelease"
-                "-f-library"
-                "--ghc-option=-optl=-static"
-                "--extra-lib-dirs=${nixpkgs.pkgsMusl.zlib.static}/lib"
-                "--extra-lib-dirs=${nixpkgs.pkgsMusl.libffi.overrideAttrs (old: { dontDisableStatic = true; })}/lib"
-              ];
-            }
-          );
-        in nixpkgs.runCommandNoCC "ic-ref-dist" {
-          allowedRequisites = [];
-        } ''
-          mkdir -p $out/bin
-          cp ${ic-hs-musl}/bin/ic-ref $out/bin
-        '';
+        # The Paths_warp module in warp contains references to warp's /nix/store path like:
+        #
+        #   warp_bindir="/nix/store/...-warp-static-x86_64-unknown-linux-musl-3.3.17/bin"
+        #   warp_libdir="/nix/store/...-warp-static-x86_64-unknown-linux-musl-3.3.17/lib/ghc-8.10.7/x86_64-linux-ghc-8.10.7/warp-3.3.17-LFuiV3JNZfpKQMWWUSmbjd"
+        #   warp_dynlibdir="/nix/store/...-warp-static-x86_64-unknown-linux-musl-3.3.17/lib/ghc-8.10.7/x86_64-linux-ghc-8.10.7"
+        #   warp_datadir"/nix/store/...-warp-static-x86_64-unknown-linux-musl-3.3.17/share/x86_64-linux-ghc-8.10.7/warp-3.3.17"
+        #   warp_libexecdir"/nix/store/...-warp-static-x86_64-unknown-linux-musl-3.3.17/libexec/x86_64-linux-ghc-8.10.7/warp-3.3.17"
+        #   warp_sysconfdir"/nix/store/...-warp-static-x86_64-unknown-linux-musl-3.3.17/etc"
+        #
+        # These paths end up in the statically compiled $out/bin/ic-ref which
+        # will fail the `allowedReferences = []` check.
+        #
+        # Fortunatley warp doesn't use these `warp_*` paths:
+        #
+        #   /tmp/warp-3.3.19 $ grep -r -w Paths_warp
+        #   warp.cabal:                     Paths_warp
+        #   warp.cabal:                     Paths_warp
+        #   Network/Wai/Handler/Warp/Response.hs:import qualified Paths_warp
+        #   Network/Wai/Handler/Warp/Response.hs:warpVersion = showVersion Paths_warp.version
+        #   Network/Wai/Handler/Warp/Settings.hs:import qualified Paths_warp
+        #   Network/Wai/Handler/Warp/Settings.hs:    , settingsServerName = C8.pack $ "Warp/" ++ showVersion Paths_warp.version
+        #
+        # So we can safely remove the references to warp:
+        remove-references-to -t ${staticHaskellPackages.warp} $out/bin/ic-ref
+      '';
 
 
   # We run the unit test suite only as part of coverage checking.
@@ -148,6 +202,8 @@ rec {
   inherit ic-ref-dist;
   inherit ic-hs-coverage;
   inherit universal-canister;
+
+  haskoin-core = haskellPackages.haskoin-core;
 
   ic-ref-test = nixpkgs.runCommandNoCC "ic-ref-test" {
       nativeBuildInputs = [ ic-hs ];
@@ -166,6 +222,9 @@ rec {
 
   coverage = nixpkgs.runCommandNoCC "ic-ref-test" {
       nativeBuildInputs = [ haskellPackages.ghc ic-hs-coverage ];
+      # Prevent rebuilds whenever non-Haskell related files (like .nix) change.
+      srcdir = nixpkgs.lib.sourceByRegex (nixpkgs.subpath ./.)
+        [ "^src.*" "^ic-hs.cabal" "^cbits.*" "^LICENSE" "^ic.did" ];
     } ''
       function kill_ic_ref () { kill  %1; }
       ic-ref --pick-port --write-port-to port &
@@ -178,7 +237,7 @@ rec {
       sleep 5 # wait for ic-ref.tix to be written
 
       find
-      LANG=C.UTF8 hpc markup ic-ref.tix --hpcdir=${ic-hs-coverage}/share/hpc/vanilla/mix/ic-ref --srcdir=${subpath ./.}  --destdir $out
+      LANG=C.UTF8 hpc markup ic-ref.tix --hpcdir=${ic-hs-coverage}/share/hpc/vanilla/mix/ic-ref --srcdir=$srcdir  --destdir $out
 
       mkdir -p $out/nix-support
       echo "report coverage $out hpc_index.html" >> $out/nix-support/hydra-build-products
@@ -264,12 +323,11 @@ rec {
   # include shell in default.nix so that the nix cache will have pre-built versions
   # of all the dependencies that are only depended on by nix-shell.
   ic-hs-shell =
-    let extra-pkgs = [
-      nixpkgs.cabal-install
-      nixpkgs.ghcid
-    ]; in
-
-    haskellPackages.ic-hs.env.overrideAttrs (old: {
-      propagatedBuildInputs = (old.propagatedBuildInputs or []) ++ extra-pkgs ;
-    });
+    haskellPackages.shellFor {
+      packages = p: [ p.ic-hs ];
+      buildInputs = [
+        nixpkgs.cabal-install
+        nixpkgs.ghcid
+      ];
+    };
 }
