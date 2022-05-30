@@ -41,7 +41,7 @@ let staticHaskellPackages = nixpkgs.pkgsStatic.haskell.packages.integer-simple.g
       # the downgrade of cborg in nix/generated.nix makes cborgs test suite depend on
       # older versions of stuff, so let’s ignore the test suite.
       cborg = nixpkgs.haskell.lib.dontCheck (
-        nixpkgs.haskell.lib.appendConfigureFlag generated.cborg "-f-optimize-gmp"
+        nixpkgs.haskell.lib.appendConfigureFlag super.cborg "-f-optimize-gmp"
       );
 
       murmur3 = nixpkgs.haskell.lib.markUnbroken super.murmur3;
