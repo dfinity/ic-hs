@@ -144,8 +144,6 @@ rec {
   inherit ic-hs-coverage;
   inherit universal-canister;
 
-  haskoin-core = haskellPackages.haskoin-core;
-
   ic-ref-test = nixpkgs.runCommandNoCC "ic-ref-test" {
       nativeBuildInputs = [ ic-hs ];
     } ''
