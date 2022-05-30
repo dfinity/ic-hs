@@ -33,7 +33,7 @@ let haskellPackages = nixpkgs.haskellPackages.override {
     };
 }; in
 
-let staticHaskellPackages = nixpkgs.pkgsStatic.haskell.packages.integer-simple.ghc8107.override {
+let staticHaskellPackages = nixpkgs.pkgsStatic.haskell.packages.integer-simple.ghc902.override {
   overrides = self: super:
     let generated = import nix/generated/all.nix self super; in
     generated //
