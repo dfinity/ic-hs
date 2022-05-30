@@ -328,8 +328,7 @@ testPort = tc_test_port agentConfig
 
 toTransformFn :: (AllUniqueLabels r1, (r1 .! "function") ~ Candid.FuncRef r2) => 
                  Maybe String -> Blob -> Maybe (Var r1)
-toTransformFn Nothing _ = Nothing
-toTransformFn (Just name) cid = Just (V.IsJust #function (Candid.FuncRef (Principal cid) (T.pack name)))
+toTransformFn name cid = fmap (\n -> V.IsJust #function (Candid.FuncRef (Principal cid) (T.pack n))) name
 
 -- The following line noise is me getting out of my way
 -- to be able to use `ic_create` etc. by passing a record that contains
