@@ -156,9 +156,35 @@ let
               staticHaskellPackages.ic-hs);
       in nixpkgs.runCommandNoCC "ic-ref-dist" {
         allowedReferences = [];
+        nativeBuildInputs = [ nixpkgs.removeReferencesTo ];
       } ''
         mkdir -p $out/bin
         cp ${ic-hs-static}/bin/ic-ref $out/bin
+
+        # The Paths_warp module in warp contains references to warp's /nix/store path like:
+        #
+        #   warp_bindir="/nix/store/...-warp-static-x86_64-unknown-linux-musl-3.3.17/bin"
+        #   warp_libdir="/nix/store/...-warp-static-x86_64-unknown-linux-musl-3.3.17/lib/ghc-8.10.7/x86_64-linux-ghc-8.10.7/warp-3.3.17-LFuiV3JNZfpKQMWWUSmbjd"
+        #   warp_dynlibdir="/nix/store/...-warp-static-x86_64-unknown-linux-musl-3.3.17/lib/ghc-8.10.7/x86_64-linux-ghc-8.10.7"
+        #   warp_datadir"/nix/store/...-warp-static-x86_64-unknown-linux-musl-3.3.17/share/x86_64-linux-ghc-8.10.7/warp-3.3.17"
+        #   warp_libexecdir"/nix/store/...-warp-static-x86_64-unknown-linux-musl-3.3.17/libexec/x86_64-linux-ghc-8.10.7/warp-3.3.17"
+        #   warp_sysconfdir"/nix/store/...-warp-static-x86_64-unknown-linux-musl-3.3.17/etc"
+        #
+        # These paths end up in the statically compiled $out/bin/ic-ref which
+        # will fail the `allowedReferences = []` check.
+        #
+        # Fortunatley warp doesn't use these `warp_*` paths:
+        #
+        #   /tmp/warp-3.3.19 $ grep -r -w Paths_warp
+        #   warp.cabal:                     Paths_warp
+        #   warp.cabal:                     Paths_warp
+        #   Network/Wai/Handler/Warp/Response.hs:import qualified Paths_warp
+        #   Network/Wai/Handler/Warp/Response.hs:warpVersion = showVersion Paths_warp.version
+        #   Network/Wai/Handler/Warp/Settings.hs:import qualified Paths_warp
+        #   Network/Wai/Handler/Warp/Settings.hs:    , settingsServerName = C8.pack $ "Warp/" ++ showVersion Paths_warp.version
+        #
+        # So we can safely remove the references to warp:
+        remove-references-to -t ${staticHaskellPackages.warp} $out/bin/ic-ref
       '';
 
 
