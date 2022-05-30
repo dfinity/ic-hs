@@ -297,12 +297,11 @@ rec {
   # include shell in default.nix so that the nix cache will have pre-built versions
   # of all the dependencies that are only depended on by nix-shell.
   ic-hs-shell =
-    let extra-pkgs = [
-      nixpkgs.cabal-install
-      nixpkgs.ghcid
-    ]; in
-
-    haskellPackages.ic-hs.env.overrideAttrs (old: {
-      propagatedBuildInputs = (old.propagatedBuildInputs or []) ++ extra-pkgs ;
-    });
+    haskellPackages.shellFor {
+      packages = p: [ p.ic-hs ];
+      buildInputs = [
+        nixpkgs.cabal-install
+        nixpkgs.ghcid
+      ];
+    };
 }
