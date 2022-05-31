@@ -55,6 +55,7 @@ where
 
 import qualified Data.Map as M
 import qualified Data.Row as R
+import qualified Data.Row.Records as R
 import qualified Data.Row.Variants as V
 import qualified Data.ByteString.Lazy as BS
 import qualified Data.Text as T
@@ -1150,7 +1151,21 @@ icSignWithEcdsa caller r = do
               .+ #signature .== (Bitcoin.sign k h)
 
 icBitcoinGetBalance :: ICM m => ICManagement m .! "bitcoin_get_balance"
-icBitcoinGetBalance = undefined
+icBitcoinGetBalance r = go $ R.empty
+    .+ #address .== (r .! #address)
+    .+ #network .== (r .! #network)
+    .+ #filter  .== (fmap (\mc -> V.IsJust #min_confirmations mc) (r .! #min_confirmations))
+  where
+    getBalance utxos = Vec.sum $ Vec.map (.! #value) utxos
+    go req = do
+      resp <- icBitcoinGetUtxos req
+      let pageBalance = getBalance (resp .! #utxos)
+      case resp .! #next_page of
+        Just p -> do
+          let req' = R.update #filter (Just (V.IsJust #page p)) req
+          remainingBalance <- go req'
+          return $ pageBalance + remainingBalance
+        Nothing -> return pageBalance 
 
 icBitcoinGetUtxos :: ICM m => ICManagement m .! "bitcoin_get_utxos"
 icBitcoinGetUtxos = undefined
