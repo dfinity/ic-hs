@@ -848,6 +848,10 @@ invokeManagementCanister caller ctxt_id (Public method_name arg) =
       "http_request" -> atomic $ icHttpRequest caller
       "ecdsa_public_key" -> atomic $ icEcdsaPublicKey caller
       "sign_with_ecdsa" -> atomic $ icSignWithEcdsa caller
+      "bitcoin_get_balance" -> atomic icBitcoinGetBalance
+      "bitcoin_get_utxos" -> atomic icBitcoinGetUtxos
+      "bitcoin_send_transaction" -> atomic $ icBitcoinSendTransaction caller
+      "bitcoin_get_current_fees" -> atomic icBitcoinGetCurrentFees
       _ -> reject RC_DESTINATION_INVALID ("Unsupported management function " ++ method_name) (Just EC_METHOD_NOT_FOUND)
   where
     -- always responds
@@ -1144,7 +1148,19 @@ icSignWithEcdsa caller r = do
           Right h ->
             return $ R.empty
               .+ #signature .== (Bitcoin.sign k h)
- 
+
+icBitcoinGetBalance :: ICM m => ICManagement m .! "bitcoin_get_balance"
+icBitcoinGetBalance = undefined
+
+icBitcoinGetUtxos :: ICM m => ICManagement m .! "bitcoin_get_utxos"
+icBitcoinGetUtxos = undefined
+
+icBitcoinSendTransaction :: ICM m => EntityId -> ICManagement m .! "bitcoin_send_transaction"
+icBitcoinSendTransaction caller = undefined
+
+icBitcoinGetCurrentFees :: ICM m => ICManagement m .! "bitcoin_get_current_fees"
+icBitcoinGetCurrentFees = undefined
+
 invokeEntry :: ICM m =>
     CallId -> WasmState -> CanisterModule -> Env -> EntryPoint ->
     m (TrapOr (WasmState, UpdateResult))
