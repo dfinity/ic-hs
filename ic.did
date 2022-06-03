@@ -126,10 +126,10 @@ service ic : {
   }) -> (record { signature : blob });
 
   // bitcoin interface
-  bitcoin_get_balance: (get_balance_request) -> (satoshi);
-  bitcoin_get_utxos: (get_utxos_request) -> (get_utxos_response);
-  bitcoin_send_transaction: (send_transaction_request) -> ();
-  bitcoin_get_current_fees: () -> (vec float32);
+  bitcoin_get_balance : (get_balance_request) -> (satoshi);
+  bitcoin_get_utxos : (get_utxos_request) -> (get_utxos_response);
+  bitcoin_send_transaction : (send_transaction_request) -> ();
+  bitcoin_get_current_fees : () -> (vec float32);
 
   // provisional interfaces for the pre-ledger world
   provisional_create_canister_with_cycles : (record {

@@ -61,18 +61,34 @@ import qualified Data.ByteString.Lazy as BS
 import qualified Data.Text as T
 import qualified Data.Vector as Vec
 import qualified Data.Set as S
-import Data.List
+import Data.List ( intercalate )
 import Data.Maybe
-import Numeric.Natural
-import Data.Functor
+    ( fromJust, fromMaybe, isNothing, listToMaybe, maybeToList )
+import Numeric.Natural ( Natural )
+import Data.Functor ( (<&>) )
 import Control.Monad.State.Class
+    ( gets, modify, MonadState(state) )
 import Control.Monad.Except
+    ( void,
+      when,
+      replicateM,
+      unless,
+      forM_,
+      MonadError(..),
+      runExceptT,
+      MonadIO(..) )
 import Control.Monad.Random.Lazy
+    ( StdGen,
+      runRand,
+      newStdGen,
+      MonadRandom(getRandom),
+      Rand )
 import Data.Sequence (Seq(..))
 import Data.Foldable (toList)
 import Codec.Candid
+    ( decode, encode, CandidArg, FuncRef(FuncRef), Principal )
 import Data.Row ((.==), (.+), (.!), type (.!))
-import GHC.Stack
+import GHC.Stack ( HasCallStack )
 
 import IC.Types
 import IC.Constants
@@ -243,7 +259,7 @@ createEmptyCanister cid controllers time = modify $ \ic ->
       , controllers = controllers
       , memory_allocation = 0
       , compute_allocation = 0
-      , freezing_threshold = 2592000
+      , freezing_threshold = 2_592_000
       , time = time
       , cycle_balance = 0
       , certified_data = ""
@@ -275,7 +291,7 @@ isCanisterEmpty :: ICM m => CanisterId -> m Bool
 isCanisterEmpty cid = isNothing . content <$> getCanister cid
 
 getCanisterRootKey :: CanisterId -> Bitcoin.ExtendedSecretKey
-getCanisterRootKey cid = Bitcoin.createExtendedKey $ rawEntityId cid 
+getCanisterRootKey cid = Bitcoin.createExtendedKey $ rawEntityId cid
 
 -- The following functions assume the canister does exist.
 -- It would be an internal error if they don't.
@@ -306,7 +322,7 @@ setCanisterState cid wasm_state = modCanisterContent cid $
 getControllers :: ICM m => CanisterId -> m (S.Set EntityId)
 getControllers cid = controllers <$> getCanister cid
 
-setControllers :: ICM m => CanisterId -> (S.Set EntityId) -> m ()
+setControllers :: ICM m => CanisterId -> S.Set EntityId -> m ()
 setControllers cid controllers = modCanister cid $
     \cs -> cs { controllers = controllers }
 
@@ -437,7 +453,7 @@ handleQuery time (QueryRequest canister_id user_id method arg) =
   fmap QueryResponse $ onReject (return . canisterRejected) $ do
     canisterMustExist canister_id
     is_running <- isCanisterRunning canister_id
-    when (not is_running) $ reject RC_CANISTER_ERROR "canister is stopped" (Just EC_CANISTER_STOPPED)
+    unless is_running $ reject RC_CANISTER_ERROR "canister is stopped" (Just EC_CANISTER_STOPPED)
     empty <- isCanisterEmpty canister_id
     when empty $ reject RC_DESTINATION_INVALID "canister is empty" (Just EC_CANISTER_EMPTY)
     wasm_state <- getCanisterState canister_id
@@ -464,7 +480,7 @@ checkEffectiveCanisterID :: RequestValidation m => CanisterId -> CanisterId -> M
 checkEffectiveCanisterID ecid cid method arg
   | cid == managementCanisterId =
     if | method == "provisional_create_canister_with_cycles" -> pure ()
-       | method `elem` ["raw_rand", "http_request", "ecdsa_public_key", "sign_with_ecdsa"] -> 
+       | method `elem` ["raw_rand", "http_request", "ecdsa_public_key", "sign_with_ecdsa"] ->
          throwError $ T.pack method <>  " cannot be invoked via ingress calls"
        | otherwise -> case Codec.Candid.decode @(R.Rec ("canister_id" R..== Principal)) arg of
                         Left err ->
@@ -565,11 +581,10 @@ delegationTree :: Timestamp -> SubnetId -> Blob -> LabeledTree
 delegationTree (Timestamp t) (EntityId subnet_id) subnet_pub_key = node
   [ "time" =: val t
   , "subnet" =: node
-    [ subnet_id =: node (
+    [ subnet_id =: node
           [ "public_key" =: val subnet_pub_key
           , "canister_ranges" =: val (encodeCanisterRangeList [icCanisterIdRange])
           ]
-      )
     ]
   ]
   where
@@ -696,7 +711,7 @@ rejectCallContext ctxt_id (rc, msg, _err) =
 deleteCallContext :: ICM m => CallId -> m ()
 deleteCallContext ctxt_id =
   modifyCallContext ctxt_id $ \ctxt ->
-    if (needs_to_respond ctxt == NeedsToRespond True)
+    if needs_to_respond ctxt == NeedsToRespond True
     then error "Internal error: deleteCallContext on non-responded call context"
     else if deleted ctxt
     then error "Internal error: deleteCallContext on deleted call context"
@@ -836,7 +851,7 @@ invokeManagementCanister caller ctxt_id (Public method_name arg) =
   case method_name of
       "create_canister" -> atomic $ icCreateCanister caller ctxt_id
       "install_code" -> atomic $ onlyController caller $ icInstallCode caller
-      "uninstall_code" -> atomic $ onlyController caller $ icUninstallCode
+      "uninstall_code" -> atomic $ onlyController caller icUninstallCode
       "update_settings" -> atomic $ onlyController caller icUpdateCanisterSettings
       "start_canister" -> atomic $ onlyController caller icStartCanister
       "stop_canister" -> deferred $ onlyController caller $ icStopCanister ctxt_id
@@ -879,14 +894,14 @@ invokeManagementCanister _ _ Heartbeat = error "heartbeat invoked on management 
 icHttpRequest :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "http_request"
 icHttpRequest caller r = do
     resp <- liftIO $ sendHttpRequest (r .! #url)
-    case (r .! #transform) of
+    case r .! #transform of
       Nothing -> return resp
       Just t -> case V.trial' t #function of
         Nothing -> reject RC_CANISTER_REJECT "transform needs to be a function" (Just EC_INVALID_ARGUMENT)
         Just (FuncRef p m) -> do
             let cid = principalToEntityId p
             unless (cid == caller) $
-              reject RC_CANISTER_REJECT "transform needs to be exported by a caller canister" (Just EC_INVALID_ARGUMENT) 
+              reject RC_CANISTER_REJECT "transform needs to be exported by a caller canister" (Just EC_INVALID_ARGUMENT)
             can_mod <- getCanisterMod cid
             wasm_state <- getCanisterState cid
             env <- canisterEnv cid
@@ -1127,16 +1142,14 @@ runRandIC a = state $ \ic ->
 
 icEcdsaPublicKey :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "ecdsa_public_key"
 icEcdsaPublicKey caller r = do
-    let cid = case r .! #canister_id of
-                Just cid -> principalToEntityId cid
-                Nothing -> caller
+    let cid = maybe caller principalToEntityId (r .! #canister_id)
     canisterMustExist cid
     let key = getCanisterRootKey cid
     case Bitcoin.derivePublicKey key (r .! #derivation_path) of
       Left err -> reject RC_CANISTER_ERROR err (Just EC_INVALID_ENCODING)
       Right k -> return $ R.empty
-                   .+ #public_key .== (publicKeyToDER k)
-                   .+ #chain_code .== (extractChainCode k)
+                   .+ #public_key .== publicKeyToDER k
+                   .+ #chain_code .== extractChainCode k
 
 icSignWithEcdsa :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "sign_with_ecdsa"
 icSignWithEcdsa caller r = do
@@ -1148,30 +1161,29 @@ icSignWithEcdsa caller r = do
           Left err -> reject RC_CANISTER_ERROR err (Just EC_INVALID_ENCODING)
           Right h ->
             return $ R.empty
-              .+ #signature .== (Bitcoin.sign k h)
+              .+ #signature .== Bitcoin.sign k h
 
 icBitcoinGetBalance :: ICM m => ICManagement m .! "bitcoin_get_balance"
 icBitcoinGetBalance r = go $ R.empty
     .+ #address .== (r .! #address)
     .+ #network .== (r .! #network)
-    .+ #filter  .== (fmap (\mc -> V.IsJust #min_confirmations mc) (r .! #min_confirmations))
+    .+ #filter  .== fmap (V.IsJust #min_confirmations) (r .! #min_confirmations)
   where
     getBalance utxos = Vec.sum $ Vec.map (.! #value) utxos
     go req = do
       resp <- icBitcoinGetUtxos req
       let pageBalance = getBalance (resp .! #utxos)
       case resp .! #next_page of
-        Just p -> do
-          let req' = R.update #filter (Just (V.IsJust #page p)) req
-          remainingBalance <- go req'
-          return $ pageBalance + remainingBalance
-        Nothing -> return pageBalance 
+        Just p ->
+          let req' = R.update #filter (Just (V.IsJust #page p)) req in
+          (pageBalance +) <$> go req'
+        Nothing -> return pageBalance
 
 icBitcoinGetUtxos :: ICM m => ICManagement m .! "bitcoin_get_utxos"
 icBitcoinGetUtxos = undefined
 
 icBitcoinSendTransaction :: ICM m => EntityId -> ICManagement m .! "bitcoin_send_transaction"
-icBitcoinSendTransaction caller = undefined
+icBitcoinSendTransaction _caller = undefined
 
 icBitcoinGetCurrentFees :: ICM m => ICManagement m .! "bitcoin_get_current_fees"
 icBitcoinGetCurrentFees = undefined
@@ -1348,7 +1360,7 @@ rejectAsCanister :: CanReject m => m a -> m a
 rejectAsCanister act = catchError act (\(_c, msg, _err) -> reject RC_CANISTER_ERROR msg (Just EC_CANISTER_REJECTED))
 
 canisterRejected :: (RejectCode, String, Maybe ErrorCode) -> CallResponse
-canisterRejected (rc, msg, err) =  Rejected (rc, msg, Just $ maybe EC_CANISTER_REJECTED id err)
+canisterRejected (rc, msg, err) =  Rejected (rc, msg, Just $ fromMaybe EC_CANISTER_REJECTED err)
 
 rejectMessage :: (RejectCode, String, Maybe ErrorCode) -> String
 rejectMessage (_rc, msg, _err) = msg
