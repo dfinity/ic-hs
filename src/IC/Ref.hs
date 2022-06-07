@@ -90,6 +90,7 @@ import Codec.Candid
 import Data.Row ((.==), (.+), (.!), type (.!))
 import GHC.Stack ( HasCallStack )
 
+import qualified IC.Bitcoin as BTC
 import IC.Types
 import IC.Constants
 import IC.Canister
@@ -102,7 +103,7 @@ import IC.Certificate
 import IC.Certificate.Value
 import IC.Certificate.CBOR
 import IC.Crypto
-import IC.Crypto.Bitcoin as Bitcoin
+import IC.Crypto.Bitcoin as BTC
 import IC.Ref.IO (sendHttpRequest)
 
 -- Abstract HTTP Interface
@@ -212,6 +213,7 @@ data IC = IC
   , rng :: StdGen
   , secretRootKey :: SecretKey
   , secretSubnetKey :: SecretKey
+  , bitcoin_state :: BTC.State
   }
   deriving (Show)
 
@@ -222,7 +224,8 @@ initialIC :: IO IC
 initialIC = do
     let sk1 = createSecretKeyBLS "ic-ref's very secure secret key"
     let sk2 = createSecretKeyBLS "ic-ref's very secure subnet key"
-    IC mempty mempty mempty mempty <$> newStdGen <*> pure sk1 <*> pure sk2
+    let btc = BTC.initState
+    IC mempty mempty mempty mempty <$> newStdGen <*> pure sk1 <*> pure sk2 <*> pure btc
 
 -- Request handling
 
@@ -290,8 +293,8 @@ isCanisterRunning cid = getRunStatus cid >>= \case
 isCanisterEmpty :: ICM m => CanisterId -> m Bool
 isCanisterEmpty cid = isNothing . content <$> getCanister cid
 
-getCanisterRootKey :: CanisterId -> Bitcoin.ExtendedSecretKey
-getCanisterRootKey cid = Bitcoin.createExtendedKey $ rawEntityId cid
+getCanisterRootKey :: CanisterId -> BTC.ExtendedSecretKey
+getCanisterRootKey cid = BTC.createExtendedKey $ rawEntityId cid
 
 -- The following functions assume the canister does exist.
 -- It would be an internal error if they don't.
@@ -1145,7 +1148,7 @@ icEcdsaPublicKey caller r = do
     let cid = maybe caller principalToEntityId (r .! #canister_id)
     canisterMustExist cid
     let key = getCanisterRootKey cid
-    case Bitcoin.derivePublicKey key (r .! #derivation_path) of
+    case BTC.derivePublicKey key (r .! #derivation_path) of
       Left err -> reject RC_CANISTER_ERROR err (Just EC_INVALID_ENCODING)
       Right k -> return $ R.empty
                    .+ #public_key .== publicKeyToDER k
@@ -1154,14 +1157,14 @@ icEcdsaPublicKey caller r = do
 icSignWithEcdsa :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "sign_with_ecdsa"
 icSignWithEcdsa caller r = do
     let key = getCanisterRootKey caller
-    case Bitcoin.derivePrivateKey key (r .! #derivation_path) of
+    case BTC.derivePrivateKey key (r .! #derivation_path) of
       Left err -> reject RC_CANISTER_ERROR err  (Just EC_INVALID_ENCODING)
       Right k -> do
-        case Bitcoin.toHash256 (r .! #message_hash) of
+        case BTC.toHash256 (r .! #message_hash) of
           Left err -> reject RC_CANISTER_ERROR err (Just EC_INVALID_ENCODING)
           Right h ->
             return $ R.empty
-              .+ #signature .== Bitcoin.sign k h
+              .+ #signature .== BTC.sign k h
 
 icBitcoinGetBalance :: ICM m => ICManagement m .! "bitcoin_get_balance"
 icBitcoinGetBalance r = go $ R.empty
@@ -1180,7 +1183,40 @@ icBitcoinGetBalance r = go $ R.empty
         Nothing -> return pageBalance
 
 icBitcoinGetUtxos :: ICM m => ICManagement m .! "bitcoin_get_utxos"
-icBitcoinGetUtxos = undefined
+icBitcoinGetUtxos r = do
+    let addr = (r .! #address)
+    bs <- gets bitcoin_state
+    -- TODO: pick the right network from {testnet, mainnet}
+    let gb = BTC.genesis_block $ BTC.unTestnetState (BTC.testnet bs)
+    let spent = collectSpentTxos gb (S.empty :: S.Set BTC.OutPoint)
+    let utxos = go spent addr gb
+    return $ R.empty
+      .+ #next_page      .== (Nothing :: Maybe BS.ByteString) -- TODO: support pagination
+      .+ #tip_block_hash .== BS.empty -- TODO: set hash
+      .+ #tip_height     .== 0 -- TODO: set height
+      .+ #utxos          .== (Vec.fromList utxos)
+  where
+    go spent addr b = do
+      let utxos = concatMap (extractUtxos spent addr) (BTC.block_transactions b)
+      utxos ++ (concatMap (go spent addr) (BTC.block_successors b))
+     
+    extractUtxos spent addr t = do
+      let outs = filter (\(_, o) -> (BTC.address o) == addr) $ zip [0..] (BTC.outputs t)
+      let outs' = map (\(idx, o) -> (BTC.OutPoint { BTC.op_txid = BTC.txid t, BTC.op_vout = idx }, BTC.value o)) outs
+      let txos = filter (\(op, _) -> not (S.member op spent)) outs'
+      map toUtxo txos
+
+    collectSpentTxos b acc = do
+      let acc' = foldl (\hs inp -> S.insert (BTC.outpoint inp) hs) acc (concatMap BTC.inputs (BTC.block_transactions b))
+      foldl (\hs b -> collectSpentTxos b hs) acc' (BTC.block_successors b)
+
+    toUtxo (op, v) = R.empty
+      .+ #outpoint .== (R.empty
+        .+ #txid .== (BTC.op_txid op)
+        .+ #vout .== (BTC.op_vout op)
+      )
+      .+ #height .== 0 -- TODO: set height
+      .+ #value .== (fromIntegral v)
 
 icBitcoinSendTransaction :: ICM m => EntityId -> ICManagement m .! "bitcoin_send_transaction"
 icBitcoinSendTransaction _caller = undefined

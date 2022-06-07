@@ -30,6 +30,7 @@ import qualified Text.Hex as H
 import qualified Data.Text as T
 import Control.Monad.Random.Lazy
 
+import qualified IC.Bitcoin as Bitcoin
 import IC.Types
 import IC.Wasm.Winter.Persist
 import IC.Purify
@@ -196,3 +197,5 @@ instance ToJSON StdGen where
 instance ToJSON SecretKey where
     toJSON = placeholder "(secret key)"
 
+instance ToJSON Bitcoin.State where
+    toJSON = placeholder "(bitcoin state)"

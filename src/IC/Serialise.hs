@@ -26,6 +26,7 @@ import Control.Monad.Random.Lazy
 import System.Random.Internal (StdGen(..))
 import System.Random.SplitMix
 
+import IC.Bitcoin as Bitcoin
 import IC.Types
 import IC.Wasm.Winter.Persist
 import IC.Purify
@@ -138,3 +139,7 @@ instance Serialise SecretKey where
     encode _ = error "IC.Serialise SecretKey: Only BLS supported"
     decode = BLS <$> decode
 
+-- TODO: implement serialization of BTC stuff
+instance Serialise Bitcoin.State where
+    encode = undefined
+    decode = undefined

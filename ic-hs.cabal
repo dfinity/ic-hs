@@ -121,6 +121,7 @@ executable ic-ref
   build-depends: warp
   build-depends: zlib
   build-depends: either
+  other-modules: IC.Bitcoin
   other-modules: IC.Canister
   other-modules: IC.Canister.Imp
   other-modules: IC.Canister.Snapshot
@@ -220,6 +221,7 @@ executable ic-ref-run
   build-depends: uglymemo
   build-depends: zlib
   build-depends: either
+  other-modules: IC.Bitcoin
   other-modules: IC.Canister
   other-modules: IC.Canister.Imp
   other-modules: IC.Canister.Snapshot
@@ -447,6 +449,7 @@ test-suite unit-test
   build-depends: uglymemo
   build-depends: zlib
   build-depends: either
+  other-modules: IC.Bitcoin
   other-modules: IC.Canister
   other-modules: IC.Canister.Imp
   other-modules: IC.Canister.Snapshot
@@ -569,6 +572,7 @@ library
   build-depends: uglymemo
   build-depends: zlib
   build-depends: either
+  exposed-modules: IC.Bitcoin
   exposed-modules: IC.Canister
   exposed-modules: IC.Canister.Imp
   exposed-modules: IC.Canister.Snapshot
