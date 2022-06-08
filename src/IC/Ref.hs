@@ -1192,7 +1192,7 @@ icBitcoinGetUtxos r = do
     -- TODO: pick the right network from {testnet, mainnet}
     let bc = BTC.unBlockchain $ BTC.unTestnetState $ BTC.stateTestnet bs
     let mc = 0 -- TODO: support filtering with min_confirmations
-    let blocks = drop (length bc - mc) bc -- TODO: precondition length bs >= mc
+    let blocks = take (length bc - mc) bc -- TODO: precondition length bs >= mc
     let spentTxos = collectSpentTxs (concatMap BTC.blockTxns blocks)     
     let txos = concatMap (\t -> map (\(idx, o) -> (BTC.OutPoint { BTC.outPointHash = BTC.txHash t, BTC.outPointIndex = idx } , BTC.outValue o)) (zip [0..] (BTC.txOut t))) (concatMap BTC.blockTxns blocks)
     let utxos = map toUtxo (filter (\(op, _) -> S.member op spentTxos) txos)
