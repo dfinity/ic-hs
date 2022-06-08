@@ -61,6 +61,10 @@ import qualified Data.ByteString.Lazy as BS
 import qualified Data.Text as T
 import qualified Data.Vector as Vec
 import qualified Data.Set as S
+import qualified Haskoin.Block.Common as BTC
+import qualified Haskoin.Crypto.Hash as BTC
+import qualified Haskoin.Transaction.Common as BTC
+import qualified Data.ByteString.Short as BSS
 import Data.List ( intercalate )
 import Data.Maybe
     ( fromJust, fromMaybe, isNothing, listToMaybe, maybeToList )
@@ -1184,36 +1188,25 @@ icBitcoinGetBalance r = go $ R.empty
 
 icBitcoinGetUtxos :: ICM m => ICManagement m .! "bitcoin_get_utxos"
 icBitcoinGetUtxos r = do
-    let addr = (r .! #address)
     bs <- gets bitcoin_state
     -- TODO: pick the right network from {testnet, mainnet}
-    let gb = BTC.genesis_block $ BTC.unTestnetState (BTC.testnet bs)
-    let spent = collectSpentTxos gb (S.empty :: S.Set BTC.OutPoint)
-    let utxos = go spent addr gb
+    let bc = BTC.unBlockchain $ BTC.unTestnetState $ BTC.stateTestnet bs
+    let mc = 0 -- TODO: support filtering with min_confirmations
+    let blocks = drop (length bc - mc) bc -- TODO: precondition length bs >= mc
+    let spentTxos = collectSpentTxs (concatMap BTC.blockTxns blocks)     
+    let txos = concatMap (\t -> map (\(idx, o) -> (BTC.OutPoint { BTC.outPointHash = BTC.txHash t, BTC.outPointIndex = idx } , BTC.outValue o)) (zip [0..] (BTC.txOut t))) (concatMap BTC.blockTxns blocks)
+    let utxos = map toUtxo (filter (\(op, _) -> S.member op spentTxos) txos)
     return $ R.empty
       .+ #next_page      .== (Nothing :: Maybe BS.ByteString) -- TODO: support pagination
       .+ #tip_block_hash .== BS.empty -- TODO: set hash
-      .+ #tip_height     .== 0 -- TODO: set height
+      .+ #tip_height     .== (fromIntegral (length blocks - 1))
       .+ #utxos          .== (Vec.fromList utxos)
   where
-    go spent addr b = do
-      let utxos = concatMap (extractUtxos spent addr) (BTC.block_transactions b)
-      utxos ++ (concatMap (go spent addr) (BTC.block_successors b))
-     
-    extractUtxos spent addr t = do
-      let outs = filter (\(_, o) -> (BTC.address o) == addr) $ zip [0..] (BTC.outputs t)
-      let outs' = map (\(idx, o) -> (BTC.OutPoint { BTC.op_txid = BTC.txid t, BTC.op_vout = idx }, BTC.value o)) outs
-      let txos = filter (\(op, _) -> not (S.member op spent)) outs'
-      map toUtxo txos
-
-    collectSpentTxos b acc = do
-      let acc' = foldl (\hs inp -> S.insert (BTC.outpoint inp) hs) acc (concatMap BTC.inputs (BTC.block_transactions b))
-      foldl (\hs b -> collectSpentTxos b hs) acc' (BTC.block_successors b)
-
+    collectSpentTxs txs = S.fromList $ concatMap (\t -> map BTC.prevOutput (BTC.txIn t)) txs
     toUtxo (op, v) = R.empty
       .+ #outpoint .== (R.empty
-        .+ #txid .== (BTC.op_txid op)
-        .+ #vout .== (BTC.op_vout op)
+        .+ #txid .== (BS.fromStrict (BSS.fromShort (BTC.getHash256 (BTC.getTxHash (BTC.outPointHash op)))))
+        .+ #vout .== (BTC.outPointIndex op)
       )
       .+ #height .== 0 -- TODO: set height
       .+ #value .== (fromIntegral v)
