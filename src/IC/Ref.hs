@@ -1195,22 +1195,23 @@ icBitcoinGetUtxos r = do
     let blocks = take (length bc - mc) bc -- TODO: precondition length bs >= mc
     let spentTxos = collectSpentTxs (concatMap BTC.blockTxns blocks)
     -- TODO: figure out how to retrieve an address from a script and use it for filtering 
-    let txos = concatMap (\t -> map (\(idx, o) -> (BTC.OutPoint { BTC.outPointHash = BTC.txHash t, BTC.outPointIndex = idx } , BTC.outValue o)) (zip [0..] (BTC.txOut t))) (concatMap BTC.blockTxns blocks)
+    let outpoint t idx o = (BTC.OutPoint {BTC.outPointHash = BTC.txHash t, BTC.outPointIndex = idx}, BTC.outValue o)
+    let txos = concatMap (\t -> zipWith (outpoint t) [0..] (BTC.txOut t)) (concatMap BTC.blockTxns blocks)
     let utxos = map toUtxo (filter (\(op, _) -> S.member op spentTxos) txos)
     return $ R.empty
       .+ #next_page      .== (Nothing :: Maybe BS.ByteString) -- TODO: support pagination
       .+ #tip_block_hash .== BS.empty -- TODO: set hash
-      .+ #tip_height     .== (fromIntegral (length blocks - 1))
-      .+ #utxos          .== (Vec.fromList utxos)
+      .+ #tip_height     .== fromIntegral (length blocks - 1)
+      .+ #utxos          .== Vec.fromList utxos
   where
     collectSpentTxs txs = S.fromList $ concatMap (\t -> map BTC.prevOutput (BTC.txIn t)) txs
     toUtxo (op, v) = R.empty
       .+ #outpoint .== (R.empty
-        .+ #txid .== (BS.fromStrict (BSS.fromShort (BTC.getHash256 (BTC.getTxHash (BTC.outPointHash op)))))
-        .+ #vout .== (BTC.outPointIndex op)
+        .+ #txid .== BS.fromStrict (BSS.fromShort (BTC.getHash256 (BTC.getTxHash (BTC.outPointHash op))))
+        .+ #vout .== BTC.outPointIndex op
       )
       .+ #height .== 0 -- TODO: set height
-      .+ #value .== (fromIntegral v)
+      .+ #value .== fromIntegral v
 
 icBitcoinSendTransaction :: ICM m => EntityId -> ICManagement m .! "bitcoin_send_transaction"
 icBitcoinSendTransaction _caller = undefined
