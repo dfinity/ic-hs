@@ -76,6 +76,8 @@ type send_transaction_request = record {
   network: bitcoin_network;
 };
 
+type millisatoshi_per_byte = nat64; 
+
 service ic : {
   create_canister : (record {
     settings : opt canister_settings
@@ -129,7 +131,7 @@ service ic : {
   bitcoin_get_balance : (get_balance_request) -> (satoshi);
   bitcoin_get_utxos : (get_utxos_request) -> (get_utxos_response);
   bitcoin_send_transaction : (send_transaction_request) -> ();
-  bitcoin_get_current_fees : () -> (vec float32);
+  bitcoin_get_current_fees : () -> (vec millisatoshi_per_byte);
 
   // provisional interfaces for the pre-ledger world
   provisional_create_canister_with_cycles : (record {

@@ -1187,7 +1187,7 @@ icBitcoinGetBalance r = go $ R.empty
         Nothing -> return pageBalance
 
 icBitcoinGetUtxos :: ICM m => ICManagement m .! "bitcoin_get_utxos"
-icBitcoinGetUtxos r = do
+icBitcoinGetUtxos _r = do
     bs <- gets bitcoin_state
     -- TODO: pick the right network from {testnet, mainnet}
     let bc = BTC.unBlockchain $ BTC.unTestnetState $ BTC.stateTestnet bs
@@ -1200,7 +1200,7 @@ icBitcoinGetUtxos r = do
     let utxos = map toUtxo (filter (\(op, _) -> S.member op spentTxos) txos)
     return $ R.empty
       .+ #next_page      .== (Nothing :: Maybe BS.ByteString) -- TODO: support pagination
-      .+ #tip_block_hash .== BS.empty -- TODO: set hash
+      .+ #tip_block_hash .== BS.fromStrict (BSS.fromShort (BTC.getHash256 (BTC.getBlockHash (BTC.headerHash (BTC.blockHeader (last blocks))))))
       .+ #tip_height     .== fromIntegral (length blocks - 1)
       .+ #utxos          .== Vec.fromList utxos
   where
@@ -1217,7 +1217,19 @@ icBitcoinSendTransaction :: ICM m => EntityId -> ICManagement m .! "bitcoin_send
 icBitcoinSendTransaction _caller = undefined
 
 icBitcoinGetCurrentFees :: ICM m => ICManagement m .! "bitcoin_get_current_fees"
-icBitcoinGetCurrentFees = undefined
+icBitcoinGetCurrentFees _r = do
+    bs <- gets bitcoin_state
+    let bc = BTC.unBlockchain $ BTC.unTestnetState $ BTC.stateTestnet bs
+    -- take 10^4 most recent transactions
+    -- TODO: coinbase transactions should be filtered out, as they are fee-free
+    let txns = take 10000 $ reverse $ concatMap BTC.blockTxns bc
+    let fees = map (\t -> computeTxFee t `div` computeTxSize t) txns
+    return $ Vec.fromList $ toPercentiles $ reverse fees
+  where
+    computeTxFee _ = 0 -- TODO: txFee = sum txIns - sum txOuts
+    computeTxSize _ = 1 -- TODO: how to compute a transaction size?
+    toPercentiles [] = []
+    toPercentiles l = toPercentiles (drop 100 l) ++ [head l]
 
 invokeEntry :: ICM m =>
     CallId -> WasmState -> CanisterModule -> Env -> EntryPoint ->
