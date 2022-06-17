@@ -74,7 +74,6 @@ jobs:
       uses: nixbuild/nixbuild-action@v10
       with:
         nixbuild_ssh_key: ${{ secrets.SSH_KEY_FOR_NIXBUILD }}
-    - run: nix-env -iA nix-build-uncached -f nix/
     - uses: cachix/cachix-action@v10
       with:
         name: ic-hs-test
