@@ -2,7 +2,7 @@ name: Test and publish
 
 on:
   push:
-     branches: [ master, fix-macos-release ]
+     branches: [ master ]
   pull_request:
 
 jobs:
@@ -50,7 +50,7 @@ jobs:
     - run: nix-build-uncached
 
   release:
-    # if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
     needs: test
     strategy:
       matrix:
@@ -97,7 +97,7 @@ jobs:
         ref_short="$(echo "$GITHUB_SHA" | cut -c1-8)"
         version="${{ steps.get_version.outputs.version }}-$ref_short"
 
-#        aws s3 cp ic-ref.tar.gz "s3://dfinity-download/ic-ref/ic-ref-$version-$SYSTEM.tar.gz"
+        aws s3 cp ic-ref.tar.gz "s3://dfinity-download/ic-ref/ic-ref-$version-$SYSTEM.tar.gz"
       env:
         SYSTEM: ${{ matrix.nix-system }}
         AWS_ACCESS_KEY_ID: '${{ secrets.AWS_ACCESS_KEY }}'
