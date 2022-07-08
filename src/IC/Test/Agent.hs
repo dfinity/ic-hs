@@ -47,6 +47,7 @@ module IC.Test.Agent
       asWord64,
       awaitCall',
       awaitCall,
+      awaitKnown,
       awaitStatus,
       bothSame,
       certValue,
@@ -540,18 +541,23 @@ getRequestStatus sender cid rid = do
       Unknown -> return UnknownStatus
       x -> assertFailure $ "Unexpected request status, got " ++ show x
 
+loop :: HasCallStack => IO (Maybe a) -> IO a
+loop act = go (0::Int)
+  where
+    go 10000 = assertFailure "Polling timed out"
+    go n = act >>= \case
+      Just r -> return r
+      Nothing -> go (n+1)
+
 awaitStatus :: HasAgentConfig => IO ReqStatus -> IO ReqResponse
 awaitStatus get_status = loop $ pollDelay >> get_status >>= \case
-    Responded x -> return $ Just x
-    _ -> return Nothing
-  where
-    loop :: HasCallStack => IO (Maybe a) -> IO a
-    loop act = go (0::Int)
-      where
-        go 10000 = assertFailure "Polling timed out"
-        go n = act >>= \case
-          Just r -> return r
-          Nothing -> go (n+1)
+  Responded x -> return $ Just x
+  _ -> return Nothing
+
+awaitKnown :: HasAgentConfig => IO ReqStatus -> IO ReqStatus
+awaitKnown get_status = loop $ pollDelay >> get_status >>= \case
+  UnknownStatus -> return Nothing
+  x -> return $ Just x
 
 isPendingOrProcessing :: ReqStatus -> IO ()
 isPendingOrProcessing Pending = return ()
