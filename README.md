@@ -1,7 +1,7 @@
 The Internet Computer Haskell Toolkit
 =====================================
 
-This repository contains a bunch of Internet-Computer related code written to support the following use cases:
+This repository contains a bunch of Internet Computer related code written to support the following use cases:
 
 ic-ref: a IC reference implementation
 -------------------------------------
@@ -97,7 +97,7 @@ To achieve these goals, the following design decisions are made:
      is “executable pseudo-code”. The use of advanced langauge features or non-idiomatic
      code that _help_ readability are encouraged.
 
-     Examples: `IC.Ref`, `IC.Canister.Impl`, `IC.HTTP.RequestId`
+     Examples: `IC.Ref`, `IC.Canister.Imp`, `IC.HTTP.RequestId`
 
    - is a plumbing module that handles some technical aspect, and pave the way
      for the simplicity in the previously mentioned modules. It is expected
@@ -110,16 +110,28 @@ To achieve these goals, the following design decisions are made:
 
 ### Usage
 
-The `ic-ref` program starts a webserver at `http://0.0.0.0:8001/` that implements the
-Internet Computer interface, and can be used with `dfx --client http://0.0.0.0:8001/`.
+The `ic-ref` program starts a webserver at `http://localhost:8001/` that implements the
+Internet Computer interface, and can be used with `dfx` by setting
+```
+  "networks": {
+     "local": {
+       "bind": "localhost:8001",
+       "type": "ephemeral"
+     }
+   }
+```
+in `dfx.json`.
 
-If you point your browser to `http://0.0.0.0:8001/` you get the evolution of
-the IC state as JSON. Recommended to use Firefox, as it provides a nice UI for
-browsing JSON.
+If you point your browser to `http://localhost:8001/` you get the evolution of
+the IC state as JSON. We recommended to use Firefox, as it provides a nice UI for
+browsing JSON. Note that the IC state can become quite large and the browser might be
+slow to load it.
 
 If the `--state-file FILE` argument is given, `ic-ref` will persist its state
 in this file. Note that if that file cannot be read (e.g. because it is from
 an incompatible version of `ic-ref`), starting `ic-ref` will fail.
+Do not forget to clean up the directory `.dfx/` in your development tree before
+starting `ic-ref` from a fresh state, i.e., if not providing `--state-file FILE`.
 
 
 ic-ref-test: An acceptance test suite
@@ -132,7 +144,16 @@ functional tests against it.
 
 ### Usage
 
-Pass `--endpoint http://localhost:8080/` to run against a specific node.
+Before running `ic-ref-test`, make sure you have built the universal canister
+(using `nix-shell`):
+```
+  cd universal-canister
+  cargo build --target wasm32-unknown-unknown --release
+```
+or reset the symbolic link in `test-data/universal_canister.wasm`
+to the universal canister's Wasm.
+
+Pass `--endpoint http://localhost:8000/` to run against a specific node.
 
 With the `-p pattern` flag you can select individual tests; those whose names
 contain the pattern. See https://github.com/feuerbach/tasty#patterns for
@@ -195,7 +216,7 @@ Continuous Integration
 
 We use GitHub Actions to trigger builds of the jobs defined in `./default.nix`. However the builds themselves are run on the [nixbuild.net](https://nixbuild.net/) service since it provides more capacity and is more efficient than GitHub runners.
 
-Please use the artifacts produced by GitHub Actions and nixbuild.net at your own risk or consider building independently from source.
+Please use the artifacts produced by GitHub Actions and [nixbuild.net](https://nixbuild.net/) at your own risk or consider building independently from source.
 
 
 Running
@@ -213,7 +234,7 @@ following commands in this directory:
 
 You can also pass arguments, e.g.
 
-    nix run -f . -c ic-ref-test --endpoint http://0.0.0.0:8080 -p 'WebAuthn'
+    nix run -f . -c ic-ref-test --endpoint http://localhost:8080 -p 'WebAuthn'
 
 
 Developing on ic-ref
@@ -229,14 +250,6 @@ One possible workflow is to run
 
 which will run `ic-ref` and restart upon file changes.  Similarly
 
-
-For `ic-ref-test`, before running it, you make sure you have built the universal canister.
-
-The symbolic link in `test-data/universal_canister.wasm` points to the
-build output produced by
-
-    cd universal-canister
-    nix-shell --command 'cargo build --target wasm32-unknown-unknown --release'
 
 You can now run the test suite from the top-level directory with
 
