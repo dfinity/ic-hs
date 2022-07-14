@@ -351,6 +351,9 @@ getCanisterTime cid = time <$> getCanister cid
 module_hash :: CanState -> Maybe Blob
 module_hash = fmap (raw_wasm_hash . can_mod) . content
 
+idle_cycles_burned_per_day :: CanState -> Natural
+idle_cycles_burned_per_day _ = fromInteger 0
+
 -- Authentication and authorization of requests
 --
 -- The envelope has already been validated. So this includes
@@ -1069,6 +1072,7 @@ icCanisterStatus r = do
     can_state <- getCanister canister_id
     hash <- module_hash <$> getCanister canister_id
     cycles <- getBalance canister_id
+    idle_cycles_burned_per_day <- idle_cycles_burned_per_day <$> getCanister canister_id
     return $ R.empty
       .+ #status .== s
       .+ #settings .== (R.empty
@@ -1080,6 +1084,7 @@ icCanisterStatus r = do
       .+ #memory_size .== 0 -- not implemented here
       .+ #module_hash .== hash
       .+ #cycles .== cycles
+      .+ #idle_cycles_burned_per_day .== idle_cycles_burned_per_day
 
 
 icDeleteCanister :: (ICM m, CanReject m) => ICManagement m .! "delete_canister"

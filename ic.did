@@ -49,6 +49,7 @@ service ic : {
       module_hash: opt blob;
       memory_size: nat;
       cycles: nat;
+      idle_cycles_burned_per_day: nat;
   });
   delete_canister : (record {canister_id : canister_id}) -> ();
   deposit_cycles : (record {canister_id : canister_id}) -> ();
