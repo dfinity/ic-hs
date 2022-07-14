@@ -110,19 +110,19 @@ To achieve these goals, the following design decisions are made:
 
 ### Usage
 
-The `ic-ref` program starts a webserver at `http://localhost:8001/` that implements the
+The `ic-ref` program starts a webserver at `http://localhost:8080/` that implements the
 Internet Computer interface, and can be used with `dfx` by setting
 ```
   "networks": {
      "local": {
-       "bind": "localhost:8001",
+       "bind": "localhost:8080",
        "type": "ephemeral"
      }
    }
 ```
 in `dfx.json`.
 
-If you point your browser to `http://localhost:8001/` you get the evolution of
+If you point your browser to `http://localhost:8080/` you get the evolution of
 the IC state as JSON. We recommended to use Firefox, as it provides a nice UI for
 browsing JSON. Note that the IC state can become quite large and the browser might be
 slow to load it.
@@ -153,7 +153,7 @@ Before running `ic-ref-test`, make sure you have built the universal canister
 or reset the symbolic link in `test-data/universal_canister.wasm`
 to the universal canister's Wasm.
 
-Pass `--endpoint http://localhost:8000/` to run against a specific node.
+Pass `--endpoint http://localhost:8080/` to run against a specific node.
 
 With the `-p pattern` flag you can select individual tests; those whose names
 contain the pattern. See https://github.com/feuerbach/tasty#patterns for
