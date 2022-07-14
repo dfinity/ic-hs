@@ -554,6 +554,8 @@ awaitStatus get_status = loop $ pollDelay >> get_status >>= \case
   Responded x -> return $ Just x
   _ -> return Nothing
 
+-- Polls until status is not Unknown any more, and returns that status
+-- even if Pending or Processing
 awaitKnown :: HasAgentConfig => IO ReqStatus -> IO ReqStatus
 awaitKnown get_status = loop $ pollDelay >> get_status >>= \case
   UnknownStatus -> return Nothing
