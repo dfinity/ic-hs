@@ -135,6 +135,7 @@ import Data.Word
 import GHC.TypeLits
 import System.Random
 import System.Exit
+import Data.Time.Clock
 import Data.Time.Clock.POSIX
 import Codec.Candid (Principal(..), prettyPrincipal)
 import qualified Data.Binary as Get
@@ -542,12 +543,14 @@ getRequestStatus sender cid rid = do
       x -> assertFailure $ "Unexpected request status, got " ++ show x
 
 loop :: HasCallStack => IO (Maybe a) -> IO a
-loop act = go (0::Int)
+loop act = getCurrentTime >>= go
   where
-    go 10000 = assertFailure "Polling timed out"
-    go n = act >>= \case
+    go init = act >>= \case
       Just r -> return r
-      Nothing -> go (n+1)
+      Nothing -> do
+        now <- getCurrentTime
+        if diffUTCTime now init > 300 then assertFailure "Polling timed out"
+        else go init
 
 awaitStatus :: HasAgentConfig => IO ReqStatus -> IO ReqResponse
 awaitStatus get_status = loop $ pollDelay >> get_status >>= \case
