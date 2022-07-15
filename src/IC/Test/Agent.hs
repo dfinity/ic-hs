@@ -82,6 +82,7 @@ module IC.Test.Agent
       otherSK,
       otherUser,
       makeAgentConfig,
+      poll,
       postCBOR,
       postCallCBOR,
       postQueryCBOR,
@@ -540,18 +541,27 @@ getRequestStatus sender cid rid = do
       Unknown -> return UnknownStatus
       x -> assertFailure $ "Unexpected request status, got " ++ show x
 
-awaitStatus :: HasAgentConfig => IO ReqStatus -> IO ReqResponse
-awaitStatus get_status = loop $ pollDelay >> get_status >>= \case
-    Responded x -> return $ Just x
-    _ -> return Nothing
+poll :: (HasCallStack, HasAgentConfig) => IO (Maybe a) -> IO a
+poll act = getCurrentTime >>= go
   where
-    loop :: HasCallStack => IO (Maybe a) -> IO a
-    loop act = go (0::Int)
-      where
-        go 10000 = assertFailure "Polling timed out"
-        go n = act >>= \case
-          Just r -> return r
-          Nothing -> go (n+1)
+    go init = act >>= \case
+      Just r -> return r
+      Nothing -> do
+        now <- getCurrentTime
+        if diffUTCTime now init > fromInteger (tc_timeout agentConfig) then assertFailure "Polling timed out"
+        else go init
+
+awaitStatus :: HasAgentConfig => IO ReqStatus -> IO ReqResponse
+awaitStatus get_status = poll $ pollDelay >> get_status >>= \case
+  Responded x -> return $ Just x
+  _ -> return Nothing
+
+-- Polls until status is not Unknown any more, and returns that status
+-- even if Pending or Processing
+awaitKnown :: HasAgentConfig => IO ReqStatus -> IO ReqStatus
+awaitKnown get_status = poll $ pollDelay >> get_status >>= \case
+  UnknownStatus -> return Nothing
+  x -> return $ Just x
 
 isPendingOrProcessing :: ReqStatus -> IO ()
 isPendingOrProcessing Pending = return ()

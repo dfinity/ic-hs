@@ -1565,7 +1565,11 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
 
     , testCase "module_hash of empty canister" $ do
         cid <- create
-        cert <- getStateCert defaultUser cid [["canister", cid, "module_hash"]]
+        cert <- poll $ do
+          cert <- getStateCert defaultUser cid [["canister", cid, "module_hash"]]
+          let lup = lookupPath (cert_tree cert) ["canister", cid, "module_hash"]
+          if lup == Unknown then return Nothing
+          else return $ Just cert
         lookupPath (cert_tree cert) ["canister", cid, "module_hash"] @?= Absent
 
     , testCase "single controller of installed canister" $ do
