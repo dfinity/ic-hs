@@ -171,10 +171,11 @@ data AgentConfig = AgentConfig
     , tc_manager :: Manager
     , tc_endPoint :: String
     , tc_test_port :: Int
+    , tc_timeout :: Integer
     }
 
-makeAgentConfig :: String -> Int -> IO AgentConfig
-makeAgentConfig ep' tp = do
+makeAgentConfig :: String -> Int -> Integer -> IO AgentConfig
+makeAgentConfig ep' tp to = do
     manager <- newTlsManagerWith $ tlsManagerSettings
       { managerResponseTimeout = responseTimeoutMicro 60_000_000 -- 60s
       }
@@ -191,6 +192,7 @@ makeAgentConfig ep' tp = do
         , tc_manager = manager
         , tc_endPoint = ep
         , tc_test_port = tp
+        , tc_timeout = to
         }
   where
     -- strip trailing slash
@@ -202,15 +204,16 @@ preFlight :: OptionSet -> IO AgentConfig
 preFlight os = do
     let Endpoint ep = lookupOption os
     let TestPort tp = lookupOption os
-    makeAgentConfig ep tp
+    let PollTimeout to = lookupOption os
+    makeAgentConfig ep tp to
 
 
 newtype ReplWrapper = R (forall a. (HasAgentConfig => a) -> a)
 
 -- |  This is for use from the Haskell REPL, see README.md
-connect :: String -> Int -> IO ReplWrapper
-connect ep tp = do
-    agentConfig <- makeAgentConfig ep tp
+connect :: String -> Int -> Integer -> IO ReplWrapper
+connect ep tp to = do
+    agentConfig <- makeAgentConfig ep tp to
     let ?agentConfig = agentConfig
     return (R $ \x -> x)
 
@@ -542,14 +545,14 @@ getRequestStatus sender cid rid = do
       Unknown -> return UnknownStatus
       x -> assertFailure $ "Unexpected request status, got " ++ show x
 
-loop :: HasCallStack => IO (Maybe a) -> IO a
+loop :: (HasCallStack, HasAgentConfig) => IO (Maybe a) -> IO a
 loop act = getCurrentTime >>= go
   where
     go init = act >>= \case
       Just r -> return r
       Nothing -> do
         now <- getCurrentTime
-        if diffUTCTime now init > 300 then assertFailure "Polling timed out"
+        if diffUTCTime now init > fromInteger (tc_timeout agentConfig) then assertFailure "Polling timed out"
         else go init
 
 awaitStatus :: HasAgentConfig => IO ReqStatus -> IO ReqResponse
