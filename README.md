@@ -192,7 +192,7 @@ To use the Haskell REPL to interact with the internet computer, follow this patt
 Ok, 27 modules loaded.
 *Main> :m + *IC.Test.Spec
 *IC.Test.Spec *Main> :set -XOverloadedStrings
-*IC.Test.Spec *Main> R r <- connect "http://localhost:34677/"
+*IC.Test.Spec *Main> R r <- connect "http://localhost:34677/" 8003 300
 Fetching endpoint status from "http://localhost:34677"...
 Spec version tested:  0.14.0
 Spec version claimed: 0.14.0
