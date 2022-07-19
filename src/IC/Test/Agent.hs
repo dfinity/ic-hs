@@ -47,6 +47,7 @@ module IC.Test.Agent
       asWord64,
       awaitCall',
       awaitCall,
+      awaitKnown,
       awaitStatus,
       bothSame,
       certValue,
@@ -134,6 +135,7 @@ import Data.Word
 import GHC.TypeLits
 import System.Random
 import System.Exit
+import Data.Time.Clock
 import Data.Time.Clock.POSIX
 import Codec.Candid (Principal(..), prettyPrincipal)
 import qualified Data.Binary as Get
@@ -169,10 +171,11 @@ data AgentConfig = AgentConfig
     , tc_manager :: Manager
     , tc_endPoint :: String
     , tc_test_port :: Int
+    , tc_timeout :: Int
     }
 
-makeAgentConfig :: String -> Int -> IO AgentConfig
-makeAgentConfig ep' tp = do
+makeAgentConfig :: String -> Int -> Int -> IO AgentConfig
+makeAgentConfig ep' tp to = do
     manager <- newTlsManagerWith $ tlsManagerSettings
       { managerResponseTimeout = responseTimeoutMicro 60_000_000 -- 60s
       }
@@ -189,6 +192,7 @@ makeAgentConfig ep' tp = do
         , tc_manager = manager
         , tc_endPoint = ep
         , tc_test_port = tp
+        , tc_timeout = to
         }
   where
     -- strip trailing slash
@@ -200,15 +204,16 @@ preFlight :: OptionSet -> IO AgentConfig
 preFlight os = do
     let Endpoint ep = lookupOption os
     let TestPort tp = lookupOption os
-    makeAgentConfig ep tp
+    let PollTimeout to = lookupOption os
+    makeAgentConfig ep tp to
 
 
 newtype ReplWrapper = R (forall a. (HasAgentConfig => a) -> a)
 
 -- |  This is for use from the Haskell REPL, see README.md
-connect :: String -> Int -> IO ReplWrapper
-connect ep tp = do
-    agentConfig <- makeAgentConfig ep tp
+connect :: String -> Int -> Int -> IO ReplWrapper
+connect ep tp to = do
+    agentConfig <- makeAgentConfig ep tp to
     let ?agentConfig = agentConfig
     return (R $ \x -> x)
 
@@ -540,18 +545,27 @@ getRequestStatus sender cid rid = do
       Unknown -> return UnknownStatus
       x -> assertFailure $ "Unexpected request status, got " ++ show x
 
+loop :: (HasCallStack, HasAgentConfig) => IO (Maybe a) -> IO a
+loop act = getCurrentTime >>= go
+  where
+    go init = act >>= \case
+      Just r -> return r
+      Nothing -> do
+        now <- getCurrentTime
+        if diffUTCTime now init > fromIntegral (tc_timeout agentConfig) then assertFailure "Polling timed out"
+        else go init
+
 awaitStatus :: HasAgentConfig => IO ReqStatus -> IO ReqResponse
 awaitStatus get_status = loop $ pollDelay >> get_status >>= \case
-    Responded x -> return $ Just x
-    _ -> return Nothing
-  where
-    loop :: HasCallStack => IO (Maybe a) -> IO a
-    loop act = go (0::Int)
-      where
-        go 10000 = assertFailure "Polling timed out"
-        go n = act >>= \case
-          Just r -> return r
-          Nothing -> go (n+1)
+  Responded x -> return $ Just x
+  _ -> return Nothing
+
+-- Polls until status is not Unknown any more, and returns that status
+-- even if Pending or Processing
+awaitKnown :: HasAgentConfig => IO ReqStatus -> IO ReqStatus
+awaitKnown get_status = loop $ pollDelay >> get_status >>= \case
+  UnknownStatus -> return Nothing
+  x -> return $ Just x
 
 isPendingOrProcessing :: ReqStatus -> IO ()
 isPendingOrProcessing Pending = return ()

@@ -215,14 +215,14 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
 
       step "Create long-running call"
       grs1 <- submitCall cid $ callRequest cid messageHold
-      grs1 >>= isPendingOrProcessing
+      awaitKnown grs1 >>= isPendingOrProcessing
 
       step "Normal call (to sync)"
       call_ cid reply
 
       step "Stop"
       grs2 <- submitCall cid $ stopRequest cid
-      grs2 >>= isPendingOrProcessing
+      awaitKnown grs2 >>= isPendingOrProcessing
 
       step "Is stopping (via management)?"
       cs <- ic_canister_status ic00 cid
@@ -230,7 +230,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
 
       step "Next stop waits, too"
       grs3 <- submitCall cid $ stopRequest cid
-      grs3 >>= isPendingOrProcessing
+      awaitKnown grs3 >>= isPendingOrProcessing
 
       step "Cannot call (update)?"
       call'' cid reply >>= isErrOrReject [5]
@@ -268,11 +268,11 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
 
       step "Create long-running call"
       grs1 <- submitCall cid $ callRequest cid messageHold
-      grs1 >>= isPendingOrProcessing
+      awaitKnown grs1 >>= isPendingOrProcessing
 
       step "Start stopping"
       grs2 <- submitCall cid $ stopRequest cid
-      grs2 >>= isPendingOrProcessing
+      awaitKnown grs2 >>= isPendingOrProcessing
 
       step "Is stopping?"
       cs <- ic_canister_status ic00 cid
@@ -1362,7 +1362,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
 
       step "Create long-running call"
       grs1 <- submitCall cid $ callRequest cid messageHold
-      grs1 >>= isPendingOrProcessing
+      awaitKnown grs1 >>= isPendingOrProcessing
 
       step "Uninstall"
       ic_uninstall ic00 cid
@@ -1385,7 +1385,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
 
       step "Create long-running call"
       grs1 <- submitCall cid $ callRequest cid messageHold
-      grs1 >>= isPendingOrProcessing
+      awaitKnown grs1 >>= isPendingOrProcessing
 
       step "Uninstall"
       ic_uninstall ic00 cid
@@ -1427,7 +1427,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
                   { other_side = messageHold1
                   , on_reply = replyData "First"
                   }
-      grs1 >>= isPendingOrProcessing
+      awaitKnown grs1 >>= isPendingOrProcessing
 
       step "Uninstall"
       ic_uninstall ic00 cid
@@ -1444,12 +1444,12 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
                   , on_reply = replyData "Second"
                   }
       awaitStatus grs1 >>= isReject [4]
-      grs2 >>= isPendingOrProcessing
+      awaitKnown grs2 >>= isPendingOrProcessing
 
       step "Release first call"
       release1
       awaitStatus grs1 >>= isReject [4]
-      grs2 >>= isPendingOrProcessing
+      awaitKnown grs2 >>= isPendingOrProcessing
 
       step "Release second call"
       release2
