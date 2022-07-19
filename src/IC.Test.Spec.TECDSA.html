@@ -1,0 +1,295 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><link rel="stylesheet" type="text/css" href="style.css" /><script type="text/javascript" src="highlight.js"></script></head><body><pre><span class="hs-pragma">{-# LANGUAGE OverloadedStrings #-}</span><span>
+</span><span id="line-2"></span><span class="hs-pragma">{-# LANGUAGE TypeApplications #-}</span><span>
+</span><span id="line-3"></span><span class="hs-pragma">{-# LANGUAGE LambdaCase #-}</span><span>
+</span><span id="line-4"></span><span class="hs-pragma">{-# LANGUAGE OverloadedLabels #-}</span><span>
+</span><span id="line-5"></span><span class="hs-pragma">{-# LANGUAGE NumericUnderscores #-}</span><span>
+</span><span id="line-6"></span><span class="hs-pragma">{-# LANGUAGE TupleSections #-}</span><span>
+</span><span id="line-7"></span><span class="hs-pragma">{-# LANGUAGE NamedFieldPuns #-}</span><span>
+</span><span id="line-8"></span><span>
+</span><span id="line-9"></span><span class="hs-keyword">module</span><span> </span><span class="hs-identifier">IC.Test.Spec.TECDSA</span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Test.Spec.TECDSA.html#tests"><span class="hs-identifier">tests</span></a></span><span class="hs-special">)</span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-10"></span><span>
+</span><span id="line-11"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Test.Tasty</span></span><span>
+</span><span id="line-12"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><span class="hs-identifier">Data.Vector</span></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">Vec</span></span><span>
+</span><span id="line-13"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="IC.Test.Spec.Utils.html"><span class="hs-identifier">IC.Test.Spec.Utils</span></a></span><span>
+</span><span id="line-14"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="IC.Test.Agent.html"><span class="hs-identifier">IC.Test.Agent</span></a></span><span>
+</span><span id="line-15"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="IC.Test.Agent.Calls.html"><span class="hs-identifier">IC.Test.Agent.Calls</span></a></span><span>
+</span><span id="line-16"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Data.Row</span></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">R</span></span><span>
+</span><span id="line-17"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Test.Tasty.HUnit</span></span><span>
+</span><span id="line-18"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="IC.Test.Universal.html"><span class="hs-identifier">IC.Test.Universal</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Test.Universal.html#noop"><span class="hs-identifier">noop</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-19"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="IC.Hash.html"><span class="hs-identifier">IC.Hash</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Hash.html#sha256"><span class="hs-identifier">sha256</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-20"></span><span>
+</span><span id="line-21"></span><span class="annot"><a href="IC.Test.Spec.TECDSA.html#tests"><span class="hs-identifier hs-type">tests</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Agent.html#HasAgentConfig"><span class="hs-identifier hs-type">HasAgentConfig</span></a></span><span> </span><span class="hs-glyph">=&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">TestTree</span></span><span>
+</span><span id="line-22"></span><span id="tests"><span class="annot"><span class="annottext">tests :: HasAgentConfig =&gt; TestTree
+</span><a href="IC.Test.Spec.TECDSA.html#tests"><span class="hs-identifier hs-var hs-var">tests</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">TestName -&gt; [TestTree] -&gt; TestTree
+</span><span class="hs-identifier hs-var">testGroup</span></span><span> </span><span class="annot"><span class="annottext">TestName
+</span><span class="hs-string">&quot;tECDSA&quot;</span></span><span>
+</span><span id="line-23"></span><span>    </span><span class="hs-special">[</span><span> </span><span class="annot"><span class="annottext">TestName -&gt; Assertion -&gt; TestTree
+</span><span class="hs-identifier hs-var">testCase</span></span><span> </span><span class="annot"><span class="annottext">TestName
+</span><span class="hs-string">&quot;sign and verify&quot;</span></span><span> </span><span class="annot"><span class="annottext">(Assertion -&gt; TestTree) -&gt; Assertion -&gt; TestTree
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-24"></span><span>      </span><span id="local-6989586621679289104"><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679289104"><span class="hs-identifier hs-var">cid</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">(HasCallStack, HasAgentConfig) =&gt; Prog -&gt; IO ByteString
+Prog -&gt; IO ByteString
+</span><a href="IC.Test.Spec.Utils.html#install"><span class="hs-identifier hs-var">install</span></a></span><span> </span><span class="annot"><span class="annottext">Prog
+</span><a href="IC.Test.Universal.html#noop"><span class="hs-identifier hs-var">noop</span></a></span><span>
+</span><span id="line-25"></span><span>      </span><span id="local-6989586621679289102"><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679289102"><span class="hs-identifier hs-var">cid2</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">(HasCallStack, HasAgentConfig) =&gt; Prog -&gt; IO ByteString
+Prog -&gt; IO ByteString
+</span><a href="IC.Test.Spec.Utils.html#install"><span class="hs-identifier hs-var">install</span></a></span><span> </span><span class="annot"><span class="annottext">Prog
+</span><a href="IC.Test.Universal.html#noop"><span class="hs-identifier hs-var">noop</span></a></span><span>
+</span><span id="line-26"></span><span>      </span><span id="local-6989586621679289101"><span class="annot"><span class="annottext">Rec ('R '[ &quot;signature&quot; ':-&gt; ByteString])
+</span><a href="#local-6989586621679289101"><span class="hs-identifier hs-var">sig1</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">IC00 -&gt; ByteString -&gt; IO (Rec ('R '[ &quot;signature&quot; ':-&gt; ByteString]))
+forall a b.
+((a -&gt; IO b) ~ (ICManagement IO .! &quot;sign_with_ecdsa&quot;),
+ HasAgentConfig) =&gt;
+IC00 -&gt; ByteString -&gt; IO b
+</span><a href="IC.Test.Agent.Calls.html#ic_sign_with_ecdsa"><span class="hs-identifier hs-var">ic_sign_with_ecdsa</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">HasAgentConfig =&gt; ByteString -&gt; IC00
+ByteString -&gt; IC00
+</span><a href="IC.Test.Spec.Utils.html#ic00via"><span class="hs-identifier hs-var">ic00via</span></a></span><span> </span><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679289104"><span class="hs-identifier hs-var">cid</span></a></span><span class="hs-special">)</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">ByteString -&gt; ByteString
+</span><a href="IC.Hash.html#sha256"><span class="hs-identifier hs-var">sha256</span></a></span><span> </span><span class="annot"><span class="annottext">ByteString
+</span><span class="hs-string">&quot;internet computer&quot;</span></span><span class="hs-special">)</span><span>
+</span><span id="line-27"></span><span>      </span><span id="local-6989586621679289098"><span class="annot"><span class="annottext">Rec ('R '[ &quot;signature&quot; ':-&gt; ByteString])
+</span><a href="#local-6989586621679289098"><span class="hs-identifier hs-var">sig2</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">IC00 -&gt; ByteString -&gt; IO (Rec ('R '[ &quot;signature&quot; ':-&gt; ByteString]))
+forall a b.
+((a -&gt; IO b) ~ (ICManagement IO .! &quot;sign_with_ecdsa&quot;),
+ HasAgentConfig) =&gt;
+IC00 -&gt; ByteString -&gt; IO b
+</span><a href="IC.Test.Agent.Calls.html#ic_sign_with_ecdsa"><span class="hs-identifier hs-var">ic_sign_with_ecdsa</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">HasAgentConfig =&gt; ByteString -&gt; IC00
+ByteString -&gt; IC00
+</span><a href="IC.Test.Spec.Utils.html#ic00via"><span class="hs-identifier hs-var">ic00via</span></a></span><span> </span><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679289102"><span class="hs-identifier hs-var">cid2</span></a></span><span class="hs-special">)</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">ByteString -&gt; ByteString
+</span><a href="IC.Hash.html#sha256"><span class="hs-identifier hs-var">sha256</span></a></span><span> </span><span class="annot"><span class="annottext">ByteString
+</span><span class="hs-string">&quot;internet computer&quot;</span></span><span class="hs-special">)</span><span>
+</span><span id="line-28"></span><span>      </span><span class="hs-comment">-- if canister id is unset, default to a caller id</span><span>
+</span><span id="line-29"></span><span>      </span><span id="local-6989586621679289097"><span class="annot"><span class="annottext">Rec
+  ('R '[ &quot;chain_code&quot; ':-&gt; ByteString, &quot;public_key&quot; ':-&gt; ByteString])
+</span><a href="#local-6989586621679289097"><span class="hs-identifier hs-var">pk1</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">IC00
+-&gt; Maybe ByteString
+-&gt; Vector ByteString
+-&gt; IO
+     (Rec
+        ('R
+           '[ &quot;chain_code&quot; ':-&gt; ByteString, &quot;public_key&quot; ':-&gt; ByteString]))
+forall a b.
+((a -&gt; IO b) ~ (ICManagement IO .! &quot;ecdsa_public_key&quot;),
+ HasAgentConfig) =&gt;
+IC00 -&gt; Maybe ByteString -&gt; Vector ByteString -&gt; IO b
+</span><a href="IC.Test.Agent.Calls.html#ic_ecdsa_public_key"><span class="hs-identifier hs-var">ic_ecdsa_public_key</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">HasAgentConfig =&gt; ByteString -&gt; IC00
+ByteString -&gt; IC00
+</span><a href="IC.Test.Spec.Utils.html#ic00via"><span class="hs-identifier hs-var">ic00via</span></a></span><span> </span><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679289104"><span class="hs-identifier hs-var">cid</span></a></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">Maybe ByteString
+forall a. Maybe a
+</span><span class="hs-identifier hs-var">Nothing</span></span><span> </span><span class="annot"><span class="annottext">Vector ByteString
+forall a. Vector a
+</span><span class="hs-identifier hs-var">Vec.empty</span></span><span>
+</span><span id="line-30"></span><span>      </span><span id="local-6989586621679289094"><span class="annot"><span class="annottext">Rec
+  ('R '[ &quot;chain_code&quot; ':-&gt; ByteString, &quot;public_key&quot; ':-&gt; ByteString])
+</span><a href="#local-6989586621679289094"><span class="hs-identifier hs-var">pk2</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">IC00
+-&gt; Maybe ByteString
+-&gt; Vector ByteString
+-&gt; IO
+     (Rec
+        ('R
+           '[ &quot;chain_code&quot; ':-&gt; ByteString, &quot;public_key&quot; ':-&gt; ByteString]))
+forall a b.
+((a -&gt; IO b) ~ (ICManagement IO .! &quot;ecdsa_public_key&quot;),
+ HasAgentConfig) =&gt;
+IC00 -&gt; Maybe ByteString -&gt; Vector ByteString -&gt; IO b
+</span><a href="IC.Test.Agent.Calls.html#ic_ecdsa_public_key"><span class="hs-identifier hs-var">ic_ecdsa_public_key</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">HasAgentConfig =&gt; ByteString -&gt; IC00
+ByteString -&gt; IC00
+</span><a href="IC.Test.Spec.Utils.html#ic00via"><span class="hs-identifier hs-var">ic00via</span></a></span><span> </span><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679289104"><span class="hs-identifier hs-var">cid</span></a></span><span class="hs-special">)</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">ByteString -&gt; Maybe ByteString
+forall a. a -&gt; Maybe a
+</span><span class="hs-identifier hs-var">Just</span></span><span> </span><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679289102"><span class="hs-identifier hs-var">cid2</span></a></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">Vector ByteString
+forall a. Vector a
+</span><span class="hs-identifier hs-var">Vec.empty</span></span><span>
+</span><span id="line-31"></span><span>
+</span><span id="line-32"></span><span>      </span><span class="annot"><span class="annottext">HasCallStack =&gt; TestName -&gt; Bool -&gt; Assertion
+TestName -&gt; Bool -&gt; Assertion
+</span><span class="hs-identifier hs-var">assertBool</span></span><span> </span><span class="annot"><span class="annottext">TestName
+</span><span class="hs-string">&quot;incorrect signature&quot;</span></span><span> </span><span class="annot"><span class="annottext">(Bool -&gt; Assertion) -&gt; Bool -&gt; Assertion
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">ByteString -&gt; ByteString -&gt; ByteString -&gt; Bool
+</span><a href="IC.Test.Agent.html#verifySignature"><span class="hs-identifier hs-var">verifySignature</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">ByteString -&gt; ByteString
+</span><a href="IC.Hash.html#sha256"><span class="hs-identifier hs-var">sha256</span></a></span><span> </span><span class="annot"><span class="annottext">ByteString
+</span><span class="hs-string">&quot;internet computer&quot;</span></span><span class="hs-special">)</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Rec ('R '[ &quot;signature&quot; ':-&gt; ByteString])
+</span><a href="#local-6989586621679289101"><span class="hs-identifier hs-var">sig1</span></a></span><span> </span><span class="annot"><span class="annottext">Rec ('R '[ &quot;signature&quot; ':-&gt; ByteString])
+-&gt; Label &quot;signature&quot;
+-&gt; 'R '[ &quot;signature&quot; ':-&gt; ByteString] .! &quot;signature&quot;
+forall (l :: Symbol) (r :: Row (*)).
+KnownSymbol l =&gt;
+Rec r -&gt; Label l -&gt; r .! l
+</span><span class="hs-operator hs-var">.!</span></span><span> </span><span class="annot"><span class="annottext">IsLabel &quot;signature&quot; (Label &quot;signature&quot;)
+Label &quot;signature&quot;
+</span><a href="#local-6989586621679289162"><span class="hs-var">#signature</span></a></span><span class="hs-special">)</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Rec
+  ('R '[ &quot;chain_code&quot; ':-&gt; ByteString, &quot;public_key&quot; ':-&gt; ByteString])
+</span><a href="#local-6989586621679289097"><span class="hs-identifier hs-var">pk1</span></a></span><span> </span><span class="annot"><span class="annottext">Rec
+  ('R '[ &quot;chain_code&quot; ':-&gt; ByteString, &quot;public_key&quot; ':-&gt; ByteString])
+-&gt; Label &quot;public_key&quot;
+-&gt; 'R
+     '[ &quot;chain_code&quot; ':-&gt; ByteString, &quot;public_key&quot; ':-&gt; ByteString]
+   .! &quot;public_key&quot;
+forall (l :: Symbol) (r :: Row (*)).
+KnownSymbol l =&gt;
+Rec r -&gt; Label l -&gt; r .! l
+</span><span class="hs-operator hs-var">.!</span></span><span> </span><span class="annot"><span class="annottext">IsLabel &quot;public_key&quot; (Label &quot;public_key&quot;)
+Label &quot;public_key&quot;
+</span><a href="#local-6989586621679289158"><span class="hs-var">#public_key</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-33"></span><span>      </span><span class="annot"><span class="annottext">HasCallStack =&gt; TestName -&gt; Bool -&gt; Assertion
+TestName -&gt; Bool -&gt; Assertion
+</span><span class="hs-identifier hs-var">assertBool</span></span><span> </span><span class="annot"><span class="annottext">TestName
+</span><span class="hs-string">&quot;correct signature, should be incorrect&quot;</span></span><span> </span><span class="annot"><span class="annottext">(Bool -&gt; Assertion) -&gt; Bool -&gt; Assertion
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">Bool -&gt; Bool
+</span><span class="hs-identifier hs-var">not</span></span><span> </span><span class="annot"><span class="annottext">(Bool -&gt; Bool) -&gt; Bool -&gt; Bool
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">ByteString -&gt; ByteString -&gt; ByteString -&gt; Bool
+</span><a href="IC.Test.Agent.html#verifySignature"><span class="hs-identifier hs-var">verifySignature</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">ByteString -&gt; ByteString
+</span><a href="IC.Hash.html#sha256"><span class="hs-identifier hs-var">sha256</span></a></span><span> </span><span class="annot"><span class="annottext">ByteString
+</span><span class="hs-string">&quot;internet computer&quot;</span></span><span class="hs-special">)</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Rec ('R '[ &quot;signature&quot; ':-&gt; ByteString])
+</span><a href="#local-6989586621679289101"><span class="hs-identifier hs-var">sig1</span></a></span><span> </span><span class="annot"><span class="annottext">Rec ('R '[ &quot;signature&quot; ':-&gt; ByteString])
+-&gt; Label &quot;signature&quot;
+-&gt; 'R '[ &quot;signature&quot; ':-&gt; ByteString] .! &quot;signature&quot;
+forall (l :: Symbol) (r :: Row (*)).
+KnownSymbol l =&gt;
+Rec r -&gt; Label l -&gt; r .! l
+</span><span class="hs-operator hs-var">.!</span></span><span> </span><span class="annot"><span class="annottext">IsLabel &quot;signature&quot; (Label &quot;signature&quot;)
+Label &quot;signature&quot;
+</span><a href="#local-6989586621679289151"><span class="hs-var">#signature</span></a></span><span class="hs-special">)</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Rec
+  ('R '[ &quot;chain_code&quot; ':-&gt; ByteString, &quot;public_key&quot; ':-&gt; ByteString])
+</span><a href="#local-6989586621679289094"><span class="hs-identifier hs-var">pk2</span></a></span><span> </span><span class="annot"><span class="annottext">Rec
+  ('R '[ &quot;chain_code&quot; ':-&gt; ByteString, &quot;public_key&quot; ':-&gt; ByteString])
+-&gt; Label &quot;public_key&quot;
+-&gt; 'R
+     '[ &quot;chain_code&quot; ':-&gt; ByteString, &quot;public_key&quot; ':-&gt; ByteString]
+   .! &quot;public_key&quot;
+forall (l :: Symbol) (r :: Row (*)).
+KnownSymbol l =&gt;
+Rec r -&gt; Label l -&gt; r .! l
+</span><span class="hs-operator hs-var">.!</span></span><span> </span><span class="annot"><span class="annottext">IsLabel &quot;public_key&quot; (Label &quot;public_key&quot;)
+Label &quot;public_key&quot;
+</span><a href="#local-6989586621679289148"><span class="hs-var">#public_key</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-34"></span><span>      </span><span class="annot"><span class="annottext">HasCallStack =&gt; TestName -&gt; Bool -&gt; Assertion
+TestName -&gt; Bool -&gt; Assertion
+</span><span class="hs-identifier hs-var">assertBool</span></span><span> </span><span class="annot"><span class="annottext">TestName
+</span><span class="hs-string">&quot;incorrect signature&quot;</span></span><span> </span><span class="annot"><span class="annottext">(Bool -&gt; Assertion) -&gt; Bool -&gt; Assertion
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">Bool -&gt; Bool
+</span><span class="hs-identifier hs-var">not</span></span><span> </span><span class="annot"><span class="annottext">(Bool -&gt; Bool) -&gt; Bool -&gt; Bool
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">ByteString -&gt; ByteString -&gt; ByteString -&gt; Bool
+</span><a href="IC.Test.Agent.html#verifySignature"><span class="hs-identifier hs-var">verifySignature</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">ByteString -&gt; ByteString
+</span><a href="IC.Hash.html#sha256"><span class="hs-identifier hs-var">sha256</span></a></span><span> </span><span class="annot"><span class="annottext">ByteString
+</span><span class="hs-string">&quot;internet computer&quot;</span></span><span class="hs-special">)</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Rec ('R '[ &quot;signature&quot; ':-&gt; ByteString])
+</span><a href="#local-6989586621679289098"><span class="hs-identifier hs-var">sig2</span></a></span><span> </span><span class="annot"><span class="annottext">Rec ('R '[ &quot;signature&quot; ':-&gt; ByteString])
+-&gt; Label &quot;signature&quot;
+-&gt; 'R '[ &quot;signature&quot; ':-&gt; ByteString] .! &quot;signature&quot;
+forall (l :: Symbol) (r :: Row (*)).
+KnownSymbol l =&gt;
+Rec r -&gt; Label l -&gt; r .! l
+</span><span class="hs-operator hs-var">.!</span></span><span> </span><span class="annot"><span class="annottext">IsLabel &quot;signature&quot; (Label &quot;signature&quot;)
+Label &quot;signature&quot;
+</span><a href="#local-6989586621679289141"><span class="hs-var">#signature</span></a></span><span class="hs-special">)</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Rec
+  ('R '[ &quot;chain_code&quot; ':-&gt; ByteString, &quot;public_key&quot; ':-&gt; ByteString])
+</span><a href="#local-6989586621679289097"><span class="hs-identifier hs-var">pk1</span></a></span><span> </span><span class="annot"><span class="annottext">Rec
+  ('R '[ &quot;chain_code&quot; ':-&gt; ByteString, &quot;public_key&quot; ':-&gt; ByteString])
+-&gt; Label &quot;public_key&quot;
+-&gt; 'R
+     '[ &quot;chain_code&quot; ':-&gt; ByteString, &quot;public_key&quot; ':-&gt; ByteString]
+   .! &quot;public_key&quot;
+forall (l :: Symbol) (r :: Row (*)).
+KnownSymbol l =&gt;
+Rec r -&gt; Label l -&gt; r .! l
+</span><span class="hs-operator hs-var">.!</span></span><span> </span><span class="annot"><span class="annottext">IsLabel &quot;public_key&quot; (Label &quot;public_key&quot;)
+Label &quot;public_key&quot;
+</span><a href="#local-6989586621679289138"><span class="hs-var">#public_key</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-35"></span><span>      </span><span class="annot"><span class="annottext">HasCallStack =&gt; TestName -&gt; Bool -&gt; Assertion
+TestName -&gt; Bool -&gt; Assertion
+</span><span class="hs-identifier hs-var">assertBool</span></span><span> </span><span class="annot"><span class="annottext">TestName
+</span><span class="hs-string">&quot;correct signature, should be incorrect&quot;</span></span><span> </span><span class="annot"><span class="annottext">(Bool -&gt; Assertion) -&gt; Bool -&gt; Assertion
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">ByteString -&gt; ByteString -&gt; ByteString -&gt; Bool
+</span><a href="IC.Test.Agent.html#verifySignature"><span class="hs-identifier hs-var">verifySignature</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">ByteString -&gt; ByteString
+</span><a href="IC.Hash.html#sha256"><span class="hs-identifier hs-var">sha256</span></a></span><span> </span><span class="annot"><span class="annottext">ByteString
+</span><span class="hs-string">&quot;internet computer&quot;</span></span><span class="hs-special">)</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Rec ('R '[ &quot;signature&quot; ':-&gt; ByteString])
+</span><a href="#local-6989586621679289098"><span class="hs-identifier hs-var">sig2</span></a></span><span> </span><span class="annot"><span class="annottext">Rec ('R '[ &quot;signature&quot; ':-&gt; ByteString])
+-&gt; Label &quot;signature&quot;
+-&gt; 'R '[ &quot;signature&quot; ':-&gt; ByteString] .! &quot;signature&quot;
+forall (l :: Symbol) (r :: Row (*)).
+KnownSymbol l =&gt;
+Rec r -&gt; Label l -&gt; r .! l
+</span><span class="hs-operator hs-var">.!</span></span><span> </span><span class="annot"><span class="annottext">IsLabel &quot;signature&quot; (Label &quot;signature&quot;)
+Label &quot;signature&quot;
+</span><a href="#local-6989586621679289132"><span class="hs-var">#signature</span></a></span><span class="hs-special">)</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Rec
+  ('R '[ &quot;chain_code&quot; ':-&gt; ByteString, &quot;public_key&quot; ':-&gt; ByteString])
+</span><a href="#local-6989586621679289094"><span class="hs-identifier hs-var">pk2</span></a></span><span> </span><span class="annot"><span class="annottext">Rec
+  ('R '[ &quot;chain_code&quot; ':-&gt; ByteString, &quot;public_key&quot; ':-&gt; ByteString])
+-&gt; Label &quot;public_key&quot;
+-&gt; 'R
+     '[ &quot;chain_code&quot; ':-&gt; ByteString, &quot;public_key&quot; ':-&gt; ByteString]
+   .! &quot;public_key&quot;
+forall (l :: Symbol) (r :: Row (*)).
+KnownSymbol l =&gt;
+Rec r -&gt; Label l -&gt; r .! l
+</span><span class="hs-operator hs-var">.!</span></span><span> </span><span class="annot"><span class="annottext">IsLabel &quot;public_key&quot; (Label &quot;public_key&quot;)
+Label &quot;public_key&quot;
+</span><a href="#local-6989586621679289129"><span class="hs-var">#public_key</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-36"></span><span>
+</span><span id="line-37"></span><span>    </span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">(HasCallStack, HasAgentConfig) =&gt;
+TestName -&gt; (ByteString -&gt; Assertion) -&gt; TestTree
+TestName -&gt; (ByteString -&gt; Assertion) -&gt; TestTree
+</span><a href="IC.Test.Spec.Utils.html#simpleTestCase"><span class="hs-identifier hs-var">simpleTestCase</span></a></span><span> </span><span class="annot"><span class="annottext">TestName
+</span><span class="hs-string">&quot;invalid derivation path&quot;</span></span><span> </span><span class="annot"><span class="annottext">((ByteString -&gt; Assertion) -&gt; TestTree)
+-&gt; (ByteString -&gt; Assertion) -&gt; TestTree
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="hs-glyph">\</span><span id="local-6989586621679289088"><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679289088"><span class="hs-identifier hs-var">cid</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-38"></span><span>      </span><span class="annot"><span class="annottext">HasAgentConfig =&gt;
+IC00 -&gt; Maybe ByteString -&gt; Vector ByteString -&gt; IO ReqResponse
+IC00 -&gt; Maybe ByteString -&gt; Vector ByteString -&gt; IO ReqResponse
+</span><a href="IC.Test.Agent.Calls.html#ic_ecdsa_public_key%27"><span class="hs-identifier hs-var">ic_ecdsa_public_key'</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">HasAgentConfig =&gt; ByteString -&gt; IC00
+ByteString -&gt; IC00
+</span><a href="IC.Test.Spec.Utils.html#ic00via"><span class="hs-identifier hs-var">ic00via</span></a></span><span> </span><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679289088"><span class="hs-identifier hs-var">cid</span></a></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">Maybe ByteString
+forall a. Maybe a
+</span><span class="hs-identifier hs-var">Nothing</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">ByteString -&gt; Vector ByteString
+forall a. a -&gt; Vector a
+</span><span class="hs-identifier hs-var">Vec.singleton</span></span><span> </span><span class="annot"><span class="annottext">ByteString
+</span><span class="hs-string">&quot;clearly not Word32&quot;</span></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">IO ReqResponse -&gt; (ReqResponse -&gt; Assertion) -&gt; Assertion
+forall (m :: * -&gt; *) a b. Monad m =&gt; m a -&gt; (a -&gt; m b) -&gt; m b
+</span><span class="hs-operator hs-var">&gt;&gt;=</span></span><span> </span><span class="annot"><span class="annottext">HasCallStack =&gt; [Natural] -&gt; ReqResponse -&gt; Assertion
+[Natural] -&gt; ReqResponse -&gt; Assertion
+</span><a href="IC.Test.Agent.html#isReject"><span class="hs-identifier hs-var">isReject</span></a></span><span> </span><span class="hs-special">[</span><span class="annot"><span class="annottext">Natural
+</span><span class="hs-number">5</span></span><span class="hs-special">]</span><span>
+</span><span id="line-39"></span><span>
+</span><span id="line-40"></span><span>    </span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">(HasCallStack, HasAgentConfig) =&gt;
+TestName -&gt; (ByteString -&gt; Assertion) -&gt; TestTree
+TestName -&gt; (ByteString -&gt; Assertion) -&gt; TestTree
+</span><a href="IC.Test.Spec.Utils.html#simpleTestCase"><span class="hs-identifier hs-var">simpleTestCase</span></a></span><span> </span><span class="annot"><span class="annottext">TestName
+</span><span class="hs-string">&quot;id of non-existent canister&quot;</span></span><span> </span><span class="annot"><span class="annottext">((ByteString -&gt; Assertion) -&gt; TestTree)
+-&gt; (ByteString -&gt; Assertion) -&gt; TestTree
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="hs-glyph">\</span><span id="local-6989586621679289084"><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679289084"><span class="hs-identifier hs-var">cid</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-41"></span><span>      </span><span class="annot"><span class="annottext">HasAgentConfig =&gt;
+IC00 -&gt; Maybe ByteString -&gt; Vector ByteString -&gt; IO ReqResponse
+IC00 -&gt; Maybe ByteString -&gt; Vector ByteString -&gt; IO ReqResponse
+</span><a href="IC.Test.Agent.Calls.html#ic_ecdsa_public_key%27"><span class="hs-identifier hs-var">ic_ecdsa_public_key'</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">HasAgentConfig =&gt; ByteString -&gt; IC00
+ByteString -&gt; IC00
+</span><a href="IC.Test.Spec.Utils.html#ic00via"><span class="hs-identifier hs-var">ic00via</span></a></span><span> </span><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679289084"><span class="hs-identifier hs-var">cid</span></a></span><span class="hs-special">)</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">ByteString -&gt; Maybe ByteString
+forall a. a -&gt; Maybe a
+</span><span class="hs-identifier hs-var">Just</span></span><span> </span><span class="annot"><span class="annottext">ByteString
+</span><span class="hs-string">&quot;Clearly not a valid EntityId&quot;</span></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">Vector ByteString
+forall a. Vector a
+</span><span class="hs-identifier hs-var">Vec.empty</span></span><span> </span><span class="annot"><span class="annottext">IO ReqResponse -&gt; (ReqResponse -&gt; Assertion) -&gt; Assertion
+forall (m :: * -&gt; *) a b. Monad m =&gt; m a -&gt; (a -&gt; m b) -&gt; m b
+</span><span class="hs-operator hs-var">&gt;&gt;=</span></span><span> </span><span class="annot"><span class="annottext">HasCallStack =&gt; [Natural] -&gt; ReqResponse -&gt; Assertion
+[Natural] -&gt; ReqResponse -&gt; Assertion
+</span><a href="IC.Test.Agent.html#isReject"><span class="hs-identifier hs-var">isReject</span></a></span><span> </span><span class="hs-special">[</span><span class="annot"><span class="annottext">Natural
+</span><span class="hs-number">5</span></span><span class="hs-special">]</span><span>
+</span><span id="line-42"></span><span>    </span><span class="hs-special">]</span><span>
+</span><span id="line-43"></span></pre></body></html>

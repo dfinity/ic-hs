@@ -1,0 +1,557 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><link rel="stylesheet" type="text/css" href="style.css" /><script type="text/javascript" src="highlight.js"></script></head><body><pre><span class="hs-pragma">{-# LANGUAGE StandaloneDeriving #-}</span><span>
+</span><span id="line-2"></span><span class="hs-pragma">{-# LANGUAGE ConstraintKinds #-}</span><span>
+</span><span id="line-3"></span><span class="hs-pragma">{-# LANGUAGE DeriveGeneric #-}</span><span>
+</span><span id="line-4"></span><span class="hs-pragma">{-# LANGUAGE OverloadedStrings  #-}</span><span>
+</span><span id="line-5"></span><span class="hs-pragma">{-# LANGUAGE TypeSynonymInstances  #-}</span><span>
+</span><span id="line-6"></span><span class="hs-pragma">{-# OPTIONS_GHC -Wno-orphans #-}</span><span>
+</span><span id="line-7"></span><span class="hs-comment">{- |
+This module defines ToJSON instances of the IC state.
+
+We put them into their own module, despite the usual advise against orphan
+instances, to emphasize that these are there just for debugging purposes using
+`ic-ref`.
+
+(Why JSON? Because Browsers render them nicely in a interactive display where
+you can open and collapse subcomponents &#8211; much easier to get this feature this
+way, compared to writing custom HTML output.)
+-}</span><span>
+</span><span id="line-18"></span><span>
+</span><span id="line-19"></span><span class="hs-keyword">module</span><span> </span><span class="hs-identifier">IC.Debug.JSON</span><span> </span><span class="hs-special">(</span><span class="hs-special">)</span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-20"></span><span>
+</span><span id="line-21"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">GHC.Generics</span></span><span>
+</span><span id="line-22"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Data.Aeson</span></span><span>
+</span><span id="line-23"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Data.Aeson.Types</span></span><span>
+</span><span id="line-24"></span><span>
+</span><span id="line-25"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><span class="hs-identifier">Data.ByteString.Lazy</span></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">BS</span></span><span>
+</span><span id="line-26"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><a href="IC.Canister.StableMemory.html"><span class="hs-identifier">IC.Canister.StableMemory</span></a></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">Stable</span></span><span>
+</span><span id="line-27"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><span class="hs-identifier">Wasm.Syntax.Values</span></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">W</span></span><span>
+</span><span id="line-28"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><span class="hs-identifier">Wasm.Syntax.AST</span></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">W</span></span><span>
+</span><span id="line-29"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><span class="hs-identifier">Text.Hex</span></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">H</span></span><span>
+</span><span id="line-30"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><span class="hs-identifier">Data.Text</span></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">T</span></span><span>
+</span><span id="line-31"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Control.Monad.Random.Lazy</span></span><span>
+</span><span id="line-32"></span><span>
+</span><span id="line-33"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="IC.Types.html"><span class="hs-identifier">IC.Types</span></a></span><span>
+</span><span id="line-34"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="IC.Wasm.Winter.Persist.html"><span class="hs-identifier">IC.Wasm.Winter.Persist</span></a></span><span>
+</span><span id="line-35"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="IC.Purify.html"><span class="hs-identifier">IC.Purify</span></a></span><span>
+</span><span id="line-36"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="IC.Canister.Snapshot.html"><span class="hs-identifier">IC.Canister.Snapshot</span></a></span><span>
+</span><span id="line-37"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="IC.Canister.html"><span class="hs-identifier">IC.Canister</span></a></span><span>
+</span><span id="line-38"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="IC.Ref.html"><span class="hs-identifier">IC.Ref</span></a></span><span>
+</span><span id="line-39"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="IC.Crypto.html"><span class="hs-identifier">IC.Crypto</span></a></span><span>
+</span><span id="line-40"></span><span>
+</span><span id="line-41"></span><span class="annot"><a href="IC.Debug.JSON.html#customOptions"><span class="hs-identifier hs-type">customOptions</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Options</span></span><span>
+</span><span id="line-42"></span><span id="customOptions"><span class="annot"><span class="annottext">customOptions :: Options
+</span><a href="IC.Debug.JSON.html#customOptions"><span class="hs-identifier hs-var hs-var">customOptions</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Options
+</span><span class="hs-identifier hs-var">defaultOptions</span></span><span>
+</span><span id="line-43"></span><span>    </span><span class="hs-special">{</span><span> </span><span class="annot"><span class="annottext">sumEncoding :: SumEncoding
+</span><span class="hs-identifier hs-var">sumEncoding</span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">SumEncoding
+</span><span class="hs-identifier hs-var">ObjectWithSingleField</span></span><span>
+</span><span id="line-44"></span><span>    </span><span class="hs-special">}</span><span>
+</span><span id="line-45"></span><span>
+</span><span id="line-46"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679280328"><span id="local-6989586621679280330"><span class="annot"><span class="hs-identifier hs-type">ToJSON</span></span><span> </span><span class="annot"><span class="hs-identifier hs-type">W.Value</span></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-47"></span><span>    </span><span id="local-6989586621679280182"><span class="annot"><span class="annottext">toJSON :: Value -&gt; Value
+</span><span class="hs-identifier hs-var hs-var hs-var hs-var">toJSON</span></span></span><span>     </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Options -&gt; Value -&gt; Value
+forall a.
+(Generic a, GToJSON' Value Zero (Rep a)) =&gt;
+Options -&gt; a -&gt; Value
+</span><span class="hs-identifier hs-var">genericToJSON</span></span><span> </span><span class="annot"><span class="annottext">Options
+</span><a href="IC.Debug.JSON.html#customOptions"><span class="hs-identifier hs-var">customOptions</span></a></span><span>
+</span><span id="line-48"></span><span>    </span><span id="local-6989586621679280058"><span class="annot"><span class="annottext">toEncoding :: Value -&gt; Encoding
+</span><span class="hs-identifier hs-var hs-var hs-var hs-var">toEncoding</span></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Options -&gt; Value -&gt; Encoding
+forall a.
+(Generic a, GToJSON' Encoding Zero (Rep a)) =&gt;
+Options -&gt; a -&gt; Encoding
+</span><span class="hs-identifier hs-var">genericToEncoding</span></span><span> </span><span class="annot"><span class="annottext">Options
+</span><a href="IC.Debug.JSON.html#customOptions"><span class="hs-identifier hs-var">customOptions</span></a></span><span>
+</span><span id="line-49"></span><span>
+</span><span id="line-50"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679280049"><span id="local-6989586621679280051"><span id="local-6989586621679280053"><span class="annot"><span class="hs-identifier hs-type">ToJSON</span></span><span> </span><span class="annot"><span class="hs-identifier hs-type">BS.ByteString</span></span></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-51"></span><span>    </span><span id="local-6989586621679280048"><span class="annot"><span class="annottext">toJSON :: ByteString -&gt; Value
+</span><a href="#local-6989586621679280048"><span class="hs-identifier hs-var hs-var hs-var hs-var">toJSON</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Text -&gt; Value
+</span><span class="hs-identifier hs-var">String</span></span><span> </span><span class="annot"><span class="annottext">(Text -&gt; Value) -&gt; (ByteString -&gt; Text) -&gt; ByteString -&gt; Value
+forall b c a. (b -&gt; c) -&gt; (a -&gt; b) -&gt; a -&gt; c
+</span><span class="hs-operator hs-var">.</span></span><span> </span><span class="annot"><span class="annottext">ByteString -&gt; Text
+</span><span class="hs-identifier hs-var">H.encodeHex</span></span><span> </span><span class="annot"><span class="annottext">(ByteString -&gt; Text)
+-&gt; (ByteString -&gt; ByteString) -&gt; ByteString -&gt; Text
+forall b c a. (b -&gt; c) -&gt; (a -&gt; b) -&gt; a -&gt; c
+</span><span class="hs-operator hs-var">.</span></span><span> </span><span class="annot"><span class="annottext">ByteString -&gt; ByteString
+</span><span class="hs-identifier hs-var">BS.toStrict</span></span><span>
+</span><span id="line-52"></span><span>
+</span><span id="line-53"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679280041"><span class="annot"><span class="hs-identifier hs-type">ToJSONKey</span></span><span> </span><span class="annot"><span class="hs-identifier hs-type">BS.ByteString</span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-54"></span><span>    </span><span id="local-6989586621679280039"><span class="annot"><span class="annottext">toJSONKey :: ToJSONKeyFunction ByteString
+</span><span class="hs-identifier hs-var hs-var hs-var hs-var">toJSONKey</span></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">(ByteString -&gt; Text) -&gt; ToJSONKeyFunction ByteString
+forall a. (a -&gt; Text) -&gt; ToJSONKeyFunction a
+</span><span class="hs-identifier hs-var">toJSONKeyText</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">ByteString -&gt; Text
+</span><span class="hs-identifier hs-var">H.encodeHex</span></span><span> </span><span class="annot"><span class="annottext">(ByteString -&gt; Text)
+-&gt; (ByteString -&gt; ByteString) -&gt; ByteString -&gt; Text
+forall b c a. (b -&gt; c) -&gt; (a -&gt; b) -&gt; a -&gt; c
+</span><span class="hs-operator hs-var">.</span></span><span> </span><span class="annot"><span class="annottext">ByteString -&gt; ByteString
+</span><span class="hs-identifier hs-var">BS.toStrict</span></span><span class="hs-special">)</span><span>
+</span><span id="line-55"></span><span>
+</span><span id="line-56"></span><span id="local-6989586621679280719"><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679280030"><span id="local-6989586621679280032"><span id="local-6989586621679280034"><span class="annot"><span class="hs-identifier hs-type">ToJSON</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier hs-type">W.Module</span></span><span> </span><span class="annot"><a href="#local-6989586621679280719"><span class="hs-identifier hs-type">f</span></a></span><span class="hs-special">)</span></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-57"></span><span>    </span><span id="local-6989586621679280029"><span class="annot"><span class="annottext">toJSON :: Module f -&gt; Value
+</span><a href="#local-6989586621679280029"><span class="hs-identifier hs-var hs-var hs-var hs-var">toJSON</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">String -&gt; Module f -&gt; Value
+forall a. String -&gt; a -&gt; Value
+</span><a href="IC.Debug.JSON.html#placeholder"><span class="hs-identifier hs-var">placeholder</span></a></span><span> </span><span class="annot"><span class="annottext">String
+</span><span class="hs-string">&quot;(module)&quot;</span></span></span><span>
+</span><span id="line-58"></span><span>
+</span><span id="line-59"></span><span id="local-6989586621679280720"><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679280021"><span id="local-6989586621679280023"><span id="local-6989586621679280025"><span class="annot"><span class="hs-identifier hs-type">ToJSON</span></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Purify.html#Replay"><span class="hs-identifier hs-type">Replay</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679280720"><span class="hs-identifier hs-type">i</span></a></span><span class="hs-special">)</span></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-60"></span><span>    </span><span id="local-6989586621679280020"><span class="annot"><span class="annottext">toJSON :: Replay i -&gt; Value
+</span><a href="#local-6989586621679280020"><span class="hs-identifier hs-var hs-var hs-var hs-var">toJSON</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">String -&gt; Replay i -&gt; Value
+forall a. String -&gt; a -&gt; Value
+</span><a href="IC.Debug.JSON.html#placeholder"><span class="hs-identifier hs-var">placeholder</span></a></span><span> </span><span class="annot"><span class="annottext">String
+</span><span class="hs-string">&quot;(replay)&quot;</span></span></span><span>
+</span><span id="line-61"></span><span>
+</span><span id="line-62"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679280013"><span id="local-6989586621679280015"><span id="local-6989586621679280017"><span class="annot"><span class="hs-identifier hs-type">ToJSON</span></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Canister.StableMemory.html#Repr"><span class="hs-identifier hs-type">Stable.Repr</span></a></span><span class="hs-special">)</span></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-63"></span><span>    </span><span id="local-6989586621679280011"><span class="annot"><span class="annottext">toJSON :: Repr -&gt; Value
+</span><a href="#local-6989586621679280011"><span class="hs-identifier hs-var hs-var hs-var hs-var">toJSON</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">ByteString -&gt; Value
+forall a. ToJSON a =&gt; a -&gt; Value
+</span><span class="hs-identifier hs-var">toJSON</span></span><span> </span><span class="annot"><span class="annottext">(ByteString -&gt; Value) -&gt; (Repr -&gt; ByteString) -&gt; Repr -&gt; Value
+forall b c a. (b -&gt; c) -&gt; (a -&gt; b) -&gt; a -&gt; c
+</span><span class="hs-operator hs-var">.</span></span><span> </span><span class="annot"><span class="annottext">Repr -&gt; ByteString
+</span><a href="IC.Canister.StableMemory.html#serialize"><span class="hs-identifier hs-var">Stable.serialize</span></a></span><span>
+</span><span id="line-64"></span><span>
+</span><span id="line-65"></span><span id="local-6989586621679280592"><span class="annot"><a href="IC.Debug.JSON.html#placeholder"><span class="hs-identifier hs-type">placeholder</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><span class="hs-identifier hs-type">String</span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="#local-6989586621679280592"><span class="hs-identifier hs-type">a</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Value</span></span></span><span>
+</span><span id="line-66"></span><span id="placeholder"><span class="annot"><span class="annottext">placeholder :: forall a. String -&gt; a -&gt; Value
+</span><a href="IC.Debug.JSON.html#placeholder"><span class="hs-identifier hs-var hs-var">placeholder</span></a></span></span><span> </span><span id="local-6989586621679280009"><span class="annot"><span class="annottext">String
+</span><a href="#local-6989586621679280009"><span class="hs-identifier hs-var">s</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Value -&gt; a -&gt; Value
+forall a b. a -&gt; b -&gt; a
+</span><span class="hs-identifier hs-var">const</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Text -&gt; Value
+</span><span class="hs-identifier hs-var">String</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">String -&gt; Text
+</span><span class="hs-identifier hs-var">T.pack</span></span><span> </span><span class="annot"><span class="annottext">String
+</span><a href="#local-6989586621679280009"><span class="hs-identifier hs-var">s</span></a></span><span class="hs-special">)</span><span class="hs-special">)</span><span>
+</span><span id="line-67"></span><span>
+</span><span id="line-68"></span><span class="hs-keyword">deriving</span><span> </span><span class="hs-keyword">instance</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Generic</span></span><span> </span><span class="annot"><a href="IC.Types.html#Timestamp"><span class="hs-identifier hs-type">Timestamp</span></a></span><span>
+</span><span id="line-69"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679279998"><span id="local-6989586621679280000"><span class="annot"><span class="hs-identifier hs-type">ToJSON</span></span><span> </span><span class="annot"><a href="IC.Types.html#Timestamp"><span class="hs-identifier hs-type">Timestamp</span></a></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-70"></span><span>    </span><span id="local-6989586621679279965"><span class="annot"><span class="annottext">toJSON :: Timestamp -&gt; Value
+</span><a href="#local-6989586621679279965"><span class="hs-identifier hs-var hs-var hs-var hs-var">toJSON</span></a></span></span><span>     </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Options -&gt; Timestamp -&gt; Value
+forall a.
+(Generic a, GToJSON' Value Zero (Rep a)) =&gt;
+Options -&gt; a -&gt; Value
+</span><span class="hs-identifier hs-var">genericToJSON</span></span><span> </span><span class="annot"><span class="annottext">Options
+</span><a href="IC.Debug.JSON.html#customOptions"><span class="hs-identifier hs-var">customOptions</span></a></span><span>
+</span><span id="line-71"></span><span>    </span><span id="local-6989586621679279933"><span class="annot"><span class="annottext">toEncoding :: Timestamp -&gt; Encoding
+</span><a href="#local-6989586621679279933"><span class="hs-identifier hs-var hs-var hs-var hs-var">toEncoding</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Options -&gt; Timestamp -&gt; Encoding
+forall a.
+(Generic a, GToJSON' Encoding Zero (Rep a)) =&gt;
+Options -&gt; a -&gt; Encoding
+</span><span class="hs-identifier hs-var">genericToEncoding</span></span><span> </span><span class="annot"><span class="annottext">Options
+</span><a href="IC.Debug.JSON.html#customOptions"><span class="hs-identifier hs-var">customOptions</span></a></span><span>
+</span><span id="line-72"></span><span>
+</span><span id="line-73"></span><span class="hs-keyword">deriving</span><span> </span><span class="hs-keyword">instance</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Generic</span></span><span> </span><span class="annot"><a href="IC.Types.html#NeedsToRespond"><span class="hs-identifier hs-type">NeedsToRespond</span></a></span><span>
+</span><span id="line-74"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679279925"><span id="local-6989586621679279927"><span class="annot"><span class="hs-identifier hs-type">ToJSON</span></span><span> </span><span class="annot"><a href="IC.Types.html#NeedsToRespond"><span class="hs-identifier hs-type">NeedsToRespond</span></a></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-75"></span><span>    </span><span id="local-6989586621679279893"><span class="annot"><span class="annottext">toJSON :: NeedsToRespond -&gt; Value
+</span><a href="#local-6989586621679279893"><span class="hs-identifier hs-var hs-var hs-var hs-var">toJSON</span></a></span></span><span>     </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Options -&gt; NeedsToRespond -&gt; Value
+forall a.
+(Generic a, GToJSON' Value Zero (Rep a)) =&gt;
+Options -&gt; a -&gt; Value
+</span><span class="hs-identifier hs-var">genericToJSON</span></span><span> </span><span class="annot"><span class="annottext">Options
+</span><a href="IC.Debug.JSON.html#customOptions"><span class="hs-identifier hs-var">customOptions</span></a></span><span>
+</span><span id="line-76"></span><span>    </span><span id="local-6989586621679279861"><span class="annot"><span class="annottext">toEncoding :: NeedsToRespond -&gt; Encoding
+</span><a href="#local-6989586621679279861"><span class="hs-identifier hs-var hs-var hs-var hs-var">toEncoding</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Options -&gt; NeedsToRespond -&gt; Encoding
+forall a.
+(Generic a, GToJSON' Encoding Zero (Rep a)) =&gt;
+Options -&gt; a -&gt; Encoding
+</span><span class="hs-identifier hs-var">genericToEncoding</span></span><span> </span><span class="annot"><span class="annottext">Options
+</span><a href="IC.Debug.JSON.html#customOptions"><span class="hs-identifier hs-var">customOptions</span></a></span><span>
+</span><span id="line-77"></span><span>
+</span><span id="line-78"></span><span class="hs-keyword">deriving</span><span> </span><span class="hs-keyword">instance</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Generic</span></span><span> </span><span class="annot"><a href="IC.Types.html#RejectCode"><span class="hs-identifier hs-type">RejectCode</span></a></span><span>
+</span><span id="line-79"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679279853"><span id="local-6989586621679279855"><span class="annot"><span class="hs-identifier hs-type">ToJSON</span></span><span> </span><span class="annot"><a href="IC.Types.html#RejectCode"><span class="hs-identifier hs-type">RejectCode</span></a></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-80"></span><span>    </span><span id="local-6989586621679279721"><span class="annot"><span class="annottext">toJSON :: RejectCode -&gt; Value
+</span><a href="#local-6989586621679279721"><span class="hs-identifier hs-var hs-var hs-var hs-var">toJSON</span></a></span></span><span>     </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Options -&gt; RejectCode -&gt; Value
+forall a.
+(Generic a, GToJSON' Value Zero (Rep a)) =&gt;
+Options -&gt; a -&gt; Value
+</span><span class="hs-identifier hs-var">genericToJSON</span></span><span> </span><span class="annot"><span class="annottext">Options
+</span><a href="IC.Debug.JSON.html#customOptions"><span class="hs-identifier hs-var">customOptions</span></a></span><span>
+</span><span id="line-81"></span><span>    </span><span id="local-6989586621679279596"><span class="annot"><span class="annottext">toEncoding :: RejectCode -&gt; Encoding
+</span><a href="#local-6989586621679279596"><span class="hs-identifier hs-var hs-var hs-var hs-var">toEncoding</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Options -&gt; RejectCode -&gt; Encoding
+forall a.
+(Generic a, GToJSON' Encoding Zero (Rep a)) =&gt;
+Options -&gt; a -&gt; Encoding
+</span><span class="hs-identifier hs-var">genericToEncoding</span></span><span> </span><span class="annot"><span class="annottext">Options
+</span><a href="IC.Debug.JSON.html#customOptions"><span class="hs-identifier hs-var">customOptions</span></a></span><span>
+</span><span id="line-82"></span><span>
+</span><span id="line-83"></span><span class="hs-keyword">deriving</span><span> </span><span class="hs-keyword">instance</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Generic</span></span><span> </span><span class="annot"><a href="IC.Types.html#ErrorCode"><span class="hs-identifier hs-type">ErrorCode</span></a></span><span>
+</span><span id="line-84"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679279588"><span id="local-6989586621679279590"><span class="annot"><span class="hs-identifier hs-type">ToJSON</span></span><span> </span><span class="annot"><a href="IC.Types.html#ErrorCode"><span class="hs-identifier hs-type">ErrorCode</span></a></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-85"></span><span>    </span><span id="local-6989586621679279236"><span class="annot"><span class="annottext">toJSON :: ErrorCode -&gt; Value
+</span><a href="#local-6989586621679279236"><span class="hs-identifier hs-var hs-var hs-var hs-var">toJSON</span></a></span></span><span>     </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Options -&gt; ErrorCode -&gt; Value
+forall a.
+(Generic a, GToJSON' Value Zero (Rep a)) =&gt;
+Options -&gt; a -&gt; Value
+</span><span class="hs-identifier hs-var">genericToJSON</span></span><span> </span><span class="annot"><span class="annottext">Options
+</span><a href="IC.Debug.JSON.html#customOptions"><span class="hs-identifier hs-var">customOptions</span></a></span><span>
+</span><span id="line-86"></span><span>    </span><span id="local-6989586621679278883"><span class="annot"><span class="annottext">toEncoding :: ErrorCode -&gt; Encoding
+</span><a href="#local-6989586621679278883"><span class="hs-identifier hs-var hs-var hs-var hs-var">toEncoding</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Options -&gt; ErrorCode -&gt; Encoding
+forall a.
+(Generic a, GToJSON' Encoding Zero (Rep a)) =&gt;
+Options -&gt; a -&gt; Encoding
+</span><span class="hs-identifier hs-var">genericToEncoding</span></span><span> </span><span class="annot"><span class="annottext">Options
+</span><a href="IC.Debug.JSON.html#customOptions"><span class="hs-identifier hs-var">customOptions</span></a></span><span>
+</span><span id="line-87"></span><span>
+</span><span id="line-88"></span><span class="hs-keyword">deriving</span><span> </span><span class="hs-keyword">instance</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Generic</span></span><span> </span><span class="annot"><a href="IC.Types.html#Response"><span class="hs-identifier hs-type">Response</span></a></span><span>
+</span><span id="line-89"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679278875"><span id="local-6989586621679278877"><span class="annot"><span class="hs-identifier hs-type">ToJSON</span></span><span> </span><span class="annot"><a href="IC.Types.html#Response"><span class="hs-identifier hs-type">Response</span></a></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-90"></span><span>    </span><span id="local-6989586621679278809"><span class="annot"><span class="annottext">toJSON :: Response -&gt; Value
+</span><a href="#local-6989586621679278809"><span class="hs-identifier hs-var hs-var hs-var hs-var">toJSON</span></a></span></span><span>     </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Options -&gt; Response -&gt; Value
+forall a.
+(Generic a, GToJSON' Value Zero (Rep a)) =&gt;
+Options -&gt; a -&gt; Value
+</span><span class="hs-identifier hs-var">genericToJSON</span></span><span> </span><span class="annot"><span class="annottext">Options
+</span><a href="IC.Debug.JSON.html#customOptions"><span class="hs-identifier hs-var">customOptions</span></a></span><span>
+</span><span id="line-91"></span><span>    </span><span id="local-6989586621679278745"><span class="annot"><span class="annottext">toEncoding :: Response -&gt; Encoding
+</span><a href="#local-6989586621679278745"><span class="hs-identifier hs-var hs-var hs-var hs-var">toEncoding</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Options -&gt; Response -&gt; Encoding
+forall a.
+(Generic a, GToJSON' Encoding Zero (Rep a)) =&gt;
+Options -&gt; a -&gt; Encoding
+</span><span class="hs-identifier hs-var">genericToEncoding</span></span><span> </span><span class="annot"><span class="annottext">Options
+</span><a href="IC.Debug.JSON.html#customOptions"><span class="hs-identifier hs-var">customOptions</span></a></span><span>
+</span><span id="line-92"></span><span>
+</span><span id="line-93"></span><span class="hs-keyword">deriving</span><span> </span><span class="hs-keyword">instance</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Generic</span></span><span> </span><span class="annot"><a href="IC.Types.html#WasmClosure"><span class="hs-identifier hs-type">WasmClosure</span></a></span><span>
+</span><span id="line-94"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679278737"><span id="local-6989586621679278739"><span class="annot"><span class="hs-identifier hs-type">ToJSON</span></span><span> </span><span class="annot"><a href="IC.Types.html#WasmClosure"><span class="hs-identifier hs-type">WasmClosure</span></a></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-95"></span><span>    </span><span id="local-6989586621679278658"><span class="annot"><span class="annottext">toJSON :: WasmClosure -&gt; Value
+</span><a href="#local-6989586621679278658"><span class="hs-identifier hs-var hs-var hs-var hs-var">toJSON</span></a></span></span><span>     </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Options -&gt; WasmClosure -&gt; Value
+forall a.
+(Generic a, GToJSON' Value Zero (Rep a)) =&gt;
+Options -&gt; a -&gt; Value
+</span><span class="hs-identifier hs-var">genericToJSON</span></span><span> </span><span class="annot"><span class="annottext">Options
+</span><a href="IC.Debug.JSON.html#customOptions"><span class="hs-identifier hs-var">customOptions</span></a></span><span>
+</span><span id="line-96"></span><span>    </span><span id="local-6989586621679278596"><span class="annot"><span class="annottext">toEncoding :: WasmClosure -&gt; Encoding
+</span><a href="#local-6989586621679278596"><span class="hs-identifier hs-var hs-var hs-var hs-var">toEncoding</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Options -&gt; WasmClosure -&gt; Encoding
+forall a.
+(Generic a, GToJSON' Encoding Zero (Rep a)) =&gt;
+Options -&gt; a -&gt; Encoding
+</span><span class="hs-identifier hs-var">genericToEncoding</span></span><span> </span><span class="annot"><span class="annottext">Options
+</span><a href="IC.Debug.JSON.html#customOptions"><span class="hs-identifier hs-var">customOptions</span></a></span><span>
+</span><span id="line-97"></span><span>
+</span><span id="line-98"></span><span class="hs-keyword">deriving</span><span> </span><span class="hs-keyword">instance</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Generic</span></span><span> </span><span class="annot"><a href="IC.Types.html#Callback"><span class="hs-identifier hs-type">Callback</span></a></span><span>
+</span><span id="line-99"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679278588"><span id="local-6989586621679278590"><span class="annot"><span class="hs-identifier hs-type">ToJSON</span></span><span> </span><span class="annot"><a href="IC.Types.html#Callback"><span class="hs-identifier hs-type">Callback</span></a></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-100"></span><span>    </span><span id="local-6989586621679278508"><span class="annot"><span class="annottext">toJSON :: Callback -&gt; Value
+</span><a href="#local-6989586621679278508"><span class="hs-identifier hs-var hs-var hs-var hs-var">toJSON</span></a></span></span><span>     </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Options -&gt; Callback -&gt; Value
+forall a.
+(Generic a, GToJSON' Value Zero (Rep a)) =&gt;
+Options -&gt; a -&gt; Value
+</span><span class="hs-identifier hs-var">genericToJSON</span></span><span> </span><span class="annot"><span class="annottext">Options
+</span><a href="IC.Debug.JSON.html#customOptions"><span class="hs-identifier hs-var">customOptions</span></a></span><span>
+</span><span id="line-101"></span><span>    </span><span id="local-6989586621679278434"><span class="annot"><span class="annottext">toEncoding :: Callback -&gt; Encoding
+</span><a href="#local-6989586621679278434"><span class="hs-identifier hs-var hs-var hs-var hs-var">toEncoding</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Options -&gt; Callback -&gt; Encoding
+forall a.
+(Generic a, GToJSON' Encoding Zero (Rep a)) =&gt;
+Options -&gt; a -&gt; Encoding
+</span><span class="hs-identifier hs-var">genericToEncoding</span></span><span> </span><span class="annot"><span class="annottext">Options
+</span><a href="IC.Debug.JSON.html#customOptions"><span class="hs-identifier hs-var">customOptions</span></a></span><span>
+</span><span id="line-102"></span><span>
+</span><span id="line-103"></span><span class="hs-keyword">deriving</span><span> </span><span class="hs-keyword">instance</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Generic</span></span><span> </span><span class="annot"><a href="IC.Types.html#MethodCall"><span class="hs-identifier hs-type">MethodCall</span></a></span><span>
+</span><span id="line-104"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679278426"><span id="local-6989586621679278428"><span class="annot"><span class="hs-identifier hs-type">ToJSON</span></span><span> </span><span class="annot"><a href="IC.Types.html#MethodCall"><span class="hs-identifier hs-type">MethodCall</span></a></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-105"></span><span>    </span><span id="local-6989586621679278315"><span class="annot"><span class="annottext">toJSON :: MethodCall -&gt; Value
+</span><a href="#local-6989586621679278315"><span class="hs-identifier hs-var hs-var hs-var hs-var">toJSON</span></a></span></span><span>     </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Options -&gt; MethodCall -&gt; Value
+forall a.
+(Generic a, GToJSON' Value Zero (Rep a)) =&gt;
+Options -&gt; a -&gt; Value
+</span><span class="hs-identifier hs-var">genericToJSON</span></span><span> </span><span class="annot"><span class="annottext">Options
+</span><a href="IC.Debug.JSON.html#customOptions"><span class="hs-identifier hs-var">customOptions</span></a></span><span>
+</span><span id="line-106"></span><span>    </span><span id="local-6989586621679278211"><span class="annot"><span class="annottext">toEncoding :: MethodCall -&gt; Encoding
+</span><a href="#local-6989586621679278211"><span class="hs-identifier hs-var hs-var hs-var hs-var">toEncoding</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Options -&gt; MethodCall -&gt; Encoding
+forall a.
+(Generic a, GToJSON' Encoding Zero (Rep a)) =&gt;
+Options -&gt; a -&gt; Encoding
+</span><span class="hs-identifier hs-var">genericToEncoding</span></span><span> </span><span class="annot"><span class="annottext">Options
+</span><a href="IC.Debug.JSON.html#customOptions"><span class="hs-identifier hs-var">customOptions</span></a></span><span>
+</span><span id="line-107"></span><span>
+</span><span id="line-108"></span><span class="hs-keyword">deriving</span><span> </span><span class="hs-keyword">instance</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Generic</span></span><span> </span><span class="annot"><a href="IC.Wasm.Winter.Persist.html#PInstance"><span class="hs-identifier hs-type">PInstance</span></a></span><span>
+</span><span id="line-109"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679278203"><span id="local-6989586621679278205"><span class="annot"><span class="hs-identifier hs-type">ToJSON</span></span><span> </span><span class="annot"><a href="IC.Wasm.Winter.Persist.html#PInstance"><span class="hs-identifier hs-type">PInstance</span></a></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-110"></span><span>    </span><span id="local-6989586621679278168"><span class="annot"><span class="annottext">toJSON :: PInstance -&gt; Value
+</span><a href="#local-6989586621679278168"><span class="hs-identifier hs-var hs-var hs-var hs-var">toJSON</span></a></span></span><span>     </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Options -&gt; PInstance -&gt; Value
+forall a.
+(Generic a, GToJSON' Value Zero (Rep a)) =&gt;
+Options -&gt; a -&gt; Value
+</span><span class="hs-identifier hs-var">genericToJSON</span></span><span> </span><span class="annot"><span class="annottext">Options
+</span><a href="IC.Debug.JSON.html#customOptions"><span class="hs-identifier hs-var">customOptions</span></a></span><span>
+</span><span id="line-111"></span><span>    </span><span id="local-6989586621679278134"><span class="annot"><span class="annottext">toEncoding :: PInstance -&gt; Encoding
+</span><a href="#local-6989586621679278134"><span class="hs-identifier hs-var hs-var hs-var hs-var">toEncoding</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Options -&gt; PInstance -&gt; Encoding
+forall a.
+(Generic a, GToJSON' Encoding Zero (Rep a)) =&gt;
+Options -&gt; a -&gt; Encoding
+</span><span class="hs-identifier hs-var">genericToEncoding</span></span><span> </span><span class="annot"><span class="annottext">Options
+</span><a href="IC.Debug.JSON.html#customOptions"><span class="hs-identifier hs-var">customOptions</span></a></span><span>
+</span><span id="line-112"></span><span>
+</span><span id="line-113"></span><span class="hs-keyword">deriving</span><span> </span><span class="hs-keyword">instance</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Generic</span></span><span> </span><span class="annot"><a href="IC.Wasm.Winter.Persist.html#PModuleInst"><span class="hs-identifier hs-type">PModuleInst</span></a></span><span>
+</span><span id="line-114"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679278126"><span id="local-6989586621679278128"><span class="annot"><span class="hs-identifier hs-type">ToJSON</span></span><span> </span><span class="annot"><a href="IC.Wasm.Winter.Persist.html#PModuleInst"><span class="hs-identifier hs-type">PModuleInst</span></a></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-115"></span><span>    </span><span id="local-6989586621679278060"><span class="annot"><span class="annottext">toJSON :: PModuleInst -&gt; Value
+</span><a href="#local-6989586621679278060"><span class="hs-identifier hs-var hs-var hs-var hs-var">toJSON</span></a></span></span><span>     </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Options -&gt; PModuleInst -&gt; Value
+forall a.
+(Generic a, GToJSON' Value Zero (Rep a)) =&gt;
+Options -&gt; a -&gt; Value
+</span><span class="hs-identifier hs-var">genericToJSON</span></span><span> </span><span class="annot"><span class="annottext">Options
+</span><a href="IC.Debug.JSON.html#customOptions"><span class="hs-identifier hs-var">customOptions</span></a></span><span>
+</span><span id="line-116"></span><span>    </span><span id="local-6989586621679277996"><span class="annot"><span class="annottext">toEncoding :: PModuleInst -&gt; Encoding
+</span><a href="#local-6989586621679277996"><span class="hs-identifier hs-var hs-var hs-var hs-var">toEncoding</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Options -&gt; PModuleInst -&gt; Encoding
+forall a.
+(Generic a, GToJSON' Encoding Zero (Rep a)) =&gt;
+Options -&gt; a -&gt; Encoding
+</span><span class="hs-identifier hs-var">genericToEncoding</span></span><span> </span><span class="annot"><span class="annottext">Options
+</span><a href="IC.Debug.JSON.html#customOptions"><span class="hs-identifier hs-var">customOptions</span></a></span><span>
+</span><span id="line-117"></span><span>
+</span><span id="line-118"></span><span id="local-6989586621679280718"><span class="hs-keyword">deriving</span><span> </span><span class="hs-keyword">instance</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Generic</span></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Purify.html#Snapshot"><span class="hs-identifier hs-type">Snapshot</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679280718"><span class="hs-identifier hs-type">a</span></a></span><span class="hs-special">)</span></span><span>
+</span><span id="line-119"></span><span id="local-6989586621679280721"><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679277988"><span id="local-6989586621679277990"><span class="annot"><span class="hs-identifier hs-type">ToJSON</span></span><span> </span><span class="annot"><a href="#local-6989586621679280721"><span class="hs-identifier hs-type">a</span></a></span><span> </span><span class="hs-glyph">=&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">ToJSON</span></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Purify.html#Snapshot"><span class="hs-identifier hs-type">Snapshot</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679280721"><span class="hs-identifier hs-type">a</span></a></span><span class="hs-special">)</span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-120"></span><span>    </span><span id="local-6989586621679277958"><span class="annot"><span class="annottext">toJSON :: Snapshot a -&gt; Value
+</span><a href="#local-6989586621679277958"><span class="hs-identifier hs-var hs-var hs-var hs-var">toJSON</span></a></span></span><span>     </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Options -&gt; Snapshot a -&gt; Value
+forall a.
+(Generic a, GToJSON' Value Zero (Rep a)) =&gt;
+Options -&gt; a -&gt; Value
+</span><span class="hs-identifier hs-var">genericToJSON</span></span><span> </span><span class="annot"><span class="annottext">Options
+</span><a href="IC.Debug.JSON.html#customOptions"><span class="hs-identifier hs-var">customOptions</span></a></span><span>
+</span><span id="line-121"></span><span>    </span><span id="local-6989586621679277927"><span class="annot"><span class="annottext">toEncoding :: Snapshot a -&gt; Encoding
+</span><a href="#local-6989586621679277927"><span class="hs-identifier hs-var hs-var hs-var hs-var">toEncoding</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Options -&gt; Snapshot a -&gt; Encoding
+forall a.
+(Generic a, GToJSON' Encoding Zero (Rep a)) =&gt;
+Options -&gt; a -&gt; Encoding
+</span><span class="hs-identifier hs-var">genericToEncoding</span></span><span> </span><span class="annot"><span class="annottext">Options
+</span><a href="IC.Debug.JSON.html#customOptions"><span class="hs-identifier hs-var">customOptions</span></a></span></span><span>
+</span><span id="line-122"></span><span>
+</span><span id="line-123"></span><span class="hs-keyword">deriving</span><span> </span><span class="hs-keyword">instance</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Generic</span></span><span> </span><span class="annot"><a href="IC.Canister.Snapshot.html#CanisterSnapshot"><span class="hs-identifier hs-type">CanisterSnapshot</span></a></span><span>
+</span><span id="line-124"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679277919"><span id="local-6989586621679277921"><span class="annot"><span class="hs-identifier hs-type">ToJSON</span></span><span> </span><span class="annot"><a href="IC.Canister.Snapshot.html#CanisterSnapshot"><span class="hs-identifier hs-type">CanisterSnapshot</span></a></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-125"></span><span>    </span><span id="local-6989586621679277841"><span class="annot"><span class="annottext">toJSON :: CanisterSnapshot -&gt; Value
+</span><a href="#local-6989586621679277841"><span class="hs-identifier hs-var hs-var hs-var hs-var">toJSON</span></a></span></span><span>     </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Options -&gt; CanisterSnapshot -&gt; Value
+forall a.
+(Generic a, GToJSON' Value Zero (Rep a)) =&gt;
+Options -&gt; a -&gt; Value
+</span><span class="hs-identifier hs-var">genericToJSON</span></span><span> </span><span class="annot"><span class="annottext">Options
+</span><a href="IC.Debug.JSON.html#customOptions"><span class="hs-identifier hs-var">customOptions</span></a></span><span>
+</span><span id="line-126"></span><span>    </span><span id="local-6989586621679277766"><span class="annot"><span class="annottext">toEncoding :: CanisterSnapshot -&gt; Encoding
+</span><a href="#local-6989586621679277766"><span class="hs-identifier hs-var hs-var hs-var hs-var">toEncoding</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Options -&gt; CanisterSnapshot -&gt; Encoding
+forall a.
+(Generic a, GToJSON' Encoding Zero (Rep a)) =&gt;
+Options -&gt; a -&gt; Encoding
+</span><span class="hs-identifier hs-var">genericToEncoding</span></span><span> </span><span class="annot"><span class="annottext">Options
+</span><a href="IC.Debug.JSON.html#customOptions"><span class="hs-identifier hs-var">customOptions</span></a></span><span>
+</span><span id="line-127"></span><span>
+</span><span id="line-128"></span><span class="hs-keyword">deriving</span><span> </span><span class="hs-keyword">instance</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Generic</span></span><span> </span><span class="annot"><a href="IC.Ref.html#IC"><span class="hs-identifier hs-type">IC</span></a></span><span>
+</span><span id="line-129"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679277758"><span id="local-6989586621679277760"><span class="annot"><span class="hs-identifier hs-type">ToJSON</span></span><span> </span><span class="annot"><a href="IC.Ref.html#IC"><span class="hs-identifier hs-type">IC</span></a></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-130"></span><span>    </span><span id="local-6989586621679277610"><span class="annot"><span class="annottext">toJSON :: IC -&gt; Value
+</span><a href="#local-6989586621679277610"><span class="hs-identifier hs-var hs-var hs-var hs-var">toJSON</span></a></span></span><span>     </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Options -&gt; IC -&gt; Value
+forall a.
+(Generic a, GToJSON' Value Zero (Rep a)) =&gt;
+Options -&gt; a -&gt; Value
+</span><span class="hs-identifier hs-var">genericToJSON</span></span><span> </span><span class="annot"><span class="annottext">Options
+</span><a href="IC.Debug.JSON.html#customOptions"><span class="hs-identifier hs-var">customOptions</span></a></span><span>
+</span><span id="line-131"></span><span>    </span><span id="local-6989586621679277474"><span class="annot"><span class="annottext">toEncoding :: IC -&gt; Encoding
+</span><a href="#local-6989586621679277474"><span class="hs-identifier hs-var hs-var hs-var hs-var">toEncoding</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Options -&gt; IC -&gt; Encoding
+forall a.
+(Generic a, GToJSON' Encoding Zero (Rep a)) =&gt;
+Options -&gt; a -&gt; Encoding
+</span><span class="hs-identifier hs-var">genericToEncoding</span></span><span> </span><span class="annot"><span class="annottext">Options
+</span><a href="IC.Debug.JSON.html#customOptions"><span class="hs-identifier hs-var">customOptions</span></a></span><span>
+</span><span id="line-132"></span><span>
+</span><span id="line-133"></span><span class="hs-keyword">deriving</span><span> </span><span class="hs-keyword">instance</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Generic</span></span><span> </span><span class="annot"><a href="IC.Ref.html#CallContext"><span class="hs-identifier hs-type">CallContext</span></a></span><span>
+</span><span id="line-134"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679277466"><span id="local-6989586621679277468"><span class="annot"><span class="hs-identifier hs-type">ToJSON</span></span><span> </span><span class="annot"><a href="IC.Ref.html#CallContext"><span class="hs-identifier hs-type">CallContext</span></a></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-135"></span><span>    </span><span id="local-6989586621679277339"><span class="annot"><span class="annottext">toJSON :: CallContext -&gt; Value
+</span><a href="#local-6989586621679277339"><span class="hs-identifier hs-var hs-var hs-var hs-var">toJSON</span></a></span></span><span>     </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Options -&gt; CallContext -&gt; Value
+forall a.
+(Generic a, GToJSON' Value Zero (Rep a)) =&gt;
+Options -&gt; a -&gt; Value
+</span><span class="hs-identifier hs-var">genericToJSON</span></span><span> </span><span class="annot"><span class="annottext">Options
+</span><a href="IC.Debug.JSON.html#customOptions"><span class="hs-identifier hs-var">customOptions</span></a></span><span>
+</span><span id="line-136"></span><span>    </span><span id="local-6989586621679277221"><span class="annot"><span class="annottext">toEncoding :: CallContext -&gt; Encoding
+</span><a href="#local-6989586621679277221"><span class="hs-identifier hs-var hs-var hs-var hs-var">toEncoding</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Options -&gt; CallContext -&gt; Encoding
+forall a.
+(Generic a, GToJSON' Encoding Zero (Rep a)) =&gt;
+Options -&gt; a -&gt; Encoding
+</span><span class="hs-identifier hs-var">genericToEncoding</span></span><span> </span><span class="annot"><span class="annottext">Options
+</span><a href="IC.Debug.JSON.html#customOptions"><span class="hs-identifier hs-var">customOptions</span></a></span><span>
+</span><span id="line-137"></span><span>
+</span><span id="line-138"></span><span class="hs-keyword">deriving</span><span> </span><span class="hs-keyword">instance</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Generic</span></span><span> </span><span class="annot"><a href="IC.Ref.html#Message"><span class="hs-identifier hs-type">Message</span></a></span><span>
+</span><span id="line-139"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679277213"><span id="local-6989586621679277215"><span class="annot"><span class="hs-identifier hs-type">ToJSON</span></span><span> </span><span class="annot"><a href="IC.Ref.html#Message"><span class="hs-identifier hs-type">Message</span></a></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-140"></span><span>    </span><span id="local-6989586621679277085"><span class="annot"><span class="annottext">toJSON :: Message -&gt; Value
+</span><a href="#local-6989586621679277085"><span class="hs-identifier hs-var hs-var hs-var hs-var">toJSON</span></a></span></span><span>     </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Options -&gt; Message -&gt; Value
+forall a.
+(Generic a, GToJSON' Value Zero (Rep a)) =&gt;
+Options -&gt; a -&gt; Value
+</span><span class="hs-identifier hs-var">genericToJSON</span></span><span> </span><span class="annot"><span class="annottext">Options
+</span><a href="IC.Debug.JSON.html#customOptions"><span class="hs-identifier hs-var">customOptions</span></a></span><span>
+</span><span id="line-141"></span><span>    </span><span id="local-6989586621679276962"><span class="annot"><span class="annottext">toEncoding :: Message -&gt; Encoding
+</span><a href="#local-6989586621679276962"><span class="hs-identifier hs-var hs-var hs-var hs-var">toEncoding</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Options -&gt; Message -&gt; Encoding
+forall a.
+(Generic a, GToJSON' Encoding Zero (Rep a)) =&gt;
+Options -&gt; a -&gt; Encoding
+</span><span class="hs-identifier hs-var">genericToEncoding</span></span><span> </span><span class="annot"><span class="annottext">Options
+</span><a href="IC.Debug.JSON.html#customOptions"><span class="hs-identifier hs-var">customOptions</span></a></span><span>
+</span><span id="line-142"></span><span>
+</span><span id="line-143"></span><span class="hs-keyword">deriving</span><span> </span><span class="hs-keyword">instance</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Generic</span></span><span> </span><span class="annot"><a href="IC.Ref.html#RequestStatus"><span class="hs-identifier hs-type">RequestStatus</span></a></span><span>
+</span><span id="line-144"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679276954"><span id="local-6989586621679276956"><span class="annot"><span class="hs-identifier hs-type">ToJSON</span></span><span> </span><span class="annot"><a href="IC.Ref.html#RequestStatus"><span class="hs-identifier hs-type">RequestStatus</span></a></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-145"></span><span>    </span><span id="local-6989586621679276875"><span class="annot"><span class="annottext">toJSON :: RequestStatus -&gt; Value
+</span><a href="#local-6989586621679276875"><span class="hs-identifier hs-var hs-var hs-var hs-var">toJSON</span></a></span></span><span>     </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Options -&gt; RequestStatus -&gt; Value
+forall a.
+(Generic a, GToJSON' Value Zero (Rep a)) =&gt;
+Options -&gt; a -&gt; Value
+</span><span class="hs-identifier hs-var">genericToJSON</span></span><span> </span><span class="annot"><span class="annottext">Options
+</span><a href="IC.Debug.JSON.html#customOptions"><span class="hs-identifier hs-var">customOptions</span></a></span><span>
+</span><span id="line-146"></span><span>    </span><span id="local-6989586621679276796"><span class="annot"><span class="annottext">toEncoding :: RequestStatus -&gt; Encoding
+</span><a href="#local-6989586621679276796"><span class="hs-identifier hs-var hs-var hs-var hs-var">toEncoding</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Options -&gt; RequestStatus -&gt; Encoding
+forall a.
+(Generic a, GToJSON' Encoding Zero (Rep a)) =&gt;
+Options -&gt; a -&gt; Encoding
+</span><span class="hs-identifier hs-var">genericToEncoding</span></span><span> </span><span class="annot"><span class="annottext">Options
+</span><a href="IC.Debug.JSON.html#customOptions"><span class="hs-identifier hs-var">customOptions</span></a></span><span>
+</span><span id="line-147"></span><span>
+</span><span id="line-148"></span><span class="hs-keyword">deriving</span><span> </span><span class="hs-keyword">instance</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Generic</span></span><span> </span><span class="annot"><a href="IC.Ref.html#CallResponse"><span class="hs-identifier hs-type">CallResponse</span></a></span><span>
+</span><span id="line-149"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679276788"><span id="local-6989586621679276790"><span class="annot"><span class="hs-identifier hs-type">ToJSON</span></span><span> </span><span class="annot"><a href="IC.Ref.html#CallResponse"><span class="hs-identifier hs-type">CallResponse</span></a></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-150"></span><span>    </span><span id="local-6989586621679276722"><span class="annot"><span class="annottext">toJSON :: CallResponse -&gt; Value
+</span><a href="#local-6989586621679276722"><span class="hs-identifier hs-var hs-var hs-var hs-var">toJSON</span></a></span></span><span>     </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Options -&gt; CallResponse -&gt; Value
+forall a.
+(Generic a, GToJSON' Value Zero (Rep a)) =&gt;
+Options -&gt; a -&gt; Value
+</span><span class="hs-identifier hs-var">genericToJSON</span></span><span> </span><span class="annot"><span class="annottext">Options
+</span><a href="IC.Debug.JSON.html#customOptions"><span class="hs-identifier hs-var">customOptions</span></a></span><span>
+</span><span id="line-151"></span><span>    </span><span id="local-6989586621679276656"><span class="annot"><span class="annottext">toEncoding :: CallResponse -&gt; Encoding
+</span><a href="#local-6989586621679276656"><span class="hs-identifier hs-var hs-var hs-var hs-var">toEncoding</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Options -&gt; CallResponse -&gt; Encoding
+forall a.
+(Generic a, GToJSON' Encoding Zero (Rep a)) =&gt;
+Options -&gt; a -&gt; Encoding
+</span><span class="hs-identifier hs-var">genericToEncoding</span></span><span> </span><span class="annot"><span class="annottext">Options
+</span><a href="IC.Debug.JSON.html#customOptions"><span class="hs-identifier hs-var">customOptions</span></a></span><span>
+</span><span id="line-152"></span><span>
+</span><span id="line-153"></span><span>
+</span><span id="line-154"></span><span class="hs-keyword">deriving</span><span> </span><span class="hs-keyword">instance</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Generic</span></span><span> </span><span class="annot"><a href="IC.Ref.html#CallRequest"><span class="hs-identifier hs-type">CallRequest</span></a></span><span>
+</span><span id="line-155"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679276648"><span id="local-6989586621679276650"><span class="annot"><span class="hs-identifier hs-type">ToJSON</span></span><span> </span><span class="annot"><a href="IC.Ref.html#CallRequest"><span class="hs-identifier hs-type">CallRequest</span></a></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-156"></span><span>    </span><span id="local-6989586621679276594"><span class="annot"><span class="annottext">toJSON :: CallRequest -&gt; Value
+</span><a href="#local-6989586621679276594"><span class="hs-identifier hs-var hs-var hs-var hs-var">toJSON</span></a></span></span><span>     </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Options -&gt; CallRequest -&gt; Value
+forall a.
+(Generic a, GToJSON' Value Zero (Rep a)) =&gt;
+Options -&gt; a -&gt; Value
+</span><span class="hs-identifier hs-var">genericToJSON</span></span><span> </span><span class="annot"><span class="annottext">Options
+</span><a href="IC.Debug.JSON.html#customOptions"><span class="hs-identifier hs-var">customOptions</span></a></span><span>
+</span><span id="line-157"></span><span>    </span><span id="local-6989586621679276545"><span class="annot"><span class="annottext">toEncoding :: CallRequest -&gt; Encoding
+</span><a href="#local-6989586621679276545"><span class="hs-identifier hs-var hs-var hs-var hs-var">toEncoding</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Options -&gt; CallRequest -&gt; Encoding
+forall a.
+(Generic a, GToJSON' Encoding Zero (Rep a)) =&gt;
+Options -&gt; a -&gt; Encoding
+</span><span class="hs-identifier hs-var">genericToEncoding</span></span><span> </span><span class="annot"><span class="annottext">Options
+</span><a href="IC.Debug.JSON.html#customOptions"><span class="hs-identifier hs-var">customOptions</span></a></span><span>
+</span><span id="line-158"></span><span>
+</span><span id="line-159"></span><span class="hs-keyword">deriving</span><span> </span><span class="hs-keyword">instance</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Generic</span></span><span> </span><span class="annot"><a href="IC.Ref.html#RunStatus"><span class="hs-identifier hs-type">RunStatus</span></a></span><span>
+</span><span id="line-160"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679276537"><span id="local-6989586621679276539"><span class="annot"><span class="hs-identifier hs-type">ToJSON</span></span><span> </span><span class="annot"><a href="IC.Ref.html#RunStatus"><span class="hs-identifier hs-type">RunStatus</span></a></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-161"></span><span>    </span><span id="local-6989586621679276436"><span class="annot"><span class="annottext">toJSON :: RunStatus -&gt; Value
+</span><a href="#local-6989586621679276436"><span class="hs-identifier hs-var hs-var hs-var hs-var">toJSON</span></a></span></span><span>     </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Options -&gt; RunStatus -&gt; Value
+forall a.
+(Generic a, GToJSON' Value Zero (Rep a)) =&gt;
+Options -&gt; a -&gt; Value
+</span><span class="hs-identifier hs-var">genericToJSON</span></span><span> </span><span class="annot"><span class="annottext">Options
+</span><a href="IC.Debug.JSON.html#customOptions"><span class="hs-identifier hs-var">customOptions</span></a></span><span>
+</span><span id="line-162"></span><span>    </span><span id="local-6989586621679276335"><span class="annot"><span class="annottext">toEncoding :: RunStatus -&gt; Encoding
+</span><a href="#local-6989586621679276335"><span class="hs-identifier hs-var hs-var hs-var hs-var">toEncoding</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Options -&gt; RunStatus -&gt; Encoding
+forall a.
+(Generic a, GToJSON' Encoding Zero (Rep a)) =&gt;
+Options -&gt; a -&gt; Encoding
+</span><span class="hs-identifier hs-var">genericToEncoding</span></span><span> </span><span class="annot"><span class="annottext">Options
+</span><a href="IC.Debug.JSON.html#customOptions"><span class="hs-identifier hs-var">customOptions</span></a></span><span>
+</span><span id="line-163"></span><span>
+</span><span id="line-164"></span><span class="hs-keyword">deriving</span><span> </span><span class="hs-keyword">instance</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Generic</span></span><span> </span><span class="annot"><a href="IC.Ref.html#CanState"><span class="hs-identifier hs-type">CanState</span></a></span><span>
+</span><span id="line-165"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679276327"><span id="local-6989586621679276329"><span class="annot"><span class="hs-identifier hs-type">ToJSON</span></span><span> </span><span class="annot"><a href="IC.Ref.html#CanState"><span class="hs-identifier hs-type">CanState</span></a></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-166"></span><span>    </span><span id="local-6989586621679276142"><span class="annot"><span class="annottext">toJSON :: CanState -&gt; Value
+</span><a href="#local-6989586621679276142"><span class="hs-identifier hs-var hs-var hs-var hs-var">toJSON</span></a></span></span><span>     </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Options -&gt; CanState -&gt; Value
+forall a.
+(Generic a, GToJSON' Value Zero (Rep a)) =&gt;
+Options -&gt; a -&gt; Value
+</span><span class="hs-identifier hs-var">genericToJSON</span></span><span> </span><span class="annot"><span class="annottext">Options
+</span><a href="IC.Debug.JSON.html#customOptions"><span class="hs-identifier hs-var">customOptions</span></a></span><span>
+</span><span id="line-167"></span><span>    </span><span id="local-6989586621679275975"><span class="annot"><span class="annottext">toEncoding :: CanState -&gt; Encoding
+</span><a href="#local-6989586621679275975"><span class="hs-identifier hs-var hs-var hs-var hs-var">toEncoding</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Options -&gt; CanState -&gt; Encoding
+forall a.
+(Generic a, GToJSON' Encoding Zero (Rep a)) =&gt;
+Options -&gt; a -&gt; Encoding
+</span><span class="hs-identifier hs-var">genericToEncoding</span></span><span> </span><span class="annot"><span class="annottext">Options
+</span><a href="IC.Debug.JSON.html#customOptions"><span class="hs-identifier hs-var">customOptions</span></a></span><span>
+</span><span id="line-168"></span><span>
+</span><span id="line-169"></span><span class="hs-keyword">deriving</span><span> </span><span class="hs-keyword">instance</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Generic</span></span><span> </span><span class="annot"><a href="IC.Ref.html#CanisterContent"><span class="hs-identifier hs-type">CanisterContent</span></a></span><span>
+</span><span id="line-170"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679275967"><span id="local-6989586621679275969"><span class="annot"><span class="hs-identifier hs-type">ToJSON</span></span><span> </span><span class="annot"><a href="IC.Ref.html#CanisterContent"><span class="hs-identifier hs-type">CanisterContent</span></a></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-171"></span><span>    </span><span id="local-6989586621679275904"><span class="annot"><span class="annottext">toJSON :: CanisterContent -&gt; Value
+</span><a href="#local-6989586621679275904"><span class="hs-identifier hs-var hs-var hs-var hs-var">toJSON</span></a></span></span><span>     </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Options -&gt; CanisterContent -&gt; Value
+forall a.
+(Generic a, GToJSON' Value Zero (Rep a)) =&gt;
+Options -&gt; a -&gt; Value
+</span><span class="hs-identifier hs-var">genericToJSON</span></span><span> </span><span class="annot"><span class="annottext">Options
+</span><a href="IC.Debug.JSON.html#customOptions"><span class="hs-identifier hs-var">customOptions</span></a></span><span>
+</span><span id="line-172"></span><span>    </span><span id="local-6989586621679275842"><span class="annot"><span class="annottext">toEncoding :: CanisterContent -&gt; Encoding
+</span><a href="#local-6989586621679275842"><span class="hs-identifier hs-var hs-var hs-var hs-var">toEncoding</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Options -&gt; CanisterContent -&gt; Encoding
+forall a.
+(Generic a, GToJSON' Encoding Zero (Rep a)) =&gt;
+Options -&gt; a -&gt; Encoding
+</span><span class="hs-identifier hs-var">genericToEncoding</span></span><span> </span><span class="annot"><span class="annottext">Options
+</span><a href="IC.Debug.JSON.html#customOptions"><span class="hs-identifier hs-var">customOptions</span></a></span><span>
+</span><span id="line-173"></span><span>
+</span><span id="line-174"></span><span class="hs-keyword">deriving</span><span> </span><span class="hs-keyword">instance</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Generic</span></span><span> </span><span class="annot"><a href="IC.Ref.html#CallOrigin"><span class="hs-identifier hs-type">CallOrigin</span></a></span><span>
+</span><span id="line-175"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679275834"><span id="local-6989586621679275836"><span class="annot"><span class="hs-identifier hs-type">ToJSON</span></span><span> </span><span class="annot"><a href="IC.Ref.html#CallOrigin"><span class="hs-identifier hs-type">CallOrigin</span></a></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-176"></span><span>    </span><span id="local-6989586621679275740"><span class="annot"><span class="annottext">toJSON :: CallOrigin -&gt; Value
+</span><a href="#local-6989586621679275740"><span class="hs-identifier hs-var hs-var hs-var hs-var">toJSON</span></a></span></span><span>     </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Options -&gt; CallOrigin -&gt; Value
+forall a.
+(Generic a, GToJSON' Value Zero (Rep a)) =&gt;
+Options -&gt; a -&gt; Value
+</span><span class="hs-identifier hs-var">genericToJSON</span></span><span> </span><span class="annot"><span class="annottext">Options
+</span><a href="IC.Debug.JSON.html#customOptions"><span class="hs-identifier hs-var">customOptions</span></a></span><span>
+</span><span id="line-177"></span><span>    </span><span id="local-6989586621679275647"><span class="annot"><span class="annottext">toEncoding :: CallOrigin -&gt; Encoding
+</span><a href="#local-6989586621679275647"><span class="hs-identifier hs-var hs-var hs-var hs-var">toEncoding</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Options -&gt; CallOrigin -&gt; Encoding
+forall a.
+(Generic a, GToJSON' Encoding Zero (Rep a)) =&gt;
+Options -&gt; a -&gt; Encoding
+</span><span class="hs-identifier hs-var">genericToEncoding</span></span><span> </span><span class="annot"><span class="annottext">Options
+</span><a href="IC.Debug.JSON.html#customOptions"><span class="hs-identifier hs-var">customOptions</span></a></span><span>
+</span><span id="line-178"></span><span>
+</span><span id="line-179"></span><span class="hs-keyword">deriving</span><span> </span><span class="hs-keyword">instance</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Generic</span></span><span> </span><span class="annot"><a href="IC.Ref.html#EntryPoint"><span class="hs-identifier hs-type">EntryPoint</span></a></span><span>
+</span><span id="line-180"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679275639"><span id="local-6989586621679275641"><span class="annot"><span class="hs-identifier hs-type">ToJSON</span></span><span> </span><span class="annot"><a href="IC.Ref.html#EntryPoint"><span class="hs-identifier hs-type">EntryPoint</span></a></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-181"></span><span>    </span><span id="local-6989586621679275528"><span class="annot"><span class="annottext">toJSON :: EntryPoint -&gt; Value
+</span><a href="#local-6989586621679275528"><span class="hs-identifier hs-var hs-var hs-var hs-var">toJSON</span></a></span></span><span>     </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Options -&gt; EntryPoint -&gt; Value
+forall a.
+(Generic a, GToJSON' Value Zero (Rep a)) =&gt;
+Options -&gt; a -&gt; Value
+</span><span class="hs-identifier hs-var">genericToJSON</span></span><span> </span><span class="annot"><span class="annottext">Options
+</span><a href="IC.Debug.JSON.html#customOptions"><span class="hs-identifier hs-var">customOptions</span></a></span><span>
+</span><span id="line-182"></span><span>    </span><span id="local-6989586621679275422"><span class="annot"><span class="annottext">toEncoding :: EntryPoint -&gt; Encoding
+</span><a href="#local-6989586621679275422"><span class="hs-identifier hs-var hs-var hs-var hs-var">toEncoding</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Options -&gt; EntryPoint -&gt; Encoding
+forall a.
+(Generic a, GToJSON' Encoding Zero (Rep a)) =&gt;
+Options -&gt; a -&gt; Encoding
+</span><span class="hs-identifier hs-var">genericToEncoding</span></span><span> </span><span class="annot"><span class="annottext">Options
+</span><a href="IC.Debug.JSON.html#customOptions"><span class="hs-identifier hs-var">customOptions</span></a></span><span>
+</span><span id="line-183"></span><span>
+</span><span id="line-184"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679275415"><span id="local-6989586621679275417"><span id="local-6989586621679275419"><span class="annot"><span class="hs-identifier hs-type">ToJSON</span></span><span> </span><span class="annot"><a href="IC.Canister.html#CanisterModule"><span class="hs-identifier hs-type">CanisterModule</span></a></span></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-185"></span><span>    </span><span id="local-6989586621679275414"><span class="annot"><span class="annottext">toJSON :: CanisterModule -&gt; Value
+</span><a href="#local-6989586621679275414"><span class="hs-identifier hs-var hs-var hs-var hs-var">toJSON</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">String -&gt; CanisterModule -&gt; Value
+forall a. String -&gt; a -&gt; Value
+</span><a href="IC.Debug.JSON.html#placeholder"><span class="hs-identifier hs-var">placeholder</span></a></span><span> </span><span class="annot"><span class="annottext">String
+</span><span class="hs-string">&quot;(CanisterModule)&quot;</span></span><span>
+</span><span id="line-186"></span><span>
+</span><span id="line-187"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679275407"><span id="local-6989586621679275409"><span id="local-6989586621679275411"><span class="annot"><span class="hs-identifier hs-type">ToJSON</span></span><span> </span><span class="annot"><a href="IC.Types.html#EntityId"><span class="hs-identifier hs-type">EntityId</span></a></span></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-188"></span><span>  </span><span id="local-6989586621679275404"><span class="annot"><span class="annottext">toJSON :: EntityId -&gt; Value
+</span><a href="#local-6989586621679275404"><span class="hs-identifier hs-var hs-var hs-var hs-var">toJSON</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">String -&gt; Value
+forall a. ToJSON a =&gt; a -&gt; Value
+</span><span class="hs-identifier hs-var">toJSON</span></span><span> </span><span class="annot"><span class="annottext">(String -&gt; Value) -&gt; (EntityId -&gt; String) -&gt; EntityId -&gt; Value
+forall b c a. (b -&gt; c) -&gt; (a -&gt; b) -&gt; a -&gt; c
+</span><span class="hs-operator hs-var">.</span></span><span> </span><span class="annot"><span class="annottext">EntityId -&gt; String
+</span><a href="IC.Types.html#prettyID"><span class="hs-identifier hs-var">prettyID</span></a></span><span>
+</span><span id="line-189"></span><span>
+</span><span id="line-190"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679275400"><span class="annot"><span class="hs-identifier hs-type">ToJSONKey</span></span><span> </span><span class="annot"><a href="IC.Types.html#EntityId"><span class="hs-identifier hs-type">EntityId</span></a></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-191"></span><span>  </span><span id="local-6989586621679275394"><span class="annot"><span class="annottext">toJSONKey :: ToJSONKeyFunction EntityId
+</span><a href="#local-6989586621679275394"><span class="hs-identifier hs-var hs-var hs-var hs-var">toJSONKey</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">(EntityId -&gt; String)
+-&gt; ToJSONKeyFunction String -&gt; ToJSONKeyFunction EntityId
+forall b a. (b -&gt; a) -&gt; ToJSONKeyFunction a -&gt; ToJSONKeyFunction b
+</span><span class="hs-identifier hs-var">contramapToJSONKeyFunction</span></span><span> </span><span class="annot"><span class="annottext">EntityId -&gt; String
+</span><a href="IC.Types.html#prettyID"><span class="hs-identifier hs-var">prettyID</span></a></span><span> </span><span class="annot"><span class="annottext">ToJSONKeyFunction String
+forall a. ToJSONKey a =&gt; ToJSONKeyFunction a
+</span><span class="hs-identifier hs-var">toJSONKey</span></span><span>
+</span><span id="line-192"></span><span>
+</span><span id="line-193"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679275386"><span id="local-6989586621679275388"><span id="local-6989586621679275390"><span class="annot"><span class="hs-identifier hs-type">ToJSON</span></span><span> </span><span class="annot"><span class="hs-identifier hs-type">StdGen</span></span></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-194"></span><span>  </span><span id="local-6989586621679275381"><span class="annot"><span class="annottext">toJSON :: StdGen -&gt; Value
+</span><a href="#local-6989586621679275381"><span class="hs-identifier hs-var hs-var hs-var hs-var">toJSON</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">String -&gt; Value
+forall a. ToJSON a =&gt; a -&gt; Value
+</span><span class="hs-identifier hs-var">toJSON</span></span><span> </span><span class="annot"><span class="annottext">(String -&gt; Value) -&gt; (StdGen -&gt; String) -&gt; StdGen -&gt; Value
+forall b c a. (b -&gt; c) -&gt; (a -&gt; b) -&gt; a -&gt; c
+</span><span class="hs-operator hs-var">.</span></span><span> </span><span class="annot"><span class="annottext">StdGen -&gt; String
+forall a. Show a =&gt; a -&gt; String
+</span><span class="hs-identifier hs-var">show</span></span><span>
+</span><span id="line-195"></span><span>
+</span><span id="line-196"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679275373"><span id="local-6989586621679275375"><span id="local-6989586621679275377"><span class="annot"><span class="hs-identifier hs-type">ToJSON</span></span><span> </span><span class="annot"><a href="IC.Crypto.html#SecretKey"><span class="hs-identifier hs-type">SecretKey</span></a></span></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-197"></span><span>    </span><span id="local-6989586621679275372"><span class="annot"><span class="annottext">toJSON :: SecretKey -&gt; Value
+</span><a href="#local-6989586621679275372"><span class="hs-identifier hs-var hs-var hs-var hs-var">toJSON</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">String -&gt; SecretKey -&gt; Value
+forall a. String -&gt; a -&gt; Value
+</span><a href="IC.Debug.JSON.html#placeholder"><span class="hs-identifier hs-var">placeholder</span></a></span><span> </span><span class="annot"><span class="annottext">String
+</span><span class="hs-string">&quot;(secret key)&quot;</span></span><span>
+</span><span id="line-198"></span><span>
+</span><span id="line-199"></span></pre></body></html>

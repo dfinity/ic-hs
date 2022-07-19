@@ -1,0 +1,57 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><link rel="stylesheet" type="text/css" href="style.css" /><script type="text/javascript" src="highlight.js"></script></head><body><pre><span class="hs-keyword">module</span><span> </span><span class="hs-identifier">IC.CBOR.Utils</span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-2"></span><span>
+</span><span id="line-3"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><span class="hs-identifier">Data.ByteString.Builder</span></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">BS</span></span><span>
+</span><span id="line-4"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="IC.HTTP.CBOR.html"><span class="hs-identifier">IC.HTTP.CBOR</span></a></span><span>
+</span><span id="line-5"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="IC.HTTP.GenR.html"><span class="hs-identifier">IC.HTTP.GenR</span></a></span><span>
+</span><span id="line-6"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="IC.Types.html"><span class="hs-identifier">IC.Types</span></a></span><span>
+</span><span id="line-7"></span><span>
+</span><span id="line-8"></span><span class="annot"><a href="IC.CBOR.Utils.html#encodePrincipalList"><span class="hs-identifier hs-type">encodePrincipalList</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="hs-special">[</span><span class="annot"><a href="IC.Types.html#EntityId"><span class="hs-identifier hs-type">EntityId</span></a></span><span class="hs-special">]</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Types.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span>
+</span><span id="line-9"></span><span id="encodePrincipalList"><span class="annot"><span class="annottext">encodePrincipalList :: [EntityId] -&gt; Blob
+</span><a href="IC.CBOR.Utils.html#encodePrincipalList"><span class="hs-identifier hs-var hs-var">encodePrincipalList</span></a></span></span><span> </span><span id="local-6989586621679263021"><span class="annot"><span class="annottext">[EntityId]
+</span><a href="#local-6989586621679263021"><span class="hs-identifier hs-var">entities</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Builder -&gt; Blob
+</span><span class="hs-identifier hs-var">BS.toLazyByteString</span></span><span> </span><span class="annot"><span class="annottext">(Builder -&gt; Blob) -&gt; Builder -&gt; Blob
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">GenR -&gt; Builder
+</span><a href="IC.HTTP.CBOR.html#encode"><span class="hs-identifier hs-var">encode</span></a></span><span> </span><span class="annot"><span class="annottext">(GenR -&gt; Builder) -&gt; GenR -&gt; Builder
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">[GenR] -&gt; GenR
+</span><a href="IC.HTTP.GenR.html#GList"><span class="hs-identifier hs-var">GList</span></a></span><span> </span><span class="annot"><span class="annottext">([GenR] -&gt; GenR) -&gt; [GenR] -&gt; GenR
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">(EntityId -&gt; GenR) -&gt; [EntityId] -&gt; [GenR]
+forall a b. (a -&gt; b) -&gt; [a] -&gt; [b]
+</span><span class="hs-identifier hs-var">map</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Blob -&gt; GenR
+</span><a href="IC.HTTP.GenR.html#GBlob"><span class="hs-identifier hs-var">GBlob</span></a></span><span> </span><span class="annot"><span class="annottext">(Blob -&gt; GenR) -&gt; (EntityId -&gt; Blob) -&gt; EntityId -&gt; GenR
+forall b c a. (b -&gt; c) -&gt; (a -&gt; b) -&gt; a -&gt; c
+</span><span class="hs-operator hs-var">.</span></span><span> </span><span class="annot"><span class="annottext">EntityId -&gt; Blob
+</span><a href="IC.Types.html#rawEntityId"><span class="hs-identifier hs-var hs-var">rawEntityId</span></a></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">[EntityId]
+</span><a href="#local-6989586621679263021"><span class="hs-identifier hs-var">entities</span></a></span><span>
+</span><span id="line-10"></span><span>
+</span><span id="line-11"></span><span class="annot"><a href="IC.CBOR.Utils.html#encodeCanisterRangeList"><span class="hs-identifier hs-type">encodeCanisterRangeList</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="hs-special">[</span><span class="annot"><a href="IC.Types.html#CanisterRange"><span class="hs-identifier hs-type">CanisterRange</span></a></span><span class="hs-special">]</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Types.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span>
+</span><span id="line-12"></span><span id="encodeCanisterRangeList"><span class="annot"><span class="annottext">encodeCanisterRangeList :: [CanisterRange] -&gt; Blob
+</span><a href="IC.CBOR.Utils.html#encodeCanisterRangeList"><span class="hs-identifier hs-var hs-var">encodeCanisterRangeList</span></a></span></span><span> </span><span id="local-6989586621679263013"><span class="annot"><span class="annottext">[CanisterRange]
+</span><a href="#local-6989586621679263013"><span class="hs-identifier hs-var">ranges</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Builder -&gt; Blob
+</span><span class="hs-identifier hs-var">BS.toLazyByteString</span></span><span> </span><span class="annot"><span class="annottext">(Builder -&gt; Blob) -&gt; Builder -&gt; Blob
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">GenR -&gt; Builder
+</span><a href="IC.HTTP.CBOR.html#encode"><span class="hs-identifier hs-var">encode</span></a></span><span> </span><span class="annot"><span class="annottext">(GenR -&gt; Builder) -&gt; GenR -&gt; Builder
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">[GenR] -&gt; GenR
+</span><a href="IC.HTTP.GenR.html#GList"><span class="hs-identifier hs-var">GList</span></a></span><span> </span><span class="annot"><span class="annottext">([GenR] -&gt; GenR) -&gt; [GenR] -&gt; GenR
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">(CanisterRange -&gt; GenR) -&gt; [CanisterRange] -&gt; [GenR]
+forall a b. (a -&gt; b) -&gt; [a] -&gt; [b]
+</span><span class="hs-identifier hs-var">map</span></span><span> </span><span class="hs-special">(</span><span class="hs-glyph">\</span><span class="hs-special">(</span><span id="local-6989586621679263012"><span class="annot"><span class="annottext">EntityId
+</span><a href="#local-6989586621679263012"><span class="hs-identifier hs-var">l</span></a></span></span><span class="hs-special">,</span><span> </span><span id="local-6989586621679263011"><span class="annot"><span class="annottext">EntityId
+</span><a href="#local-6989586621679263011"><span class="hs-identifier hs-var">u</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">[GenR] -&gt; GenR
+</span><a href="IC.HTTP.GenR.html#GList"><span class="hs-identifier hs-var">GList</span></a></span><span> </span><span class="annot"><span class="annottext">([GenR] -&gt; GenR) -&gt; [GenR] -&gt; GenR
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">(EntityId -&gt; GenR) -&gt; [EntityId] -&gt; [GenR]
+forall a b. (a -&gt; b) -&gt; [a] -&gt; [b]
+</span><span class="hs-identifier hs-var">map</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Blob -&gt; GenR
+</span><a href="IC.HTTP.GenR.html#GBlob"><span class="hs-identifier hs-var">GBlob</span></a></span><span> </span><span class="annot"><span class="annottext">(Blob -&gt; GenR) -&gt; (EntityId -&gt; Blob) -&gt; EntityId -&gt; GenR
+forall b c a. (b -&gt; c) -&gt; (a -&gt; b) -&gt; a -&gt; c
+</span><span class="hs-operator hs-var">.</span></span><span> </span><span class="annot"><span class="annottext">EntityId -&gt; Blob
+</span><a href="IC.Types.html#rawEntityId"><span class="hs-identifier hs-var hs-var">rawEntityId</span></a></span><span class="hs-special">)</span><span> </span><span class="hs-special">[</span><span class="annot"><span class="annottext">EntityId
+</span><a href="#local-6989586621679263012"><span class="hs-identifier hs-var">l</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">EntityId
+</span><a href="#local-6989586621679263011"><span class="hs-identifier hs-var">u</span></a></span><span class="hs-special">]</span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">[CanisterRange]
+</span><a href="#local-6989586621679263013"><span class="hs-identifier hs-var">ranges</span></a></span></pre></body></html>

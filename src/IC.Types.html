@@ -1,0 +1,729 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><link rel="stylesheet" type="text/css" href="style.css" /><script type="text/javascript" src="highlight.js"></script></head><body><pre><span id="local-6989586621679262140"><span id="local-6989586621679262141"><span id="local-6989586621679262142"></span></span></span><span class="hs-pragma">{-# LANGUAGE TypeOperators #-}</span><span>
+</span><span id="line-2"></span><span class="hs-pragma">{-# LANGUAGE GeneralizedNewtypeDeriving #-}</span><span>
+</span><span id="line-3"></span><span class="hs-pragma">{-# LANGUAGE DeriveFunctor #-}</span><span>
+</span><span id="line-4"></span><span class="hs-pragma">{-# LANGUAGE OverloadedStrings #-}</span><span>
+</span><span id="line-5"></span><span class="hs-pragma">{-# LANGUAGE NamedFieldPuns #-}</span><span>
+</span><span id="line-6"></span><span class="hs-pragma">{-# LANGUAGE RankNTypes #-}</span><span>
+</span><span id="line-7"></span><span class="hs-pragma">{-# LANGUAGE FlexibleContexts #-}</span><span>
+</span><span id="line-8"></span><span class="hs-keyword">module</span><span> </span><span class="hs-identifier">IC.Types</span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-9"></span><span>
+</span><span id="line-10"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><span class="hs-identifier">Data.ByteString.Lazy.Char8</span></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">BS</span></span><span>
+</span><span id="line-11"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><span class="hs-identifier">Data.ByteString.Builder</span></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">BS</span></span><span>
+</span><span id="line-12"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><span class="hs-identifier">Data.Map</span></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">M</span></span><span>
+</span><span id="line-13"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><span class="hs-identifier">Data.Text</span></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">T</span></span><span>
+</span><span id="line-14"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><span class="hs-identifier">Text.Hex</span></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">T</span></span><span> </span><span class="hs-keyword">hiding</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier">Text</span></span><span class="hs-special">)</span><span>
+</span><span id="line-15"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Data.Digest.CRC</span></span><span>
+</span><span id="line-16"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Data.Digest.CRC32</span></span><span>
+</span><span id="line-17"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Data.ByteString.Base32</span></span><span>
+</span><span id="line-18"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Data.Int</span></span><span>
+</span><span id="line-19"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Data.List</span></span><span>
+</span><span id="line-20"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Data.List.Split</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier">chunksOf</span></span><span class="hs-special">)</span><span>
+</span><span id="line-21"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Numeric.Natural</span></span><span>
+</span><span id="line-22"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Control.Monad.Except</span></span><span>
+</span><span id="line-23"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Text.Printf</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier">printf</span></span><span class="hs-special">)</span><span>
+</span><span id="line-24"></span><span>
+</span><span id="line-25"></span><span class="hs-keyword">type</span><span> </span><span id="%21A6"><span class="annot"><a href="IC.Types.html#%21A6"><span class="hs-operator hs-var">(&#8614;)</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="hs-identifier hs-type">M.Map</span></span><span>
+</span><span id="line-26"></span><span>
+</span><span id="line-27"></span><span class="hs-comment">-- Basic types</span><span>
+</span><span id="line-28"></span><span>
+</span><span id="line-29"></span><span class="hs-keyword">type</span><span> </span><span id="Blob"><span class="annot"><a href="IC.Types.html#Blob"><span class="hs-identifier hs-var">Blob</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="hs-identifier hs-type">BS.ByteString</span></span><span>
+</span><span id="line-30"></span><span class="hs-keyword">type</span><span> </span><span id="PublicKey"><span class="annot"><a href="IC.Types.html#PublicKey"><span class="hs-identifier hs-var">PublicKey</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><a href="IC.Types.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span>
+</span><span id="line-31"></span><span class="hs-keyword">newtype</span><span> </span><span id="EntityId"><span class="annot"><a href="IC.Types.html#EntityId"><span class="hs-identifier hs-var">EntityId</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span id="EntityId"><span class="annot"><a href="IC.Types.html#EntityId"><span class="hs-identifier hs-var">EntityId</span></a></span></span><span> </span><span class="hs-special">{</span><span> </span><span id="rawEntityId"><span class="annot"><span class="annottext">EntityId -&gt; ByteString
+</span><a href="IC.Types.html#rawEntityId"><span class="hs-identifier hs-var hs-var">rawEntityId</span></a></span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Types.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span> </span><span class="hs-special">}</span><span>
+</span><span id="line-32"></span><span>    </span><span class="hs-keyword">deriving</span><span> </span><span class="hs-special">(</span><span id="local-6989586621679262096"><span id="local-6989586621679262098"><span id="local-6989586621679262104"><span class="annot"><span class="annottext">Int -&gt; EntityId -&gt; ShowS
+[EntityId] -&gt; ShowS
+EntityId -&gt; String
+(Int -&gt; EntityId -&gt; ShowS)
+-&gt; (EntityId -&gt; String) -&gt; ([EntityId] -&gt; ShowS) -&gt; Show EntityId
+forall a.
+(Int -&gt; a -&gt; ShowS) -&gt; (a -&gt; String) -&gt; ([a] -&gt; ShowS) -&gt; Show a
+showList :: [EntityId] -&gt; ShowS
+$cshowList :: [EntityId] -&gt; ShowS
+show :: EntityId -&gt; String
+$cshow :: EntityId -&gt; String
+showsPrec :: Int -&gt; EntityId -&gt; ShowS
+$cshowsPrec :: Int -&gt; EntityId -&gt; ShowS
+</span><span class="hs-identifier hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var">Show</span></span></span></span></span><span class="hs-special">,</span><span> </span><span id="local-6989586621679262088"><span id="local-6989586621679262093"><span class="annot"><span class="annottext">EntityId -&gt; EntityId -&gt; Bool
+(EntityId -&gt; EntityId -&gt; Bool)
+-&gt; (EntityId -&gt; EntityId -&gt; Bool) -&gt; Eq EntityId
+forall a. (a -&gt; a -&gt; Bool) -&gt; (a -&gt; a -&gt; Bool) -&gt; Eq a
+/= :: EntityId -&gt; EntityId -&gt; Bool
+$c/= :: EntityId -&gt; EntityId -&gt; Bool
+== :: EntityId -&gt; EntityId -&gt; Bool
+$c== :: EntityId -&gt; EntityId -&gt; Bool
+</span><span class="hs-identifier hs-var hs-var hs-var hs-var hs-var hs-var">Eq</span></span></span></span><span class="hs-special">,</span><span> </span><span id="local-6989586621679262055"><span id="local-6989586621679262059"><span id="local-6989586621679262063"><span id="local-6989586621679262067"><span id="local-6989586621679262071"><span id="local-6989586621679262075"><span id="local-6989586621679262080"><span class="annot"><span class="annottext">Eq EntityId
+Eq EntityId
+-&gt; (EntityId -&gt; EntityId -&gt; Ordering)
+-&gt; (EntityId -&gt; EntityId -&gt; Bool)
+-&gt; (EntityId -&gt; EntityId -&gt; Bool)
+-&gt; (EntityId -&gt; EntityId -&gt; Bool)
+-&gt; (EntityId -&gt; EntityId -&gt; Bool)
+-&gt; (EntityId -&gt; EntityId -&gt; EntityId)
+-&gt; (EntityId -&gt; EntityId -&gt; EntityId)
+-&gt; Ord EntityId
+EntityId -&gt; EntityId -&gt; Bool
+EntityId -&gt; EntityId -&gt; Ordering
+EntityId -&gt; EntityId -&gt; EntityId
+forall a.
+Eq a
+-&gt; (a -&gt; a -&gt; Ordering)
+-&gt; (a -&gt; a -&gt; Bool)
+-&gt; (a -&gt; a -&gt; Bool)
+-&gt; (a -&gt; a -&gt; Bool)
+-&gt; (a -&gt; a -&gt; Bool)
+-&gt; (a -&gt; a -&gt; a)
+-&gt; (a -&gt; a -&gt; a)
+-&gt; Ord a
+min :: EntityId -&gt; EntityId -&gt; EntityId
+$cmin :: EntityId -&gt; EntityId -&gt; EntityId
+max :: EntityId -&gt; EntityId -&gt; EntityId
+$cmax :: EntityId -&gt; EntityId -&gt; EntityId
+&gt;= :: EntityId -&gt; EntityId -&gt; Bool
+$c&gt;= :: EntityId -&gt; EntityId -&gt; Bool
+&gt; :: EntityId -&gt; EntityId -&gt; Bool
+$c&gt; :: EntityId -&gt; EntityId -&gt; Bool
+&lt;= :: EntityId -&gt; EntityId -&gt; Bool
+$c&lt;= :: EntityId -&gt; EntityId -&gt; Bool
+&lt; :: EntityId -&gt; EntityId -&gt; Bool
+$c&lt; :: EntityId -&gt; EntityId -&gt; Bool
+compare :: EntityId -&gt; EntityId -&gt; Ordering
+$ccompare :: EntityId -&gt; EntityId -&gt; Ordering
+</span><span class="hs-identifier hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var">Ord</span></span></span></span></span></span></span></span></span><span class="hs-special">)</span><span>
+</span><span id="line-33"></span><span>
+</span><span id="line-34"></span><span class="hs-keyword">type</span><span> </span><span id="CanisterId"><span class="annot"><a href="IC.Types.html#CanisterId"><span class="hs-identifier hs-var">CanisterId</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><a href="IC.Types.html#EntityId"><span class="hs-identifier hs-type">EntityId</span></a></span><span>
+</span><span id="line-35"></span><span class="hs-keyword">type</span><span> </span><span id="CanisterRange"><span class="annot"><a href="IC.Types.html#CanisterRange"><span class="hs-identifier hs-var">CanisterRange</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Types.html#CanisterId"><span class="hs-identifier hs-type">CanisterId</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><a href="IC.Types.html#CanisterId"><span class="hs-identifier hs-type">CanisterId</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-36"></span><span class="hs-keyword">type</span><span> </span><span id="SubnetId"><span class="annot"><a href="IC.Types.html#SubnetId"><span class="hs-identifier hs-var">SubnetId</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><a href="IC.Types.html#EntityId"><span class="hs-identifier hs-type">EntityId</span></a></span><span>
+</span><span id="line-37"></span><span class="hs-keyword">type</span><span> </span><span id="UserId"><span class="annot"><a href="IC.Types.html#UserId"><span class="hs-identifier hs-var">UserId</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><a href="IC.Types.html#EntityId"><span class="hs-identifier hs-type">EntityId</span></a></span><span>
+</span><span id="line-38"></span><span class="hs-keyword">type</span><span> </span><span id="MethodName"><span class="annot"><a href="IC.Types.html#MethodName"><span class="hs-identifier hs-var">MethodName</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="hs-identifier hs-type">String</span></span><span>
+</span><span id="line-39"></span><span class="hs-keyword">type</span><span> </span><span id="RequestID"><span class="annot"><a href="IC.Types.html#RequestID"><span class="hs-identifier hs-var">RequestID</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><a href="IC.Types.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span>
+</span><span id="line-40"></span><span class="hs-keyword">type</span><span> </span><span id="Cycles"><span class="annot"><a href="IC.Types.html#Cycles"><span class="hs-identifier hs-var">Cycles</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Natural</span></span><span>
+</span><span id="line-41"></span><span>
+</span><span id="line-42"></span><span class="annot"><a href="IC.Types.html#prettyBlob"><span class="hs-identifier hs-type">prettyBlob</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Types.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">String</span></span><span>
+</span><span id="line-43"></span><span id="prettyBlob"><span class="annot"><span class="annottext">prettyBlob :: ByteString -&gt; String
+</span><a href="IC.Types.html#prettyBlob"><span class="hs-identifier hs-var hs-var">prettyBlob</span></a></span></span><span> </span><span id="local-6989586621679262043"><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679262043"><span class="hs-identifier hs-var">b</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">String
+</span><span class="hs-string">&quot;0x&quot;</span></span><span> </span><span class="annot"><span class="annottext">String -&gt; ShowS
+forall a. [a] -&gt; [a] -&gt; [a]
+</span><span class="hs-operator hs-var">++</span></span><span> </span><span class="annot"><span class="annottext">Text -&gt; String
+</span><span class="hs-identifier hs-var">T.unpack</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">ByteString -&gt; Text
+</span><span class="hs-identifier hs-var">T.encodeHex</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">ByteString -&gt; ByteString
+</span><span class="hs-identifier hs-var">BS.toStrict</span></span><span> </span><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679262043"><span class="hs-identifier hs-var">b</span></a></span><span class="hs-special">)</span><span class="hs-special">)</span><span>
+</span><span id="line-44"></span><span>
+</span><span id="line-45"></span><span class="annot"><a href="IC.Types.html#prettyID"><span class="hs-identifier hs-type">prettyID</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Types.html#EntityId"><span class="hs-identifier hs-type">EntityId</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">String</span></span><span>
+</span><span id="line-46"></span><span id="prettyID"><span class="annot"><span class="annottext">prettyID :: EntityId -&gt; String
+</span><a href="IC.Types.html#prettyID"><span class="hs-identifier hs-var hs-var">prettyID</span></a></span></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Types.html#EntityId"><span class="hs-identifier hs-type">EntityId</span></a></span><span> </span><span id="local-6989586621679262038"><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679262038"><span class="hs-identifier hs-var">blob</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">=</span><span>
+</span><span id="line-47"></span><span>    </span><span class="annot"><span class="annottext">String -&gt; [String] -&gt; String
+forall a. [a] -&gt; [[a]] -&gt; [a]
+</span><span class="hs-identifier hs-var">intercalate</span></span><span> </span><span class="annot"><span class="annottext">String
+</span><span class="hs-string">&quot;-&quot;</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Int -&gt; String -&gt; [String]
+forall e. Int -&gt; [e] -&gt; [[e]]
+</span><span class="hs-identifier hs-var">chunksOf</span></span><span> </span><span class="annot"><span class="annottext">Int
+</span><span class="hs-number">5</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">ByteString -&gt; String
+</span><a href="#local-6989586621679262036"><span class="hs-identifier hs-var">base32</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679262035"><span class="hs-identifier hs-var">checkbytes</span></a></span><span> </span><span class="annot"><span class="annottext">ByteString -&gt; ByteString -&gt; ByteString
+forall a. Semigroup a =&gt; a -&gt; a -&gt; a
+</span><span class="hs-operator hs-var">&lt;&gt;</span></span><span> </span><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679262038"><span class="hs-identifier hs-var">blob</span></a></span><span class="hs-special">)</span><span class="hs-special">)</span><span class="hs-special">)</span><span>
+</span><span id="line-48"></span><span>  </span><span class="hs-keyword">where</span><span>
+</span><span id="line-49"></span><span>    </span><span class="annot"><span class="hs-identifier hs-type">CRC32</span></span><span> </span><span id="local-6989586621679262031"><span class="annot"><span class="annottext">Word32
+</span><a href="#local-6989586621679262031"><span class="hs-identifier hs-var">checksum</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">ByteString -&gt; CRC32
+forall a. CRC a =&gt; ByteString -&gt; a
+</span><span class="hs-identifier hs-var">digest</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">ByteString -&gt; ByteString
+</span><span class="hs-identifier hs-var">BS.toStrict</span></span><span> </span><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679262038"><span class="hs-identifier hs-var">blob</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-50"></span><span>    </span><span id="local-6989586621679262035"><span class="annot"><span class="annottext">checkbytes :: ByteString
+</span><a href="#local-6989586621679262035"><span class="hs-identifier hs-var hs-var">checkbytes</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Builder -&gt; ByteString
+</span><span class="hs-identifier hs-var">BS.toLazyByteString</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Word32 -&gt; Builder
+</span><span class="hs-identifier hs-var">BS.word32BE</span></span><span> </span><span class="annot"><span class="annottext">Word32
+</span><a href="#local-6989586621679262031"><span class="hs-identifier hs-var">checksum</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-51"></span><span>
+</span><span id="line-52"></span><span>    </span><span id="local-6989586621679262036"><span class="annot"><span class="annottext">base32 :: ByteString -&gt; String
+</span><a href="#local-6989586621679262036"><span class="hs-identifier hs-var hs-var">base32</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">(Char -&gt; Bool) -&gt; ShowS
+forall a. (a -&gt; Bool) -&gt; [a] -&gt; [a]
+</span><span class="hs-identifier hs-var">filter</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Char -&gt; Char -&gt; Bool
+forall a. Eq a =&gt; a -&gt; a -&gt; Bool
+</span><span class="hs-operator hs-var">/=</span></span><span class="annot"><span class="annottext">Char
+</span><span class="hs-char">'='</span></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">ShowS -&gt; (ByteString -&gt; String) -&gt; ByteString -&gt; String
+forall b c a. (b -&gt; c) -&gt; (a -&gt; b) -&gt; a -&gt; c
+</span><span class="hs-operator hs-var">.</span></span><span> </span><span class="annot"><span class="annottext">Text -&gt; String
+</span><span class="hs-identifier hs-var">T.unpack</span></span><span> </span><span class="annot"><span class="annottext">(Text -&gt; String) -&gt; (ByteString -&gt; Text) -&gt; ByteString -&gt; String
+forall b c a. (b -&gt; c) -&gt; (a -&gt; b) -&gt; a -&gt; c
+</span><span class="hs-operator hs-var">.</span></span><span> </span><span class="annot"><span class="annottext">Text -&gt; Text
+</span><span class="hs-identifier hs-var">T.toLower</span></span><span> </span><span class="annot"><span class="annottext">(Text -&gt; Text) -&gt; (ByteString -&gt; Text) -&gt; ByteString -&gt; Text
+forall b c a. (b -&gt; c) -&gt; (a -&gt; b) -&gt; a -&gt; c
+</span><span class="hs-operator hs-var">.</span></span><span> </span><span class="annot"><span class="annottext">ByteString -&gt; Text
+</span><span class="hs-identifier hs-var">encodeBase32</span></span><span> </span><span class="annot"><span class="annottext">(ByteString -&gt; Text)
+-&gt; (ByteString -&gt; ByteString) -&gt; ByteString -&gt; Text
+forall b c a. (b -&gt; c) -&gt; (a -&gt; b) -&gt; a -&gt; c
+</span><span class="hs-operator hs-var">.</span></span><span> </span><span class="annot"><span class="annottext">ByteString -&gt; ByteString
+</span><span class="hs-identifier hs-var">BS.toStrict</span></span><span>
+</span><span id="line-53"></span><span>
+</span><span id="line-54"></span><span>
+</span><span id="line-55"></span><span class="hs-keyword">newtype</span><span> </span><span id="NeedsToRespond"><span class="annot"><a href="IC.Types.html#NeedsToRespond"><span class="hs-identifier hs-var">NeedsToRespond</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span id="NeedsToRespond"><span class="annot"><a href="IC.Types.html#NeedsToRespond"><span class="hs-identifier hs-var">NeedsToRespond</span></a></span></span><span> </span><span class="annot"><span class="hs-identifier hs-type">Bool</span></span><span>
+</span><span id="line-56"></span><span>  </span><span class="hs-keyword">deriving</span><span> </span><span class="hs-special">(</span><span id="local-6989586621679262012"><span id="local-6989586621679262014"><span id="local-6989586621679262019"><span class="annot"><span class="annottext">Int -&gt; NeedsToRespond -&gt; ShowS
+[NeedsToRespond] -&gt; ShowS
+NeedsToRespond -&gt; String
+(Int -&gt; NeedsToRespond -&gt; ShowS)
+-&gt; (NeedsToRespond -&gt; String)
+-&gt; ([NeedsToRespond] -&gt; ShowS)
+-&gt; Show NeedsToRespond
+forall a.
+(Int -&gt; a -&gt; ShowS) -&gt; (a -&gt; String) -&gt; ([a] -&gt; ShowS) -&gt; Show a
+showList :: [NeedsToRespond] -&gt; ShowS
+$cshowList :: [NeedsToRespond] -&gt; ShowS
+show :: NeedsToRespond -&gt; String
+$cshow :: NeedsToRespond -&gt; String
+showsPrec :: Int -&gt; NeedsToRespond -&gt; ShowS
+$cshowsPrec :: Int -&gt; NeedsToRespond -&gt; ShowS
+</span><span class="hs-identifier hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var">Show</span></span></span></span></span><span class="hs-special">,</span><span> </span><span id="local-6989586621679262005"><span id="local-6989586621679262010"><span class="annot"><span class="annottext">NeedsToRespond -&gt; NeedsToRespond -&gt; Bool
+(NeedsToRespond -&gt; NeedsToRespond -&gt; Bool)
+-&gt; (NeedsToRespond -&gt; NeedsToRespond -&gt; Bool) -&gt; Eq NeedsToRespond
+forall a. (a -&gt; a -&gt; Bool) -&gt; (a -&gt; a -&gt; Bool) -&gt; Eq a
+/= :: NeedsToRespond -&gt; NeedsToRespond -&gt; Bool
+$c/= :: NeedsToRespond -&gt; NeedsToRespond -&gt; Bool
+== :: NeedsToRespond -&gt; NeedsToRespond -&gt; Bool
+$c== :: NeedsToRespond -&gt; NeedsToRespond -&gt; Bool
+</span><span class="hs-identifier hs-var hs-var hs-var hs-var hs-var hs-var">Eq</span></span></span></span><span class="hs-special">)</span><span>
+</span><span id="line-57"></span><span>
+</span><span id="line-58"></span><span class="hs-keyword">newtype</span><span> </span><span id="Timestamp"><span class="annot"><a href="IC.Types.html#Timestamp"><span class="hs-identifier hs-var">Timestamp</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span id="Timestamp"><span class="annot"><a href="IC.Types.html#Timestamp"><span class="hs-identifier hs-var">Timestamp</span></a></span></span><span> </span><span class="annot"><span class="hs-identifier hs-type">Natural</span></span><span>
+</span><span id="line-59"></span><span>  </span><span class="hs-keyword">deriving</span><span> </span><span class="hs-special">(</span><span id="local-6989586621679261992"><span id="local-6989586621679261994"><span id="local-6989586621679261999"><span class="annot"><span class="annottext">Int -&gt; Timestamp -&gt; ShowS
+[Timestamp] -&gt; ShowS
+Timestamp -&gt; String
+(Int -&gt; Timestamp -&gt; ShowS)
+-&gt; (Timestamp -&gt; String)
+-&gt; ([Timestamp] -&gt; ShowS)
+-&gt; Show Timestamp
+forall a.
+(Int -&gt; a -&gt; ShowS) -&gt; (a -&gt; String) -&gt; ([a] -&gt; ShowS) -&gt; Show a
+showList :: [Timestamp] -&gt; ShowS
+$cshowList :: [Timestamp] -&gt; ShowS
+show :: Timestamp -&gt; String
+$cshow :: Timestamp -&gt; String
+showsPrec :: Int -&gt; Timestamp -&gt; ShowS
+$cshowsPrec :: Int -&gt; Timestamp -&gt; ShowS
+</span><span class="hs-identifier hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var">Show</span></span></span></span></span><span class="hs-special">,</span><span> </span><span id="local-6989586621679261966"><span id="local-6989586621679261970"><span id="local-6989586621679261974"><span id="local-6989586621679261978"><span id="local-6989586621679261982"><span id="local-6989586621679261986"><span id="local-6989586621679261990"><span class="annot"><span class="annottext">Integer -&gt; Timestamp
+Timestamp -&gt; Timestamp
+Timestamp -&gt; Timestamp -&gt; Timestamp
+(Timestamp -&gt; Timestamp -&gt; Timestamp)
+-&gt; (Timestamp -&gt; Timestamp -&gt; Timestamp)
+-&gt; (Timestamp -&gt; Timestamp -&gt; Timestamp)
+-&gt; (Timestamp -&gt; Timestamp)
+-&gt; (Timestamp -&gt; Timestamp)
+-&gt; (Timestamp -&gt; Timestamp)
+-&gt; (Integer -&gt; Timestamp)
+-&gt; Num Timestamp
+forall a.
+(a -&gt; a -&gt; a)
+-&gt; (a -&gt; a -&gt; a)
+-&gt; (a -&gt; a -&gt; a)
+-&gt; (a -&gt; a)
+-&gt; (a -&gt; a)
+-&gt; (a -&gt; a)
+-&gt; (Integer -&gt; a)
+-&gt; Num a
+fromInteger :: Integer -&gt; Timestamp
+$cfromInteger :: Integer -&gt; Timestamp
+signum :: Timestamp -&gt; Timestamp
+$csignum :: Timestamp -&gt; Timestamp
+abs :: Timestamp -&gt; Timestamp
+$cabs :: Timestamp -&gt; Timestamp
+negate :: Timestamp -&gt; Timestamp
+$cnegate :: Timestamp -&gt; Timestamp
+* :: Timestamp -&gt; Timestamp -&gt; Timestamp
+$c* :: Timestamp -&gt; Timestamp -&gt; Timestamp
+- :: Timestamp -&gt; Timestamp -&gt; Timestamp
+$c- :: Timestamp -&gt; Timestamp -&gt; Timestamp
++ :: Timestamp -&gt; Timestamp -&gt; Timestamp
+$c+ :: Timestamp -&gt; Timestamp -&gt; Timestamp
+</span><span class="hs-identifier hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var">Num</span></span></span></span></span></span></span></span></span><span class="hs-special">,</span><span> </span><span id="local-6989586621679261932"><span id="local-6989586621679261936"><span id="local-6989586621679261940"><span id="local-6989586621679261944"><span id="local-6989586621679261948"><span id="local-6989586621679261952"><span id="local-6989586621679261957"><span class="annot"><span class="annottext">Eq Timestamp
+Eq Timestamp
+-&gt; (Timestamp -&gt; Timestamp -&gt; Ordering)
+-&gt; (Timestamp -&gt; Timestamp -&gt; Bool)
+-&gt; (Timestamp -&gt; Timestamp -&gt; Bool)
+-&gt; (Timestamp -&gt; Timestamp -&gt; Bool)
+-&gt; (Timestamp -&gt; Timestamp -&gt; Bool)
+-&gt; (Timestamp -&gt; Timestamp -&gt; Timestamp)
+-&gt; (Timestamp -&gt; Timestamp -&gt; Timestamp)
+-&gt; Ord Timestamp
+Timestamp -&gt; Timestamp -&gt; Bool
+Timestamp -&gt; Timestamp -&gt; Ordering
+Timestamp -&gt; Timestamp -&gt; Timestamp
+forall a.
+Eq a
+-&gt; (a -&gt; a -&gt; Ordering)
+-&gt; (a -&gt; a -&gt; Bool)
+-&gt; (a -&gt; a -&gt; Bool)
+-&gt; (a -&gt; a -&gt; Bool)
+-&gt; (a -&gt; a -&gt; Bool)
+-&gt; (a -&gt; a -&gt; a)
+-&gt; (a -&gt; a -&gt; a)
+-&gt; Ord a
+min :: Timestamp -&gt; Timestamp -&gt; Timestamp
+$cmin :: Timestamp -&gt; Timestamp -&gt; Timestamp
+max :: Timestamp -&gt; Timestamp -&gt; Timestamp
+$cmax :: Timestamp -&gt; Timestamp -&gt; Timestamp
+&gt;= :: Timestamp -&gt; Timestamp -&gt; Bool
+$c&gt;= :: Timestamp -&gt; Timestamp -&gt; Bool
+&gt; :: Timestamp -&gt; Timestamp -&gt; Bool
+$c&gt; :: Timestamp -&gt; Timestamp -&gt; Bool
+&lt;= :: Timestamp -&gt; Timestamp -&gt; Bool
+$c&lt;= :: Timestamp -&gt; Timestamp -&gt; Bool
+&lt; :: Timestamp -&gt; Timestamp -&gt; Bool
+$c&lt; :: Timestamp -&gt; Timestamp -&gt; Bool
+compare :: Timestamp -&gt; Timestamp -&gt; Ordering
+$ccompare :: Timestamp -&gt; Timestamp -&gt; Ordering
+</span><span class="hs-identifier hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var">Ord</span></span></span></span></span></span></span></span></span><span class="hs-special">,</span><span> </span><span id="local-6989586621679261922"><span id="local-6989586621679261927"><span class="annot"><span class="annottext">Timestamp -&gt; Timestamp -&gt; Bool
+(Timestamp -&gt; Timestamp -&gt; Bool)
+-&gt; (Timestamp -&gt; Timestamp -&gt; Bool) -&gt; Eq Timestamp
+forall a. (a -&gt; a -&gt; Bool) -&gt; (a -&gt; a -&gt; Bool) -&gt; Eq a
+/= :: Timestamp -&gt; Timestamp -&gt; Bool
+$c/= :: Timestamp -&gt; Timestamp -&gt; Bool
+== :: Timestamp -&gt; Timestamp -&gt; Bool
+$c== :: Timestamp -&gt; Timestamp -&gt; Bool
+</span><span class="hs-identifier hs-var hs-var hs-var hs-var hs-var hs-var">Eq</span></span></span></span><span class="hs-special">)</span><span>
+</span><span id="line-60"></span><span>
+</span><span id="line-61"></span><span class="hs-keyword">data</span><span> </span><span id="RejectCode"><span class="annot"><a href="IC.Types.html#RejectCode"><span class="hs-identifier hs-var">RejectCode</span></a></span></span><span>
+</span><span id="line-62"></span><span>    </span><span class="hs-glyph">=</span><span> </span><span id="RC_SYS_FATAL"><span class="annot"><a href="IC.Types.html#RC_SYS_FATAL"><span class="hs-identifier hs-var">RC_SYS_FATAL</span></a></span></span><span>
+</span><span id="line-63"></span><span>    </span><span class="hs-glyph">|</span><span> </span><span id="RC_SYS_TRANSIENT"><span class="annot"><a href="IC.Types.html#RC_SYS_TRANSIENT"><span class="hs-identifier hs-var">RC_SYS_TRANSIENT</span></a></span></span><span>
+</span><span id="line-64"></span><span>    </span><span class="hs-glyph">|</span><span> </span><span id="RC_DESTINATION_INVALID"><span class="annot"><a href="IC.Types.html#RC_DESTINATION_INVALID"><span class="hs-identifier hs-var">RC_DESTINATION_INVALID</span></a></span></span><span>
+</span><span id="line-65"></span><span>    </span><span class="hs-glyph">|</span><span> </span><span id="RC_CANISTER_REJECT"><span class="annot"><a href="IC.Types.html#RC_CANISTER_REJECT"><span class="hs-identifier hs-var">RC_CANISTER_REJECT</span></a></span></span><span>
+</span><span id="line-66"></span><span>    </span><span class="hs-glyph">|</span><span> </span><span id="RC_CANISTER_ERROR"><span class="annot"><a href="IC.Types.html#RC_CANISTER_ERROR"><span class="hs-identifier hs-var">RC_CANISTER_ERROR</span></a></span></span><span>
+</span><span id="line-67"></span><span>  </span><span class="hs-keyword">deriving</span><span> </span><span id="local-6989586621679261909"><span id="local-6989586621679261911"><span id="local-6989586621679261913"><span class="annot"><span class="annottext">Int -&gt; RejectCode -&gt; ShowS
+[RejectCode] -&gt; ShowS
+RejectCode -&gt; String
+(Int -&gt; RejectCode -&gt; ShowS)
+-&gt; (RejectCode -&gt; String)
+-&gt; ([RejectCode] -&gt; ShowS)
+-&gt; Show RejectCode
+forall a.
+(Int -&gt; a -&gt; ShowS) -&gt; (a -&gt; String) -&gt; ([a] -&gt; ShowS) -&gt; Show a
+showList :: [RejectCode] -&gt; ShowS
+$cshowList :: [RejectCode] -&gt; ShowS
+show :: RejectCode -&gt; String
+$cshow :: RejectCode -&gt; String
+showsPrec :: Int -&gt; RejectCode -&gt; ShowS
+$cshowsPrec :: Int -&gt; RejectCode -&gt; ShowS
+</span><span class="hs-identifier hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var">Show</span></span></span></span></span><span>
+</span><span id="line-68"></span><span>
+</span><span id="line-69"></span><span class="annot"><a href="IC.Types.html#rejectCode"><span class="hs-identifier hs-type">rejectCode</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Types.html#RejectCode"><span class="hs-identifier hs-type">RejectCode</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Natural</span></span><span>
+</span><span id="line-70"></span><span id="rejectCode"><span class="annot"><span class="annottext">rejectCode :: RejectCode -&gt; Cycles
+</span><a href="IC.Types.html#rejectCode"><span class="hs-identifier hs-var hs-var">rejectCode</span></a></span></span><span> </span><span class="annot"><span class="annottext">RejectCode
+</span><a href="IC.Types.html#RC_SYS_FATAL"><span class="hs-identifier hs-var">RC_SYS_FATAL</span></a></span><span>           </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Cycles
+</span><span class="hs-number">1</span></span><span>
+</span><span id="line-71"></span><span class="annot"><a href="IC.Types.html#rejectCode"><span class="hs-identifier hs-var">rejectCode</span></a></span><span> </span><span class="annot"><span class="annottext">RejectCode
+</span><a href="IC.Types.html#RC_SYS_TRANSIENT"><span class="hs-identifier hs-var">RC_SYS_TRANSIENT</span></a></span><span>       </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Cycles
+</span><span class="hs-number">2</span></span><span>
+</span><span id="line-72"></span><span class="annot"><a href="IC.Types.html#rejectCode"><span class="hs-identifier hs-var">rejectCode</span></a></span><span> </span><span class="annot"><span class="annottext">RejectCode
+</span><a href="IC.Types.html#RC_DESTINATION_INVALID"><span class="hs-identifier hs-var">RC_DESTINATION_INVALID</span></a></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Cycles
+</span><span class="hs-number">3</span></span><span>
+</span><span id="line-73"></span><span class="annot"><a href="IC.Types.html#rejectCode"><span class="hs-identifier hs-var">rejectCode</span></a></span><span> </span><span class="annot"><span class="annottext">RejectCode
+</span><a href="IC.Types.html#RC_CANISTER_REJECT"><span class="hs-identifier hs-var">RC_CANISTER_REJECT</span></a></span><span>     </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Cycles
+</span><span class="hs-number">4</span></span><span>
+</span><span id="line-74"></span><span class="annot"><a href="IC.Types.html#rejectCode"><span class="hs-identifier hs-var">rejectCode</span></a></span><span> </span><span class="annot"><span class="annottext">RejectCode
+</span><a href="IC.Types.html#RC_CANISTER_ERROR"><span class="hs-identifier hs-var">RC_CANISTER_ERROR</span></a></span><span>      </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Cycles
+</span><span class="hs-number">5</span></span><span>
+</span><span id="line-75"></span><span>
+</span><span id="line-76"></span><span class="hs-keyword">data</span><span> </span><span id="ErrorCode"><span class="annot"><a href="IC.Types.html#ErrorCode"><span class="hs-identifier hs-var">ErrorCode</span></a></span></span><span>
+</span><span id="line-77"></span><span>    </span><span class="hs-glyph">=</span><span> </span><span id="EC_CANISTER_NOT_FOUND"><span class="annot"><a href="IC.Types.html#EC_CANISTER_NOT_FOUND"><span class="hs-identifier hs-var">EC_CANISTER_NOT_FOUND</span></a></span></span><span>
+</span><span id="line-78"></span><span>    </span><span class="hs-glyph">|</span><span> </span><span id="EC_METHOD_NOT_FOUND"><span class="annot"><a href="IC.Types.html#EC_METHOD_NOT_FOUND"><span class="hs-identifier hs-var">EC_METHOD_NOT_FOUND</span></a></span></span><span>
+</span><span id="line-79"></span><span>    </span><span class="hs-glyph">|</span><span> </span><span id="EC_CANISTER_EMPTY"><span class="annot"><a href="IC.Types.html#EC_CANISTER_EMPTY"><span class="hs-identifier hs-var">EC_CANISTER_EMPTY</span></a></span></span><span>
+</span><span id="line-80"></span><span>    </span><span class="hs-glyph">|</span><span> </span><span id="EC_CANISTER_NOT_EMPTY"><span class="annot"><a href="IC.Types.html#EC_CANISTER_NOT_EMPTY"><span class="hs-identifier hs-var">EC_CANISTER_NOT_EMPTY</span></a></span></span><span>
+</span><span id="line-81"></span><span>    </span><span class="hs-glyph">|</span><span> </span><span id="EC_CANISTER_STOPPED"><span class="annot"><a href="IC.Types.html#EC_CANISTER_STOPPED"><span class="hs-identifier hs-var">EC_CANISTER_STOPPED</span></a></span></span><span>
+</span><span id="line-82"></span><span>    </span><span class="hs-glyph">|</span><span> </span><span id="EC_CANISTER_NOT_STOPPED"><span class="annot"><a href="IC.Types.html#EC_CANISTER_NOT_STOPPED"><span class="hs-identifier hs-var">EC_CANISTER_NOT_STOPPED</span></a></span></span><span>
+</span><span id="line-83"></span><span>    </span><span class="hs-glyph">|</span><span> </span><span id="EC_CANISTER_NOT_RUNNING"><span class="annot"><a href="IC.Types.html#EC_CANISTER_NOT_RUNNING"><span class="hs-identifier hs-var">EC_CANISTER_NOT_RUNNING</span></a></span></span><span>
+</span><span id="line-84"></span><span>    </span><span class="hs-glyph">|</span><span> </span><span id="EC_CANISTER_RESTARTED"><span class="annot"><a href="IC.Types.html#EC_CANISTER_RESTARTED"><span class="hs-identifier hs-var">EC_CANISTER_RESTARTED</span></a></span></span><span>
+</span><span id="line-85"></span><span>    </span><span class="hs-glyph">|</span><span> </span><span id="EC_CANISTER_TRAPPED"><span class="annot"><a href="IC.Types.html#EC_CANISTER_TRAPPED"><span class="hs-identifier hs-var">EC_CANISTER_TRAPPED</span></a></span></span><span>
+</span><span id="line-86"></span><span>    </span><span class="hs-glyph">|</span><span> </span><span id="EC_CANISTER_REJECTED"><span class="annot"><a href="IC.Types.html#EC_CANISTER_REJECTED"><span class="hs-identifier hs-var">EC_CANISTER_REJECTED</span></a></span></span><span>
+</span><span id="line-87"></span><span>    </span><span class="hs-glyph">|</span><span> </span><span id="EC_CANISTER_DID_NOT_REPLY"><span class="annot"><a href="IC.Types.html#EC_CANISTER_DID_NOT_REPLY"><span class="hs-identifier hs-var">EC_CANISTER_DID_NOT_REPLY</span></a></span></span><span>
+</span><span id="line-88"></span><span>    </span><span class="hs-glyph">|</span><span> </span><span id="EC_INVALID_ENCODING"><span class="annot"><a href="IC.Types.html#EC_INVALID_ENCODING"><span class="hs-identifier hs-var">EC_INVALID_ENCODING</span></a></span></span><span>
+</span><span id="line-89"></span><span>    </span><span class="hs-glyph">|</span><span> </span><span id="EC_INVALID_ARGUMENT"><span class="annot"><a href="IC.Types.html#EC_INVALID_ARGUMENT"><span class="hs-identifier hs-var">EC_INVALID_ARGUMENT</span></a></span></span><span>
+</span><span id="line-90"></span><span>    </span><span class="hs-glyph">|</span><span> </span><span id="EC_INVALID_MODULE"><span class="annot"><a href="IC.Types.html#EC_INVALID_MODULE"><span class="hs-identifier hs-var">EC_INVALID_MODULE</span></a></span></span><span>
+</span><span id="line-91"></span><span>    </span><span class="hs-glyph">|</span><span> </span><span id="EC_NOT_AUTHORIZED"><span class="annot"><a href="IC.Types.html#EC_NOT_AUTHORIZED"><span class="hs-identifier hs-var">EC_NOT_AUTHORIZED</span></a></span></span><span>
+</span><span id="line-92"></span><span>  </span><span class="hs-keyword">deriving</span><span> </span><span class="hs-special">(</span><span id="local-6989586621679261887"><span id="local-6989586621679261889"><span id="local-6989586621679261891"><span class="annot"><span class="annottext">Int -&gt; ErrorCode -&gt; ShowS
+[ErrorCode] -&gt; ShowS
+ErrorCode -&gt; String
+(Int -&gt; ErrorCode -&gt; ShowS)
+-&gt; (ErrorCode -&gt; String)
+-&gt; ([ErrorCode] -&gt; ShowS)
+-&gt; Show ErrorCode
+forall a.
+(Int -&gt; a -&gt; ShowS) -&gt; (a -&gt; String) -&gt; ([a] -&gt; ShowS) -&gt; Show a
+showList :: [ErrorCode] -&gt; ShowS
+$cshowList :: [ErrorCode] -&gt; ShowS
+show :: ErrorCode -&gt; String
+$cshow :: ErrorCode -&gt; String
+showsPrec :: Int -&gt; ErrorCode -&gt; ShowS
+$cshowsPrec :: Int -&gt; ErrorCode -&gt; ShowS
+</span><span class="hs-identifier hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var">Show</span></span></span></span></span><span class="hs-special">,</span><span> </span><span id="local-6989586621679261848"><span id="local-6989586621679261850"><span id="local-6989586621679261854"><span id="local-6989586621679261858"><span id="local-6989586621679261860"><span id="local-6989586621679261871"><span id="local-6989586621679261877"><span id="local-6989586621679261885"><span class="annot"><span class="annottext">Int -&gt; ErrorCode
+ErrorCode -&gt; Int
+ErrorCode -&gt; [ErrorCode]
+ErrorCode -&gt; ErrorCode
+ErrorCode -&gt; ErrorCode -&gt; [ErrorCode]
+ErrorCode -&gt; ErrorCode -&gt; ErrorCode -&gt; [ErrorCode]
+(ErrorCode -&gt; ErrorCode)
+-&gt; (ErrorCode -&gt; ErrorCode)
+-&gt; (Int -&gt; ErrorCode)
+-&gt; (ErrorCode -&gt; Int)
+-&gt; (ErrorCode -&gt; [ErrorCode])
+-&gt; (ErrorCode -&gt; ErrorCode -&gt; [ErrorCode])
+-&gt; (ErrorCode -&gt; ErrorCode -&gt; [ErrorCode])
+-&gt; (ErrorCode -&gt; ErrorCode -&gt; ErrorCode -&gt; [ErrorCode])
+-&gt; Enum ErrorCode
+forall a.
+(a -&gt; a)
+-&gt; (a -&gt; a)
+-&gt; (Int -&gt; a)
+-&gt; (a -&gt; Int)
+-&gt; (a -&gt; [a])
+-&gt; (a -&gt; a -&gt; [a])
+-&gt; (a -&gt; a -&gt; [a])
+-&gt; (a -&gt; a -&gt; a -&gt; [a])
+-&gt; Enum a
+enumFromThenTo :: ErrorCode -&gt; ErrorCode -&gt; ErrorCode -&gt; [ErrorCode]
+$cenumFromThenTo :: ErrorCode -&gt; ErrorCode -&gt; ErrorCode -&gt; [ErrorCode]
+enumFromTo :: ErrorCode -&gt; ErrorCode -&gt; [ErrorCode]
+$cenumFromTo :: ErrorCode -&gt; ErrorCode -&gt; [ErrorCode]
+enumFromThen :: ErrorCode -&gt; ErrorCode -&gt; [ErrorCode]
+$cenumFromThen :: ErrorCode -&gt; ErrorCode -&gt; [ErrorCode]
+enumFrom :: ErrorCode -&gt; [ErrorCode]
+$cenumFrom :: ErrorCode -&gt; [ErrorCode]
+fromEnum :: ErrorCode -&gt; Int
+$cfromEnum :: ErrorCode -&gt; Int
+toEnum :: Int -&gt; ErrorCode
+$ctoEnum :: Int -&gt; ErrorCode
+pred :: ErrorCode -&gt; ErrorCode
+$cpred :: ErrorCode -&gt; ErrorCode
+succ :: ErrorCode -&gt; ErrorCode
+$csucc :: ErrorCode -&gt; ErrorCode
+</span><span class="hs-identifier hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var">Enum</span></span></span></span></span></span></span></span></span></span><span class="hs-special">)</span><span>
+</span><span id="line-93"></span><span>
+</span><span id="line-94"></span><span class="annot"><a href="IC.Types.html#errorCode"><span class="hs-identifier hs-type">errorCode</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Types.html#ErrorCode"><span class="hs-identifier hs-type">ErrorCode</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">String</span></span><span>
+</span><span id="line-95"></span><span id="errorCode"><span class="annot"><span class="annottext">errorCode :: ErrorCode -&gt; String
+</span><a href="IC.Types.html#errorCode"><span class="hs-identifier hs-var hs-var">errorCode</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">String -&gt; Int -&gt; String
+forall r. PrintfType r =&gt; String -&gt; r
+</span><span class="hs-identifier hs-var">printf</span></span><span> </span><span class="annot"><span class="annottext">String
+</span><span class="hs-string">&quot;ICHS%04d&quot;</span></span><span> </span><span class="annot"><span class="annottext">(Int -&gt; String) -&gt; (ErrorCode -&gt; Int) -&gt; ErrorCode -&gt; String
+forall b c a. (b -&gt; c) -&gt; (a -&gt; b) -&gt; a -&gt; c
+</span><span class="hs-operator hs-var">.</span></span><span> </span><span class="annot"><span class="annottext">ErrorCode -&gt; Int
+forall a. Enum a =&gt; a -&gt; Int
+</span><span class="hs-identifier hs-var">fromEnum</span></span><span>
+</span><span id="line-96"></span><span>
+</span><span id="line-97"></span><span class="hs-keyword">data</span><span> </span><span id="Response"><span class="annot"><a href="IC.Types.html#Response"><span class="hs-identifier hs-var">Response</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span id="Reply"><span class="annot"><a href="IC.Types.html#Reply"><span class="hs-identifier hs-var">Reply</span></a></span></span><span> </span><span class="annot"><a href="IC.Types.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span> </span><span class="hs-glyph">|</span><span> </span><span id="Reject"><span class="annot"><a href="IC.Types.html#Reject"><span class="hs-identifier hs-var">Reject</span></a></span></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Types.html#RejectCode"><span class="hs-identifier hs-type">RejectCode</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><span class="hs-identifier hs-type">String</span></span><span class="hs-special">)</span><span>
+</span><span id="line-98"></span><span>  </span><span class="hs-keyword">deriving</span><span> </span><span id="local-6989586621679261830"><span id="local-6989586621679261832"><span id="local-6989586621679261841"><span class="annot"><span class="annottext">Int -&gt; Response -&gt; ShowS
+[Response] -&gt; ShowS
+Response -&gt; String
+(Int -&gt; Response -&gt; ShowS)
+-&gt; (Response -&gt; String) -&gt; ([Response] -&gt; ShowS) -&gt; Show Response
+forall a.
+(Int -&gt; a -&gt; ShowS) -&gt; (a -&gt; String) -&gt; ([a] -&gt; ShowS) -&gt; Show a
+showList :: [Response] -&gt; ShowS
+$cshowList :: [Response] -&gt; ShowS
+show :: Response -&gt; String
+$cshow :: Response -&gt; String
+showsPrec :: Int -&gt; Response -&gt; ShowS
+$cshowsPrec :: Int -&gt; Response -&gt; ShowS
+</span><span class="hs-identifier hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var">Show</span></span></span></span></span><span>
+</span><span id="line-99"></span><span>
+</span><span id="line-100"></span><span class="hs-comment">-- Abstract canisters</span><span>
+</span><span id="line-101"></span><span>
+</span><span id="line-102"></span><span class="hs-comment">-- | This data type contains all read-only data that should be available to the</span><span>
+</span><span id="line-103"></span><span class="hs-comment">-- canister almost always</span><span>
+</span><span id="line-104"></span><span class="hs-keyword">data</span><span> </span><span id="Status"><span class="annot"><a href="IC.Types.html#Status"><span class="hs-identifier hs-var">Status</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span id="Running"><span class="annot"><a href="IC.Types.html#Running"><span class="hs-identifier hs-var">Running</span></a></span></span><span> </span><span class="hs-glyph">|</span><span> </span><span id="Stopping"><span class="annot"><a href="IC.Types.html#Stopping"><span class="hs-identifier hs-var">Stopping</span></a></span></span><span> </span><span class="hs-glyph">|</span><span> </span><span id="Stopped"><span class="annot"><a href="IC.Types.html#Stopped"><span class="hs-identifier hs-var">Stopped</span></a></span></span><span>
+</span><span id="line-105"></span><span class="hs-keyword">data</span><span> </span><span id="Env"><span class="annot"><a href="IC.Types.html#Env"><span class="hs-identifier hs-var">Env</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span id="Env"><span class="annot"><a href="IC.Types.html#Env"><span class="hs-identifier hs-var">Env</span></a></span></span><span>
+</span><span id="line-106"></span><span>    </span><span class="hs-special">{</span><span> </span><span id="env_self"><span class="annot"><span class="annottext">Env -&gt; EntityId
+</span><a href="IC.Types.html#env_self"><span class="hs-identifier hs-var hs-var">env_self</span></a></span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Types.html#CanisterId"><span class="hs-identifier hs-type">CanisterId</span></a></span><span>
+</span><span id="line-107"></span><span>    </span><span class="hs-special">,</span><span> </span><span id="env_time"><span class="annot"><span class="annottext">Env -&gt; Timestamp
+</span><a href="IC.Types.html#env_time"><span class="hs-identifier hs-var hs-var">env_time</span></a></span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Types.html#Timestamp"><span class="hs-identifier hs-type">Timestamp</span></a></span><span>
+</span><span id="line-108"></span><span>    </span><span class="hs-special">,</span><span> </span><span id="env_balance"><span class="annot"><span class="annottext">Env -&gt; Cycles
+</span><a href="IC.Types.html#env_balance"><span class="hs-identifier hs-var hs-var">env_balance</span></a></span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Types.html#Cycles"><span class="hs-identifier hs-type">Cycles</span></a></span><span>
+</span><span id="line-109"></span><span>    </span><span class="hs-special">,</span><span> </span><span id="env_status"><span class="annot"><span class="annottext">Env -&gt; Status
+</span><a href="IC.Types.html#env_status"><span class="hs-identifier hs-var hs-var">env_status</span></a></span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Types.html#Status"><span class="hs-identifier hs-type">Status</span></a></span><span>
+</span><span id="line-110"></span><span>    </span><span class="hs-special">,</span><span> </span><span id="env_certificate"><span class="annot"><span class="annottext">Env -&gt; Maybe ByteString
+</span><a href="IC.Types.html#env_certificate"><span class="hs-identifier hs-var hs-var">env_certificate</span></a></span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Maybe</span></span><span> </span><span class="annot"><a href="IC.Types.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span>
+</span><span id="line-111"></span><span>    </span><span class="hs-special">}</span><span>
+</span><span id="line-112"></span><span>
+</span><span id="line-113"></span><span class="hs-keyword">data</span><span> </span><span id="TrapOr"><span class="annot"><a href="IC.Types.html#TrapOr"><span class="hs-identifier hs-var">TrapOr</span></a></span></span><span> </span><span id="local-6989586621679261817"><span class="annot"><a href="#local-6989586621679261817"><span class="hs-identifier hs-type">a</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span id="Trap"><span class="annot"><a href="IC.Types.html#Trap"><span class="hs-identifier hs-var">Trap</span></a></span></span><span> </span><span class="annot"><span class="hs-identifier hs-type">String</span></span><span> </span><span class="hs-glyph">|</span><span> </span><span id="Return"><span class="annot"><a href="IC.Types.html#Return"><span class="hs-identifier hs-var">Return</span></a></span></span><span> </span><span class="annot"><a href="#local-6989586621679261817"><span class="hs-identifier hs-type">a</span></a></span><span> </span><span class="hs-keyword">deriving</span><span> </span><span id="local-6989586621679261811"><span id="local-6989586621679261813"><span class="annot"><span class="annottext">(forall a b. (a -&gt; b) -&gt; TrapOr a -&gt; TrapOr b)
+-&gt; (forall a b. a -&gt; TrapOr b -&gt; TrapOr a) -&gt; Functor TrapOr
+forall a b. a -&gt; TrapOr b -&gt; TrapOr a
+forall a b. (a -&gt; b) -&gt; TrapOr a -&gt; TrapOr b
+forall (f :: * -&gt; *).
+(forall a b. (a -&gt; b) -&gt; f a -&gt; f b)
+-&gt; (forall a b. a -&gt; f b -&gt; f a) -&gt; Functor f
+&lt;$ :: forall a b. a -&gt; TrapOr b -&gt; TrapOr a
+$c&lt;$ :: forall a b. a -&gt; TrapOr b -&gt; TrapOr a
+fmap :: forall a b. (a -&gt; b) -&gt; TrapOr a -&gt; TrapOr b
+$cfmap :: forall a b. (a -&gt; b) -&gt; TrapOr a -&gt; TrapOr b
+</span><span class="hs-identifier hs-var hs-var hs-var hs-var hs-var hs-var">Functor</span></span></span></span><span>
+</span><span id="line-114"></span><span>
+</span><span id="line-115"></span><span class="hs-keyword">data</span><span> </span><span id="WasmClosure"><span class="annot"><a href="IC.Types.html#WasmClosure"><span class="hs-identifier hs-var">WasmClosure</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span id="WasmClosure"><span class="annot"><a href="IC.Types.html#WasmClosure"><span class="hs-identifier hs-var">WasmClosure</span></a></span></span><span>
+</span><span id="line-116"></span><span>  </span><span class="hs-special">{</span><span> </span><span id="closure_idx"><span class="annot"><span class="annottext">WasmClosure -&gt; Int32
+</span><a href="IC.Types.html#closure_idx"><span class="hs-identifier hs-var hs-var">closure_idx</span></a></span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Int32</span></span><span>
+</span><span id="line-117"></span><span>  </span><span class="hs-special">,</span><span> </span><span id="closure_env"><span class="annot"><span class="annottext">WasmClosure -&gt; Int32
+</span><a href="IC.Types.html#closure_env"><span class="hs-identifier hs-var hs-var">closure_env</span></a></span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Int32</span></span><span>
+</span><span id="line-118"></span><span>  </span><span class="hs-special">}</span><span>
+</span><span id="line-119"></span><span>  </span><span class="hs-keyword">deriving</span><span> </span><span class="hs-special">(</span><span id="local-6989586621679261799"><span id="local-6989586621679261804"><span class="annot"><span class="annottext">WasmClosure -&gt; WasmClosure -&gt; Bool
+(WasmClosure -&gt; WasmClosure -&gt; Bool)
+-&gt; (WasmClosure -&gt; WasmClosure -&gt; Bool) -&gt; Eq WasmClosure
+forall a. (a -&gt; a -&gt; Bool) -&gt; (a -&gt; a -&gt; Bool) -&gt; Eq a
+/= :: WasmClosure -&gt; WasmClosure -&gt; Bool
+$c/= :: WasmClosure -&gt; WasmClosure -&gt; Bool
+== :: WasmClosure -&gt; WasmClosure -&gt; Bool
+$c== :: WasmClosure -&gt; WasmClosure -&gt; Bool
+</span><span class="hs-identifier hs-var hs-var hs-var hs-var hs-var hs-var">Eq</span></span></span></span><span class="hs-special">,</span><span> </span><span id="local-6989586621679261789"><span id="local-6989586621679261791"><span id="local-6989586621679261797"><span class="annot"><span class="annottext">Int -&gt; WasmClosure -&gt; ShowS
+[WasmClosure] -&gt; ShowS
+WasmClosure -&gt; String
+(Int -&gt; WasmClosure -&gt; ShowS)
+-&gt; (WasmClosure -&gt; String)
+-&gt; ([WasmClosure] -&gt; ShowS)
+-&gt; Show WasmClosure
+forall a.
+(Int -&gt; a -&gt; ShowS) -&gt; (a -&gt; String) -&gt; ([a] -&gt; ShowS) -&gt; Show a
+showList :: [WasmClosure] -&gt; ShowS
+$cshowList :: [WasmClosure] -&gt; ShowS
+show :: WasmClosure -&gt; String
+$cshow :: WasmClosure -&gt; String
+showsPrec :: Int -&gt; WasmClosure -&gt; ShowS
+$cshowsPrec :: Int -&gt; WasmClosure -&gt; ShowS
+</span><span class="hs-identifier hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var">Show</span></span></span></span></span><span class="hs-special">)</span><span>
+</span><span id="line-120"></span><span>
+</span><span id="line-121"></span><span class="hs-keyword">data</span><span> </span><span id="Callback"><span class="annot"><a href="IC.Types.html#Callback"><span class="hs-identifier hs-var">Callback</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span id="Callback"><span class="annot"><a href="IC.Types.html#Callback"><span class="hs-identifier hs-var">Callback</span></a></span></span><span>
+</span><span id="line-122"></span><span>  </span><span class="hs-special">{</span><span> </span><span id="reply_callback"><span class="annot"><span class="annottext">Callback -&gt; WasmClosure
+</span><a href="IC.Types.html#reply_callback"><span class="hs-identifier hs-var hs-var">reply_callback</span></a></span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Types.html#WasmClosure"><span class="hs-identifier hs-type">WasmClosure</span></a></span><span>
+</span><span id="line-123"></span><span>  </span><span class="hs-special">,</span><span> </span><span id="reject_callback"><span class="annot"><span class="annottext">Callback -&gt; WasmClosure
+</span><a href="IC.Types.html#reject_callback"><span class="hs-identifier hs-var hs-var">reject_callback</span></a></span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Types.html#WasmClosure"><span class="hs-identifier hs-type">WasmClosure</span></a></span><span>
+</span><span id="line-124"></span><span>  </span><span class="hs-special">,</span><span> </span><span id="cleanup_callback"><span class="annot"><span class="annottext">Callback -&gt; Maybe WasmClosure
+</span><a href="IC.Types.html#cleanup_callback"><span class="hs-identifier hs-var hs-var">cleanup_callback</span></a></span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Maybe</span></span><span> </span><span class="annot"><a href="IC.Types.html#WasmClosure"><span class="hs-identifier hs-type">WasmClosure</span></a></span><span>
+</span><span id="line-125"></span><span>  </span><span class="hs-special">}</span><span>
+</span><span id="line-126"></span><span>  </span><span class="hs-keyword">deriving</span><span> </span><span class="hs-special">(</span><span id="local-6989586621679261777"><span id="local-6989586621679261783"><span class="annot"><span class="annottext">Callback -&gt; Callback -&gt; Bool
+(Callback -&gt; Callback -&gt; Bool)
+-&gt; (Callback -&gt; Callback -&gt; Bool) -&gt; Eq Callback
+forall a. (a -&gt; a -&gt; Bool) -&gt; (a -&gt; a -&gt; Bool) -&gt; Eq a
+/= :: Callback -&gt; Callback -&gt; Bool
+$c/= :: Callback -&gt; Callback -&gt; Bool
+== :: Callback -&gt; Callback -&gt; Bool
+$c== :: Callback -&gt; Callback -&gt; Bool
+</span><span class="hs-identifier hs-var hs-var hs-var hs-var hs-var hs-var">Eq</span></span></span></span><span class="hs-special">,</span><span> </span><span id="local-6989586621679261766"><span id="local-6989586621679261768"><span id="local-6989586621679261775"><span class="annot"><span class="annottext">Int -&gt; Callback -&gt; ShowS
+[Callback] -&gt; ShowS
+Callback -&gt; String
+(Int -&gt; Callback -&gt; ShowS)
+-&gt; (Callback -&gt; String) -&gt; ([Callback] -&gt; ShowS) -&gt; Show Callback
+forall a.
+(Int -&gt; a -&gt; ShowS) -&gt; (a -&gt; String) -&gt; ([a] -&gt; ShowS) -&gt; Show a
+showList :: [Callback] -&gt; ShowS
+$cshowList :: [Callback] -&gt; ShowS
+show :: Callback -&gt; String
+$cshow :: Callback -&gt; String
+showsPrec :: Int -&gt; Callback -&gt; ShowS
+$cshowsPrec :: Int -&gt; Callback -&gt; ShowS
+</span><span class="hs-identifier hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var">Show</span></span></span></span></span><span class="hs-special">)</span><span>
+</span><span id="line-127"></span><span>
+</span><span id="line-128"></span><span class="hs-keyword">data</span><span> </span><span id="MethodCall"><span class="annot"><a href="IC.Types.html#MethodCall"><span class="hs-identifier hs-var">MethodCall</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span id="MethodCall"><span class="annot"><a href="IC.Types.html#MethodCall"><span class="hs-identifier hs-var">MethodCall</span></a></span></span><span>
+</span><span id="line-129"></span><span>  </span><span class="hs-special">{</span><span> </span><span id="call_callee"><span class="annot"><span class="annottext">MethodCall -&gt; EntityId
+</span><a href="IC.Types.html#call_callee"><span class="hs-identifier hs-var hs-var">call_callee</span></a></span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Types.html#CanisterId"><span class="hs-identifier hs-type">CanisterId</span></a></span><span>
+</span><span id="line-130"></span><span>  </span><span class="hs-special">,</span><span> </span><span id="call_method_name"><span class="annot"><span class="annottext">MethodCall -&gt; String
+</span><a href="IC.Types.html#call_method_name"><span class="hs-identifier hs-var hs-var">call_method_name</span></a></span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Types.html#MethodName"><span class="hs-identifier hs-type">MethodName</span></a></span><span>
+</span><span id="line-131"></span><span>  </span><span class="hs-special">,</span><span> </span><span id="call_arg"><span class="annot"><span class="annottext">MethodCall -&gt; ByteString
+</span><a href="IC.Types.html#call_arg"><span class="hs-identifier hs-var hs-var">call_arg</span></a></span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Types.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span>
+</span><span id="line-132"></span><span>  </span><span class="hs-special">,</span><span> </span><span id="call_callback"><span class="annot"><span class="annottext">MethodCall -&gt; Callback
+</span><a href="IC.Types.html#call_callback"><span class="hs-identifier hs-var hs-var">call_callback</span></a></span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Types.html#Callback"><span class="hs-identifier hs-type">Callback</span></a></span><span>
+</span><span id="line-133"></span><span>  </span><span class="hs-special">,</span><span> </span><span id="call_transferred_cycles"><span class="annot"><span class="annottext">MethodCall -&gt; Cycles
+</span><a href="IC.Types.html#call_transferred_cycles"><span class="hs-identifier hs-var hs-var">call_transferred_cycles</span></a></span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Types.html#Cycles"><span class="hs-identifier hs-type">Cycles</span></a></span><span>
+</span><span id="line-134"></span><span>  </span><span class="hs-special">}</span><span>
+</span><span id="line-135"></span><span>  </span><span class="hs-keyword">deriving</span><span> </span><span id="local-6989586621679261747"><span id="local-6989586621679261749"><span id="local-6989586621679261758"><span class="annot"><span class="annottext">Int -&gt; MethodCall -&gt; ShowS
+[MethodCall] -&gt; ShowS
+MethodCall -&gt; String
+(Int -&gt; MethodCall -&gt; ShowS)
+-&gt; (MethodCall -&gt; String)
+-&gt; ([MethodCall] -&gt; ShowS)
+-&gt; Show MethodCall
+forall a.
+(Int -&gt; a -&gt; ShowS) -&gt; (a -&gt; String) -&gt; ([a] -&gt; ShowS) -&gt; Show a
+showList :: [MethodCall] -&gt; ShowS
+$cshowList :: [MethodCall] -&gt; ShowS
+show :: MethodCall -&gt; String
+$cshow :: MethodCall -&gt; String
+showsPrec :: Int -&gt; MethodCall -&gt; ShowS
+$cshowsPrec :: Int -&gt; MethodCall -&gt; ShowS
+</span><span class="hs-identifier hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var">Show</span></span></span></span></span><span>
+</span><span id="line-136"></span><span>
+</span><span id="line-137"></span><span class="hs-keyword">type</span><span> </span><span id="ExistingCanisters"><span class="annot"><a href="IC.Types.html#ExistingCanisters"><span class="hs-identifier hs-var">ExistingCanisters</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-special">[</span><span class="annot"><a href="IC.Types.html#CanisterId"><span class="hs-identifier hs-type">CanisterId</span></a></span><span class="hs-special">]</span><span>
+</span><span id="line-138"></span><span>
+</span><span id="line-139"></span><span class="hs-comment">-- Canister actions (independent of calls)</span><span>
+</span><span id="line-140"></span><span class="hs-keyword">newtype</span><span> </span><span id="CanisterActions"><span class="annot"><a href="IC.Types.html#CanisterActions"><span class="hs-identifier hs-var">CanisterActions</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span id="CanisterActions"><span class="annot"><a href="IC.Types.html#CanisterActions"><span class="hs-identifier hs-var">CanisterActions</span></a></span></span><span>
+</span><span id="line-141"></span><span>  </span><span class="hs-special">{</span><span> </span><span id="set_certified_data"><span class="annot"><span class="annottext">CanisterActions -&gt; Maybe ByteString
+</span><a href="IC.Types.html#set_certified_data"><span class="hs-identifier hs-var hs-var">set_certified_data</span></a></span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Maybe</span></span><span> </span><span class="annot"><a href="IC.Types.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span>
+</span><span id="line-142"></span><span>  </span><span class="hs-special">}</span><span>
+</span><span id="line-143"></span><span>
+</span><span id="line-144"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679261739"><span id="local-6989586621679261741"><span class="annot"><span class="hs-identifier hs-type">Semigroup</span></span><span> </span><span class="annot"><a href="IC.Types.html#CanisterActions"><span class="hs-identifier hs-type">CanisterActions</span></a></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-145"></span><span>    </span><span id="local-6989586621679261737"><span class="annot"><span class="annottext">CanisterActions
+</span><a href="#local-6989586621679261737"><span class="hs-identifier hs-var">ca1</span></a></span></span><span> </span><span id="local-6989586621679261736"><span class="annot"><span class="annottext">&lt;&gt; :: CanisterActions -&gt; CanisterActions -&gt; CanisterActions
+</span><span class="hs-operator hs-var hs-var hs-var hs-var">&lt;&gt;</span></span></span><span> </span><span id="local-6989586621679261735"><span class="annot"><span class="annottext">CanisterActions
+</span><a href="#local-6989586621679261735"><span class="hs-identifier hs-var">ca2</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Maybe ByteString -&gt; CanisterActions
+</span><a href="IC.Types.html#CanisterActions"><span class="hs-identifier hs-var">CanisterActions</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">CanisterActions -&gt; Maybe ByteString
+</span><a href="IC.Types.html#set_certified_data"><span class="hs-identifier hs-var hs-var">set_certified_data</span></a></span><span> </span><span class="annot"><span class="annottext">CanisterActions
+</span><a href="#local-6989586621679261737"><span class="hs-identifier hs-var">ca1</span></a></span><span> </span><span class="annot"><span class="annottext">Maybe ByteString -&gt; Maybe ByteString -&gt; Maybe ByteString
+forall {a}. Maybe a -&gt; Maybe a -&gt; Maybe a
+</span><a href="#local-6989586621679261734"><span class="hs-operator hs-var">`setter`</span></a></span><span> </span><span class="annot"><span class="annottext">CanisterActions -&gt; Maybe ByteString
+</span><a href="IC.Types.html#set_certified_data"><span class="hs-identifier hs-var hs-var">set_certified_data</span></a></span><span> </span><span class="annot"><span class="annottext">CanisterActions
+</span><a href="#local-6989586621679261735"><span class="hs-identifier hs-var">ca2</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-146"></span><span>      </span><span class="hs-keyword">where</span><span>
+</span><span id="line-147"></span><span>        </span><span id="local-6989586621679261734"><span class="annot"><span class="annottext">setter :: Maybe a -&gt; Maybe a -&gt; Maybe a
+</span><a href="#local-6989586621679261734"><span class="hs-identifier hs-var hs-var">setter</span></a></span></span><span> </span><span class="annot"><span class="annottext">Maybe a
+</span><span class="hs-identifier">_</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier hs-type">Just</span></span><span> </span><span id="local-6989586621679261733"><span class="annot"><span class="annottext">a
+</span><a href="#local-6989586621679261733"><span class="hs-identifier hs-var">x</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">a -&gt; Maybe a
+forall a. a -&gt; Maybe a
+</span><span class="hs-identifier hs-var">Just</span></span><span> </span><span class="annot"><span class="annottext">a
+</span><a href="#local-6989586621679261733"><span class="hs-identifier hs-var">x</span></a></span><span>
+</span><span id="line-148"></span><span>        </span><span class="annot"><a href="#local-6989586621679261734"><span class="hs-identifier hs-var">setter</span></a></span><span> </span><span id="local-6989586621679261732"><span class="annot"><span class="annottext">Maybe a
+</span><a href="#local-6989586621679261732"><span class="hs-identifier hs-var">x</span></a></span></span><span> </span><span class="annot"><span class="annottext">Maybe a
+</span><span class="hs-identifier hs-var">Nothing</span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Maybe a
+</span><a href="#local-6989586621679261732"><span class="hs-identifier hs-var">x</span></a></span><span>
+</span><span id="line-149"></span><span>
+</span><span id="line-150"></span><span class="annot"><a href="IC.Types.html#noCanisterActions"><span class="hs-identifier hs-type">noCanisterActions</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Types.html#CanisterActions"><span class="hs-identifier hs-type">CanisterActions</span></a></span><span>
+</span><span id="line-151"></span><span id="noCanisterActions"><span class="annot"><span class="annottext">noCanisterActions :: CanisterActions
+</span><a href="IC.Types.html#noCanisterActions"><span class="hs-identifier hs-var hs-var">noCanisterActions</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Maybe ByteString -&gt; CanisterActions
+</span><a href="IC.Types.html#CanisterActions"><span class="hs-identifier hs-var">CanisterActions</span></a></span><span> </span><span class="annot"><span class="annottext">Maybe ByteString
+forall a. Maybe a
+</span><span class="hs-identifier hs-var">Nothing</span></span><span>
+</span><span id="line-152"></span><span>
+</span><span id="line-153"></span><span class="hs-comment">-- Actions relative to a call context</span><span>
+</span><span id="line-154"></span><span class="hs-keyword">data</span><span> </span><span id="CallActions"><span class="annot"><a href="IC.Types.html#CallActions"><span class="hs-identifier hs-var">CallActions</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span id="CallActions"><span class="annot"><a href="IC.Types.html#CallActions"><span class="hs-identifier hs-var">CallActions</span></a></span></span><span>
+</span><span id="line-155"></span><span>  </span><span class="hs-special">{</span><span> </span><span id="ca_new_calls"><span class="annot"><span class="annottext">CallActions -&gt; [MethodCall]
+</span><a href="IC.Types.html#ca_new_calls"><span class="hs-identifier hs-var hs-var">ca_new_calls</span></a></span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="hs-special">[</span><span class="annot"><a href="IC.Types.html#MethodCall"><span class="hs-identifier hs-type">MethodCall</span></a></span><span class="hs-special">]</span><span>
+</span><span id="line-156"></span><span>  </span><span class="hs-special">,</span><span> </span><span id="ca_accept"><span class="annot"><span class="annottext">CallActions -&gt; Cycles
+</span><a href="IC.Types.html#ca_accept"><span class="hs-identifier hs-var hs-var">ca_accept</span></a></span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Types.html#Cycles"><span class="hs-identifier hs-type">Cycles</span></a></span><span>
+</span><span id="line-157"></span><span>  </span><span class="hs-special">,</span><span> </span><span id="ca_response"><span class="annot"><span class="annottext">CallActions -&gt; Maybe Response
+</span><a href="IC.Types.html#ca_response"><span class="hs-identifier hs-var hs-var">ca_response</span></a></span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Maybe</span></span><span> </span><span class="annot"><a href="IC.Types.html#Response"><span class="hs-identifier hs-type">Response</span></a></span><span>
+</span><span id="line-158"></span><span>  </span><span class="hs-special">}</span><span>
+</span><span id="line-159"></span><span>
+</span><span id="line-160"></span><span class="annot"><a href="IC.Types.html#noCallActions"><span class="hs-identifier hs-type">noCallActions</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Types.html#CallActions"><span class="hs-identifier hs-type">CallActions</span></a></span><span>
+</span><span id="line-161"></span><span id="noCallActions"><span class="annot"><span class="annottext">noCallActions :: CallActions
+</span><a href="IC.Types.html#noCallActions"><span class="hs-identifier hs-var hs-var">noCallActions</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">[MethodCall] -&gt; Cycles -&gt; Maybe Response -&gt; CallActions
+</span><a href="IC.Types.html#CallActions"><span class="hs-identifier hs-var">CallActions</span></a></span><span> </span><span class="hs-special">[</span><span class="hs-special">]</span><span> </span><span class="annot"><span class="annottext">Cycles
+</span><span class="hs-number">0</span></span><span> </span><span class="annot"><span class="annottext">Maybe Response
+forall a. Maybe a
+</span><span class="hs-identifier hs-var">Nothing</span></span><span>
+</span><span id="line-162"></span><span>
+</span><span id="line-163"></span><span class="hs-keyword">type</span><span> </span><span id="UpdateResult"><span class="annot"><a href="IC.Types.html#UpdateResult"><span class="hs-identifier hs-var">UpdateResult</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Types.html#CallActions"><span class="hs-identifier hs-type">CallActions</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><a href="IC.Types.html#CanisterActions"><span class="hs-identifier hs-type">CanisterActions</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-164"></span><span>
+</span><span id="line-165"></span><span class="hs-keyword">type</span><span> </span><span id="StableMemory"><span class="annot"><a href="IC.Types.html#StableMemory"><span class="hs-identifier hs-var">StableMemory</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><a href="IC.Types.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span>
+</span><span id="line-166"></span><span>
+</span><span id="line-167"></span><span class="hs-comment">-- Semantically relevant information from an envelope</span><span>
+</span><span id="line-168"></span><span class="hs-comment">--</span><span>
+</span><span id="line-169"></span><span class="hs-comment">--  * When is it valid</span><span>
+</span><span id="line-170"></span><span class="hs-comment">--  * Which users can it sign for</span><span>
+</span><span id="line-171"></span><span class="hs-comment">--  * Which canisters can it be used at</span><span>
+</span><span id="line-172"></span><span class="hs-comment">--</span><span>
+</span><span id="line-173"></span><span class="hs-comment">-- All represented as validation functions</span><span>
+</span><span id="line-174"></span><span>
+</span><span id="line-175"></span><span class="hs-keyword">type</span><span> </span><span id="ValidityPred"><span class="annot"><a href="IC.Types.html#ValidityPred"><span class="hs-identifier hs-var">ValidityPred</span></a></span></span><span> </span><span id="local-6989586621679261723"><span class="annot"><a href="#local-6989586621679261723"><span class="hs-identifier hs-type">a</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-keyword">forall</span><span> </span><span id="local-6989586621679261722"><span class="annot"><a href="#local-6989586621679261722"><span class="hs-identifier hs-type">m</span></a></span></span><span class="hs-operator">.</span><span> </span><span class="annot"><span class="hs-identifier hs-type">MonadError</span></span><span> </span><span class="annot"><span class="hs-identifier hs-type">T.Text</span></span><span> </span><span class="annot"><a href="#local-6989586621679261722"><span class="hs-identifier hs-type">m</span></a></span><span> </span><span class="hs-glyph">=&gt;</span><span> </span><span class="annot"><a href="#local-6989586621679261723"><span class="hs-identifier hs-type">a</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="#local-6989586621679261722"><span class="hs-identifier hs-type">m</span></a></span><span> </span><span class="hs-special">(</span><span class="hs-special">)</span><span>
+</span><span id="line-176"></span><span class="hs-keyword">data</span><span> </span><span id="EnvValidity"><span class="annot"><a href="IC.Types.html#EnvValidity"><span class="hs-identifier hs-var">EnvValidity</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span id="EnvValidity"><span class="annot"><a href="IC.Types.html#EnvValidity"><span class="hs-identifier hs-var">EnvValidity</span></a></span></span><span>
+</span><span id="line-177"></span><span>    </span><span class="hs-special">{</span><span> </span><span id="valid_when"><span class="annot"><span class="annottext">EnvValidity -&gt; ValidityPred Timestamp
+</span><a href="IC.Types.html#valid_when"><span class="hs-identifier hs-var hs-var">valid_when</span></a></span></span><span>  </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Types.html#ValidityPred"><span class="hs-identifier hs-type">ValidityPred</span></a></span><span> </span><span class="annot"><a href="IC.Types.html#Timestamp"><span class="hs-identifier hs-type">Timestamp</span></a></span><span>
+</span><span id="line-178"></span><span>    </span><span class="hs-special">,</span><span> </span><span id="valid_for"><span class="annot"><span class="annottext">EnvValidity -&gt; ValidityPred EntityId
+</span><a href="IC.Types.html#valid_for"><span class="hs-identifier hs-var hs-var">valid_for</span></a></span></span><span>   </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Types.html#ValidityPred"><span class="hs-identifier hs-type">ValidityPred</span></a></span><span> </span><span class="annot"><a href="IC.Types.html#EntityId"><span class="hs-identifier hs-type">EntityId</span></a></span><span>
+</span><span id="line-179"></span><span>    </span><span class="hs-special">,</span><span> </span><span id="valid_where"><span class="annot"><span class="annottext">EnvValidity -&gt; ValidityPred EntityId
+</span><a href="IC.Types.html#valid_where"><span class="hs-identifier hs-var hs-var">valid_where</span></a></span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Types.html#ValidityPred"><span class="hs-identifier hs-type">ValidityPred</span></a></span><span> </span><span class="annot"><a href="IC.Types.html#EntityId"><span class="hs-identifier hs-type">EntityId</span></a></span><span>
+</span><span id="line-180"></span><span>    </span><span class="hs-special">}</span><span>
+</span><span id="line-181"></span><span>
+</span><span id="line-182"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679261707"><span id="local-6989586621679261709"><span class="annot"><span class="hs-identifier hs-type">Semigroup</span></span><span> </span><span class="annot"><a href="IC.Types.html#EnvValidity"><span class="hs-identifier hs-type">EnvValidity</span></a></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-183"></span><span>    </span><span id="local-6989586621679261706"><span class="annot"><span class="annottext">EnvValidity
+</span><a href="#local-6989586621679261706"><span class="hs-identifier hs-var">ed1</span></a></span></span><span> </span><span id="local-6989586621679261705"><span class="annot"><span class="annottext">&lt;&gt; :: EnvValidity -&gt; EnvValidity -&gt; EnvValidity
+</span><span class="hs-operator hs-var hs-var hs-var hs-var">&lt;&gt;</span></span></span><span> </span><span id="local-6989586621679261704"><span class="annot"><span class="annottext">EnvValidity
+</span><a href="#local-6989586621679261704"><span class="hs-identifier hs-var">ed2</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">EnvValidity :: ValidityPred Timestamp
+-&gt; ValidityPred EntityId -&gt; ValidityPred EntityId -&gt; EnvValidity
+</span><a href="IC.Types.html#EnvValidity"><span class="hs-identifier hs-type">EnvValidity</span></a></span><span>
+</span><span id="line-184"></span><span>        </span><span class="hs-special">{</span><span> </span><span class="annot"><span class="annottext">valid_when :: ValidityPred Timestamp
+</span><a href="IC.Types.html#valid_when"><span class="hs-identifier hs-var">valid_when</span></a></span><span>  </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">EnvValidity -&gt; ValidityPred Timestamp
+</span><a href="IC.Types.html#valid_when"><span class="hs-identifier hs-var hs-var">valid_when</span></a></span><span>  </span><span class="annot"><span class="annottext">EnvValidity
+</span><a href="#local-6989586621679261706"><span class="hs-identifier hs-var">ed1</span></a></span><span> </span><span class="annot"><span class="annottext">(Timestamp -&gt; m ()) -&gt; (Timestamp -&gt; m ()) -&gt; Timestamp -&gt; m ()
+forall {m :: * -&gt; *} {t} {a} {b}.
+Monad m =&gt;
+(t -&gt; m a) -&gt; (t -&gt; m b) -&gt; t -&gt; m b
+</span><a href="#local-6989586621679261697"><span class="hs-operator hs-var">&gt;&gt;&gt;</span></a></span><span> </span><span class="annot"><span class="annottext">EnvValidity -&gt; ValidityPred Timestamp
+</span><a href="IC.Types.html#valid_when"><span class="hs-identifier hs-var hs-var">valid_when</span></a></span><span>  </span><span class="annot"><span class="annottext">EnvValidity
+</span><a href="#local-6989586621679261704"><span class="hs-identifier hs-var">ed2</span></a></span><span>
+</span><span id="line-185"></span><span>        </span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">valid_for :: ValidityPred EntityId
+</span><a href="IC.Types.html#valid_for"><span class="hs-identifier hs-var">valid_for</span></a></span><span>   </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">EnvValidity -&gt; ValidityPred EntityId
+</span><a href="IC.Types.html#valid_for"><span class="hs-identifier hs-var hs-var">valid_for</span></a></span><span>   </span><span class="annot"><span class="annottext">EnvValidity
+</span><a href="#local-6989586621679261706"><span class="hs-identifier hs-var">ed1</span></a></span><span> </span><span class="annot"><span class="annottext">(EntityId -&gt; m ()) -&gt; (EntityId -&gt; m ()) -&gt; EntityId -&gt; m ()
+forall {m :: * -&gt; *} {t} {a} {b}.
+Monad m =&gt;
+(t -&gt; m a) -&gt; (t -&gt; m b) -&gt; t -&gt; m b
+</span><a href="#local-6989586621679261697"><span class="hs-operator hs-var">&gt;&gt;&gt;</span></a></span><span> </span><span class="annot"><span class="annottext">EnvValidity -&gt; ValidityPred EntityId
+</span><a href="IC.Types.html#valid_for"><span class="hs-identifier hs-var hs-var">valid_for</span></a></span><span>   </span><span class="annot"><span class="annottext">EnvValidity
+</span><a href="#local-6989586621679261704"><span class="hs-identifier hs-var">ed2</span></a></span><span>
+</span><span id="line-186"></span><span>        </span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">valid_where :: ValidityPred EntityId
+</span><a href="IC.Types.html#valid_where"><span class="hs-identifier hs-var">valid_where</span></a></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">EnvValidity -&gt; ValidityPred EntityId
+</span><a href="IC.Types.html#valid_where"><span class="hs-identifier hs-var hs-var">valid_where</span></a></span><span> </span><span class="annot"><span class="annottext">EnvValidity
+</span><a href="#local-6989586621679261706"><span class="hs-identifier hs-var">ed1</span></a></span><span> </span><span class="annot"><span class="annottext">(EntityId -&gt; m ()) -&gt; (EntityId -&gt; m ()) -&gt; EntityId -&gt; m ()
+forall {m :: * -&gt; *} {t} {a} {b}.
+Monad m =&gt;
+(t -&gt; m a) -&gt; (t -&gt; m b) -&gt; t -&gt; m b
+</span><a href="#local-6989586621679261697"><span class="hs-operator hs-var">&gt;&gt;&gt;</span></a></span><span> </span><span class="annot"><span class="annottext">EnvValidity -&gt; ValidityPred EntityId
+</span><a href="IC.Types.html#valid_where"><span class="hs-identifier hs-var hs-var">valid_where</span></a></span><span> </span><span class="annot"><span class="annottext">EnvValidity
+</span><a href="#local-6989586621679261704"><span class="hs-identifier hs-var">ed2</span></a></span><span>
+</span><span id="line-187"></span><span>        </span><span class="hs-special">}</span><span> </span><span class="hs-keyword">where</span><span> </span><span id="local-6989586621679261684"><span class="annot"><span class="annottext">t -&gt; m a
+</span><a href="#local-6989586621679261684"><span class="hs-identifier hs-var">a</span></a></span></span><span> </span><span id="local-6989586621679261697"><span class="annot"><span class="annottext">&gt;&gt;&gt; :: (t -&gt; m a) -&gt; (t -&gt; m b) -&gt; t -&gt; m b
+</span><a href="#local-6989586621679261697"><span class="hs-operator hs-var hs-var">&gt;&gt;&gt;</span></a></span></span><span> </span><span id="local-6989586621679261683"><span class="annot"><span class="annottext">t -&gt; m b
+</span><a href="#local-6989586621679261683"><span class="hs-identifier hs-var">b</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-glyph">\</span><span id="local-6989586621679261682"><span class="annot"><span class="annottext">t
+</span><a href="#local-6989586621679261682"><span class="hs-identifier hs-var">x</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">t -&gt; m a
+</span><a href="#local-6989586621679261684"><span class="hs-identifier hs-var">a</span></a></span><span> </span><span class="annot"><span class="annottext">t
+</span><a href="#local-6989586621679261682"><span class="hs-identifier hs-var">x</span></a></span><span> </span><span class="annot"><span class="annottext">m a -&gt; m b -&gt; m b
+forall (m :: * -&gt; *) a b. Monad m =&gt; m a -&gt; m b -&gt; m b
+</span><span class="hs-operator hs-var">&gt;&gt;</span></span><span> </span><span class="annot"><span class="annottext">t -&gt; m b
+</span><a href="#local-6989586621679261683"><span class="hs-identifier hs-var">b</span></a></span><span> </span><span class="annot"><span class="annottext">t
+</span><a href="#local-6989586621679261682"><span class="hs-identifier hs-var">x</span></a></span><span>
+</span><span id="line-188"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679261675"><span id="local-6989586621679261677"><span class="annot"><span class="hs-identifier hs-type">Monoid</span></span><span> </span><span class="annot"><a href="IC.Types.html#EnvValidity"><span class="hs-identifier hs-type">EnvValidity</span></a></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-189"></span><span>    </span><span id="local-6989586621679261673"><span class="annot"><span class="annottext">mempty :: EnvValidity
+</span><span class="hs-identifier hs-var hs-var hs-var hs-var">mempty</span></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">ValidityPred Timestamp
+-&gt; ValidityPred EntityId -&gt; ValidityPred EntityId -&gt; EnvValidity
+</span><a href="IC.Types.html#EnvValidity"><span class="hs-identifier hs-var">EnvValidity</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. ValidityPred a
+ValidityPred Timestamp
+</span><a href="#local-6989586621679261672"><span class="hs-identifier hs-var">x</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. ValidityPred a
+ValidityPred EntityId
+</span><a href="#local-6989586621679261672"><span class="hs-identifier hs-var">x</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. ValidityPred a
+ValidityPred EntityId
+</span><a href="#local-6989586621679261672"><span class="hs-identifier hs-var">x</span></a></span><span>
+</span><span id="line-190"></span><span>      </span><span class="hs-keyword">where</span><span>
+</span><span id="line-191"></span><span>        </span><span id="local-6989586621679262201"><span class="annot"><a href="#local-6989586621679261672"><span class="hs-identifier hs-type">x</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Types.html#ValidityPred"><span class="hs-identifier hs-type">ValidityPred</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679262201"><span class="hs-identifier hs-type">a</span></a></span></span><span>
+</span><span id="line-192"></span><span>        </span><span id="local-6989586621679261672"><span class="annot"><span class="annottext">x :: forall a. ValidityPred a
+</span><a href="#local-6989586621679261672"><span class="hs-identifier hs-var hs-var">x</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">m () -&gt; a -&gt; m ()
+forall a b. a -&gt; b -&gt; a
+</span><span class="hs-identifier hs-var">const</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">() -&gt; m ()
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><span class="hs-identifier hs-var">return</span></span><span> </span><span class="hs-special">(</span><span class="hs-special">)</span><span class="hs-special">)</span><span>
+</span><span id="line-193"></span><span>
+</span><span id="line-194"></span><span class="annot"><a href="IC.Types.html#validWhen"><span class="hs-identifier hs-type">validWhen</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Types.html#ValidityPred"><span class="hs-identifier hs-type">ValidityPred</span></a></span><span> </span><span class="annot"><a href="IC.Types.html#Timestamp"><span class="hs-identifier hs-type">Timestamp</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Types.html#EnvValidity"><span class="hs-identifier hs-type">EnvValidity</span></a></span><span>
+</span><span id="line-195"></span><span id="validWhen"><span class="annot"><span class="annottext">validWhen :: ValidityPred Timestamp -&gt; EnvValidity
+</span><a href="IC.Types.html#validWhen"><span class="hs-identifier hs-var hs-var">validWhen</span></a></span></span><span> </span><span id="local-6989586621679261660"><span class="annot"><span class="annottext">ValidityPred Timestamp
+</span><a href="#local-6989586621679261660"><span class="hs-identifier hs-var">valid_when</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">EnvValidity
+forall a. Monoid a =&gt; a
+</span><span class="hs-identifier hs-var">mempty</span></span><span> </span><span class="hs-special">{</span><span> </span><span class="annot"><span class="annottext">ValidityPred Timestamp
+valid_when :: ValidityPred Timestamp
+valid_when :: ValidityPred Timestamp
+</span><a href="#local-6989586621679261660"><span class="hs-identifier hs-var hs-var">valid_when</span></a></span><span> </span><span class="hs-special">}</span><span>
+</span><span id="line-196"></span><span>
+</span><span id="line-197"></span><span class="annot"><a href="IC.Types.html#validFor"><span class="hs-identifier hs-type">validFor</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Types.html#ValidityPred"><span class="hs-identifier hs-type">ValidityPred</span></a></span><span> </span><span class="annot"><a href="IC.Types.html#EntityId"><span class="hs-identifier hs-type">EntityId</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Types.html#EnvValidity"><span class="hs-identifier hs-type">EnvValidity</span></a></span><span>
+</span><span id="line-198"></span><span id="validFor"><span class="annot"><span class="annottext">validFor :: ValidityPred EntityId -&gt; EnvValidity
+</span><a href="IC.Types.html#validFor"><span class="hs-identifier hs-var hs-var">validFor</span></a></span></span><span> </span><span id="local-6989586621679261656"><span class="annot"><span class="annottext">ValidityPred EntityId
+</span><a href="#local-6989586621679261656"><span class="hs-identifier hs-var">valid_for</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">EnvValidity
+forall a. Monoid a =&gt; a
+</span><span class="hs-identifier hs-var">mempty</span></span><span> </span><span class="hs-special">{</span><span> </span><span class="annot"><span class="annottext">ValidityPred EntityId
+valid_for :: ValidityPred EntityId
+valid_for :: ValidityPred EntityId
+</span><a href="#local-6989586621679261656"><span class="hs-identifier hs-var hs-var">valid_for</span></a></span><span> </span><span class="hs-special">}</span><span>
+</span><span id="line-199"></span><span>
+</span><span id="line-200"></span><span class="annot"><a href="IC.Types.html#validWhere"><span class="hs-identifier hs-type">validWhere</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Types.html#ValidityPred"><span class="hs-identifier hs-type">ValidityPred</span></a></span><span> </span><span class="annot"><a href="IC.Types.html#EntityId"><span class="hs-identifier hs-type">EntityId</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Types.html#EnvValidity"><span class="hs-identifier hs-type">EnvValidity</span></a></span><span>
+</span><span id="line-201"></span><span id="validWhere"><span class="annot"><span class="annottext">validWhere :: ValidityPred EntityId -&gt; EnvValidity
+</span><a href="IC.Types.html#validWhere"><span class="hs-identifier hs-var hs-var">validWhere</span></a></span></span><span> </span><span id="local-6989586621679261652"><span class="annot"><span class="annottext">ValidityPred EntityId
+</span><a href="#local-6989586621679261652"><span class="hs-identifier hs-var">valid_where</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">EnvValidity
+forall a. Monoid a =&gt; a
+</span><span class="hs-identifier hs-var">mempty</span></span><span> </span><span class="hs-special">{</span><span> </span><span class="annot"><span class="annottext">ValidityPred EntityId
+valid_where :: ValidityPred EntityId
+valid_where :: ValidityPred EntityId
+</span><a href="#local-6989586621679261652"><span class="hs-identifier hs-var hs-var">valid_where</span></a></span><span> </span><span class="hs-special">}</span><span>
+</span><span id="line-202"></span><span>
+</span><span id="line-203"></span></pre></body></html>

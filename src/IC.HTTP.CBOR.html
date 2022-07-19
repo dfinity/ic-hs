@@ -1,0 +1,314 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><link rel="stylesheet" type="text/css" href="style.css" /><script type="text/javascript" src="highlight.js"></script></head><body><pre><span class="hs-pragma">{-# LANGUAGE OverloadedStrings #-}</span><span>
+</span><span id="line-2"></span><span class="hs-pragma">{-# LANGUAGE TupleSections #-}</span><span>
+</span><span id="line-3"></span><span class="hs-comment">{- |
+Encoding from generic requests/responses to/from CBOR
+-}</span><span>
+</span><span id="line-6"></span><span class="hs-keyword">module</span><span> </span><span class="hs-identifier">IC.HTTP.CBOR</span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-7"></span><span>
+</span><span id="line-8"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="IC.HTTP.GenR.html"><span class="hs-identifier">IC.HTTP.GenR</span></a></span><span>
+</span><span id="line-9"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><span class="hs-identifier">Data.HashMap.Lazy</span></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">HM</span></span><span>
+</span><span id="line-10"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Codec.CBOR.Term</span></span><span>
+</span><span id="line-11"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Codec.CBOR.Write</span></span><span>
+</span><span id="line-12"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Codec.CBOR.Read</span></span><span>
+</span><span id="line-13"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Data.ByteString.Builder</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier">Builder</span></span><span class="hs-special">)</span><span>
+</span><span id="line-14"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><span class="hs-identifier">Data.ByteString.Lazy</span></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">BS</span></span><span>
+</span><span id="line-15"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Data.ByteString.Lazy</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier">ByteString</span></span><span class="hs-special">)</span><span>
+</span><span id="line-16"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Data.Bifunctor</span></span><span>
+</span><span id="line-17"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><span class="hs-identifier">Data.Text</span></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">T</span></span><span>
+</span><span id="line-18"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Control.Monad</span></span><span>
+</span><span id="line-19"></span><span>
+</span><span id="line-20"></span><span class="annot"><a href="IC.HTTP.CBOR.html#encode"><span class="hs-identifier hs-type">encode</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.HTTP.GenR.html#GenR"><span class="hs-identifier hs-type">GenR</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Builder</span></span><span>
+</span><span id="line-21"></span><span id="encode"><span class="annot"><span class="annottext">encode :: GenR -&gt; Builder
+</span><a href="IC.HTTP.CBOR.html#encode"><span class="hs-identifier hs-var hs-var">encode</span></a></span></span><span> </span><span id="local-6989586621679258971"><span class="annot"><span class="annottext">GenR
+</span><a href="#local-6989586621679258971"><span class="hs-identifier hs-var">r</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Encoding -&gt; Builder
+</span><span class="hs-identifier hs-var">toBuilder</span></span><span> </span><span class="annot"><span class="annottext">(Encoding -&gt; Builder) -&gt; Encoding -&gt; Builder
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">Term -&gt; Encoding
+</span><span class="hs-identifier hs-var">encodeTerm</span></span><span> </span><span class="annot"><span class="annottext">(Term -&gt; Encoding) -&gt; Term -&gt; Encoding
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">Word64 -&gt; Term -&gt; Term
+</span><span class="hs-identifier hs-var">TTagged</span></span><span> </span><span class="annot"><span class="annottext">Word64
+</span><span class="hs-number">55799</span></span><span> </span><span class="annot"><span class="annottext">(Term -&gt; Term) -&gt; Term -&gt; Term
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">GenR -&gt; Term
+</span><a href="#local-6989586621679258967"><span class="hs-identifier hs-var">go</span></a></span><span> </span><span class="annot"><span class="annottext">GenR
+</span><a href="#local-6989586621679258971"><span class="hs-identifier hs-var">r</span></a></span><span>
+</span><span id="line-22"></span><span>  </span><span class="hs-keyword">where</span><span>
+</span><span id="line-23"></span><span>    </span><span id="local-6989586621679258967"><span class="annot"><span class="annottext">go :: GenR -&gt; Term
+</span><a href="#local-6989586621679258967"><span class="hs-identifier hs-var hs-var">go</span></a></span></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.HTTP.GenR.html#GNat"><span class="hs-identifier hs-type">GNat</span></a></span><span> </span><span id="local-6989586621679258961"><span class="annot"><span class="annottext">Natural
+</span><a href="#local-6989586621679258961"><span class="hs-identifier hs-var">n</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Integer -&gt; Term
+</span><span class="hs-identifier hs-var">TInteger</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Natural -&gt; Integer
+forall a b. (Integral a, Num b) =&gt; a -&gt; b
+</span><span class="hs-identifier hs-var">fromIntegral</span></span><span> </span><span class="annot"><span class="annottext">Natural
+</span><a href="#local-6989586621679258961"><span class="hs-identifier hs-var">n</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-24"></span><span>    </span><span class="annot"><a href="#local-6989586621679258967"><span class="hs-identifier hs-var">go</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.HTTP.GenR.html#GText"><span class="hs-identifier hs-type">GText</span></a></span><span> </span><span id="local-6989586621679258958"><span class="annot"><span class="annottext">Text
+</span><a href="#local-6989586621679258958"><span class="hs-identifier hs-var">t</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Text -&gt; Term
+</span><span class="hs-identifier hs-var">TString</span></span><span> </span><span class="annot"><span class="annottext">Text
+</span><a href="#local-6989586621679258958"><span class="hs-identifier hs-var">t</span></a></span><span>
+</span><span id="line-25"></span><span>    </span><span class="annot"><a href="#local-6989586621679258967"><span class="hs-identifier hs-var">go</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.HTTP.GenR.html#GBlob"><span class="hs-identifier hs-type">GBlob</span></a></span><span> </span><span id="local-6989586621679258955"><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679258955"><span class="hs-identifier hs-var">b</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">ByteString -&gt; Term
+</span><span class="hs-identifier hs-var">TBytes</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">ByteString -&gt; ByteString
+</span><span class="hs-identifier hs-var">BS.toStrict</span></span><span> </span><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679258955"><span class="hs-identifier hs-var">b</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-26"></span><span>    </span><span class="annot"><a href="#local-6989586621679258967"><span class="hs-identifier hs-var">go</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.HTTP.GenR.html#GRec"><span class="hs-identifier hs-type">GRec</span></a></span><span> </span><span id="local-6989586621679258951"><span class="annot"><span class="annottext">HashMap Text GenR
+</span><a href="#local-6989586621679258951"><span class="hs-identifier hs-var">m</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">[(Term, Term)] -&gt; Term
+</span><span class="hs-identifier hs-var">TMap</span></span><span> </span><span class="hs-special">[</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Text -&gt; Term
+</span><span class="hs-identifier hs-var">TString</span></span><span> </span><span class="annot"><span class="annottext">Text
+</span><a href="#local-6989586621679258949"><span class="hs-identifier hs-var">k</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">GenR -&gt; Term
+</span><a href="#local-6989586621679258967"><span class="hs-identifier hs-var">go</span></a></span><span> </span><span class="annot"><span class="annottext">GenR
+</span><a href="#local-6989586621679258948"><span class="hs-identifier hs-var">v</span></a></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">|</span><span> </span><span class="hs-special">(</span><span id="local-6989586621679258949"><span class="annot"><span class="annottext">Text
+</span><a href="#local-6989586621679258949"><span class="hs-identifier hs-var">k</span></a></span></span><span class="hs-special">,</span><span id="local-6989586621679258948"><span class="annot"><span class="annottext">GenR
+</span><a href="#local-6989586621679258948"><span class="hs-identifier hs-var">v</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">HashMap Text GenR -&gt; [(Text, GenR)]
+forall k v. HashMap k v -&gt; [(k, v)]
+</span><span class="hs-identifier hs-var">HM.toList</span></span><span> </span><span class="annot"><span class="annottext">HashMap Text GenR
+</span><a href="#local-6989586621679258951"><span class="hs-identifier hs-var">m</span></a></span><span> </span><span class="hs-special">]</span><span>
+</span><span id="line-27"></span><span>    </span><span class="annot"><a href="#local-6989586621679258967"><span class="hs-identifier hs-var">go</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.HTTP.GenR.html#GList"><span class="hs-identifier hs-type">GList</span></a></span><span> </span><span id="local-6989586621679258945"><span class="annot"><span class="annottext">[GenR]
+</span><a href="#local-6989586621679258945"><span class="hs-identifier hs-var">xs</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">[Term] -&gt; Term
+</span><span class="hs-identifier hs-var">TList</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">(GenR -&gt; Term) -&gt; [GenR] -&gt; [Term]
+forall a b. (a -&gt; b) -&gt; [a] -&gt; [b]
+</span><span class="hs-identifier hs-var">map</span></span><span> </span><span class="annot"><span class="annottext">GenR -&gt; Term
+</span><a href="#local-6989586621679258967"><span class="hs-identifier hs-var">go</span></a></span><span> </span><span class="annot"><span class="annottext">[GenR]
+</span><a href="#local-6989586621679258945"><span class="hs-identifier hs-var">xs</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-28"></span><span>
+</span><span id="line-29"></span><span class="annot"><a href="IC.HTTP.CBOR.html#decode"><span class="hs-identifier hs-type">decode</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><span class="hs-identifier hs-type">ByteString</span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Either</span></span><span> </span><span class="annot"><span class="hs-identifier hs-type">T.Text</span></span><span> </span><span class="annot"><a href="IC.HTTP.GenR.html#GenR"><span class="hs-identifier hs-type">GenR</span></a></span><span>
+</span><span id="line-30"></span><span id="decode"><span class="annot"><span class="annottext">decode :: ByteString -&gt; Either Text GenR
+</span><a href="IC.HTTP.CBOR.html#decode"><span class="hs-identifier hs-var hs-var">decode</span></a></span></span><span> </span><span id="local-6989586621679258942"><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679258942"><span class="hs-identifier hs-var">s</span></a></span></span><span> </span><span class="hs-glyph">=</span><span>
+</span><span id="line-31"></span><span>    </span><span class="annot"><span class="annottext">(DeserialiseFailure -&gt; Text)
+-&gt; Either DeserialiseFailure (ByteString, Term)
+-&gt; Either Text (ByteString, Term)
+forall (p :: * -&gt; * -&gt; *) a b c.
+Bifunctor p =&gt;
+(a -&gt; b) -&gt; p a c -&gt; p b c
+</span><span class="hs-identifier hs-var">first</span></span><span> </span><span class="hs-special">(</span><span class="hs-glyph">\</span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier hs-type">DeserialiseFailure</span></span><span> </span><span class="annot"><span class="annottext">ByteOffset
+</span><span class="hs-identifier">_</span></span><span> </span><span id="local-6989586621679258939"><span class="annot"><span class="annottext">String
+</span><a href="#local-6989586621679258939"><span class="hs-identifier hs-var">s</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">Text
+</span><span class="hs-string">&quot;CBOR decoding failure: &quot;</span></span><span> </span><span class="annot"><span class="annottext">Text -&gt; Text -&gt; Text
+forall a. Semigroup a =&gt; a -&gt; a -&gt; a
+</span><span class="hs-operator hs-var">&lt;&gt;</span></span><span> </span><span class="annot"><span class="annottext">String -&gt; Text
+</span><span class="hs-identifier hs-var">T.pack</span></span><span> </span><span class="annot"><span class="annottext">String
+</span><a href="#local-6989586621679258939"><span class="hs-identifier hs-var">s</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-32"></span><span>        </span><span class="hs-special">(</span><span class="annot"><span class="annottext">(forall s. Decoder s Term)
+-&gt; ByteString -&gt; Either DeserialiseFailure (ByteString, Term)
+forall a.
+(forall s. Decoder s a)
+-&gt; ByteString -&gt; Either DeserialiseFailure (ByteString, a)
+</span><span class="hs-identifier hs-var">deserialiseFromBytes</span></span><span> </span><span class="annot"><span class="annottext">forall s. Decoder s Term
+</span><span class="hs-identifier hs-var">decodeTerm</span></span><span> </span><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679258942"><span class="hs-identifier hs-var">s</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-33"></span><span>    </span><span class="annot"><span class="annottext">Either Text (ByteString, Term)
+-&gt; ((ByteString, Term) -&gt; Either Text GenR) -&gt; Either Text GenR
+forall (m :: * -&gt; *) a b. Monad m =&gt; m a -&gt; (a -&gt; m b) -&gt; m b
+</span><span class="hs-operator hs-var">&gt;&gt;=</span></span><span> </span><span class="annot"><span class="annottext">(ByteString, Term) -&gt; Either Text GenR
+</span><a href="#local-6989586621679258935"><span class="hs-identifier hs-var">begin</span></a></span><span>
+</span><span id="line-34"></span><span>  </span><span class="hs-keyword">where</span><span>
+</span><span id="line-35"></span><span>    </span><span id="local-6989586621679258935"><span class="annot"><span class="annottext">begin :: (ByteString, Term) -&gt; Either Text GenR
+</span><a href="#local-6989586621679258935"><span class="hs-identifier hs-var hs-var">begin</span></a></span></span><span> </span><span class="hs-special">(</span><span id="local-6989586621679258926"><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679258926"><span class="hs-identifier hs-var">leftOver</span></a></span></span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">Term
+</span><span class="hs-identifier">_</span></span><span class="hs-special">)</span><span>
+</span><span id="line-36"></span><span>      </span><span class="hs-glyph">|</span><span> </span><span class="annot"><span class="annottext">Bool -&gt; Bool
+</span><span class="hs-identifier hs-var">not</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">ByteString -&gt; Bool
+</span><span class="hs-identifier hs-var">BS.null</span></span><span> </span><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679258926"><span class="hs-identifier hs-var">leftOver</span></a></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Text -&gt; Either Text GenR
+forall a b. a -&gt; Either a b
+</span><span class="hs-identifier hs-var">Left</span></span><span> </span><span class="annot"><span class="annottext">(Text -&gt; Either Text GenR) -&gt; Text -&gt; Either Text GenR
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">Text
+</span><span class="hs-string">&quot;Left-over bytes: &quot;</span></span><span> </span><span class="annot"><span class="annottext">Text -&gt; Text -&gt; Text
+forall a. Semigroup a =&gt; a -&gt; a -&gt; a
+</span><span class="hs-operator hs-var">&lt;&gt;</span></span><span> </span><span class="annot"><span class="annottext">Int -&gt; Text -&gt; Text
+</span><a href="#local-6989586621679258923"><span class="hs-identifier hs-var">shorten</span></a></span><span> </span><span class="annot"><span class="annottext">Int
+</span><span class="hs-number">20</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">String -&gt; Text
+</span><span class="hs-identifier hs-var">T.pack</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">ByteString -&gt; String
+forall a. Show a =&gt; a -&gt; String
+</span><span class="hs-identifier hs-var">show</span></span><span> </span><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679258926"><span class="hs-identifier hs-var">leftOver</span></a></span><span class="hs-special">)</span><span class="hs-special">)</span><span>
+</span><span id="line-37"></span><span>    </span><span class="annot"><a href="#local-6989586621679258935"><span class="hs-identifier hs-var">begin</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">ByteString
+</span><span class="hs-identifier">_</span></span><span class="hs-special">,</span><span> </span><span class="annot"><span class="hs-identifier hs-type">TTagged</span></span><span> </span><span class="annot"><span class="annottext">Word64
+</span><span class="hs-number">55799</span></span><span> </span><span id="local-6989586621679258921"><span class="annot"><span class="annottext">Term
+</span><a href="#local-6989586621679258921"><span class="hs-identifier hs-var">t</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Term -&gt; Either Text GenR
+</span><a href="#local-6989586621679258920"><span class="hs-identifier hs-var">go</span></a></span><span> </span><span class="annot"><span class="annottext">Term
+</span><a href="#local-6989586621679258921"><span class="hs-identifier hs-var">t</span></a></span><span>
+</span><span id="line-38"></span><span>    </span><span class="annot"><a href="#local-6989586621679258935"><span class="hs-identifier hs-var">begin</span></a></span><span> </span><span class="annot"><span class="annottext">(ByteString, Term)
+</span><span class="hs-identifier">_</span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Text -&gt; Either Text GenR
+forall a b. a -&gt; Either a b
+</span><span class="hs-identifier hs-var">Left</span></span><span> </span><span class="annot"><span class="annottext">Text
+</span><span class="hs-string">&quot;Expected CBOR request to begin with tag 55799&quot;</span></span><span>
+</span><span id="line-39"></span><span>
+</span><span id="line-40"></span><span>    </span><span class="annot"><a href="#local-6989586621679258923"><span class="hs-identifier hs-type">shorten</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Int</span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">T.Text</span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">T.Text</span></span><span>
+</span><span id="line-41"></span><span>    </span><span id="local-6989586621679258923"><span class="annot"><span class="annottext">shorten :: Int -&gt; Text -&gt; Text
+</span><a href="#local-6989586621679258923"><span class="hs-identifier hs-var hs-var">shorten</span></a></span></span><span> </span><span id="local-6989586621679258919"><span class="annot"><span class="annottext">Int
+</span><a href="#local-6989586621679258919"><span class="hs-identifier hs-var">n</span></a></span></span><span> </span><span id="local-6989586621679258918"><span class="annot"><span class="annottext">Text
+</span><a href="#local-6989586621679258918"><span class="hs-identifier hs-var">s</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Text
+</span><a href="#local-6989586621679258917"><span class="hs-identifier hs-var">a</span></a></span><span> </span><span class="annot"><span class="annottext">Text -&gt; Text -&gt; Text
+forall a. Semigroup a =&gt; a -&gt; a -&gt; a
+</span><span class="hs-operator hs-var">&lt;&gt;</span></span><span> </span><span class="hs-special">(</span><span class="hs-keyword">if</span><span> </span><span class="annot"><span class="annottext">Text -&gt; Bool
+</span><span class="hs-identifier hs-var">T.null</span></span><span> </span><span class="annot"><span class="annottext">Text
+</span><a href="#local-6989586621679258915"><span class="hs-identifier hs-var">b</span></a></span><span> </span><span class="hs-keyword">then</span><span> </span><span class="annot"><span class="annottext">Text
+</span><span class="hs-string">&quot;&quot;</span></span><span> </span><span class="hs-keyword">else</span><span> </span><span class="annot"><span class="annottext">Text
+</span><span class="hs-string">&quot;&#8230;&quot;</span></span><span class="hs-special">)</span><span>
+</span><span id="line-42"></span><span>        </span><span class="hs-keyword">where</span><span> </span><span class="hs-special">(</span><span id="local-6989586621679258917"><span class="annot"><span class="annottext">Text
+</span><a href="#local-6989586621679258917"><span class="hs-identifier hs-var">a</span></a></span></span><span class="hs-special">,</span><span id="local-6989586621679258915"><span class="annot"><span class="annottext">Text
+</span><a href="#local-6989586621679258915"><span class="hs-identifier hs-var">b</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Int -&gt; Text -&gt; (Text, Text)
+</span><span class="hs-identifier hs-var">T.splitAt</span></span><span> </span><span class="annot"><span class="annottext">Int
+</span><a href="#local-6989586621679258919"><span class="hs-identifier hs-var">n</span></a></span><span> </span><span class="annot"><span class="annottext">Text
+</span><a href="#local-6989586621679258918"><span class="hs-identifier hs-var">s</span></a></span><span>
+</span><span id="line-43"></span><span>
+</span><span id="line-44"></span><span>    </span><span id="local-6989586621679258920"><span class="annot"><span class="annottext">go :: Term -&gt; Either Text GenR
+</span><a href="#local-6989586621679258920"><span class="hs-identifier hs-var hs-var">go</span></a></span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier hs-type">TInt</span></span><span> </span><span id="local-6989586621679258867"><span class="annot"><span class="annottext">Int
+</span><a href="#local-6989586621679258867"><span class="hs-identifier hs-var">n</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">|</span><span> </span><span class="annot"><span class="annottext">Int
+</span><a href="#local-6989586621679258867"><span class="hs-identifier hs-var">n</span></a></span><span> </span><span class="annot"><span class="annottext">Int -&gt; Int -&gt; Bool
+forall a. Ord a =&gt; a -&gt; a -&gt; Bool
+</span><span class="hs-operator hs-var">&lt;</span></span><span> </span><span class="annot"><span class="annottext">Int
+</span><span class="hs-number">0</span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Text -&gt; Either Text GenR
+forall a b. a -&gt; Either a b
+</span><span class="hs-identifier hs-var">Left</span></span><span> </span><span class="annot"><span class="annottext">Text
+</span><span class="hs-string">&quot;Negative integer&quot;</span></span><span>
+</span><span id="line-45"></span><span>    </span><span class="annot"><a href="#local-6989586621679258920"><span class="hs-identifier hs-var">go</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier hs-type">TInt</span></span><span> </span><span id="local-6989586621679258865"><span class="annot"><span class="annottext">Int
+</span><a href="#local-6989586621679258865"><span class="hs-identifier hs-var">n</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">GenR -&gt; Either Text GenR
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><span class="hs-identifier hs-var">return</span></span><span> </span><span class="annot"><span class="annottext">(GenR -&gt; Either Text GenR) -&gt; GenR -&gt; Either Text GenR
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">Natural -&gt; GenR
+</span><a href="IC.HTTP.GenR.html#GNat"><span class="hs-identifier hs-var">GNat</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Int -&gt; Natural
+forall a b. (Integral a, Num b) =&gt; a -&gt; b
+</span><span class="hs-identifier hs-var">fromIntegral</span></span><span> </span><span class="annot"><span class="annottext">Int
+</span><a href="#local-6989586621679258865"><span class="hs-identifier hs-var">n</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-46"></span><span>    </span><span class="annot"><a href="#local-6989586621679258920"><span class="hs-identifier hs-var">go</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier hs-type">TInteger</span></span><span> </span><span id="local-6989586621679258864"><span class="annot"><span class="annottext">Integer
+</span><a href="#local-6989586621679258864"><span class="hs-identifier hs-var">n</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">|</span><span> </span><span class="annot"><span class="annottext">Integer
+</span><a href="#local-6989586621679258864"><span class="hs-identifier hs-var">n</span></a></span><span> </span><span class="annot"><span class="annottext">Integer -&gt; Integer -&gt; Bool
+forall a. Ord a =&gt; a -&gt; a -&gt; Bool
+</span><span class="hs-operator hs-var">&lt;</span></span><span> </span><span class="annot"><span class="annottext">Integer
+</span><span class="hs-number">0</span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Text -&gt; Either Text GenR
+forall a b. a -&gt; Either a b
+</span><span class="hs-identifier hs-var">Left</span></span><span> </span><span class="annot"><span class="annottext">Text
+</span><span class="hs-string">&quot;Negative integer&quot;</span></span><span>
+</span><span id="line-47"></span><span>    </span><span class="annot"><a href="#local-6989586621679258920"><span class="hs-identifier hs-var">go</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier hs-type">TInteger</span></span><span> </span><span id="local-6989586621679258863"><span class="annot"><span class="annottext">Integer
+</span><a href="#local-6989586621679258863"><span class="hs-identifier hs-var">n</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">GenR -&gt; Either Text GenR
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><span class="hs-identifier hs-var">return</span></span><span> </span><span class="annot"><span class="annottext">(GenR -&gt; Either Text GenR) -&gt; GenR -&gt; Either Text GenR
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">Natural -&gt; GenR
+</span><a href="IC.HTTP.GenR.html#GNat"><span class="hs-identifier hs-var">GNat</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Integer -&gt; Natural
+forall a b. (Integral a, Num b) =&gt; a -&gt; b
+</span><span class="hs-identifier hs-var">fromIntegral</span></span><span> </span><span class="annot"><span class="annottext">Integer
+</span><a href="#local-6989586621679258863"><span class="hs-identifier hs-var">n</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-48"></span><span>    </span><span class="annot"><a href="#local-6989586621679258920"><span class="hs-identifier hs-var">go</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier hs-type">TBytes</span></span><span> </span><span id="local-6989586621679258862"><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679258862"><span class="hs-identifier hs-var">b</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">GenR -&gt; Either Text GenR
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><span class="hs-identifier hs-var">return</span></span><span> </span><span class="annot"><span class="annottext">(GenR -&gt; Either Text GenR) -&gt; GenR -&gt; Either Text GenR
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">ByteString -&gt; GenR
+</span><a href="IC.HTTP.GenR.html#GBlob"><span class="hs-identifier hs-var">GBlob</span></a></span><span> </span><span class="annot"><span class="annottext">(ByteString -&gt; GenR) -&gt; ByteString -&gt; GenR
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">ByteString -&gt; ByteString
+</span><span class="hs-identifier hs-var">BS.fromStrict</span></span><span> </span><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679258862"><span class="hs-identifier hs-var">b</span></a></span><span>
+</span><span id="line-49"></span><span>    </span><span class="annot"><a href="#local-6989586621679258920"><span class="hs-identifier hs-var">go</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier hs-type">TString</span></span><span> </span><span id="local-6989586621679258860"><span class="annot"><span class="annottext">Text
+</span><a href="#local-6989586621679258860"><span class="hs-identifier hs-var">t</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">GenR -&gt; Either Text GenR
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><span class="hs-identifier hs-var">return</span></span><span> </span><span class="annot"><span class="annottext">(GenR -&gt; Either Text GenR) -&gt; GenR -&gt; Either Text GenR
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">Text -&gt; GenR
+</span><a href="IC.HTTP.GenR.html#GText"><span class="hs-identifier hs-var">GText</span></a></span><span> </span><span class="annot"><span class="annottext">Text
+</span><a href="#local-6989586621679258860"><span class="hs-identifier hs-var">t</span></a></span><span>
+</span><span id="line-50"></span><span>    </span><span class="annot"><a href="#local-6989586621679258920"><span class="hs-identifier hs-var">go</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier hs-type">TMap</span></span><span> </span><span id="local-6989586621679258859"><span class="annot"><span class="annottext">[(Term, Term)]
+</span><a href="#local-6989586621679258859"><span class="hs-identifier hs-var">kv</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">[(Term, Term)] -&gt; Either Text GenR
+</span><a href="#local-6989586621679258858"><span class="hs-identifier hs-var">goMap</span></a></span><span> </span><span class="annot"><span class="annottext">[(Term, Term)]
+</span><a href="#local-6989586621679258859"><span class="hs-identifier hs-var">kv</span></a></span><span>
+</span><span id="line-51"></span><span>    </span><span class="annot"><a href="#local-6989586621679258920"><span class="hs-identifier hs-var">go</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier hs-type">TMapI</span></span><span> </span><span id="local-6989586621679258856"><span class="annot"><span class="annottext">[(Term, Term)]
+</span><a href="#local-6989586621679258856"><span class="hs-identifier hs-var">kv</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">[(Term, Term)] -&gt; Either Text GenR
+</span><a href="#local-6989586621679258858"><span class="hs-identifier hs-var">goMap</span></a></span><span> </span><span class="annot"><span class="annottext">[(Term, Term)]
+</span><a href="#local-6989586621679258856"><span class="hs-identifier hs-var">kv</span></a></span><span>
+</span><span id="line-52"></span><span>    </span><span class="annot"><a href="#local-6989586621679258920"><span class="hs-identifier hs-var">go</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier hs-type">TList</span></span><span> </span><span id="local-6989586621679258855"><span class="annot"><span class="annottext">[Term]
+</span><a href="#local-6989586621679258855"><span class="hs-identifier hs-var">vs</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">[GenR] -&gt; GenR
+</span><a href="IC.HTTP.GenR.html#GList"><span class="hs-identifier hs-var">GList</span></a></span><span> </span><span class="annot"><span class="annottext">([GenR] -&gt; GenR) -&gt; Either Text [GenR] -&gt; Either Text GenR
+forall (f :: * -&gt; *) a b. Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b
+</span><span class="hs-operator hs-var">&lt;$&gt;</span></span><span> </span><span class="annot"><span class="annottext">(Term -&gt; Either Text GenR) -&gt; [Term] -&gt; Either Text [GenR]
+forall (t :: * -&gt; *) (m :: * -&gt; *) a b.
+(Traversable t, Monad m) =&gt;
+(a -&gt; m b) -&gt; t a -&gt; m (t b)
+</span><span class="hs-identifier hs-var">mapM</span></span><span> </span><span class="annot"><span class="annottext">Term -&gt; Either Text GenR
+</span><a href="#local-6989586621679258920"><span class="hs-identifier hs-var">go</span></a></span><span> </span><span class="annot"><span class="annottext">[Term]
+</span><a href="#local-6989586621679258855"><span class="hs-identifier hs-var">vs</span></a></span><span>
+</span><span id="line-53"></span><span>    </span><span class="annot"><a href="#local-6989586621679258920"><span class="hs-identifier hs-var">go</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier hs-type">TListI</span></span><span> </span><span id="local-6989586621679258851"><span class="annot"><span class="annottext">[Term]
+</span><a href="#local-6989586621679258851"><span class="hs-identifier hs-var">vs</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">[GenR] -&gt; GenR
+</span><a href="IC.HTTP.GenR.html#GList"><span class="hs-identifier hs-var">GList</span></a></span><span> </span><span class="annot"><span class="annottext">([GenR] -&gt; GenR) -&gt; Either Text [GenR] -&gt; Either Text GenR
+forall (f :: * -&gt; *) a b. Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b
+</span><span class="hs-operator hs-var">&lt;$&gt;</span></span><span> </span><span class="annot"><span class="annottext">(Term -&gt; Either Text GenR) -&gt; [Term] -&gt; Either Text [GenR]
+forall (t :: * -&gt; *) (m :: * -&gt; *) a b.
+(Traversable t, Monad m) =&gt;
+(a -&gt; m b) -&gt; t a -&gt; m (t b)
+</span><span class="hs-identifier hs-var">mapM</span></span><span> </span><span class="annot"><span class="annottext">Term -&gt; Either Text GenR
+</span><a href="#local-6989586621679258920"><span class="hs-identifier hs-var">go</span></a></span><span> </span><span class="annot"><span class="annottext">[Term]
+</span><a href="#local-6989586621679258851"><span class="hs-identifier hs-var">vs</span></a></span><span>
+</span><span id="line-54"></span><span>    </span><span class="annot"><a href="#local-6989586621679258920"><span class="hs-identifier hs-var">go</span></a></span><span> </span><span id="local-6989586621679258850"><span class="annot"><span class="annottext">Term
+</span><a href="#local-6989586621679258850"><span class="hs-identifier hs-var">t</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Text -&gt; Either Text GenR
+forall a b. a -&gt; Either a b
+</span><span class="hs-identifier hs-var">Left</span></span><span> </span><span class="annot"><span class="annottext">(Text -&gt; Either Text GenR) -&gt; Text -&gt; Either Text GenR
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">Text
+</span><span class="hs-string">&quot;Unexpected term: &quot;</span></span><span> </span><span class="annot"><span class="annottext">Text -&gt; Text -&gt; Text
+forall a. Semigroup a =&gt; a -&gt; a -&gt; a
+</span><span class="hs-operator hs-var">&lt;&gt;</span></span><span> </span><span class="annot"><span class="annottext">String -&gt; Text
+</span><span class="hs-identifier hs-var">T.pack</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Term -&gt; String
+forall a. Show a =&gt; a -&gt; String
+</span><span class="hs-identifier hs-var">show</span></span><span> </span><span class="annot"><span class="annottext">Term
+</span><a href="#local-6989586621679258850"><span class="hs-identifier hs-var">t</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-55"></span><span>
+</span><span id="line-56"></span><span>    </span><span id="local-6989586621679258858"><span class="annot"><span class="annottext">goMap :: [(Term, Term)] -&gt; Either Text GenR
+</span><a href="#local-6989586621679258858"><span class="hs-identifier hs-var hs-var">goMap</span></a></span></span><span> </span><span id="local-6989586621679258849"><span class="annot"><span class="annottext">[(Term, Term)]
+</span><a href="#local-6989586621679258849"><span class="hs-identifier hs-var">kv</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-57"></span><span>        </span><span id="local-6989586621679258848"><span class="annot"><span class="annottext">[(Text, GenR)]
+</span><a href="#local-6989586621679258848"><span class="hs-identifier hs-var">tv</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">((Term, Term) -&gt; Either Text (Text, GenR))
+-&gt; [(Term, Term)] -&gt; Either Text [(Text, GenR)]
+forall (t :: * -&gt; *) (m :: * -&gt; *) a b.
+(Traversable t, Monad m) =&gt;
+(a -&gt; m b) -&gt; t a -&gt; m (t b)
+</span><span class="hs-identifier hs-var">mapM</span></span><span> </span><span class="annot"><span class="annottext">(Term, Term) -&gt; Either Text (Text, GenR)
+</span><a href="#local-6989586621679258847"><span class="hs-identifier hs-var">keyVal</span></a></span><span> </span><span class="annot"><span class="annottext">[(Term, Term)]
+</span><a href="#local-6989586621679258849"><span class="hs-identifier hs-var">kv</span></a></span><span>
+</span><span id="line-58"></span><span>        </span><span class="hs-keyword">let</span><span> </span><span id="local-6989586621679258842"><span class="annot"><span class="annottext">hm :: HashMap Text GenR
+</span><a href="#local-6989586621679258842"><span class="hs-identifier hs-var hs-var">hm</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">[(Text, GenR)] -&gt; HashMap Text GenR
+forall k v. (Eq k, Hashable k) =&gt; [(k, v)] -&gt; HashMap k v
+</span><span class="hs-identifier hs-var">HM.fromList</span></span><span> </span><span class="annot"><span class="annottext">[(Text, GenR)]
+</span><a href="#local-6989586621679258848"><span class="hs-identifier hs-var">tv</span></a></span><span>
+</span><span id="line-59"></span><span>        </span><span class="annot"><span class="annottext">Bool -&gt; Either Text () -&gt; Either Text ()
+forall (f :: * -&gt; *). Applicative f =&gt; Bool -&gt; f () -&gt; f ()
+</span><span class="hs-identifier hs-var">when</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">HashMap Text GenR -&gt; Int
+forall k v. HashMap k v -&gt; Int
+</span><span class="hs-identifier hs-var">HM.size</span></span><span> </span><span class="annot"><span class="annottext">HashMap Text GenR
+</span><a href="#local-6989586621679258842"><span class="hs-identifier hs-var">hm</span></a></span><span> </span><span class="annot"><span class="annottext">Int -&gt; Int -&gt; Bool
+forall a. Ord a =&gt; a -&gt; a -&gt; Bool
+</span><span class="hs-operator hs-var">&lt;</span></span><span> </span><span class="annot"><span class="annottext">[(Text, GenR)] -&gt; Int
+forall (t :: * -&gt; *) a. Foldable t =&gt; t a -&gt; Int
+</span><span class="hs-identifier hs-var">length</span></span><span> </span><span class="annot"><span class="annottext">[(Text, GenR)]
+</span><a href="#local-6989586621679258848"><span class="hs-identifier hs-var">tv</span></a></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">(Either Text () -&gt; Either Text ())
+-&gt; Either Text () -&gt; Either Text ()
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">Text -&gt; Either Text ()
+forall a b. a -&gt; Either a b
+</span><span class="hs-identifier hs-var">Left</span></span><span> </span><span class="annot"><span class="annottext">Text
+</span><span class="hs-string">&quot;Duplicate keys in CBOR map&quot;</span></span><span>
+</span><span id="line-60"></span><span>        </span><span class="annot"><span class="annottext">GenR -&gt; Either Text GenR
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><span class="hs-identifier hs-var">return</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">HashMap Text GenR -&gt; GenR
+</span><a href="IC.HTTP.GenR.html#GRec"><span class="hs-identifier hs-var">GRec</span></a></span><span> </span><span class="annot"><span class="annottext">HashMap Text GenR
+</span><a href="#local-6989586621679258842"><span class="hs-identifier hs-var">hm</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-61"></span><span>
+</span><span id="line-62"></span><span>    </span><span id="local-6989586621679258847"><span class="annot"><span class="annottext">keyVal :: (Term, Term) -&gt; Either Text (Text, GenR)
+</span><a href="#local-6989586621679258847"><span class="hs-identifier hs-var hs-var">keyVal</span></a></span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier hs-type">TString</span></span><span> </span><span id="local-6989586621679258837"><span class="annot"><span class="annottext">Text
+</span><a href="#local-6989586621679258837"><span class="hs-identifier hs-var">k</span></a></span></span><span class="hs-special">,</span><span id="local-6989586621679258836"><span class="annot"><span class="annottext">Term
+</span><a href="#local-6989586621679258836"><span class="hs-identifier hs-var">v</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Text
+</span><a href="#local-6989586621679258837"><span class="hs-identifier hs-var">k</span></a></span><span class="hs-special">,</span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">(GenR -&gt; (Text, GenR))
+-&gt; Either Text GenR -&gt; Either Text (Text, GenR)
+forall (f :: * -&gt; *) a b. Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b
+</span><span class="hs-operator hs-var">&lt;$&gt;</span></span><span> </span><span class="annot"><span class="annottext">Term -&gt; Either Text GenR
+</span><a href="#local-6989586621679258920"><span class="hs-identifier hs-var">go</span></a></span><span> </span><span class="annot"><span class="annottext">Term
+</span><a href="#local-6989586621679258836"><span class="hs-identifier hs-var">v</span></a></span><span>
+</span><span id="line-63"></span><span>    </span><span class="annot"><a href="#local-6989586621679258847"><span class="hs-identifier hs-var">keyVal</span></a></span><span> </span><span class="annot"><span class="annottext">(Term, Term)
+</span><span class="hs-identifier">_</span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Text -&gt; Either Text (Text, GenR)
+forall a b. a -&gt; Either a b
+</span><span class="hs-identifier hs-var">Left</span></span><span> </span><span class="annot"><span class="annottext">Text
+</span><span class="hs-string">&quot;Non-string key in CBOR map&quot;</span></span><span>
+</span><span id="line-64"></span></pre></body></html>

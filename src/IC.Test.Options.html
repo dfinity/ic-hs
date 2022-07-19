@@ -1,0 +1,126 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><link rel="stylesheet" type="text/css" href="style.css" /><script type="text/javascript" src="highlight.js"></script></head><body><pre><span class="hs-keyword">module</span><span> </span><span class="hs-identifier">IC.Test.Options</span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-2"></span><span>
+</span><span id="line-3"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Data.Proxy</span></span><span>
+</span><span id="line-4"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Data.List</span></span><span>
+</span><span id="line-5"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Test.Tasty.Options</span></span><span>
+</span><span id="line-6"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Options.Applicative</span></span><span> </span><span class="hs-keyword">hiding</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier">str</span></span><span class="hs-special">)</span><span>
+</span><span id="line-7"></span><span>
+</span><span id="line-8"></span><span class="hs-comment">-- Configuration: The URL of of the endpoint to test</span><span>
+</span><span id="line-9"></span><span>
+</span><span id="line-10"></span><span class="hs-keyword">newtype</span><span> </span><span id="Endpoint"><span class="annot"><a href="IC.Test.Options.html#Endpoint"><span class="hs-identifier hs-var">Endpoint</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span id="Endpoint"><span class="annot"><a href="IC.Test.Options.html#Endpoint"><span class="hs-identifier hs-var">Endpoint</span></a></span></span><span> </span><span class="annot"><span class="hs-identifier hs-type">String</span></span><span>
+</span><span id="line-11"></span><span>
+</span><span id="line-12"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679261188"><span class="annot"><span class="hs-identifier hs-type">IsOption</span></span><span> </span><span class="annot"><a href="IC.Test.Options.html#Endpoint"><span class="hs-identifier hs-type">Endpoint</span></a></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-13"></span><span>  </span><span id="local-6989586621679261185"><span class="annot"><span class="annottext">defaultValue :: Endpoint
+</span><span class="hs-identifier hs-var hs-var hs-var hs-var">defaultValue</span></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">String -&gt; Endpoint
+</span><a href="IC.Test.Options.html#Endpoint"><span class="hs-identifier hs-var">Endpoint</span></a></span><span> </span><span class="annot"><span class="annottext">String
+</span><span class="hs-string">&quot;http://0.0.0.0:8001&quot;</span></span><span>
+</span><span id="line-14"></span><span>  </span><span id="local-6989586621679261183"><span class="annot"><span class="annottext">parseValue :: String -&gt; Maybe Endpoint
+</span><span class="hs-identifier hs-var hs-var hs-var hs-var">parseValue</span></span></span><span> </span><span id="local-6989586621679261181"><span class="annot"><span class="annottext">String
+</span><a href="#local-6989586621679261181"><span class="hs-identifier hs-var">s</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Endpoint -&gt; Maybe Endpoint
+forall a. a -&gt; Maybe a
+</span><span class="hs-identifier hs-var">Just</span></span><span> </span><span class="annot"><span class="annottext">(Endpoint -&gt; Maybe Endpoint) -&gt; Endpoint -&gt; Maybe Endpoint
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">String -&gt; Endpoint
+</span><a href="IC.Test.Options.html#Endpoint"><span class="hs-identifier hs-var">Endpoint</span></a></span><span> </span><span class="annot"><span class="annottext">String
+</span><a href="#local-6989586621679261180"><span class="hs-identifier hs-var">base</span></a></span><span>
+</span><span id="line-15"></span><span>    </span><span class="hs-keyword">where</span><span> </span><span id="local-6989586621679261180"><span class="annot"><span class="annottext">base :: String
+</span><a href="#local-6989586621679261180"><span class="hs-identifier hs-var hs-var">base</span></a></span></span><span> </span><span class="hs-glyph">|</span><span> </span><span class="annot"><span class="annottext">String
+</span><span class="hs-string">&quot;/&quot;</span></span><span> </span><span class="annot"><span class="annottext">String -&gt; String -&gt; Bool
+forall a. Eq a =&gt; [a] -&gt; [a] -&gt; Bool
+</span><span class="hs-operator hs-var">`isSuffixOf`</span></span><span> </span><span class="annot"><span class="annottext">String
+</span><a href="#local-6989586621679261181"><span class="hs-identifier hs-var">s</span></a></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">String -&gt; String
+forall a. [a] -&gt; [a]
+</span><span class="hs-identifier hs-var">init</span></span><span> </span><span class="annot"><span class="annottext">String
+</span><a href="#local-6989586621679261181"><span class="hs-identifier hs-var">s</span></a></span><span>
+</span><span id="line-16"></span><span>               </span><span class="hs-glyph">|</span><span> </span><span class="annot"><span class="annottext">Bool
+</span><span class="hs-identifier hs-var">otherwise</span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">String
+</span><a href="#local-6989586621679261181"><span class="hs-identifier hs-var">s</span></a></span><span>
+</span><span id="line-17"></span><span>  </span><span id="local-6989586621679261173"><span class="annot"><span class="annottext">optionName :: Tagged Endpoint String
+</span><span class="hs-identifier hs-var hs-var hs-var hs-var">optionName</span></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">String -&gt; Tagged Endpoint String
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><span class="hs-identifier hs-var">return</span></span><span> </span><span class="annot"><span class="annottext">String
+</span><span class="hs-string">&quot;endpoint&quot;</span></span><span>
+</span><span id="line-18"></span><span>  </span><span id="local-6989586621679261170"><span class="annot"><span class="annottext">optionHelp :: Tagged Endpoint String
+</span><span class="hs-identifier hs-var hs-var hs-var hs-var">optionHelp</span></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">String -&gt; Tagged Endpoint String
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><span class="hs-identifier hs-var">return</span></span><span> </span><span class="annot"><span class="annottext">String
+</span><span class="hs-string">&quot;Internet Computer endpoint to connect to (default: http://0.0.0.0:8001)&quot;</span></span><span>
+</span><span id="line-19"></span><span>  </span><span id="local-6989586621679261165"><span class="annot"><span class="annottext">optionCLParser :: Parser Endpoint
+</span><span class="hs-identifier hs-var hs-var hs-var hs-var">optionCLParser</span></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Mod OptionFields Endpoint -&gt; Parser Endpoint
+forall v. IsOption v =&gt; Mod OptionFields v -&gt; Parser v
+</span><span class="hs-identifier hs-var">mkOptionCLParser</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">String -&gt; Mod OptionFields Endpoint
+forall (f :: * -&gt; *) a. HasMetavar f =&gt; String -&gt; Mod f a
+</span><span class="hs-identifier hs-var">metavar</span></span><span> </span><span class="annot"><span class="annottext">String
+</span><span class="hs-string">&quot;URL&quot;</span></span><span class="hs-special">)</span><span>
+</span><span id="line-20"></span><span>
+</span><span id="line-21"></span><span class="hs-keyword">newtype</span><span> </span><span id="TestPort"><span class="annot"><a href="IC.Test.Options.html#TestPort"><span class="hs-identifier hs-var">TestPort</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span id="TestPort"><span class="annot"><a href="IC.Test.Options.html#TestPort"><span class="hs-identifier hs-var">TestPort</span></a></span></span><span> </span><span class="annot"><span class="hs-identifier hs-type">Int</span></span><span>
+</span><span id="line-22"></span><span>
+</span><span id="line-23"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679261151"><span id="local-6989586621679261153"><span class="annot"><span class="hs-identifier hs-type">IsOption</span></span><span> </span><span class="annot"><a href="IC.Test.Options.html#TestPort"><span class="hs-identifier hs-type">TestPort</span></a></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-24"></span><span>  </span><span id="local-6989586621679261150"><span class="annot"><span class="annottext">defaultValue :: TestPort
+</span><a href="#local-6989586621679261150"><span class="hs-identifier hs-var hs-var hs-var hs-var">defaultValue</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Int -&gt; TestPort
+</span><a href="IC.Test.Options.html#TestPort"><span class="hs-identifier hs-var">TestPort</span></a></span><span> </span><span class="annot"><span class="annottext">Int
+</span><span class="hs-number">8003</span></span><span>
+</span><span id="line-25"></span><span>  </span><span id="local-6989586621679261147"><span class="annot"><span class="annottext">parseValue :: String -&gt; Maybe TestPort
+</span><a href="#local-6989586621679261147"><span class="hs-identifier hs-var hs-var hs-var hs-var">parseValue</span></a></span></span><span> </span><span id="local-6989586621679261146"><span class="annot"><span class="annottext">String
+</span><a href="#local-6989586621679261146"><span class="hs-identifier hs-var">p</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">TestPort -&gt; Maybe TestPort
+forall a. a -&gt; Maybe a
+</span><span class="hs-identifier hs-var">Just</span></span><span> </span><span class="annot"><span class="annottext">(TestPort -&gt; Maybe TestPort) -&gt; TestPort -&gt; Maybe TestPort
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">Int -&gt; TestPort
+</span><a href="IC.Test.Options.html#TestPort"><span class="hs-identifier hs-var">TestPort</span></a></span><span> </span><span class="annot"><span class="annottext">(Int -&gt; TestPort) -&gt; Int -&gt; TestPort
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">String -&gt; Int
+forall a. Read a =&gt; String -&gt; a
+</span><span class="hs-identifier hs-var">read</span></span><span> </span><span class="annot"><span class="annottext">String
+</span><a href="#local-6989586621679261146"><span class="hs-identifier hs-var">p</span></a></span><span>
+</span><span id="line-26"></span><span>  </span><span id="local-6989586621679261143"><span class="annot"><span class="annottext">optionName :: Tagged TestPort String
+</span><a href="#local-6989586621679261143"><span class="hs-identifier hs-var hs-var hs-var hs-var">optionName</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">String -&gt; Tagged TestPort String
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><span class="hs-identifier hs-var">return</span></span><span> </span><span class="annot"><span class="annottext">String
+</span><span class="hs-string">&quot;test_port&quot;</span></span><span>
+</span><span id="line-27"></span><span>  </span><span id="local-6989586621679261141"><span class="annot"><span class="annottext">optionHelp :: Tagged TestPort String
+</span><a href="#local-6989586621679261141"><span class="hs-identifier hs-var hs-var hs-var hs-var">optionHelp</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">String -&gt; Tagged TestPort String
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><span class="hs-identifier hs-var">return</span></span><span> </span><span class="annot"><span class="annottext">String
+</span><span class="hs-string">&quot;Port a test HTTP server listens on (default: 8003)&quot;</span></span><span>
+</span><span id="line-28"></span><span>
+</span><span id="line-29"></span><span class="hs-keyword">newtype</span><span> </span><span id="PollTimeout"><span class="annot"><a href="IC.Test.Options.html#PollTimeout"><span class="hs-identifier hs-var">PollTimeout</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span id="PollTimeout"><span class="annot"><a href="IC.Test.Options.html#PollTimeout"><span class="hs-identifier hs-var">PollTimeout</span></a></span></span><span> </span><span class="annot"><span class="hs-identifier hs-type">Int</span></span><span>
+</span><span id="line-30"></span><span>
+</span><span id="line-31"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679261130"><span id="local-6989586621679261132"><span class="annot"><span class="hs-identifier hs-type">IsOption</span></span><span> </span><span class="annot"><a href="IC.Test.Options.html#PollTimeout"><span class="hs-identifier hs-type">PollTimeout</span></a></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-32"></span><span>  </span><span id="local-6989586621679261129"><span class="annot"><span class="annottext">defaultValue :: PollTimeout
+</span><a href="#local-6989586621679261129"><span class="hs-identifier hs-var hs-var hs-var hs-var">defaultValue</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Int -&gt; PollTimeout
+</span><a href="IC.Test.Options.html#PollTimeout"><span class="hs-identifier hs-var">PollTimeout</span></a></span><span> </span><span class="annot"><span class="annottext">Int
+</span><span class="hs-number">300</span></span><span>
+</span><span id="line-33"></span><span>  </span><span id="local-6989586621679261127"><span class="annot"><span class="annottext">parseValue :: String -&gt; Maybe PollTimeout
+</span><a href="#local-6989586621679261127"><span class="hs-identifier hs-var hs-var hs-var hs-var">parseValue</span></a></span></span><span> </span><span id="local-6989586621679261126"><span class="annot"><span class="annottext">String
+</span><a href="#local-6989586621679261126"><span class="hs-identifier hs-var">p</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">PollTimeout -&gt; Maybe PollTimeout
+forall a. a -&gt; Maybe a
+</span><span class="hs-identifier hs-var">Just</span></span><span> </span><span class="annot"><span class="annottext">(PollTimeout -&gt; Maybe PollTimeout)
+-&gt; PollTimeout -&gt; Maybe PollTimeout
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">Int -&gt; PollTimeout
+</span><a href="IC.Test.Options.html#PollTimeout"><span class="hs-identifier hs-var">PollTimeout</span></a></span><span> </span><span class="annot"><span class="annottext">(Int -&gt; PollTimeout) -&gt; Int -&gt; PollTimeout
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">String -&gt; Int
+forall a. Read a =&gt; String -&gt; a
+</span><span class="hs-identifier hs-var">read</span></span><span> </span><span class="annot"><span class="annottext">String
+</span><a href="#local-6989586621679261126"><span class="hs-identifier hs-var">p</span></a></span><span>
+</span><span id="line-34"></span><span>  </span><span id="local-6989586621679261124"><span class="annot"><span class="annottext">optionName :: Tagged PollTimeout String
+</span><a href="#local-6989586621679261124"><span class="hs-identifier hs-var hs-var hs-var hs-var">optionName</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">String -&gt; Tagged PollTimeout String
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><span class="hs-identifier hs-var">return</span></span><span> </span><span class="annot"><span class="annottext">String
+</span><span class="hs-string">&quot;poll_timeout&quot;</span></span><span>
+</span><span id="line-35"></span><span>  </span><span id="local-6989586621679261122"><span class="annot"><span class="annottext">optionHelp :: Tagged PollTimeout String
+</span><a href="#local-6989586621679261122"><span class="hs-identifier hs-var hs-var hs-var hs-var">optionHelp</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">String -&gt; Tagged PollTimeout String
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><span class="hs-identifier hs-var">return</span></span><span> </span><span class="annot"><span class="annottext">String
+</span><span class="hs-string">&quot;Timeout for request polling in seconds (default: 300)&quot;</span></span><span>
+</span><span id="line-36"></span><span>
+</span><span id="line-37"></span><span class="annot"><a href="IC.Test.Options.html#endpointOption"><span class="hs-identifier hs-type">endpointOption</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><span class="hs-identifier hs-type">OptionDescription</span></span><span>
+</span><span id="line-38"></span><span id="endpointOption"><span class="annot"><span class="annottext">endpointOption :: OptionDescription
+</span><a href="IC.Test.Options.html#endpointOption"><span class="hs-identifier hs-var hs-var">endpointOption</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Proxy Endpoint -&gt; OptionDescription
+forall v. IsOption v =&gt; Proxy v -&gt; OptionDescription
+</span><span class="hs-identifier hs-var">Option</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Proxy Endpoint
+forall {k} (t :: k). Proxy t
+</span><span class="hs-identifier hs-var">Proxy</span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Proxy</span></span><span> </span><span class="annot"><a href="IC.Test.Options.html#Endpoint"><span class="hs-identifier hs-type">Endpoint</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-39"></span></pre></body></html>

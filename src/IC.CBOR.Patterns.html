@@ -1,0 +1,87 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><link rel="stylesheet" type="text/css" href="style.css" /><script type="text/javascript" src="highlight.js"></script></head><body><pre><span class="hs-pragma">{-# LANGUAGE RecordWildCards #-}</span><span>
+</span><span id="line-2"></span><span class="hs-pragma">{-# LANGUAGE OverloadedStrings #-}</span><span>
+</span><span id="line-3"></span><span class="hs-pragma">{-# LANGUAGE PatternSynonyms #-}</span><span>
+</span><span id="line-4"></span><span class="hs-pragma">{-# LANGUAGE ViewPatterns #-}</span><span>
+</span><span id="line-5"></span><span class="hs-pragma">{-# LANGUAGE LambdaCase #-}</span><span>
+</span><span id="line-6"></span><span>
+</span><span id="line-7"></span><span class="hs-keyword">module</span><span> </span><span class="hs-identifier">IC.CBOR.Patterns</span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-8"></span><span>
+</span><span id="line-9"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><span class="hs-identifier">Data.ByteString.Lazy</span></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">BS</span></span><span>
+</span><span id="line-10"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Numeric.Natural</span></span><span>
+</span><span id="line-11"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Codec.CBOR.Term</span></span><span>
+</span><span id="line-12"></span><span>
+</span><span id="line-13"></span><span class="hs-keyword">pattern</span><span> </span><span class="annot"><a href="IC.CBOR.Patterns.html#TMap_"><span class="hs-identifier hs-type">TMap_</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="hs-special">[</span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier hs-type">Term</span></span><span class="hs-special">,</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Term</span></span><span class="hs-special">)</span><span class="hs-special">]</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Term</span></span><span>
+</span><span id="line-14"></span><span class="hs-keyword">pattern</span><span> </span><span id="%24mTMap_"><span id="TMap_"><span class="annot"><span class="annottext">$mTMap_ :: forall {r}. Term -&gt; ([(Term, Term)] -&gt; r) -&gt; (Void# -&gt; r) -&gt; r
+</span><a href="IC.CBOR.Patterns.html#%24mTMap_"><span class="hs-identifier hs-var hs-var">TMap_</span></a></span></span></span><span> </span><span class="annot"><a href="#local-6989586621679256996"><span class="hs-identifier hs-type">m</span></a></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="hs-special">(</span><span class="hs-glyph">\</span><span class="hs-glyph">case</span><span> </span><span class="hs-special">{</span><span class="annot"><span class="hs-identifier hs-type">TMapI</span></span><span> </span><span id="local-6989586621679256994"><span class="annot"><span class="annottext">[(Term, Term)]
+</span><a href="#local-6989586621679256994"><span class="hs-identifier hs-var">m</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">[(Term, Term)] -&gt; Maybe [(Term, Term)]
+forall a. a -&gt; Maybe a
+</span><span class="hs-identifier hs-var">Just</span></span><span> </span><span class="annot"><span class="annottext">[(Term, Term)]
+</span><a href="#local-6989586621679256994"><span class="hs-identifier hs-var">m</span></a></span><span class="hs-special">;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">TMap</span></span><span> </span><span id="local-6989586621679256992"><span class="annot"><span class="annottext">[(Term, Term)]
+</span><a href="#local-6989586621679256992"><span class="hs-identifier hs-var">m</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">[(Term, Term)] -&gt; Maybe [(Term, Term)]
+forall a. a -&gt; Maybe a
+</span><span class="hs-identifier hs-var">Just</span></span><span> </span><span class="annot"><span class="annottext">[(Term, Term)]
+</span><a href="#local-6989586621679256992"><span class="hs-identifier hs-var">m</span></a></span><span class="hs-special">;</span><span> </span><span class="annot"><span class="annottext">Term
+</span><span class="hs-identifier">_</span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">Maybe [(Term, Term)]
+forall a. Maybe a
+</span><span class="hs-identifier hs-var">Nothing</span></span><span class="hs-special">}</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Just</span></span><span> </span><span id="local-6989586621679256996"><span class="annot"><a href="#local-6989586621679256996"><span class="hs-identifier hs-var">m</span></a></span></span><span class="hs-special">)</span><span>
+</span><span id="line-15"></span><span>
+</span><span id="line-16"></span><span class="hs-keyword">pattern</span><span> </span><span class="annot"><a href="IC.CBOR.Patterns.html#TList_"><span class="hs-identifier hs-type">TList_</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="hs-special">[</span><span class="annot"><span class="hs-identifier hs-type">Term</span></span><span class="hs-special">]</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Term</span></span><span>
+</span><span id="line-17"></span><span class="hs-keyword">pattern</span><span> </span><span id="%24mTList_"><span id="TList_"><span class="annot"><span class="annottext">$mTList_ :: forall {r}. Term -&gt; ([Term] -&gt; r) -&gt; (Void# -&gt; r) -&gt; r
+</span><a href="IC.CBOR.Patterns.html#%24mTList_"><span class="hs-identifier hs-var hs-var">TList_</span></a></span></span></span><span> </span><span class="annot"><a href="#local-6989586621679256989"><span class="hs-identifier hs-type">m</span></a></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="hs-special">(</span><span class="hs-glyph">\</span><span class="hs-glyph">case</span><span> </span><span class="hs-special">{</span><span class="annot"><span class="hs-identifier hs-type">TListI</span></span><span> </span><span id="local-6989586621679256987"><span class="annot"><span class="annottext">[Term]
+</span><a href="#local-6989586621679256987"><span class="hs-identifier hs-var">m</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">[Term] -&gt; Maybe [Term]
+forall a. a -&gt; Maybe a
+</span><span class="hs-identifier hs-var">Just</span></span><span> </span><span class="annot"><span class="annottext">[Term]
+</span><a href="#local-6989586621679256987"><span class="hs-identifier hs-var">m</span></a></span><span class="hs-special">;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">TList</span></span><span> </span><span id="local-6989586621679256985"><span class="annot"><span class="annottext">[Term]
+</span><a href="#local-6989586621679256985"><span class="hs-identifier hs-var">m</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">[Term] -&gt; Maybe [Term]
+forall a. a -&gt; Maybe a
+</span><span class="hs-identifier hs-var">Just</span></span><span> </span><span class="annot"><span class="annottext">[Term]
+</span><a href="#local-6989586621679256985"><span class="hs-identifier hs-var">m</span></a></span><span class="hs-special">;</span><span> </span><span class="annot"><span class="annottext">Term
+</span><span class="hs-identifier">_</span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">Maybe [Term]
+forall a. Maybe a
+</span><span class="hs-identifier hs-var">Nothing</span></span><span class="hs-special">}</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Just</span></span><span> </span><span id="local-6989586621679256989"><span class="annot"><a href="#local-6989586621679256989"><span class="hs-identifier hs-var">m</span></a></span></span><span class="hs-special">)</span><span>
+</span><span id="line-18"></span><span>
+</span><span id="line-19"></span><span class="hs-keyword">pattern</span><span> </span><span class="annot"><a href="IC.CBOR.Patterns.html#TNat"><span class="hs-identifier hs-type">TNat</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Natural</span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Term</span></span><span>
+</span><span id="line-20"></span><span class="hs-keyword">pattern</span><span> </span><span id="%24mTNat"><span id="TNat"><span class="annot"><span class="annottext">$mTNat :: forall {r}. Term -&gt; (Natural -&gt; r) -&gt; (Void# -&gt; r) -&gt; r
+</span><a href="IC.CBOR.Patterns.html#%24mTNat"><span class="hs-identifier hs-var hs-var">TNat</span></a></span></span></span><span> </span><span class="annot"><a href="#local-6989586621679256982"><span class="hs-identifier hs-type">m</span></a></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="hs-special">(</span><span class="hs-glyph">\</span><span class="hs-glyph">case</span><span>
+</span><span id="line-21"></span><span>        </span><span class="annot"><span class="hs-identifier hs-type">TInt</span></span><span> </span><span id="local-6989586621679256965"><span class="annot"><span class="annottext">Int
+</span><a href="#local-6989586621679256965"><span class="hs-identifier hs-var">m</span></a></span></span><span> </span><span class="hs-glyph">|</span><span> </span><span class="annot"><span class="annottext">Int
+</span><a href="#local-6989586621679256965"><span class="hs-identifier hs-var">m</span></a></span><span> </span><span class="annot"><span class="annottext">Int -&gt; Int -&gt; Bool
+forall a. Ord a =&gt; a -&gt; a -&gt; Bool
+</span><span class="hs-operator hs-var">&gt;=</span></span><span> </span><span class="annot"><span class="annottext">Int
+</span><span class="hs-number">0</span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">Natural -&gt; Maybe Natural
+forall a. a -&gt; Maybe a
+</span><span class="hs-identifier hs-var">Just</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Int -&gt; Natural
+forall a b. (Integral a, Num b) =&gt; a -&gt; b
+</span><span class="hs-identifier hs-var">fromIntegral</span></span><span> </span><span class="annot"><span class="annottext">Int
+</span><a href="#local-6989586621679256965"><span class="hs-identifier hs-var">m</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-22"></span><span>        </span><span class="annot"><span class="hs-identifier hs-type">TInteger</span></span><span> </span><span id="local-6989586621679256963"><span class="annot"><span class="annottext">Integer
+</span><a href="#local-6989586621679256963"><span class="hs-identifier hs-var">m</span></a></span></span><span> </span><span class="hs-glyph">|</span><span> </span><span class="annot"><span class="annottext">Integer
+</span><a href="#local-6989586621679256963"><span class="hs-identifier hs-var">m</span></a></span><span> </span><span class="annot"><span class="annottext">Integer -&gt; Integer -&gt; Bool
+forall a. Ord a =&gt; a -&gt; a -&gt; Bool
+</span><span class="hs-operator hs-var">&gt;=</span></span><span> </span><span class="annot"><span class="annottext">Integer
+</span><span class="hs-number">0</span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">Natural -&gt; Maybe Natural
+forall a. a -&gt; Maybe a
+</span><span class="hs-identifier hs-var">Just</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Integer -&gt; Natural
+forall a b. (Integral a, Num b) =&gt; a -&gt; b
+</span><span class="hs-identifier hs-var">fromIntegral</span></span><span> </span><span class="annot"><span class="annottext">Integer
+</span><a href="#local-6989586621679256963"><span class="hs-identifier hs-var">m</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-23"></span><span>        </span><span class="annot"><span class="annottext">Term
+</span><span class="hs-identifier">_</span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">Maybe Natural
+forall a. Maybe a
+</span><span class="hs-identifier hs-var">Nothing</span></span><span>
+</span><span id="line-24"></span><span>    </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Just</span></span><span> </span><span id="local-6989586621679256982"><span class="annot"><a href="#local-6989586621679256982"><span class="hs-identifier hs-var">m</span></a></span></span><span class="hs-special">)</span><span>
+</span><span id="line-25"></span><span>
+</span><span id="line-26"></span><span class="hs-keyword">pattern</span><span> </span><span class="annot"><a href="IC.CBOR.Patterns.html#TBlob"><span class="hs-identifier hs-type">TBlob</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><span class="hs-identifier hs-type">BS.ByteString</span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Term</span></span><span>
+</span><span id="line-27"></span><span class="hs-keyword">pattern</span><span> </span><span id="%24bTBlob"><span id="%24mTBlob"><span id="TBlob"><span class="annot"><span class="annottext">$bTBlob :: ByteString -&gt; Term
+$mTBlob :: forall {r}. Term -&gt; (ByteString -&gt; r) -&gt; (Void# -&gt; r) -&gt; r
+</span><a href="IC.CBOR.Patterns.html#%24bTBlob"><span class="hs-identifier hs-var hs-var hs-var hs-var">TBlob</span></a></span></span></span></span><span> </span><span class="annot"><a href="#local-6989586621679256959"><span class="hs-identifier hs-type">m</span></a></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="hs-identifier hs-type">TBytes</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier hs-type">BS.fromStrict</span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span id="local-6989586621679256959"><span class="annot"><a href="#local-6989586621679256959"><span class="hs-identifier hs-var">m</span></a></span></span><span class="hs-special">)</span><span>
+</span><span id="line-28"></span><span>  </span><span class="hs-keyword">where</span><span> </span><span class="annot"><a href="IC.CBOR.Patterns.html#TBlob"><span class="hs-identifier hs-var">TBlob</span></a></span><span> </span><span id="local-6989586621679256956"><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679256956"><span class="hs-identifier hs-var">m</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">ByteString -&gt; Term
+</span><span class="hs-identifier hs-var">TBytes</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">ByteString -&gt; ByteString
+</span><span class="hs-identifier hs-var">BS.toStrict</span></span><span> </span><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679256956"><span class="hs-identifier hs-var">m</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-29"></span><span>
+</span><span id="line-30"></span><span>
+</span><span id="line-31"></span><span>
+</span><span id="line-32"></span><span>
+</span><span id="line-33"></span></pre></body></html>

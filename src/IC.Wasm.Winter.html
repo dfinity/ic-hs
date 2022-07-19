@@ -1,0 +1,539 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><link rel="stylesheet" type="text/css" href="style.css" /><script type="text/javascript" src="highlight.js"></script></head><body><pre><span class="hs-pragma">{-# LANGUAGE ScopedTypeVariables #-}</span><span>
+</span><span id="line-2"></span><span class="hs-comment">{-|
+
+This module provides a thin wrapper around the winter Wasm engine, exposing just
+the bits needed by the IC ref.
+
+This is the interface at which one might plug in a different Wasm engine.
+-}</span><span>
+</span><span id="line-9"></span><span class="hs-keyword">module</span><span> </span><span class="hs-identifier">IC.Wasm.Winter</span><span>
+</span><span id="line-10"></span><span>  </span><span class="hs-special">(</span><span> </span><span class="annot"><a href="IC.Wasm.Winter.html#Module"><span class="hs-identifier">Module</span></a></span><span>
+</span><span id="line-11"></span><span>  </span><span class="hs-special">,</span><span> </span><span class="annot"><a href="IC.Wasm.Winter.html#parseModule"><span class="hs-identifier">parseModule</span></a></span><span>
+</span><span id="line-12"></span><span>  </span><span class="hs-special">,</span><span> </span><span class="annot"><a href="IC.Wasm.Winter.html#exportedFunctions"><span class="hs-identifier">exportedFunctions</span></a></span><span>
+</span><span id="line-13"></span><span>  </span><span class="hs-special">,</span><span> </span><span class="annot"><a href="IC.Wasm.Winter.html#Import"><span class="hs-identifier">Import</span></a></span><span>
+</span><span id="line-14"></span><span>  </span><span class="hs-special">,</span><span> </span><span class="annot"><a href="IC.Wasm.Winter.html#Imports"><span class="hs-identifier">Imports</span></a></span><span>
+</span><span id="line-15"></span><span>  </span><span class="hs-special">,</span><span> </span><span class="annot"><a href="IC.Wasm.Winter.html#HostM"><span class="hs-identifier">HostM</span></a></span><span>
+</span><span id="line-16"></span><span>  </span><span class="hs-special">,</span><span> </span><span class="annot"><a href="IC.Wasm.Winter.html#HostFunc"><span class="hs-identifier">HostFunc</span></a></span><span>
+</span><span id="line-17"></span><span>  </span><span class="hs-special">,</span><span> </span><span class="annot"><span class="hs-identifier">W.Value</span></span><span class="hs-special">(</span><span class="hs-glyph">..</span><span class="hs-special">)</span><span>
+</span><span id="line-18"></span><span>  </span><span class="hs-special">,</span><span> </span><span class="annot"><span class="hs-identifier">W.StackType</span></span><span>
+</span><span id="line-19"></span><span>  </span><span class="hs-special">,</span><span> </span><span class="annot"><span class="hs-identifier">W.ValueType</span></span><span class="hs-special">(</span><span class="hs-glyph">..</span><span class="hs-special">)</span><span>
+</span><span id="line-20"></span><span>  </span><span class="hs-special">,</span><span> </span><span class="annot"><span class="hs-identifier">W.Address</span></span><span>
+</span><span id="line-21"></span><span>  </span><span class="hs-special">,</span><span> </span><span class="annot"><span class="hs-identifier">W.Size</span></span><span>
+</span><span id="line-22"></span><span>  </span><span class="hs-special">,</span><span> </span><span class="annot"><a href="IC.Wasm.Winter.html#getBytes"><span class="hs-identifier">getBytes</span></a></span><span>
+</span><span id="line-23"></span><span>  </span><span class="hs-special">,</span><span> </span><span class="annot"><a href="IC.Wasm.Winter.html#setBytes"><span class="hs-identifier">setBytes</span></a></span><span>
+</span><span id="line-24"></span><span>  </span><span class="hs-special">,</span><span> </span><span class="annot"><a href="IC.Wasm.Winter.html#initialize"><span class="hs-identifier">initialize</span></a></span><span>
+</span><span id="line-25"></span><span>  </span><span class="hs-special">,</span><span> </span><span class="annot"><a href="IC.Wasm.Winter.html#Instance"><span class="hs-identifier">Instance</span></a></span><span>
+</span><span id="line-26"></span><span>  </span><span class="hs-special">,</span><span> </span><span class="annot"><a href="IC.Wasm.Winter.html#invokeExport"><span class="hs-identifier">invokeExport</span></a></span><span>
+</span><span id="line-27"></span><span>  </span><span class="hs-special">,</span><span> </span><span class="annot"><a href="IC.Wasm.Winter.html#invokeTable"><span class="hs-identifier">invokeTable</span></a></span><span>
+</span><span id="line-28"></span><span>  </span><span class="hs-special">)</span><span>
+</span><span id="line-29"></span><span class="hs-keyword">where</span><span>
+</span><span id="line-30"></span><span>
+</span><span id="line-31"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><span class="hs-identifier">Data.ByteString.Lazy</span></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">BS</span></span><span>
+</span><span id="line-32"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Control.Monad.Except</span></span><span>
+</span><span id="line-33"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><span class="hs-identifier">Data.Map</span></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">M</span></span><span>
+</span><span id="line-34"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><span class="hs-identifier">Data.Vector</span></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">V</span></span><span>
+</span><span id="line-35"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><span class="hs-identifier">Data.IntMap</span></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">IM</span></span><span>
+</span><span id="line-36"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><span class="hs-identifier">Data.Text.Lazy</span></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">T</span></span><span>
+</span><span id="line-37"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Control.Monad.ST</span></span><span>
+</span><span id="line-38"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Data.Binary.Get</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier">runGetOrFail</span></span><span class="hs-special">)</span><span>
+</span><span id="line-39"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Data.Default.Class</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier">Default</span></span><span> </span><span class="hs-special">(</span><span class="hs-glyph">..</span><span class="hs-special">)</span><span class="hs-special">)</span><span>
+</span><span id="line-40"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Data.Int</span></span><span>
+</span><span id="line-41"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Data.Foldable</span></span><span>
+</span><span id="line-42"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Data.MemoUgly</span></span><span>
+</span><span id="line-43"></span><span>
+</span><span id="line-44"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><span class="hs-identifier">Wasm.Binary.Decode</span></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">W</span></span><span>
+</span><span id="line-45"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><span class="hs-identifier">Wasm.Exec.Eval</span></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">W</span></span><span>
+</span><span id="line-46"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><span class="hs-identifier">Wasm.Runtime.Func</span></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">W</span></span><span>
+</span><span id="line-47"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><span class="hs-identifier">Wasm.Runtime.Instance</span></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">W</span></span><span>
+</span><span id="line-48"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><span class="hs-identifier">Wasm.Runtime.Memory</span></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">W</span></span><span>
+</span><span id="line-49"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><span class="hs-identifier">Wasm.Syntax.AST</span></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">W</span></span><span>
+</span><span id="line-50"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><span class="hs-identifier">Wasm.Syntax.Types</span></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">W</span></span><span>
+</span><span id="line-51"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><span class="hs-identifier">Wasm.Syntax.Values</span></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">W</span></span><span>
+</span><span id="line-52"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><span class="hs-identifier">Wasm.Syntax.Memory</span></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">W</span></span><span>
+</span><span id="line-53"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><span class="hs-identifier">Wasm.Util.Source</span></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">W</span></span><span>
+</span><span id="line-54"></span><span>
+</span><span id="line-55"></span><span class="hs-keyword">type</span><span> </span><span id="Instance"><span class="annot"><a href="IC.Wasm.Winter.html#Instance"><span class="hs-identifier hs-var">Instance</span></a></span></span><span> </span><span id="local-6989586621679264381"><span class="annot"><a href="#local-6989586621679264381"><span class="hs-identifier hs-type">s</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier hs-type">IM.IntMap</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier hs-type">W.ModuleInst</span></span><span> </span><span class="annot"><span class="hs-identifier hs-type">W.Phrase</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier hs-type">ST</span></span><span> </span><span class="annot"><a href="#local-6989586621679264381"><span class="hs-identifier hs-type">s</span></a></span><span class="hs-special">)</span><span class="hs-special">)</span><span class="hs-special">,</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Int</span></span><span class="hs-special">)</span><span>
+</span><span id="line-56"></span><span>
+</span><span id="line-57"></span><span class="hs-keyword">type</span><span> </span><span id="HostM"><span class="annot"><a href="IC.Wasm.Winter.html#HostM"><span class="hs-identifier hs-var">HostM</span></a></span></span><span> </span><span id="local-6989586621679264380"><span class="annot"><a href="#local-6989586621679264380"><span class="hs-identifier hs-type">s</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="hs-identifier hs-type">ExceptT</span></span><span> </span><span class="annot"><span class="hs-identifier hs-type">String</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier hs-type">ST</span></span><span> </span><span class="annot"><a href="#local-6989586621679264380"><span class="hs-identifier hs-type">s</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-58"></span><span>
+</span><span id="line-59"></span><span class="hs-keyword">type</span><span> </span><span id="HostFunc"><span class="annot"><a href="IC.Wasm.Winter.html#HostFunc"><span class="hs-identifier hs-var">HostFunc</span></a></span></span><span> </span><span id="local-6989586621679264379"><span class="annot"><a href="#local-6989586621679264379"><span class="hs-identifier hs-type">s</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><a href="IC.Wasm.Winter.html#HostM"><span class="hs-identifier hs-type">HostM</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679264379"><span class="hs-identifier hs-type">s</span></a></span><span> </span><span class="hs-special">[</span><span class="annot"><span class="hs-identifier hs-type">W.Value</span></span><span class="hs-special">]</span><span>
+</span><span id="line-60"></span><span>
+</span><span id="line-61"></span><span class="hs-keyword">type</span><span> </span><span id="ModName"><span class="annot"><a href="IC.Wasm.Winter.html#ModName"><span class="hs-identifier hs-var">ModName</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="hs-identifier hs-type">String</span></span><span>
+</span><span id="line-62"></span><span class="hs-keyword">type</span><span> </span><span id="FuncName"><span class="annot"><a href="IC.Wasm.Winter.html#FuncName"><span class="hs-identifier hs-var">FuncName</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="hs-identifier hs-type">String</span></span><span>
+</span><span id="line-63"></span><span class="hs-keyword">type</span><span> </span><span id="Import"><span class="annot"><a href="IC.Wasm.Winter.html#Import"><span class="hs-identifier hs-var">Import</span></a></span></span><span> </span><span id="local-6989586621679264376"><span class="annot"><a href="#local-6989586621679264376"><span class="hs-identifier hs-type">s</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Wasm.Winter.html#ModName"><span class="hs-identifier hs-type">ModName</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><a href="IC.Wasm.Winter.html#FuncName"><span class="hs-identifier hs-type">FuncName</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><span class="hs-identifier hs-type">W.StackType</span></span><span class="hs-special">,</span><span> </span><span class="annot"><span class="hs-identifier hs-type">W.StackType</span></span><span class="hs-special">,</span><span> </span><span class="hs-special">[</span><span class="annot"><span class="hs-identifier hs-type">W.Value</span></span><span class="hs-special">]</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Wasm.Winter.html#HostFunc"><span class="hs-identifier hs-type">HostFunc</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679264376"><span class="hs-identifier hs-type">s</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-64"></span><span class="hs-keyword">type</span><span> </span><span id="Imports"><span class="annot"><a href="IC.Wasm.Winter.html#Imports"><span class="hs-identifier hs-var">Imports</span></a></span></span><span> </span><span id="local-6989586621679264375"><span class="annot"><a href="#local-6989586621679264375"><span class="hs-identifier hs-type">s</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-special">[</span><span class="annot"><a href="IC.Wasm.Winter.html#Import"><span class="hs-identifier hs-type">Import</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679264375"><span class="hs-identifier hs-type">s</span></a></span><span class="hs-special">]</span><span>
+</span><span id="line-65"></span><span>
+</span><span id="line-66"></span><span class="hs-keyword">type</span><span> </span><span id="Module"><span class="annot"><a href="IC.Wasm.Winter.html#Module"><span class="hs-identifier hs-var">Module</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="hs-identifier hs-type">W.Module</span></span><span> </span><span class="annot"><span class="hs-identifier hs-type">W.Phrase</span></span><span>
+</span><span id="line-67"></span><span>
+</span><span id="line-68"></span><span class="hs-comment">-- This function is memoized using Data.MemoUgly. This optimizes for workloads</span><span>
+</span><span id="line-69"></span><span class="hs-comment">-- where the same module is parsed many times (ic-ref-test). It is wasteful when</span><span>
+</span><span id="line-70"></span><span class="hs-comment">-- a module is parsed, eventually dropped (i.e. canister deleted), and never installed</span><span>
+</span><span id="line-71"></span><span class="hs-comment">-- again.</span><span>
+</span><span id="line-72"></span><span class="annot"><a href="IC.Wasm.Winter.html#parseModule"><span class="hs-identifier hs-type">parseModule</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><span class="hs-identifier hs-type">BS.ByteString</span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Either</span></span><span> </span><span class="annot"><span class="hs-identifier hs-type">String</span></span><span> </span><span class="annot"><a href="IC.Wasm.Winter.html#Module"><span class="hs-identifier hs-type">Module</span></a></span><span>
+</span><span id="line-73"></span><span id="parseModule"><span class="annot"><span class="annottext">parseModule :: ByteString -&gt; Either String Module
+</span><a href="IC.Wasm.Winter.html#parseModule"><span class="hs-identifier hs-var hs-var">parseModule</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">(ByteString -&gt; Either String Module)
+-&gt; ByteString -&gt; Either String Module
+forall a b. Ord a =&gt; (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-identifier hs-var">memo</span></span><span> </span><span class="annot"><span class="annottext">((ByteString -&gt; Either String Module)
+ -&gt; ByteString -&gt; Either String Module)
+-&gt; (ByteString -&gt; Either String Module)
+-&gt; ByteString
+-&gt; Either String Module
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="hs-glyph">\</span><span id="local-6989586621679264373"><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679264373"><span class="hs-identifier hs-var">bytes</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-keyword">case</span><span> </span><span class="annot"><span class="annottext">Get Module
+-&gt; ByteString
+-&gt; Either
+     (ByteString, ByteOffset, String) (ByteString, ByteOffset, Module)
+forall a.
+Get a
+-&gt; ByteString
+-&gt; Either
+     (ByteString, ByteOffset, String) (ByteString, ByteOffset, a)
+</span><span class="hs-identifier hs-var">runGetOrFail</span></span><span> </span><span class="annot"><span class="annottext">Get Module
+forall (phrase :: * -&gt; *). Decodable phrase =&gt; Get (Module phrase)
+</span><span class="hs-identifier hs-var">W.getModule</span></span><span> </span><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679264373"><span class="hs-identifier hs-var">bytes</span></a></span><span> </span><span class="hs-keyword">of</span><span>
+</span><span id="line-74"></span><span>  </span><span class="annot"><span class="hs-identifier hs-type">Left</span></span><span>  </span><span class="hs-special">(</span><span class="annot"><span class="annottext">ByteString
+</span><span class="hs-identifier">_</span></span><span class="hs-special">,</span><span class="annot"><span class="annottext">ByteOffset
+</span><span class="hs-identifier">_</span></span><span class="hs-special">,</span><span id="local-6989586621679264371"><span class="annot"><span class="annottext">String
+</span><a href="#local-6989586621679264371"><span class="hs-identifier hs-var">err</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">String -&gt; Either String Module
+forall a b. a -&gt; Either a b
+</span><span class="hs-identifier hs-var">Left</span></span><span> </span><span class="annot"><span class="annottext">String
+</span><a href="#local-6989586621679264371"><span class="hs-identifier hs-var">err</span></a></span><span>
+</span><span id="line-75"></span><span>  </span><span class="annot"><span class="hs-identifier hs-type">Right</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">ByteString
+</span><span class="hs-identifier">_</span></span><span class="hs-special">,</span><span class="annot"><span class="annottext">ByteOffset
+</span><span class="hs-identifier">_</span></span><span class="hs-special">,</span><span id="local-6989586621679264370"><span class="annot"><span class="annottext">Module
+</span><a href="#local-6989586621679264370"><span class="hs-identifier hs-var">wasm_mod</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">Module -&gt; Either String Module
+forall a b. b -&gt; Either a b
+</span><span class="hs-identifier hs-var">Right</span></span><span> </span><span class="annot"><span class="annottext">Module
+</span><a href="#local-6989586621679264370"><span class="hs-identifier hs-var">wasm_mod</span></a></span><span>
+</span><span id="line-76"></span><span>
+</span><span id="line-77"></span><span>
+</span><span id="line-78"></span><span class="annot"><a href="IC.Wasm.Winter.html#initialize"><span class="hs-identifier hs-type">initialize</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="hs-keyword">forall</span><span> </span><span id="local-6989586621679264519"><span class="annot"><a href="#local-6989586621679264519"><span class="hs-identifier hs-type">s</span></a></span></span><span class="hs-operator">.</span><span> </span><span class="annot"><a href="IC.Wasm.Winter.html#Module"><span class="hs-identifier hs-type">Module</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Wasm.Winter.html#Imports"><span class="hs-identifier hs-type">Imports</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679264519"><span class="hs-identifier hs-type">s</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Wasm.Winter.html#HostM"><span class="hs-identifier hs-type">HostM</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679264519"><span class="hs-identifier hs-type">s</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Wasm.Winter.html#Instance"><span class="hs-identifier hs-type">Instance</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679264519"><span class="hs-identifier hs-type">s</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-79"></span><span id="initialize"><span class="annot"><span class="annottext">initialize :: forall s. Module -&gt; Imports s -&gt; HostM s (Instance s)
+</span><a href="IC.Wasm.Winter.html#initialize"><span class="hs-identifier hs-var hs-var">initialize</span></a></span></span><span> </span><span id="local-6989586621679264328"><span class="annot"><span class="annottext">Module
+</span><a href="#local-6989586621679264328"><span class="hs-identifier hs-var">mod</span></a></span></span><span> </span><span id="local-6989586621679264327"><span class="annot"><span class="annottext">Imports s
+</span><a href="#local-6989586621679264327"><span class="hs-identifier hs-var">imps</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">(EvalError -&gt; String)
+-&gt; ExceptT
+     EvalError (ST s) (IntMap (ModuleInst Phrase (ST s)), Int)
+-&gt; ExceptT String (ST s) (IntMap (ModuleInst Phrase (ST s)), Int)
+forall (m :: * -&gt; *) e e' a.
+Functor m =&gt;
+(e -&gt; e') -&gt; ExceptT e m a -&gt; ExceptT e' m a
+</span><span class="hs-identifier hs-var">withExceptT</span></span><span> </span><span class="annot"><span class="annottext">EvalError -&gt; String
+forall a. Show a =&gt; a -&gt; String
+</span><span class="hs-identifier hs-var">show</span></span><span> </span><span class="annot"><span class="annottext">(ExceptT EvalError (ST s) (IntMap (ModuleInst Phrase (ST s)), Int)
+ -&gt; ExceptT String (ST s) (IntMap (ModuleInst Phrase (ST s)), Int))
+-&gt; ExceptT
+     EvalError (ST s) (IntMap (ModuleInst Phrase (ST s)), Int)
+-&gt; ExceptT String (ST s) (IntMap (ModuleInst Phrase (ST s)), Int)
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-80"></span><span>  </span><span class="hs-keyword">let</span><span> </span><span class="annot"><a href="#local-6989586621679264324"><span class="hs-identifier hs-type">by_mod</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="hs-special">[</span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier hs-type">T.Text</span></span><span class="hs-special">,</span><span> </span><span class="hs-special">[</span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier hs-type">T.Text</span></span><span class="hs-special">,</span><span> </span><span class="annot"><span class="hs-identifier hs-type">W.StackType</span></span><span class="hs-special">,</span><span> </span><span class="annot"><span class="hs-identifier hs-type">W.StackType</span></span><span class="hs-special">,</span><span> </span><span class="hs-special">[</span><span class="annot"><span class="hs-identifier hs-type">W.Value</span></span><span class="hs-special">]</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Wasm.Winter.html#HostFunc"><span class="hs-identifier hs-type">HostFunc</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679264519"><span class="hs-identifier hs-type">s</span></a></span><span class="hs-special">)</span><span class="hs-special">]</span><span class="hs-special">)</span><span class="hs-special">]</span><span>
+</span><span id="line-81"></span><span>      </span><span id="local-6989586621679264324"><span class="annot"><span class="annottext">by_mod :: [(Text, [(Text, StackType, StackType, [Value] -&gt; HostFunc s)])]
+</span><a href="#local-6989586621679264324"><span class="hs-identifier hs-var hs-var">by_mod</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Map Text [(Text, StackType, StackType, [Value] -&gt; HostFunc s)]
+-&gt; [(Text, [(Text, StackType, StackType, [Value] -&gt; HostFunc s)])]
+forall k a. Map k a -&gt; [(k, a)]
+</span><span class="hs-identifier hs-var">M.toList</span></span><span> </span><span class="annot"><span class="annottext">(Map Text [(Text, StackType, StackType, [Value] -&gt; HostFunc s)]
+ -&gt; [(Text, [(Text, StackType, StackType, [Value] -&gt; HostFunc s)])])
+-&gt; Map Text [(Text, StackType, StackType, [Value] -&gt; HostFunc s)]
+-&gt; [(Text, [(Text, StackType, StackType, [Value] -&gt; HostFunc s)])]
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">([(Text, StackType, StackType, [Value] -&gt; HostFunc s)]
+ -&gt; [(Text, StackType, StackType, [Value] -&gt; HostFunc s)]
+ -&gt; [(Text, StackType, StackType, [Value] -&gt; HostFunc s)])
+-&gt; [(Text, [(Text, StackType, StackType, [Value] -&gt; HostFunc s)])]
+-&gt; Map Text [(Text, StackType, StackType, [Value] -&gt; HostFunc s)]
+forall k a. Ord k =&gt; (a -&gt; a -&gt; a) -&gt; [(k, a)] -&gt; Map k a
+</span><span class="hs-identifier hs-var">M.fromListWith</span></span><span> </span><span class="annot"><span class="annottext">[(Text, StackType, StackType, [Value] -&gt; HostFunc s)]
+-&gt; [(Text, StackType, StackType, [Value] -&gt; HostFunc s)]
+-&gt; [(Text, StackType, StackType, [Value] -&gt; HostFunc s)]
+forall a. Semigroup a =&gt; a -&gt; a -&gt; a
+</span><span class="hs-operator hs-var">(&lt;&gt;)</span></span><span>
+</span><span id="line-82"></span><span>        </span><span class="hs-special">[</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">String -&gt; Text
+</span><span class="hs-identifier hs-var">T.pack</span></span><span> </span><span class="annot"><span class="annottext">String
+</span><a href="#local-6989586621679264320"><span class="hs-identifier hs-var">m</span></a></span><span class="hs-special">,</span><span> </span><span class="hs-special">[</span><span class="hs-special">(</span><span class="annot"><span class="annottext">String -&gt; Text
+</span><span class="hs-identifier hs-var">T.pack</span></span><span> </span><span class="annot"><span class="annottext">String
+</span><a href="#local-6989586621679264319"><span class="hs-identifier hs-var">n</span></a></span><span class="hs-special">,</span><span class="annot"><span class="annottext">StackType
+</span><a href="#local-6989586621679264318"><span class="hs-identifier hs-var">t1</span></a></span><span class="hs-special">,</span><span class="annot"><span class="annottext">StackType
+</span><a href="#local-6989586621679264317"><span class="hs-identifier hs-var">t2</span></a></span><span class="hs-special">,</span><span class="annot"><span class="annottext">[Value] -&gt; HostFunc s
+</span><a href="#local-6989586621679264316"><span class="hs-identifier hs-var">f</span></a></span><span class="hs-special">)</span><span class="hs-special">]</span><span class="hs-special">)</span><span> </span><span class="hs-glyph">|</span><span> </span><span class="hs-special">(</span><span id="local-6989586621679264320"><span class="annot"><span class="annottext">String
+</span><a href="#local-6989586621679264320"><span class="hs-identifier hs-var">m</span></a></span></span><span class="hs-special">,</span><span id="local-6989586621679264319"><span class="annot"><span class="annottext">String
+</span><a href="#local-6989586621679264319"><span class="hs-identifier hs-var">n</span></a></span></span><span class="hs-special">,</span><span id="local-6989586621679264318"><span class="annot"><span class="annottext">StackType
+</span><a href="#local-6989586621679264318"><span class="hs-identifier hs-var">t1</span></a></span></span><span class="hs-special">,</span><span id="local-6989586621679264317"><span class="annot"><span class="annottext">StackType
+</span><a href="#local-6989586621679264317"><span class="hs-identifier hs-var">t2</span></a></span></span><span class="hs-special">,</span><span id="local-6989586621679264316"><span class="annot"><span class="annottext">[Value] -&gt; HostFunc s
+</span><a href="#local-6989586621679264316"><span class="hs-identifier hs-var">f</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">Imports s
+</span><a href="#local-6989586621679264327"><span class="hs-identifier hs-var">imps</span></a></span><span> </span><span class="hs-special">]</span><span>
+</span><span id="line-83"></span><span>
+</span><span id="line-84"></span><span>      </span><span class="annot"><a href="#local-6989586621679264315"><span class="hs-identifier hs-type">names</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><span class="hs-identifier hs-type">M.Map</span></span><span> </span><span class="annot"><span class="hs-identifier hs-type">T.Text</span></span><span> </span><span class="annot"><span class="hs-identifier hs-type">Int</span></span><span>
+</span><span id="line-85"></span><span>      </span><span id="local-6989586621679264315"><span class="annot"><span class="annottext">names :: Map Text Int
+</span><a href="#local-6989586621679264315"><span class="hs-identifier hs-var hs-var">names</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">[(Text, Int)] -&gt; Map Text Int
+forall k a. Ord k =&gt; [(k, a)] -&gt; Map k a
+</span><span class="hs-identifier hs-var">M.fromList</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">[Text] -&gt; [Int] -&gt; [(Text, Int)]
+forall a b. [a] -&gt; [b] -&gt; [(a, b)]
+</span><span class="hs-identifier hs-var">zip</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">((Text, [(Text, StackType, StackType, [Value] -&gt; HostFunc s)])
+ -&gt; Text)
+-&gt; [(Text, [(Text, StackType, StackType, [Value] -&gt; HostFunc s)])]
+-&gt; [Text]
+forall a b. (a -&gt; b) -&gt; [a] -&gt; [b]
+</span><span class="hs-identifier hs-var">map</span></span><span> </span><span class="annot"><span class="annottext">(Text, [(Text, StackType, StackType, [Value] -&gt; HostFunc s)])
+-&gt; Text
+forall a b. (a, b) -&gt; a
+</span><span class="hs-identifier hs-var">fst</span></span><span> </span><span class="annot"><span class="annottext">[(Text, [(Text, StackType, StackType, [Value] -&gt; HostFunc s)])]
+</span><a href="#local-6989586621679264324"><span class="hs-identifier hs-var">by_mod</span></a></span><span class="hs-special">)</span><span> </span><span class="hs-special">[</span><span class="annot"><span class="annottext">Int
+</span><span class="hs-number">1</span></span><span class="hs-glyph">..</span><span class="hs-special">]</span><span class="hs-special">)</span><span>
+</span><span id="line-86"></span><span>
+</span><span id="line-87"></span><span>      </span><span class="annot"><a href="#local-6989586621679264313"><span class="hs-identifier hs-type">mods</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><span class="hs-identifier hs-type">IM.IntMap</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier hs-type">W.ModuleInst</span></span><span> </span><span class="annot"><span class="hs-identifier hs-type">W.Phrase</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier hs-type">ST</span></span><span> </span><span class="annot"><a href="#local-6989586621679264519"><span class="hs-identifier hs-type">s</span></a></span><span class="hs-special">)</span><span class="hs-special">)</span><span>
+</span><span id="line-88"></span><span>      </span><span id="local-6989586621679264313"><span class="annot"><span class="annottext">mods :: IntMap (ModuleInst Phrase (ST s))
+</span><a href="#local-6989586621679264313"><span class="hs-identifier hs-var hs-var">mods</span></a></span></span><span>  </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">[(Int, ModuleInst Phrase (ST s))]
+-&gt; IntMap (ModuleInst Phrase (ST s))
+forall a. [(Int, a)] -&gt; IntMap a
+</span><span class="hs-identifier hs-var">IM.fromList</span></span><span> </span><span class="annot"><span class="annottext">([(Int, ModuleInst Phrase (ST s))]
+ -&gt; IntMap (ModuleInst Phrase (ST s)))
+-&gt; [(Int, ModuleInst Phrase (ST s))]
+-&gt; IntMap (ModuleInst Phrase (ST s))
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">[Int]
+-&gt; [ModuleInst Phrase (ST s)] -&gt; [(Int, ModuleInst Phrase (ST s))]
+forall a b. [a] -&gt; [b] -&gt; [(a, b)]
+</span><span class="hs-identifier hs-var">zip</span></span><span> </span><span class="hs-special">[</span><span class="annot"><span class="annottext">Int
+</span><span class="hs-number">1</span></span><span class="hs-glyph">..</span><span class="hs-special">]</span><span>
+</span><span id="line-89"></span><span>        </span><span class="hs-special">[</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Module -&gt; ModuleInst Phrase Any
+forall (f :: * -&gt; *) (m :: * -&gt; *). Module f -&gt; ModuleInst f m
+</span><span class="hs-identifier hs-var">W.emptyModuleInst</span></span><span> </span><span class="annot"><span class="annottext">Module
+forall a. Default a =&gt; a
+</span><span class="hs-identifier hs-var">def</span></span><span class="hs-special">)</span><span>
+</span><span id="line-90"></span><span>          </span><span class="hs-special">{</span><span> </span><span class="annot"><span class="annottext">_miGlobals :: Vector (GlobalInst (ST s))
+</span><span class="hs-identifier hs-var">W._miGlobals</span></span><span>  </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Vector (GlobalInst (ST s))
+forall a. Monoid a =&gt; a
+</span><span class="hs-identifier hs-var">mempty</span></span><span>
+</span><span id="line-91"></span><span>          </span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">_miTables :: Vector (TableInst (ST s) (ModuleFunc Phrase (ST s)))
+</span><span class="hs-identifier hs-var">W._miTables</span></span><span>   </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Vector (TableInst (ST s) (ModuleFunc Phrase (ST s)))
+forall a. Monoid a =&gt; a
+</span><span class="hs-identifier hs-var">mempty</span></span><span>
+</span><span id="line-92"></span><span>          </span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">_miMemories :: Vector (MemoryInst (ST s))
+</span><span class="hs-identifier hs-var">W._miMemories</span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Vector (MemoryInst (ST s))
+forall a. Monoid a =&gt; a
+</span><span class="hs-identifier hs-var">mempty</span></span><span>
+</span><span id="line-93"></span><span>          </span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">_miFuncs :: Vector (ModuleFunc Phrase (ST s))
+</span><span class="hs-identifier hs-var">W._miFuncs</span></span><span>    </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Vector (ModuleFunc Phrase (ST s))
+forall a. Monoid a =&gt; a
+</span><span class="hs-identifier hs-var">mempty</span></span><span>
+</span><span id="line-94"></span><span>          </span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">_miExports :: ExportInst Phrase (ST s)
+</span><span class="hs-identifier hs-var">W._miExports</span></span><span>  </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">[(Text, Extern Phrase (ST s))] -&gt; ExportInst Phrase (ST s)
+forall k a. Ord k =&gt; [(k, a)] -&gt; Map k a
+</span><span class="hs-identifier hs-var">M.fromList</span></span><span>
+</span><span id="line-95"></span><span>            </span><span class="hs-special">[</span><span> </span><span class="hs-special">(</span><span class="hs-special">,</span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">Text
+</span><a href="#local-6989586621679264304"><span class="hs-identifier hs-var">fname</span></a></span><span> </span><span class="annot"><span class="annottext">(Extern Phrase (ST s) -&gt; (Text, Extern Phrase (ST s)))
+-&gt; Extern Phrase (ST s) -&gt; (Text, Extern Phrase (ST s))
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">ModuleFunc Phrase (ST s) -&gt; Extern Phrase (ST s)
+forall (f :: * -&gt; *) (m :: * -&gt; *). ModuleFunc f m -&gt; Extern f m
+</span><span class="hs-identifier hs-var">W.ExternFunc</span></span><span> </span><span class="annot"><span class="annottext">(ModuleFunc Phrase (ST s) -&gt; Extern Phrase (ST s))
+-&gt; ModuleFunc Phrase (ST s) -&gt; Extern Phrase (ST s)
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span>
+</span><span id="line-96"></span><span>              </span><span class="annot"><span class="annottext">FuncType
+-&gt; ([Value] -&gt; ST s (Either String [Value]))
+-&gt; ModuleFunc Phrase (ST s)
+forall (m :: * -&gt; *) (f :: * -&gt; *) a.
+FuncType
+-&gt; ([Value] -&gt; m (Either String [Value])) -&gt; FuncInst f m a
+</span><span class="hs-identifier hs-var">W.allocHostEff</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">StackType -&gt; StackType -&gt; FuncType
+</span><span class="hs-identifier hs-var">W.FuncType</span></span><span> </span><span class="annot"><span class="annottext">StackType
+</span><a href="#local-6989586621679264300"><span class="hs-identifier hs-var">arg_ty</span></a></span><span> </span><span class="annot"><span class="annottext">StackType
+</span><a href="#local-6989586621679264299"><span class="hs-identifier hs-var">ret_ty</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-97"></span><span>                  </span><span class="hs-special">(</span><span class="hs-glyph">\</span><span> </span><span id="local-6989586621679264298"><span class="annot"><span class="annottext">[Value]
+</span><a href="#local-6989586621679264298"><span class="hs-identifier hs-var">args</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">HostFunc s -&gt; ST s (Either String [Value])
+forall e (m :: * -&gt; *) a. ExceptT e m a -&gt; m (Either e a)
+</span><span class="hs-identifier hs-var">runExceptT</span></span><span> </span><span class="annot"><span class="annottext">(HostFunc s -&gt; ST s (Either String [Value]))
+-&gt; HostFunc s -&gt; ST s (Either String [Value])
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">[Value] -&gt; HostFunc s
+</span><a href="#local-6989586621679264296"><span class="hs-identifier hs-var">f</span></a></span><span> </span><span class="annot"><span class="annottext">[Value]
+</span><a href="#local-6989586621679264298"><span class="hs-identifier hs-var">args</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-98"></span><span>            </span><span class="hs-glyph">|</span><span> </span><span class="hs-special">(</span><span id="local-6989586621679264304"><span class="annot"><span class="annottext">Text
+</span><a href="#local-6989586621679264304"><span class="hs-identifier hs-var">fname</span></a></span></span><span class="hs-special">,</span><span> </span><span id="local-6989586621679264300"><span class="annot"><span class="annottext">StackType
+</span><a href="#local-6989586621679264300"><span class="hs-identifier hs-var">arg_ty</span></a></span></span><span class="hs-special">,</span><span> </span><span id="local-6989586621679264299"><span class="annot"><span class="annottext">StackType
+</span><a href="#local-6989586621679264299"><span class="hs-identifier hs-var">ret_ty</span></a></span></span><span class="hs-special">,</span><span> </span><span id="local-6989586621679264296"><span class="annot"><span class="annottext">[Value] -&gt; HostFunc s
+</span><a href="#local-6989586621679264296"><span class="hs-identifier hs-var">f</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">[(Text, StackType, StackType, [Value] -&gt; HostFunc s)]
+</span><a href="#local-6989586621679264295"><span class="hs-identifier hs-var">funcs</span></a></span><span>
+</span><span id="line-99"></span><span>            </span><span class="hs-special">]</span><span>
+</span><span id="line-100"></span><span>          </span><span class="hs-special">}</span><span>
+</span><span id="line-101"></span><span>        </span><span class="hs-glyph">|</span><span> </span><span class="hs-special">(</span><span id="local-6989586621679264294"><span class="annot"><span class="annottext">Text
+</span><a href="#local-6989586621679264294"><span class="hs-identifier hs-var">_name</span></a></span></span><span class="hs-special">,</span><span> </span><span id="local-6989586621679264295"><span class="annot"><span class="annottext">[(Text, StackType, StackType, [Value] -&gt; HostFunc s)]
+</span><a href="#local-6989586621679264295"><span class="hs-identifier hs-var">funcs</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">[(Text, [(Text, StackType, StackType, [Value] -&gt; HostFunc s)])]
+</span><a href="#local-6989586621679264324"><span class="hs-identifier hs-var">by_mod</span></a></span><span>
+</span><span id="line-102"></span><span>        </span><span class="hs-special">]</span><span>
+</span><span id="line-103"></span><span>  </span><span class="hs-special">(</span><span id="local-6989586621679264293"><span class="annot"><span class="annottext">Int
+</span><a href="#local-6989586621679264293"><span class="hs-identifier hs-var">ref</span></a></span></span><span class="hs-special">,</span><span> </span><span id="local-6989586621679264292"><span class="annot"><span class="annottext">ModuleInst Phrase (ST s)
+</span><a href="#local-6989586621679264292"><span class="hs-identifier hs-var">inst</span></a></span></span><span class="hs-special">,</span><span> </span><span id="local-6989586621679264291"><span class="annot"><span class="annottext">Maybe EvalError
+</span><a href="#local-6989586621679264291"><span class="hs-identifier hs-var">start_err</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">Module
+-&gt; Map Text Int
+-&gt; IntMap (ModuleInst Phrase (ST s))
+-&gt; EvalT (ST s) (Int, ModuleInst Phrase (ST s), Maybe EvalError)
+forall (f :: * -&gt; *) (m :: * -&gt; *).
+(Regioned f, Show1 f, PrimMonad m) =&gt;
+Module f
+-&gt; Map Text Int
+-&gt; IntMap (ModuleInst f m)
+-&gt; EvalT m (Int, ModuleInst f m, Maybe EvalError)
+</span><span class="hs-identifier hs-var">W.initialize</span></span><span> </span><span class="annot"><span class="annottext">Module
+</span><a href="#local-6989586621679264328"><span class="hs-identifier hs-var">mod</span></a></span><span> </span><span class="annot"><span class="annottext">Map Text Int
+</span><a href="#local-6989586621679264315"><span class="hs-identifier hs-var">names</span></a></span><span> </span><span class="annot"><span class="annottext">IntMap (ModuleInst Phrase (ST s))
+</span><a href="#local-6989586621679264313"><span class="hs-identifier hs-var">mods</span></a></span><span>
+</span><span id="line-104"></span><span>  </span><span class="annot"><span class="annottext">Maybe EvalError
+-&gt; (EvalError -&gt; ExceptT EvalError (ST s) Any)
+-&gt; ExceptT EvalError (ST s) ()
+forall (t :: * -&gt; *) (f :: * -&gt; *) a b.
+(Foldable t, Applicative f) =&gt;
+t a -&gt; (a -&gt; f b) -&gt; f ()
+</span><span class="hs-identifier hs-var">for_</span></span><span> </span><span class="annot"><span class="annottext">Maybe EvalError
+</span><a href="#local-6989586621679264291"><span class="hs-identifier hs-var">start_err</span></a></span><span> </span><span class="annot"><span class="annottext">EvalError -&gt; ExceptT EvalError (ST s) Any
+forall e (m :: * -&gt; *) a. MonadError e m =&gt; e -&gt; m a
+</span><span class="hs-identifier hs-var">throwError</span></span><span>
+</span><span id="line-105"></span><span>  </span><span class="hs-keyword">let</span><span> </span><span id="local-6989586621679264287"><span class="annot"><span class="annottext">mods' :: IntMap (ModuleInst Phrase (ST s))
+</span><a href="#local-6989586621679264287"><span class="hs-identifier hs-var hs-var">mods'</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Int
+-&gt; ModuleInst Phrase (ST s)
+-&gt; IntMap (ModuleInst Phrase (ST s))
+-&gt; IntMap (ModuleInst Phrase (ST s))
+forall a. Int -&gt; a -&gt; IntMap a -&gt; IntMap a
+</span><span class="hs-identifier hs-var">IM.insert</span></span><span> </span><span class="annot"><span class="annottext">Int
+</span><a href="#local-6989586621679264293"><span class="hs-identifier hs-var">ref</span></a></span><span> </span><span class="annot"><span class="annottext">ModuleInst Phrase (ST s)
+</span><a href="#local-6989586621679264292"><span class="hs-identifier hs-var">inst</span></a></span><span> </span><span class="annot"><span class="annottext">IntMap (ModuleInst Phrase (ST s))
+</span><a href="#local-6989586621679264313"><span class="hs-identifier hs-var">mods</span></a></span><span>
+</span><span id="line-106"></span><span>  </span><span class="annot"><span class="annottext">(IntMap (ModuleInst Phrase (ST s)), Int)
+-&gt; ExceptT
+     EvalError (ST s) (IntMap (ModuleInst Phrase (ST s)), Int)
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><span class="hs-identifier hs-var">return</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">IntMap (ModuleInst Phrase (ST s))
+</span><a href="#local-6989586621679264287"><span class="hs-identifier hs-var">mods'</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">Int
+</span><a href="#local-6989586621679264293"><span class="hs-identifier hs-var">ref</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-107"></span><span>
+</span><span id="line-108"></span><span>
+</span><span id="line-109"></span><span class="annot"><a href="IC.Wasm.Winter.html#exportedFunctions"><span class="hs-identifier hs-type">exportedFunctions</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Wasm.Winter.html#Module"><span class="hs-identifier hs-type">Module</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-special">[</span><span class="annot"><a href="IC.Wasm.Winter.html#FuncName"><span class="hs-identifier hs-type">FuncName</span></a></span><span class="hs-special">]</span><span>
+</span><span id="line-110"></span><span id="exportedFunctions"><span class="annot"><span class="annottext">exportedFunctions :: Module -&gt; [String]
+</span><a href="IC.Wasm.Winter.html#exportedFunctions"><span class="hs-identifier hs-var hs-var">exportedFunctions</span></a></span></span><span> </span><span id="local-6989586621679264285"><span class="annot"><span class="annottext">Module
+</span><a href="#local-6989586621679264285"><span class="hs-identifier hs-var">wasm_mod</span></a></span></span><span> </span><span class="hs-glyph">=</span><span>
+</span><span id="line-111"></span><span>  </span><span class="hs-special">[</span><span> </span><span class="annot"><span class="annottext">Text -&gt; String
+</span><span class="hs-identifier hs-var">T.unpack</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Export Phrase -&gt; Text
+forall (phrase :: * -&gt; *). Export phrase -&gt; Text
+</span><span class="hs-identifier hs-var hs-var">W._exportName</span></span><span> </span><span class="annot"><span class="annottext">Export Phrase
+</span><a href="#local-6989586621679264282"><span class="hs-identifier hs-var">e</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-112"></span><span>  </span><span class="hs-glyph">|</span><span> </span><span class="annot"><span class="hs-identifier hs-type">W.Phrase</span></span><span> </span><span class="annot"><span class="annottext">Region
+</span><span class="hs-identifier">_</span></span><span> </span><span id="local-6989586621679264282"><span class="annot"><span class="annottext">Export Phrase
+</span><a href="#local-6989586621679264282"><span class="hs-identifier hs-var">e</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">Vector (Phrase (Export Phrase)) -&gt; [Phrase (Export Phrase)]
+forall a. Vector a -&gt; [a]
+</span><span class="hs-identifier hs-var">V.toList</span></span><span> </span><span class="annot"><span class="annottext">(Vector (Phrase (Export Phrase)) -&gt; [Phrase (Export Phrase)])
+-&gt; Vector (Phrase (Export Phrase)) -&gt; [Phrase (Export Phrase)]
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">Module -&gt; Vector (Phrase (Export Phrase))
+forall (phrase :: * -&gt; *).
+Module phrase -&gt; Vector (phrase (Export phrase))
+</span><span class="hs-identifier hs-var hs-var">W._moduleExports</span></span><span> </span><span class="annot"><span class="annottext">Module
+</span><a href="#local-6989586621679264285"><span class="hs-identifier hs-var">wasm_mod</span></a></span><span>
+</span><span id="line-113"></span><span>  </span><span class="hs-special">,</span><span> </span><span class="annot"><span class="hs-identifier hs-type">W.FuncExport</span></span><span> </span><span class="hs-special">{</span><span class="hs-special">}</span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">ExportDesc Phrase -&gt; [ExportDesc Phrase]
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><span class="hs-identifier hs-var">return</span></span><span> </span><span class="annot"><span class="annottext">(ExportDesc Phrase -&gt; [ExportDesc Phrase])
+-&gt; ExportDesc Phrase -&gt; [ExportDesc Phrase]
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">Export Phrase -&gt; ExportDesc Phrase
+forall (phrase :: * -&gt; *). Export phrase -&gt; ExportDesc phrase
+</span><span class="hs-identifier hs-var hs-var">W._exportDesc</span></span><span> </span><span class="annot"><span class="annottext">Export Phrase
+</span><a href="#local-6989586621679264282"><span class="hs-identifier hs-var">e</span></a></span><span>
+</span><span id="line-114"></span><span>  </span><span class="hs-special">]</span><span>
+</span><span id="line-115"></span><span>
+</span><span id="line-116"></span><span>
+</span><span id="line-117"></span><span id="local-6989586621679264425"><span class="annot"><a href="IC.Wasm.Winter.html#invokeExport"><span class="hs-identifier hs-type">invokeExport</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Wasm.Winter.html#Instance"><span class="hs-identifier hs-type">Instance</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679264425"><span class="hs-identifier hs-type">s</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Wasm.Winter.html#FuncName"><span class="hs-identifier hs-type">FuncName</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-special">[</span><span class="annot"><span class="hs-identifier hs-type">W.Value</span></span><span class="hs-special">]</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Wasm.Winter.html#HostM"><span class="hs-identifier hs-type">HostM</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679264425"><span class="hs-identifier hs-type">s</span></a></span><span> </span><span class="hs-special">[</span><span class="annot"><span class="hs-identifier hs-type">W.Value</span></span><span class="hs-special">]</span></span><span>
+</span><span id="line-118"></span><span id="invokeExport"><span class="annot"><span class="annottext">invokeExport :: forall s. Instance s -&gt; String -&gt; [Value] -&gt; HostM s [Value]
+</span><a href="IC.Wasm.Winter.html#invokeExport"><span class="hs-identifier hs-var hs-var">invokeExport</span></a></span></span><span> </span><span class="hs-special">(</span><span id="local-6989586621679264271"><span class="annot"><span class="annottext">IntMap (ModuleInst Phrase (ST s))
+</span><a href="#local-6989586621679264271"><span class="hs-identifier hs-var">mods'</span></a></span></span><span class="hs-special">,</span><span> </span><span id="local-6989586621679264270"><span class="annot"><span class="annottext">Int
+</span><a href="#local-6989586621679264270"><span class="hs-identifier hs-var">ref</span></a></span></span><span class="hs-special">)</span><span> </span><span id="local-6989586621679264269"><span class="annot"><span class="annottext">String
+</span><a href="#local-6989586621679264269"><span class="hs-identifier hs-var">method</span></a></span></span><span> </span><span id="local-6989586621679264268"><span class="annot"><span class="annottext">[Value]
+</span><a href="#local-6989586621679264268"><span class="hs-identifier hs-var">args</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-119"></span><span>  </span><span class="hs-keyword">let</span><span> </span><span id="local-6989586621679264267"><span class="annot"><span class="annottext">inst :: ModuleInst Phrase (ST s)
+</span><a href="#local-6989586621679264267"><span class="hs-identifier hs-var hs-var">inst</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">IntMap (ModuleInst Phrase (ST s))
+</span><a href="#local-6989586621679264271"><span class="hs-identifier hs-var">mods'</span></a></span><span> </span><span class="annot"><span class="annottext">IntMap (ModuleInst Phrase (ST s))
+-&gt; Int -&gt; ModuleInst Phrase (ST s)
+forall a. IntMap a -&gt; Int -&gt; a
+</span><span class="hs-operator hs-var">IM.!</span></span><span> </span><span class="annot"><span class="annottext">Int
+</span><a href="#local-6989586621679264270"><span class="hs-identifier hs-var">ref</span></a></span><span>
+</span><span id="line-120"></span><span>  </span><span class="annot"><span class="annottext">(EvalError -&gt; String)
+-&gt; ExceptT EvalError (ST s) [Value] -&gt; HostM s [Value]
+forall (m :: * -&gt; *) e e' a.
+Functor m =&gt;
+(e -&gt; e') -&gt; ExceptT e m a -&gt; ExceptT e' m a
+</span><span class="hs-identifier hs-var">withExceptT</span></span><span> </span><span class="annot"><span class="annottext">EvalError -&gt; String
+forall a. Show a =&gt; a -&gt; String
+</span><span class="hs-identifier hs-var">show</span></span><span> </span><span class="annot"><span class="annottext">(ExceptT EvalError (ST s) [Value] -&gt; HostM s [Value])
+-&gt; ExceptT EvalError (ST s) [Value] -&gt; HostM s [Value]
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span>
+</span><span id="line-121"></span><span>    </span><span class="annot"><span class="annottext">IntMap (ModuleInst Phrase (ST s))
+-&gt; ModuleInst Phrase (ST s)
+-&gt; Text
+-&gt; [Value]
+-&gt; ExceptT EvalError (ST s) [Value]
+forall (f :: * -&gt; *) (m :: * -&gt; *).
+(Regioned f, PrimMonad m, Show1 f) =&gt;
+IntMap (ModuleInst f m)
+-&gt; ModuleInst f m -&gt; Text -&gt; [Value] -&gt; EvalT m [Value]
+</span><span class="hs-identifier hs-var">W.invokeByName</span></span><span> </span><span class="annot"><span class="annottext">IntMap (ModuleInst Phrase (ST s))
+</span><a href="#local-6989586621679264271"><span class="hs-identifier hs-var">mods'</span></a></span><span> </span><span class="annot"><span class="annottext">ModuleInst Phrase (ST s)
+</span><a href="#local-6989586621679264267"><span class="hs-identifier hs-var">inst</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">String -&gt; Text
+</span><span class="hs-identifier hs-var">T.pack</span></span><span> </span><span class="annot"><span class="annottext">String
+</span><a href="#local-6989586621679264269"><span class="hs-identifier hs-var">method</span></a></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">[Value]
+</span><a href="#local-6989586621679264268"><span class="hs-identifier hs-var">args</span></a></span><span>
+</span><span id="line-122"></span><span>
+</span><span id="line-123"></span><span id="local-6989586621679264420"><span class="annot"><a href="IC.Wasm.Winter.html#invokeTable"><span class="hs-identifier hs-type">invokeTable</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Wasm.Winter.html#Instance"><span class="hs-identifier hs-type">Instance</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679264420"><span class="hs-identifier hs-type">s</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Int32</span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-special">[</span><span class="annot"><span class="hs-identifier hs-type">W.Value</span></span><span class="hs-special">]</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Wasm.Winter.html#HostM"><span class="hs-identifier hs-type">HostM</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679264420"><span class="hs-identifier hs-type">s</span></a></span><span> </span><span class="hs-special">[</span><span class="annot"><span class="hs-identifier hs-type">W.Value</span></span><span class="hs-special">]</span></span><span>
+</span><span id="line-124"></span><span id="invokeTable"><span class="annot"><span class="annottext">invokeTable :: forall s. Instance s -&gt; Int32 -&gt; [Value] -&gt; HostM s [Value]
+</span><a href="IC.Wasm.Winter.html#invokeTable"><span class="hs-identifier hs-var hs-var">invokeTable</span></a></span></span><span> </span><span class="hs-special">(</span><span id="local-6989586621679264250"><span class="annot"><span class="annottext">IntMap (ModuleInst Phrase (ST s))
+</span><a href="#local-6989586621679264250"><span class="hs-identifier hs-var">mods'</span></a></span></span><span class="hs-special">,</span><span> </span><span id="local-6989586621679264249"><span class="annot"><span class="annottext">Int
+</span><a href="#local-6989586621679264249"><span class="hs-identifier hs-var">ref</span></a></span></span><span class="hs-special">)</span><span> </span><span id="local-6989586621679264248"><span class="annot"><span class="annottext">Int32
+</span><a href="#local-6989586621679264248"><span class="hs-identifier hs-var">idx</span></a></span></span><span> </span><span id="local-6989586621679264247"><span class="annot"><span class="annottext">[Value]
+</span><a href="#local-6989586621679264247"><span class="hs-identifier hs-var">args</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-125"></span><span>  </span><span class="hs-keyword">let</span><span> </span><span id="local-6989586621679264246"><span class="annot"><span class="annottext">inst :: ModuleInst Phrase (ST s)
+</span><a href="#local-6989586621679264246"><span class="hs-identifier hs-var hs-var">inst</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">IntMap (ModuleInst Phrase (ST s))
+</span><a href="#local-6989586621679264250"><span class="hs-identifier hs-var">mods'</span></a></span><span> </span><span class="annot"><span class="annottext">IntMap (ModuleInst Phrase (ST s))
+-&gt; Int -&gt; ModuleInst Phrase (ST s)
+forall a. IntMap a -&gt; Int -&gt; a
+</span><span class="hs-operator hs-var">IM.!</span></span><span> </span><span class="annot"><span class="annottext">Int
+</span><a href="#local-6989586621679264249"><span class="hs-identifier hs-var">ref</span></a></span><span>
+</span><span id="line-126"></span><span>  </span><span class="annot"><span class="annottext">(EvalError -&gt; String)
+-&gt; ExceptT EvalError (ST s) [Value] -&gt; HostM s [Value]
+forall (m :: * -&gt; *) e e' a.
+Functor m =&gt;
+(e -&gt; e') -&gt; ExceptT e m a -&gt; ExceptT e' m a
+</span><span class="hs-identifier hs-var">withExceptT</span></span><span> </span><span class="annot"><span class="annottext">EvalError -&gt; String
+forall a. Show a =&gt; a -&gt; String
+</span><span class="hs-identifier hs-var">show</span></span><span> </span><span class="annot"><span class="annottext">(ExceptT EvalError (ST s) [Value] -&gt; HostM s [Value])
+-&gt; ExceptT EvalError (ST s) [Value] -&gt; HostM s [Value]
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-127"></span><span>    </span><span id="local-6989586621679264245"><span class="annot"><span class="annottext">ModuleFunc Phrase (ST s)
+</span><a href="#local-6989586621679264245"><span class="hs-identifier hs-var">func</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">ModuleInst Phrase (ST s)
+-&gt; Var Phrase
+-&gt; Int32
+-&gt; Region
+-&gt; EvalT (ST s) (ModuleFunc Phrase (ST s))
+forall (f :: * -&gt; *) (m :: * -&gt; *).
+(Regioned f, PrimMonad m) =&gt;
+ModuleInst f m
+-&gt; Var f -&gt; Int32 -&gt; Region -&gt; EvalT m (ModuleFunc f m)
+</span><span class="hs-identifier hs-var">W.elem</span></span><span> </span><span class="annot"><span class="annottext">ModuleInst Phrase (ST s)
+</span><a href="#local-6989586621679264246"><span class="hs-identifier hs-var">inst</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Int
+</span><span class="hs-number">0</span></span><span> </span><span class="annot"><span class="annottext">Int -&gt; Region -&gt; Var Phrase
+forall (phrase :: * -&gt; *) a.
+Regioned phrase =&gt;
+a -&gt; Region -&gt; phrase a
+</span><span class="hs-operator hs-var">W.@@</span></span><span> </span><span class="annot"><span class="annottext">Region
+forall a. Default a =&gt; a
+</span><span class="hs-identifier hs-var">def</span></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">Int32
+</span><a href="#local-6989586621679264248"><span class="hs-identifier hs-var">idx</span></a></span><span> </span><span class="annot"><span class="annottext">Region
+forall a. Default a =&gt; a
+</span><span class="hs-identifier hs-var">def</span></span><span>
+</span><span id="line-128"></span><span>    </span><span class="annot"><span class="annottext">IntMap (ModuleInst Phrase (ST s))
+-&gt; ModuleInst Phrase (ST s)
+-&gt; ModuleFunc Phrase (ST s)
+-&gt; [Value]
+-&gt; ExceptT EvalError (ST s) [Value]
+forall (f :: * -&gt; *) (m :: * -&gt; *).
+(Regioned f, PrimMonad m, Show1 f) =&gt;
+IntMap (ModuleInst f m)
+-&gt; ModuleInst f m -&gt; ModuleFunc f m -&gt; [Value] -&gt; EvalT m [Value]
+</span><span class="hs-identifier hs-var">W.invoke</span></span><span> </span><span class="annot"><span class="annottext">IntMap (ModuleInst Phrase (ST s))
+</span><a href="#local-6989586621679264250"><span class="hs-identifier hs-var">mods'</span></a></span><span> </span><span class="annot"><span class="annottext">ModuleInst Phrase (ST s)
+</span><a href="#local-6989586621679264246"><span class="hs-identifier hs-var">inst</span></a></span><span> </span><span class="annot"><span class="annottext">ModuleFunc Phrase (ST s)
+</span><a href="#local-6989586621679264245"><span class="hs-identifier hs-var">func</span></a></span><span> </span><span class="annot"><span class="annottext">[Value]
+</span><a href="#local-6989586621679264247"><span class="hs-identifier hs-var">args</span></a></span><span>
+</span><span id="line-129"></span><span>
+</span><span id="line-130"></span><span id="local-6989586621679264411"><span class="annot"><a href="IC.Wasm.Winter.html#getBytes"><span class="hs-identifier hs-type">getBytes</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Wasm.Winter.html#Instance"><span class="hs-identifier hs-type">Instance</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679264411"><span class="hs-identifier hs-type">s</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">W.Address</span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">W.Size</span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Wasm.Winter.html#HostM"><span class="hs-identifier hs-type">HostM</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679264411"><span class="hs-identifier hs-type">s</span></a></span><span> </span><span class="annot"><span class="hs-identifier hs-type">BS.ByteString</span></span></span><span>
+</span><span id="line-131"></span><span id="getBytes"><span class="annot"><span class="annottext">getBytes :: forall s. Instance s -&gt; ByteOffset -&gt; Int32 -&gt; HostM s ByteString
+</span><a href="IC.Wasm.Winter.html#getBytes"><span class="hs-identifier hs-var hs-var">getBytes</span></a></span></span><span> </span><span class="hs-special">(</span><span id="local-6989586621679264237"><span class="annot"><span class="annottext">IntMap (ModuleInst Phrase (ST s))
+</span><a href="#local-6989586621679264237"><span class="hs-identifier hs-var">mods'</span></a></span></span><span class="hs-special">,</span><span> </span><span id="local-6989586621679264236"><span class="annot"><span class="annottext">Int
+</span><a href="#local-6989586621679264236"><span class="hs-identifier hs-var">ref</span></a></span></span><span class="hs-special">)</span><span> </span><span id="local-6989586621679264235"><span class="annot"><span class="annottext">ByteOffset
+</span><a href="#local-6989586621679264235"><span class="hs-identifier hs-var">ptr</span></a></span></span><span> </span><span id="local-6989586621679264234"><span class="annot"><span class="annottext">Int32
+</span><a href="#local-6989586621679264234"><span class="hs-identifier hs-var">len</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-132"></span><span>  </span><span class="hs-keyword">let</span><span> </span><span id="local-6989586621679264233"><span class="annot"><span class="annottext">inst :: ModuleInst Phrase (ST s)
+</span><a href="#local-6989586621679264233"><span class="hs-identifier hs-var hs-var">inst</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">IntMap (ModuleInst Phrase (ST s))
+</span><a href="#local-6989586621679264237"><span class="hs-identifier hs-var">mods'</span></a></span><span> </span><span class="annot"><span class="annottext">IntMap (ModuleInst Phrase (ST s))
+-&gt; Int -&gt; ModuleInst Phrase (ST s)
+forall a. IntMap a -&gt; Int -&gt; a
+</span><span class="hs-operator hs-var">IM.!</span></span><span> </span><span class="annot"><span class="annottext">Int
+</span><a href="#local-6989586621679264236"><span class="hs-identifier hs-var">ref</span></a></span><span>
+</span><span id="line-133"></span><span>  </span><span class="hs-keyword">let</span><span> </span><span id="local-6989586621679264232"><span class="annot"><span class="annottext">mem :: MemoryInst (ST s)
+</span><a href="#local-6989586621679264232"><span class="hs-identifier hs-var hs-var">mem</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Vector (MemoryInst (ST s)) -&gt; MemoryInst (ST s)
+forall a. Vector a -&gt; a
+</span><span class="hs-identifier hs-var">V.head</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">ModuleInst Phrase (ST s) -&gt; Vector (MemoryInst (ST s))
+forall (f :: * -&gt; *) (m :: * -&gt; *).
+ModuleInst f m -&gt; Vector (MemoryInst m)
+</span><span class="hs-identifier hs-var hs-var">W._miMemories</span></span><span> </span><span class="annot"><span class="annottext">ModuleInst Phrase (ST s)
+</span><a href="#local-6989586621679264233"><span class="hs-identifier hs-var">inst</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-134"></span><span>  </span><span class="annot"><span class="annottext">(MemoryError -&gt; String)
+-&gt; ExceptT MemoryError (ST s) ByteString -&gt; HostM s ByteString
+forall (m :: * -&gt; *) e e' a.
+Functor m =&gt;
+(e -&gt; e') -&gt; ExceptT e m a -&gt; ExceptT e' m a
+</span><span class="hs-identifier hs-var">withExceptT</span></span><span> </span><span class="annot"><span class="annottext">MemoryError -&gt; String
+forall a. Show a =&gt; a -&gt; String
+</span><span class="hs-identifier hs-var">show</span></span><span> </span><span class="annot"><span class="annottext">(ExceptT MemoryError (ST s) ByteString -&gt; HostM s ByteString)
+-&gt; ExceptT MemoryError (ST s) ByteString -&gt; HostM s ByteString
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">MemoryInst (ST s)
+-&gt; ByteOffset -&gt; Int32 -&gt; ExceptT MemoryError (ST s) ByteString
+forall (m :: * -&gt; *).
+PrimMonad m =&gt;
+MemoryInst m
+-&gt; ByteOffset -&gt; Int32 -&gt; ExceptT MemoryError m ByteString
+</span><span class="hs-identifier hs-var">W.loadBytes</span></span><span> </span><span class="annot"><span class="annottext">MemoryInst (ST s)
+</span><a href="#local-6989586621679264232"><span class="hs-identifier hs-var">mem</span></a></span><span> </span><span class="annot"><span class="annottext">ByteOffset
+</span><a href="#local-6989586621679264235"><span class="hs-identifier hs-var">ptr</span></a></span><span> </span><span class="annot"><span class="annottext">Int32
+</span><a href="#local-6989586621679264234"><span class="hs-identifier hs-var">len</span></a></span><span>
+</span><span id="line-135"></span><span>
+</span><span id="line-136"></span><span id="local-6989586621679264404"><span class="annot"><a href="IC.Wasm.Winter.html#setBytes"><span class="hs-identifier hs-type">setBytes</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Wasm.Winter.html#Instance"><span class="hs-identifier hs-type">Instance</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679264404"><span class="hs-identifier hs-type">s</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">W.Address</span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">BS.ByteString</span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Wasm.Winter.html#HostM"><span class="hs-identifier hs-type">HostM</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679264404"><span class="hs-identifier hs-type">s</span></a></span><span> </span><span class="hs-special">(</span><span class="hs-special">)</span></span><span>
+</span><span id="line-137"></span><span id="setBytes"><span class="annot"><span class="annottext">setBytes :: forall s. Instance s -&gt; ByteOffset -&gt; ByteString -&gt; HostM s ()
+</span><a href="IC.Wasm.Winter.html#setBytes"><span class="hs-identifier hs-var hs-var">setBytes</span></a></span></span><span> </span><span class="hs-special">(</span><span id="local-6989586621679264222"><span class="annot"><span class="annottext">IntMap (ModuleInst Phrase (ST s))
+</span><a href="#local-6989586621679264222"><span class="hs-identifier hs-var">mods'</span></a></span></span><span class="hs-special">,</span><span> </span><span id="local-6989586621679264221"><span class="annot"><span class="annottext">Int
+</span><a href="#local-6989586621679264221"><span class="hs-identifier hs-var">ref</span></a></span></span><span class="hs-special">)</span><span> </span><span id="local-6989586621679264220"><span class="annot"><span class="annottext">ByteOffset
+</span><a href="#local-6989586621679264220"><span class="hs-identifier hs-var">ptr</span></a></span></span><span> </span><span id="local-6989586621679264219"><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679264219"><span class="hs-identifier hs-var">blob</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-138"></span><span>  </span><span class="hs-keyword">let</span><span> </span><span id="local-6989586621679264218"><span class="annot"><span class="annottext">inst :: ModuleInst Phrase (ST s)
+</span><a href="#local-6989586621679264218"><span class="hs-identifier hs-var hs-var">inst</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">IntMap (ModuleInst Phrase (ST s))
+</span><a href="#local-6989586621679264222"><span class="hs-identifier hs-var">mods'</span></a></span><span> </span><span class="annot"><span class="annottext">IntMap (ModuleInst Phrase (ST s))
+-&gt; Int -&gt; ModuleInst Phrase (ST s)
+forall a. IntMap a -&gt; Int -&gt; a
+</span><span class="hs-operator hs-var">IM.!</span></span><span> </span><span class="annot"><span class="annottext">Int
+</span><a href="#local-6989586621679264221"><span class="hs-identifier hs-var">ref</span></a></span><span>
+</span><span id="line-139"></span><span>  </span><span class="hs-keyword">let</span><span> </span><span id="local-6989586621679264217"><span class="annot"><span class="annottext">mem :: MemoryInst (ST s)
+</span><a href="#local-6989586621679264217"><span class="hs-identifier hs-var hs-var">mem</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Vector (MemoryInst (ST s)) -&gt; MemoryInst (ST s)
+forall a. Vector a -&gt; a
+</span><span class="hs-identifier hs-var">V.head</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">ModuleInst Phrase (ST s) -&gt; Vector (MemoryInst (ST s))
+forall (f :: * -&gt; *) (m :: * -&gt; *).
+ModuleInst f m -&gt; Vector (MemoryInst m)
+</span><span class="hs-identifier hs-var hs-var">W._miMemories</span></span><span> </span><span class="annot"><span class="annottext">ModuleInst Phrase (ST s)
+</span><a href="#local-6989586621679264218"><span class="hs-identifier hs-var">inst</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-140"></span><span>  </span><span class="annot"><span class="annottext">(MemoryError -&gt; String)
+-&gt; ExceptT MemoryError (ST s) () -&gt; HostM s ()
+forall (m :: * -&gt; *) e e' a.
+Functor m =&gt;
+(e -&gt; e') -&gt; ExceptT e m a -&gt; ExceptT e' m a
+</span><span class="hs-identifier hs-var">withExceptT</span></span><span> </span><span class="annot"><span class="annottext">MemoryError -&gt; String
+forall a. Show a =&gt; a -&gt; String
+</span><span class="hs-identifier hs-var">show</span></span><span> </span><span class="annot"><span class="annottext">(ExceptT MemoryError (ST s) () -&gt; HostM s ())
+-&gt; ExceptT MemoryError (ST s) () -&gt; HostM s ()
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">MemoryInst (ST s)
+-&gt; ByteOffset -&gt; ByteString -&gt; ExceptT MemoryError (ST s) ()
+forall (m :: * -&gt; *).
+PrimMonad m =&gt;
+MemoryInst m
+-&gt; ByteOffset -&gt; ByteString -&gt; ExceptT MemoryError m ()
+</span><span class="hs-identifier hs-var">W.storeBytes</span></span><span> </span><span class="annot"><span class="annottext">MemoryInst (ST s)
+</span><a href="#local-6989586621679264217"><span class="hs-identifier hs-var">mem</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">ByteOffset -&gt; ByteOffset
+forall a b. (Integral a, Num b) =&gt; a -&gt; b
+</span><span class="hs-identifier hs-var">fromIntegral</span></span><span> </span><span class="annot"><span class="annottext">ByteOffset
+</span><a href="#local-6989586621679264220"><span class="hs-identifier hs-var">ptr</span></a></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679264219"><span class="hs-identifier hs-var">blob</span></a></span><span>
+</span><span id="line-141"></span><span>
+</span><span id="line-142"></span></pre></body></html>

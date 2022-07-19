@@ -1,0 +1,263 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><link rel="stylesheet" type="text/css" href="style.css" /><script type="text/javascript" src="highlight.js"></script></head><body><pre><span class="hs-pragma">{-# LANGUAGE RankNTypes #-}</span><span>
+</span><span id="line-2"></span><span class="hs-pragma">{-# LANGUAGE TypeFamilies #-}</span><span>
+</span><span id="line-3"></span><span class="hs-pragma">{-# LANGUAGE LambdaCase #-}</span><span>
+</span><span id="line-4"></span><span class="hs-pragma">{-# LANGUAGE MultiParamTypeClasses #-}</span><span>
+</span><span id="line-5"></span><span class="hs-pragma">{-# LANGUAGE FlexibleInstances #-}</span><span>
+</span><span id="line-6"></span><span class="hs-keyword">module</span><span> </span><span class="hs-identifier">IC.Purify</span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-7"></span><span>
+</span><span id="line-8"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Control.Monad.ST</span></span><span>
+</span><span id="line-9"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Data.Functor</span></span><span>
+</span><span id="line-10"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Data.Kind</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier">Type</span></span><span class="hs-special">)</span><span>
+</span><span id="line-11"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Data.Either</span></span><span>
+</span><span id="line-12"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Data.Bifunctor</span></span><span>
+</span><span id="line-13"></span><span>
+</span><span id="line-14"></span><span class="hs-keyword">class</span><span> </span><span id="SnapshotAble"><span class="annot"><a href="IC.Purify.html#SnapshotAble"><span class="hs-identifier hs-var">SnapshotAble</span></a></span></span><span> </span><span id="local-6989586621679260191"><span class="annot"><a href="#local-6989586621679260191"><span class="hs-identifier hs-type">i</span></a></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-15"></span><span>  </span><span class="hs-keyword">type</span><span> </span><span id="SnapshotOf"><span class="annot"><a href="IC.Purify.html#SnapshotOf"><span class="hs-identifier hs-var">SnapshotOf</span></a></span></span><span> </span><span id="local-6989586621679260191"><span class="annot"><a href="#local-6989586621679260191"><span class="hs-identifier hs-type">i</span></a></span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Type</span></span><span>
+</span><span id="line-16"></span><span>  </span><span id="local-6989586621679260190"><span id="persist"><span class="annot"><a href="IC.Purify.html#persist"><span class="hs-identifier hs-type">persist</span></a></span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="#local-6989586621679260191"><span class="hs-identifier hs-type">i</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679260190"><span class="hs-identifier hs-type">s</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">ST</span></span><span> </span><span class="annot"><a href="#local-6989586621679260190"><span class="hs-identifier hs-type">s</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Purify.html#SnapshotOf"><span class="hs-identifier hs-type">SnapshotOf</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679260191"><span class="hs-identifier hs-type">i</span></a></span><span class="hs-special">)</span></span><span>
+</span><span id="line-17"></span><span>  </span><span id="local-6989586621679260181"><span id="recreate"><span class="annot"><a href="IC.Purify.html#recreate"><span class="hs-identifier hs-type">recreate</span></a></span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Purify.html#SnapshotOf"><span class="hs-identifier hs-type">SnapshotOf</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679260191"><span class="hs-identifier hs-type">i</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">ST</span></span><span> </span><span class="annot"><a href="#local-6989586621679260181"><span class="hs-identifier hs-type">s</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="#local-6989586621679260191"><span class="hs-identifier hs-type">i</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679260181"><span class="hs-identifier hs-type">s</span></a></span><span class="hs-special">)</span></span><span>
+</span><span id="line-18"></span><span>
+</span><span id="line-19"></span><span class="hs-keyword">class</span><span> </span><span id="Purify"><span class="annot"><a href="IC.Purify.html#Purify"><span class="hs-identifier hs-var">Purify</span></a></span></span><span> </span><span id="local-6989586621679260205"><span class="annot"><a href="#local-6989586621679260205"><span class="hs-identifier hs-type">i</span></a></span></span><span> </span><span id="local-6989586621679260204"><span class="annot"><a href="#local-6989586621679260204"><span class="hs-identifier hs-type">a</span></a></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-20"></span><span>  </span><span id="create"><span class="annot"><a href="IC.Purify.html#create"><span class="hs-identifier hs-type">create</span></a></span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="hs-special">(</span><span class="hs-keyword">forall</span><span> </span><span id="local-6989586621679260217"><span class="annot"><a href="#local-6989586621679260217"><span class="hs-identifier hs-type">s</span></a></span></span><span class="hs-operator">.</span><span> </span><span class="annot"><span class="hs-identifier hs-type">ST</span></span><span> </span><span class="annot"><a href="#local-6989586621679260217"><span class="hs-identifier hs-type">s</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="#local-6989586621679260205"><span class="hs-identifier hs-type">i</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679260217"><span class="hs-identifier hs-type">s</span></a></span><span class="hs-special">)</span><span class="hs-special">)</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="#local-6989586621679260204"><span class="hs-identifier hs-type">a</span></a></span><span>
+</span><span id="line-21"></span><span>  </span><span id="local-6989586621679260211"><span id="local-6989586621679260212"><span id="createMaybe"><span class="annot"><a href="IC.Purify.html#createMaybe"><span class="hs-identifier hs-type">createMaybe</span></a></span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="hs-special">(</span><span class="hs-keyword">forall</span><span> </span><span id="local-6989586621679260213"><span class="annot"><a href="#local-6989586621679260213"><span class="hs-identifier hs-type">s</span></a></span></span><span class="hs-operator">.</span><span> </span><span class="annot"><span class="hs-identifier hs-type">ST</span></span><span> </span><span class="annot"><a href="#local-6989586621679260213"><span class="hs-identifier hs-type">s</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="#local-6989586621679260212"><span class="hs-identifier hs-type">b</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Either</span></span><span> </span><span class="annot"><a href="#local-6989586621679260211"><span class="hs-identifier hs-type">c</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="#local-6989586621679260205"><span class="hs-identifier hs-type">i</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679260213"><span class="hs-identifier hs-type">s</span></a></span><span class="hs-special">)</span><span class="hs-special">)</span><span class="hs-special">)</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-special">(</span><span class="annot"><a href="#local-6989586621679260212"><span class="hs-identifier hs-type">b</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Either</span></span><span> </span><span class="annot"><a href="#local-6989586621679260211"><span class="hs-identifier hs-type">c</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679260204"><span class="hs-identifier hs-type">a</span></a></span><span class="hs-special">)</span></span></span><span>
+</span><span id="line-22"></span><span>  </span><span id="local-6989586621679260209"><span id="perform"><span class="annot"><a href="IC.Purify.html#perform"><span class="hs-identifier hs-type">perform</span></a></span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="hs-special">(</span><span class="hs-keyword">forall</span><span> </span><span id="local-6989586621679260210"><span class="annot"><a href="#local-6989586621679260210"><span class="hs-identifier hs-type">s</span></a></span></span><span class="hs-operator">.</span><span> </span><span class="annot"><a href="#local-6989586621679260205"><span class="hs-identifier hs-type">i</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679260210"><span class="hs-identifier hs-type">s</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">ST</span></span><span> </span><span class="annot"><a href="#local-6989586621679260210"><span class="hs-identifier hs-type">s</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679260209"><span class="hs-identifier hs-type">b</span></a></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="#local-6989586621679260204"><span class="hs-identifier hs-type">a</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-special">(</span><span class="annot"><a href="#local-6989586621679260204"><span class="hs-identifier hs-type">a</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><a href="#local-6989586621679260209"><span class="hs-identifier hs-type">b</span></a></span><span class="hs-special">)</span></span><span>
+</span><span id="line-23"></span><span>
+</span><span id="line-24"></span><span class="hs-keyword">newtype</span><span> </span><span id="Snapshot"><span class="annot"><a href="IC.Purify.html#Snapshot"><span class="hs-identifier hs-var">Snapshot</span></a></span></span><span> </span><span id="local-6989586621679260218"><span class="annot"><a href="#local-6989586621679260218"><span class="hs-identifier hs-type">a</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span id="Snapshot"><span class="annot"><a href="IC.Purify.html#Snapshot"><span class="hs-identifier hs-var">Snapshot</span></a></span></span><span> </span><span class="annot"><a href="#local-6989586621679260218"><span class="hs-identifier hs-type">a</span></a></span><span>
+</span><span id="line-25"></span><span>  </span><span class="hs-keyword">deriving</span><span> </span><span class="hs-special">(</span><span id="local-6989586621679260123"><span id="local-6989586621679260125"><span id="local-6989586621679260130"><span class="annot"><span class="annottext">Int -&gt; Snapshot a -&gt; ShowS
+[Snapshot a] -&gt; ShowS
+Snapshot a -&gt; String
+(Int -&gt; Snapshot a -&gt; ShowS)
+-&gt; (Snapshot a -&gt; String)
+-&gt; ([Snapshot a] -&gt; ShowS)
+-&gt; Show (Snapshot a)
+forall a. Show a =&gt; Int -&gt; Snapshot a -&gt; ShowS
+forall a. Show a =&gt; [Snapshot a] -&gt; ShowS
+forall a. Show a =&gt; Snapshot a -&gt; String
+forall a.
+(Int -&gt; a -&gt; ShowS) -&gt; (a -&gt; String) -&gt; ([a] -&gt; ShowS) -&gt; Show a
+showList :: [Snapshot a] -&gt; ShowS
+$cshowList :: forall a. Show a =&gt; [Snapshot a] -&gt; ShowS
+show :: Snapshot a -&gt; String
+$cshow :: forall a. Show a =&gt; Snapshot a -&gt; String
+showsPrec :: Int -&gt; Snapshot a -&gt; ShowS
+$cshowsPrec :: forall a. Show a =&gt; Int -&gt; Snapshot a -&gt; ShowS
+</span><span class="hs-identifier hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var">Show</span></span></span></span></span><span class="hs-special">)</span><span>
+</span><span id="line-26"></span><span>
+</span><span id="line-27"></span><span id="local-6989586621679260202"><span id="local-6989586621679260203"><span class="hs-keyword">instance</span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Purify.html#SnapshotAble"><span class="hs-identifier hs-type">SnapshotAble</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679260203"><span class="hs-identifier hs-type">i</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><a href="IC.Purify.html#SnapshotOf"><span class="hs-identifier hs-type">SnapshotOf</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679260203"><span class="hs-identifier hs-type">i</span></a></span><span> </span><span class="annot"><span class="hs-operator hs-type">~</span></span><span> </span><span class="annot"><a href="#local-6989586621679260202"><span class="hs-identifier hs-type">a</span></a></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">=&gt;</span><span> </span><span class="annot"><a href="IC.Purify.html#Purify"><span class="hs-identifier hs-type">Purify</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679260203"><span class="hs-identifier hs-type">i</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Purify.html#Snapshot"><span class="hs-identifier hs-type">Snapshot</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679260202"><span class="hs-identifier hs-type">a</span></a></span><span class="hs-special">)</span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-28"></span><span>  </span><span id="local-6989586621679260111"><span class="annot"><span class="annottext">create :: (forall s. ST s (i s)) -&gt; Snapshot a
+</span><a href="#local-6989586621679260111"><span class="hs-identifier hs-var hs-var hs-var hs-var">create</span></a></span></span><span> </span><span id="local-6989586621679260110"><span class="annot"><span class="annottext">forall s. ST s (i s)
+</span><a href="#local-6989586621679260110"><span class="hs-identifier hs-var">act</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">a -&gt; Snapshot a
+forall a. a -&gt; Snapshot a
+</span><a href="IC.Purify.html#Snapshot"><span class="hs-identifier hs-var">Snapshot</span></a></span><span> </span><span class="annot"><span class="annottext">(a -&gt; Snapshot a) -&gt; a -&gt; Snapshot a
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">(forall s. ST s a) -&gt; a
+forall a. (forall s. ST s a) -&gt; a
+</span><span class="hs-identifier hs-var">runST</span></span><span> </span><span class="annot"><span class="annottext">((forall s. ST s a) -&gt; a) -&gt; (forall s. ST s a) -&gt; a
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">ST s (i s)
+forall s. ST s (i s)
+</span><a href="#local-6989586621679260110"><span class="hs-identifier hs-var">act</span></a></span><span> </span><span class="annot"><span class="annottext">ST s (i s) -&gt; (i s -&gt; ST s a) -&gt; ST s a
+forall (m :: * -&gt; *) a b. Monad m =&gt; m a -&gt; (a -&gt; m b) -&gt; m b
+</span><span class="hs-operator hs-var">&gt;&gt;=</span></span><span> </span><span class="annot"><span class="annottext">i s -&gt; ST s a
+forall (i :: * -&gt; *) s.
+SnapshotAble i =&gt;
+i s -&gt; ST s (SnapshotOf i)
+</span><a href="IC.Purify.html#persist"><span class="hs-identifier hs-var">persist</span></a></span><span>
+</span><span id="line-29"></span><span>
+</span><span id="line-30"></span><span>  </span><span id="local-6989586621679260105"><span class="annot"><span class="annottext">createMaybe :: forall b c.
+(forall s. ST s (b, Either c (i s))) -&gt; (b, Either c (Snapshot a))
+</span><a href="#local-6989586621679260105"><span class="hs-identifier hs-var hs-var hs-var hs-var">createMaybe</span></a></span></span><span> </span><span id="local-6989586621679260104"><span class="annot"><span class="annottext">forall s. ST s (b, Either c (i s))
+</span><a href="#local-6989586621679260104"><span class="hs-identifier hs-var">act</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">(forall s. ST s (b, Either c (Snapshot a)))
+-&gt; (b, Either c (Snapshot a))
+forall a. (forall s. ST s a) -&gt; a
+</span><span class="hs-identifier hs-var">runST</span></span><span> </span><span class="annot"><span class="annottext">((forall s. ST s (b, Either c (Snapshot a)))
+ -&gt; (b, Either c (Snapshot a)))
+-&gt; (forall s. ST s (b, Either c (Snapshot a)))
+-&gt; (b, Either c (Snapshot a))
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-31"></span><span>      </span><span class="annot"><span class="annottext">ST s (b, Either c (i s))
+forall s. ST s (b, Either c (i s))
+</span><a href="#local-6989586621679260104"><span class="hs-identifier hs-var">act</span></a></span><span> </span><span class="annot"><span class="annottext">ST s (b, Either c (i s))
+-&gt; ((b, Either c (i s)) -&gt; ST s (b, Either c (Snapshot a)))
+-&gt; ST s (b, Either c (Snapshot a))
+forall (m :: * -&gt; *) a b. Monad m =&gt; m a -&gt; (a -&gt; m b) -&gt; m b
+</span><span class="hs-operator hs-var">&gt;&gt;=</span></span><span> </span><span class="hs-glyph">\</span><span class="hs-glyph">case</span><span>
+</span><span id="line-32"></span><span>          </span><span class="hs-special">(</span><span id="local-6989586621679260098"><span class="annot"><span class="annottext">b
+</span><a href="#local-6989586621679260098"><span class="hs-identifier hs-var">x</span></a></span></span><span class="hs-special">,</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Left</span></span><span> </span><span id="local-6989586621679260097"><span class="annot"><span class="annottext">c
+</span><a href="#local-6989586621679260097"><span class="hs-identifier hs-var">e</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">(b, Either c (Snapshot a)) -&gt; ST s (b, Either c (Snapshot a))
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><span class="hs-identifier hs-var">return</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">b
+</span><a href="#local-6989586621679260098"><span class="hs-identifier hs-var">x</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">c -&gt; Either c (Snapshot a)
+forall a b. a -&gt; Either a b
+</span><span class="hs-identifier hs-var">Left</span></span><span> </span><span class="annot"><span class="annottext">c
+</span><a href="#local-6989586621679260097"><span class="hs-identifier hs-var">e</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-33"></span><span>          </span><span class="hs-special">(</span><span id="local-6989586621679260096"><span class="annot"><span class="annottext">b
+</span><a href="#local-6989586621679260096"><span class="hs-identifier hs-var">x</span></a></span></span><span class="hs-special">,</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Right</span></span><span> </span><span id="local-6989586621679260095"><span class="annot"><span class="annottext">i s
+</span><a href="#local-6989586621679260095"><span class="hs-identifier hs-var">i</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-34"></span><span>              </span><span id="local-6989586621679260094"><span class="annot"><span class="annottext">a
+</span><a href="#local-6989586621679260094"><span class="hs-identifier hs-var">s'</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">i s -&gt; ST s (SnapshotOf i)
+forall (i :: * -&gt; *) s.
+SnapshotAble i =&gt;
+i s -&gt; ST s (SnapshotOf i)
+</span><a href="IC.Purify.html#persist"><span class="hs-identifier hs-var">persist</span></a></span><span> </span><span class="annot"><span class="annottext">i s
+</span><a href="#local-6989586621679260095"><span class="hs-identifier hs-var">i</span></a></span><span>
+</span><span id="line-35"></span><span>              </span><span class="annot"><span class="annottext">(b, Either c (Snapshot a)) -&gt; ST s (b, Either c (Snapshot a))
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><span class="hs-identifier hs-var">return</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">b
+</span><a href="#local-6989586621679260096"><span class="hs-identifier hs-var">x</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">Snapshot a -&gt; Either c (Snapshot a)
+forall a b. b -&gt; Either a b
+</span><span class="hs-identifier hs-var">Right</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">a -&gt; Snapshot a
+forall a. a -&gt; Snapshot a
+</span><a href="IC.Purify.html#Snapshot"><span class="hs-identifier hs-var">Snapshot</span></a></span><span> </span><span class="annot"><span class="annottext">a
+</span><a href="#local-6989586621679260094"><span class="hs-identifier hs-var">s'</span></a></span><span class="hs-special">)</span><span class="hs-special">)</span><span>
+</span><span id="line-36"></span><span>
+</span><span id="line-37"></span><span>  </span><span id="local-6989586621679260093"><span class="annot"><span class="annottext">perform :: forall b.
+(forall s. i s -&gt; ST s b) -&gt; Snapshot a -&gt; (Snapshot a, b)
+</span><a href="#local-6989586621679260093"><span class="hs-identifier hs-var hs-var hs-var hs-var">perform</span></a></span></span><span> </span><span id="local-6989586621679260092"><span class="annot"><span class="annottext">forall s. i s -&gt; ST s b
+</span><a href="#local-6989586621679260092"><span class="hs-identifier hs-var">act</span></a></span></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Purify.html#Snapshot"><span class="hs-identifier hs-type">Snapshot</span></a></span><span> </span><span id="local-6989586621679260091"><span class="annot"><span class="annottext">a
+</span><a href="#local-6989586621679260091"><span class="hs-identifier hs-var">s</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">(forall s. ST s (Snapshot a, b)) -&gt; (Snapshot a, b)
+forall a. (forall s. ST s a) -&gt; a
+</span><span class="hs-identifier hs-var">runST</span></span><span> </span><span class="annot"><span class="annottext">((forall s. ST s (Snapshot a, b)) -&gt; (Snapshot a, b))
+-&gt; (forall s. ST s (Snapshot a, b)) -&gt; (Snapshot a, b)
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-38"></span><span>      </span><span id="local-6989586621679260084"><span class="annot"><span class="annottext">i s
+</span><a href="#local-6989586621679260084"><span class="hs-identifier hs-var">i</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">SnapshotOf i -&gt; ST s (i s)
+forall (i :: * -&gt; *) s.
+SnapshotAble i =&gt;
+SnapshotOf i -&gt; ST s (i s)
+</span><a href="IC.Purify.html#recreate"><span class="hs-identifier hs-var">recreate</span></a></span><span> </span><span class="annot"><span class="annottext">a
+SnapshotOf i
+</span><a href="#local-6989586621679260091"><span class="hs-identifier hs-var">s</span></a></span><span>
+</span><span id="line-39"></span><span>      </span><span id="local-6989586621679260083"><span class="annot"><span class="annottext">b
+</span><a href="#local-6989586621679260083"><span class="hs-identifier hs-var">x</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">i s -&gt; ST s b
+forall s. i s -&gt; ST s b
+</span><a href="#local-6989586621679260092"><span class="hs-identifier hs-var">act</span></a></span><span> </span><span class="annot"><span class="annottext">i s
+</span><a href="#local-6989586621679260084"><span class="hs-identifier hs-var">i</span></a></span><span>
+</span><span id="line-40"></span><span>      </span><span id="local-6989586621679260082"><span class="annot"><span class="annottext">a
+</span><a href="#local-6989586621679260082"><span class="hs-identifier hs-var">s'</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">i s -&gt; ST s (SnapshotOf i)
+forall (i :: * -&gt; *) s.
+SnapshotAble i =&gt;
+i s -&gt; ST s (SnapshotOf i)
+</span><a href="IC.Purify.html#persist"><span class="hs-identifier hs-var">persist</span></a></span><span> </span><span class="annot"><span class="annottext">i s
+</span><a href="#local-6989586621679260084"><span class="hs-identifier hs-var">i</span></a></span><span>
+</span><span id="line-41"></span><span>      </span><span class="annot"><span class="annottext">(Snapshot a, b) -&gt; ST s (Snapshot a, b)
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><span class="hs-identifier hs-var">return</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">a -&gt; Snapshot a
+forall a. a -&gt; Snapshot a
+</span><a href="IC.Purify.html#Snapshot"><span class="hs-identifier hs-var">Snapshot</span></a></span><span> </span><span class="annot"><span class="annottext">a
+</span><a href="#local-6989586621679260082"><span class="hs-identifier hs-var">s'</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">b
+</span><a href="#local-6989586621679260083"><span class="hs-identifier hs-var">x</span></a></span><span class="hs-special">)</span></span></span><span>
+</span><span id="line-42"></span><span>
+</span><span id="line-43"></span><span>
+</span><span id="line-44"></span><span class="hs-keyword">newtype</span><span> </span><span id="Replay"><span class="annot"><a href="IC.Purify.html#Replay"><span class="hs-identifier hs-var">Replay</span></a></span></span><span> </span><span id="local-6989586621679260081"><span class="annot"><a href="#local-6989586621679260081"><span class="hs-identifier hs-type">i</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span id="Replay"><span class="annot"><a href="IC.Purify.html#Replay"><span class="hs-identifier hs-var">Replay</span></a></span></span><span> </span><span class="hs-special">(</span><span class="hs-keyword">forall</span><span> </span><span id="local-6989586621679260079"><span class="annot"><a href="#local-6989586621679260079"><span class="hs-identifier hs-type">s</span></a></span></span><span class="hs-operator">.</span><span> </span><span class="annot"><span class="hs-identifier hs-type">ST</span></span><span> </span><span class="annot"><a href="#local-6989586621679260079"><span class="hs-identifier hs-type">s</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="#local-6989586621679260081"><span class="hs-identifier hs-type">i</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679260079"><span class="hs-identifier hs-type">s</span></a></span><span class="hs-special">)</span><span class="hs-special">)</span><span>
+</span><span id="line-45"></span><span>
+</span><span id="line-46"></span><span id="local-6989586621679260180"><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679260074"><span id="local-6989586621679260077"><span class="annot"><span class="hs-identifier hs-type">Show</span></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Purify.html#Replay"><span class="hs-identifier hs-type">Replay</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679260180"><span class="hs-identifier hs-type">i</span></a></span><span class="hs-special">)</span></span></span><span> </span><span class="hs-keyword">where</span><span> </span><span id="local-6989586621679260073"><span class="annot"><span class="annottext">show :: Replay i -&gt; String
+</span><span class="hs-identifier hs-var hs-var hs-var hs-var">show</span></span></span><span> </span><span class="annot"><span class="annottext">Replay i
+</span><span class="hs-identifier">_</span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">String
+</span><span class="hs-string">&quot;Replay &#8230;&quot;</span></span></span><span>
+</span><span id="line-47"></span><span>
+</span><span id="line-48"></span><span id="local-6989586621679260178"><span class="hs-keyword">instance</span><span> </span><span class="annot"><a href="IC.Purify.html#Purify"><span class="hs-identifier hs-type">Purify</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679260178"><span class="hs-identifier hs-type">a</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Purify.html#Replay"><span class="hs-identifier hs-type">Replay</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679260178"><span class="hs-identifier hs-type">a</span></a></span><span class="hs-special">)</span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-49"></span><span>  </span><span id="local-6989586621679260067"><span class="annot"><span class="annottext">create :: (forall s. ST s (a s)) -&gt; Replay a
+</span><a href="#local-6989586621679260067"><span class="hs-identifier hs-var hs-var hs-var hs-var">create</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">(forall s. ST s (a s)) -&gt; Replay a
+forall (a :: * -&gt; *). (forall s. ST s (a s)) -&gt; Replay a
+</span><a href="IC.Purify.html#Replay"><span class="hs-identifier hs-var">Replay</span></a></span><span>
+</span><span id="line-50"></span><span>
+</span><span id="line-51"></span><span>  </span><span id="local-6989586621679260066"><span class="annot"><span class="annottext">createMaybe :: forall b c.
+(forall s. ST s (b, Either c (a s))) -&gt; (b, Either c (Replay a))
+</span><a href="#local-6989586621679260066"><span class="hs-identifier hs-var hs-var hs-var hs-var">createMaybe</span></a></span></span><span> </span><span id="local-6989586621679260065"><span class="annot"><span class="annottext">forall s. ST s (b, Either c (a s))
+</span><a href="#local-6989586621679260065"><span class="hs-identifier hs-var">act</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">(forall s. ST s (b, Either c (Replay a)))
+-&gt; (b, Either c (Replay a))
+forall a. (forall s. ST s a) -&gt; a
+</span><span class="hs-identifier hs-var">runST</span></span><span> </span><span class="annot"><span class="annottext">((forall s. ST s (b, Either c (Replay a)))
+ -&gt; (b, Either c (Replay a)))
+-&gt; (forall s. ST s (b, Either c (Replay a)))
+-&gt; (b, Either c (Replay a))
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">(Either c (a s) -&gt; Either c (Replay a))
+-&gt; (b, Either c (a s)) -&gt; (b, Either c (Replay a))
+forall (p :: * -&gt; * -&gt; *) b c a.
+Bifunctor p =&gt;
+(b -&gt; c) -&gt; p a b -&gt; p a c
+</span><span class="hs-identifier hs-var">second</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Either c (a s) -&gt; Replay a -&gt; Either c (Replay a)
+forall (f :: * -&gt; *) a b. Functor f =&gt; f a -&gt; b -&gt; f b
+</span><span class="hs-operator hs-var">$&gt;</span></span><span> </span><span class="annot"><span class="annottext">Replay a
+</span><a href="#local-6989586621679260056"><span class="hs-identifier hs-var">replay'</span></a></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">((b, Either c (a s)) -&gt; (b, Either c (Replay a)))
+-&gt; ST s (b, Either c (a s)) -&gt; ST s (b, Either c (Replay a))
+forall (f :: * -&gt; *) a b. Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b
+</span><span class="hs-operator hs-var">&lt;$&gt;</span></span><span> </span><span class="annot"><span class="annottext">ST s (b, Either c (a s))
+forall s. ST s (b, Either c (a s))
+</span><a href="#local-6989586621679260065"><span class="hs-identifier hs-var">act</span></a></span><span>
+</span><span id="line-52"></span><span>    </span><span class="hs-keyword">where</span><span>
+</span><span id="line-53"></span><span>      </span><span id="local-6989586621679260056"><span class="annot"><span class="annottext">replay' :: Replay a
+</span><a href="#local-6989586621679260056"><span class="hs-identifier hs-var hs-var">replay'</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">(forall s. ST s (a s)) -&gt; Replay a
+forall (a :: * -&gt; *). (forall s. ST s (a s)) -&gt; Replay a
+</span><a href="IC.Purify.html#Replay"><span class="hs-identifier hs-var">Replay</span></a></span><span> </span><span class="annot"><span class="annottext">((forall s. ST s (a s)) -&gt; Replay a)
+-&gt; (forall s. ST s (a s)) -&gt; Replay a
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">a s -&gt; Either c (a s) -&gt; a s
+forall b a. b -&gt; Either a b -&gt; b
+</span><span class="hs-identifier hs-var">fromRight</span></span><span> </span><span class="annot"><span class="annottext">a s
+forall {a}. a
+</span><a href="#local-6989586621679260052"><span class="hs-identifier hs-var">err</span></a></span><span> </span><span class="annot"><span class="annottext">(Either c (a s) -&gt; a s)
+-&gt; ((b, Either c (a s)) -&gt; Either c (a s))
+-&gt; (b, Either c (a s))
+-&gt; a s
+forall b c a. (b -&gt; c) -&gt; (a -&gt; b) -&gt; a -&gt; c
+</span><span class="hs-operator hs-var">.</span></span><span> </span><span class="annot"><span class="annottext">(b, Either c (a s)) -&gt; Either c (a s)
+forall a b. (a, b) -&gt; b
+</span><span class="hs-identifier hs-var">snd</span></span><span> </span><span class="annot"><span class="annottext">((b, Either c (a s)) -&gt; a s)
+-&gt; ST s (b, Either c (a s)) -&gt; ST s (a s)
+forall (f :: * -&gt; *) a b. Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b
+</span><span class="hs-operator hs-var">&lt;$&gt;</span></span><span> </span><span class="annot"><span class="annottext">ST s (b, Either c (a s))
+forall s. ST s (b, Either c (a s))
+</span><a href="#local-6989586621679260065"><span class="hs-identifier hs-var">act</span></a></span><span>
+</span><span id="line-54"></span><span>      </span><span id="local-6989586621679260052"><span class="annot"><span class="annottext">err :: a
+</span><a href="#local-6989586621679260052"><span class="hs-identifier hs-var hs-var">err</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">String -&gt; a
+forall a. HasCallStack =&gt; String -&gt; a
+</span><span class="hs-identifier hs-var">error</span></span><span> </span><span class="annot"><span class="annottext">String
+</span><span class="hs-string">&quot;createMaybe: ST action was not deterministic?&quot;</span></span><span>
+</span><span id="line-55"></span><span>
+</span><span id="line-56"></span><span>  </span><span id="local-6989586621679260047"><span class="annot"><span class="annottext">perform :: forall b. (forall s. a s -&gt; ST s b) -&gt; Replay a -&gt; (Replay a, b)
+</span><a href="#local-6989586621679260047"><span class="hs-identifier hs-var hs-var hs-var hs-var">perform</span></a></span></span><span> </span><span id="local-6989586621679260046"><span class="annot"><span class="annottext">forall s. a s -&gt; ST s b
+</span><a href="#local-6989586621679260046"><span class="hs-identifier hs-var">act</span></a></span></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Purify.html#Replay"><span class="hs-identifier hs-type">Replay</span></a></span><span> </span><span id="local-6989586621679260045"><span class="annot"><span class="annottext">forall s. ST s (a s)
+</span><a href="#local-6989586621679260045"><span class="hs-identifier hs-var">replay</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">(forall s. ST s (Replay a, b)) -&gt; (Replay a, b)
+forall a. (forall s. ST s a) -&gt; a
+</span><span class="hs-identifier hs-var">runST</span></span><span> </span><span class="annot"><span class="annottext">((forall s. ST s (Replay a, b)) -&gt; (Replay a, b))
+-&gt; (forall s. ST s (Replay a, b)) -&gt; (Replay a, b)
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-57"></span><span>      </span><span id="local-6989586621679260041"><span class="annot"><span class="annottext">b
+</span><a href="#local-6989586621679260041"><span class="hs-identifier hs-var">x</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">ST s (a s)
+forall s. ST s (a s)
+</span><a href="#local-6989586621679260045"><span class="hs-identifier hs-var">replay</span></a></span><span> </span><span class="annot"><span class="annottext">ST s (a s) -&gt; (a s -&gt; ST s b) -&gt; ST s b
+forall (m :: * -&gt; *) a b. Monad m =&gt; m a -&gt; (a -&gt; m b) -&gt; m b
+</span><span class="hs-operator hs-var">&gt;&gt;=</span></span><span> </span><span class="annot"><span class="annottext">a s -&gt; ST s b
+forall s. a s -&gt; ST s b
+</span><a href="#local-6989586621679260046"><span class="hs-identifier hs-var">act</span></a></span><span>
+</span><span id="line-58"></span><span>      </span><span class="annot"><span class="annottext">(Replay a, b) -&gt; ST s (Replay a, b)
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><span class="hs-identifier hs-var">return</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Replay a
+</span><a href="#local-6989586621679260040"><span class="hs-identifier hs-var">replay'</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">b
+</span><a href="#local-6989586621679260041"><span class="hs-identifier hs-var">x</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-59"></span><span>    </span><span class="hs-keyword">where</span><span>
+</span><span id="line-60"></span><span>      </span><span id="local-6989586621679260040"><span class="annot"><span class="annottext">replay' :: Replay a
+</span><a href="#local-6989586621679260040"><span class="hs-identifier hs-var hs-var">replay'</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">(forall s. ST s (a s)) -&gt; Replay a
+forall (a :: * -&gt; *). (forall s. ST s (a s)) -&gt; Replay a
+</span><a href="IC.Purify.html#Replay"><span class="hs-identifier hs-var">Replay</span></a></span><span> </span><span class="annot"><span class="annottext">((forall s. ST s (a s)) -&gt; Replay a)
+-&gt; (forall s. ST s (a s)) -&gt; Replay a
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="hs-keyword">do</span><span> </span><span id="local-6989586621679260035"><span class="annot"><span class="annottext">a s
+</span><a href="#local-6989586621679260035"><span class="hs-identifier hs-var">x</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">ST s (a s)
+forall s. ST s (a s)
+</span><a href="#local-6989586621679260045"><span class="hs-identifier hs-var">replay</span></a></span><span class="hs-special">;</span><span> </span><span class="annot"><span class="annottext">ST s b -&gt; ST s ()
+forall (f :: * -&gt; *) a. Functor f =&gt; f a -&gt; f ()
+</span><span class="hs-identifier hs-var">void</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">a s -&gt; ST s b
+forall s. a s -&gt; ST s b
+</span><a href="#local-6989586621679260046"><span class="hs-identifier hs-var">act</span></a></span><span> </span><span class="annot"><span class="annottext">a s
+</span><a href="#local-6989586621679260035"><span class="hs-identifier hs-var">x</span></a></span><span class="hs-special">)</span><span class="hs-special">;</span><span> </span><span class="annot"><span class="annottext">a s -&gt; ST s (a s)
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><span class="hs-identifier hs-var">return</span></span><span> </span><span class="annot"><span class="annottext">a s
+</span><a href="#local-6989586621679260035"><span class="hs-identifier hs-var">x</span></a></span></span><span>
+</span><span id="line-61"></span><span>
+</span><span id="line-62"></span></pre></body></html>

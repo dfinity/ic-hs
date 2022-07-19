@@ -1,0 +1,323 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><link rel="stylesheet" type="text/css" href="style.css" /><script type="text/javascript" src="highlight.js"></script></head><body><pre><span class="hs-pragma">{-# LANGUAGE OverloadedStrings #-}</span><span>
+</span><span id="line-2"></span><span class="hs-pragma">{-# LANGUAGE FlexibleContexts #-}</span><span>
+</span><span id="line-3"></span><span class="hs-pragma">{-# LANGUAGE BlockArguments #-}</span><span>
+</span><span id="line-4"></span><span class="hs-keyword">module</span><span> </span><span class="hs-identifier">IC.Crypto.Secp256k1</span><span>
+</span><span id="line-5"></span><span> </span><span class="hs-special">(</span><span> </span><span class="annot"><span class="hs-identifier">init</span></span><span>
+</span><span id="line-6"></span><span> </span><span class="hs-special">,</span><span> </span><span class="annot"><a href="IC.Crypto.Secp256k1.html#SecretKey"><span class="hs-identifier">SecretKey</span></a></span><span>
+</span><span id="line-7"></span><span> </span><span class="hs-special">,</span><span> </span><span class="annot"><a href="IC.Crypto.Secp256k1.html#createKey"><span class="hs-identifier">createKey</span></a></span><span>
+</span><span id="line-8"></span><span> </span><span class="hs-special">,</span><span> </span><span class="annot"><a href="IC.Crypto.Secp256k1.html#toPublicKey"><span class="hs-identifier">toPublicKey</span></a></span><span>
+</span><span id="line-9"></span><span> </span><span class="hs-special">,</span><span> </span><span class="annot"><a href="IC.Crypto.Secp256k1.html#sign"><span class="hs-identifier">sign</span></a></span><span>
+</span><span id="line-10"></span><span> </span><span class="hs-special">,</span><span> </span><span class="annot"><a href="IC.Crypto.Secp256k1.html#verify"><span class="hs-identifier">verify</span></a></span><span>
+</span><span id="line-11"></span><span> </span><span class="hs-special">)</span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-12"></span><span>
+</span><span id="line-13"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><span class="hs-identifier">Data.Text</span></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">T</span></span><span>
+</span><span id="line-14"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><span class="hs-identifier">Data.ByteString.Lazy</span></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">BS</span></span><span>
+</span><span id="line-15"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Data.Serialize.Get</span></span><span>
+</span><span id="line-16"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Data.Bifunctor</span></span><span>
+</span><span id="line-17"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Control.Monad</span></span><span>
+</span><span id="line-18"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Data.Hashable</span></span><span>
+</span><span id="line-19"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Control.Monad.Except</span></span><span>
+</span><span id="line-20"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><span class="hs-identifier">Crypto.PubKey.ECC.ECDSA</span></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">EC</span></span><span>
+</span><span id="line-21"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><span class="hs-identifier">Crypto.PubKey.ECC.Generate</span></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">EC</span></span><span>
+</span><span id="line-22"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><span class="hs-identifier">Crypto.PubKey.ECC.Types</span></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">EC</span></span><span>
+</span><span id="line-23"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><span class="hs-identifier">Crypto.PubKey.ECC.Prim</span></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">EC</span></span><span>
+</span><span id="line-24"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Crypto.Number.Serialize</span></span><span>
+</span><span id="line-25"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Crypto.Hash.Algorithms</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier">SHA256</span></span><span class="hs-special">(</span><span class="hs-glyph">..</span><span class="hs-special">)</span><span class="hs-special">)</span><span>
+</span><span id="line-26"></span><span>
+</span><span id="line-27"></span><span class="hs-keyword">data</span><span> </span><span id="SecretKey"><span class="annot"><a href="IC.Crypto.Secp256k1.html#SecretKey"><span class="hs-identifier hs-var">SecretKey</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span id="SecretKey"><span class="annot"><a href="IC.Crypto.Secp256k1.html#SecretKey"><span class="hs-identifier hs-var">SecretKey</span></a></span></span><span> </span><span class="annot"><span class="hs-identifier hs-type">EC.PrivateKey</span></span><span> </span><span class="annot"><span class="hs-identifier hs-type">EC.PublicKey</span></span><span>
+</span><span id="line-28"></span><span>  </span><span class="hs-keyword">deriving</span><span> </span><span id="local-6989586621679258453"><span id="local-6989586621679258455"><span id="local-6989586621679258463"><span class="annot"><span class="annottext">Int -&gt; SecretKey -&gt; ShowS
+[SecretKey] -&gt; ShowS
+SecretKey -&gt; String
+(Int -&gt; SecretKey -&gt; ShowS)
+-&gt; (SecretKey -&gt; String)
+-&gt; ([SecretKey] -&gt; ShowS)
+-&gt; Show SecretKey
+forall a.
+(Int -&gt; a -&gt; ShowS) -&gt; (a -&gt; String) -&gt; ([a] -&gt; ShowS) -&gt; Show a
+showList :: [SecretKey] -&gt; ShowS
+$cshowList :: [SecretKey] -&gt; ShowS
+show :: SecretKey -&gt; String
+$cshow :: SecretKey -&gt; String
+showsPrec :: Int -&gt; SecretKey -&gt; ShowS
+$cshowsPrec :: Int -&gt; SecretKey -&gt; ShowS
+</span><span class="hs-identifier hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var">Show</span></span></span></span></span><span>
+</span><span id="line-29"></span><span>
+</span><span id="line-30"></span><span class="annot"><a href="IC.Crypto.Secp256k1.html#toPublicKey"><span class="hs-identifier hs-type">toPublicKey</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Crypto.Secp256k1.html#SecretKey"><span class="hs-identifier hs-type">SecretKey</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">BS.ByteString</span></span><span>
+</span><span id="line-31"></span><span id="toPublicKey"><span class="annot"><span class="annottext">toPublicKey :: SecretKey -&gt; ByteString
+</span><a href="IC.Crypto.Secp256k1.html#toPublicKey"><span class="hs-identifier hs-var hs-var">toPublicKey</span></a></span></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Crypto.Secp256k1.html#SecretKey"><span class="hs-identifier hs-type">SecretKey</span></a></span><span> </span><span class="annot"><span class="annottext">PrivateKey
+</span><span class="hs-identifier">_</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier hs-type">EC.PublicKey</span></span><span> </span><span class="annot"><span class="annottext">Curve
+</span><span class="hs-identifier">_</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier hs-type">EC.Point</span></span><span> </span><span id="local-6989586621679258449"><span class="annot"><span class="annottext">Integer
+</span><a href="#local-6989586621679258449"><span class="hs-identifier hs-var">x</span></a></span></span><span> </span><span id="local-6989586621679258448"><span class="annot"><span class="annottext">Integer
+</span><a href="#local-6989586621679258448"><span class="hs-identifier hs-var">y</span></a></span></span><span class="hs-special">)</span><span class="hs-special">)</span><span class="hs-special">)</span><span> </span><span class="hs-glyph">=</span><span>
+</span><span id="line-32"></span><span>  </span><span class="annot"><span class="annottext">Word8 -&gt; ByteString
+</span><span class="hs-identifier hs-var">BS.singleton</span></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">0x04</span></span><span> </span><span class="annot"><span class="annottext">ByteString -&gt; ByteString -&gt; ByteString
+forall a. Semigroup a =&gt; a -&gt; a -&gt; a
+</span><span class="hs-operator hs-var">&lt;&gt;</span></span><span> </span><span class="annot"><span class="annottext">ByteString -&gt; ByteString
+</span><span class="hs-identifier hs-var">BS.fromStrict</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Int -&gt; Integer -&gt; ByteString
+forall ba. ByteArray ba =&gt; Int -&gt; Integer -&gt; ba
+</span><span class="hs-identifier hs-var">i2ospOf_</span></span><span> </span><span class="annot"><span class="annottext">Int
+</span><span class="hs-number">32</span></span><span> </span><span class="annot"><span class="annottext">Integer
+</span><a href="#local-6989586621679258449"><span class="hs-identifier hs-var">x</span></a></span><span> </span><span class="annot"><span class="annottext">ByteString -&gt; ByteString -&gt; ByteString
+forall a. Semigroup a =&gt; a -&gt; a -&gt; a
+</span><span class="hs-operator hs-var">&lt;&gt;</span></span><span> </span><span class="annot"><span class="annottext">Int -&gt; Integer -&gt; ByteString
+forall ba. ByteArray ba =&gt; Int -&gt; Integer -&gt; ba
+</span><span class="hs-identifier hs-var">i2ospOf_</span></span><span> </span><span class="annot"><span class="annottext">Int
+</span><span class="hs-number">32</span></span><span> </span><span class="annot"><span class="annottext">Integer
+</span><a href="#local-6989586621679258448"><span class="hs-identifier hs-var">y</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-33"></span><span class="annot"><a href="IC.Crypto.Secp256k1.html#toPublicKey"><span class="hs-identifier hs-var">toPublicKey</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Crypto.Secp256k1.html#SecretKey"><span class="hs-identifier hs-type">SecretKey</span></a></span><span> </span><span class="annot"><span class="annottext">PrivateKey
+</span><span class="hs-identifier">_</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier hs-type">EC.PublicKey</span></span><span> </span><span class="annot"><span class="annottext">Curve
+</span><span class="hs-identifier">_</span></span><span> </span><span class="annot"><span class="annottext">Point
+</span><span class="hs-identifier hs-var">EC.PointO</span></span><span class="hs-special">)</span><span class="hs-special">)</span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">String -&gt; ByteString
+forall a. HasCallStack =&gt; String -&gt; a
+</span><span class="hs-identifier hs-var">error</span></span><span> </span><span class="annot"><span class="annottext">String
+</span><span class="hs-string">&quot;toPublicKey: Point at infinity&quot;</span></span><span>
+</span><span id="line-34"></span><span>
+</span><span id="line-35"></span><span class="annot"><a href="IC.Crypto.Secp256k1.html#curve"><span class="hs-identifier hs-type">curve</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><span class="hs-identifier hs-type">EC.Curve</span></span><span>
+</span><span id="line-36"></span><span id="curve"><span class="annot"><span class="annottext">curve :: Curve
+</span><a href="IC.Crypto.Secp256k1.html#curve"><span class="hs-identifier hs-var hs-var">curve</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">CurveName -&gt; Curve
+</span><span class="hs-identifier hs-var">EC.getCurveByName</span></span><span> </span><span class="annot"><span class="annottext">CurveName
+</span><span class="hs-identifier hs-var">EC.SEC_p256k1</span></span><span>
+</span><span id="line-37"></span><span>
+</span><span id="line-38"></span><span class="annot"><a href="IC.Crypto.Secp256k1.html#createKey"><span class="hs-identifier hs-type">createKey</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><span class="hs-identifier hs-type">BS.ByteString</span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Crypto.Secp256k1.html#SecretKey"><span class="hs-identifier hs-type">SecretKey</span></a></span><span>
+</span><span id="line-39"></span><span id="createKey"><span class="annot"><span class="annottext">createKey :: ByteString -&gt; SecretKey
+</span><a href="IC.Crypto.Secp256k1.html#createKey"><span class="hs-identifier hs-var hs-var">createKey</span></a></span></span><span> </span><span id="local-6989586621679258439"><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679258439"><span class="hs-identifier hs-var">seed</span></a></span></span><span> </span><span class="hs-glyph">=</span><span>
+</span><span id="line-40"></span><span>    </span><span class="annot"><span class="annottext">PrivateKey -&gt; PublicKey -&gt; SecretKey
+</span><a href="IC.Crypto.Secp256k1.html#SecretKey"><span class="hs-identifier hs-var">SecretKey</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Curve -&gt; Integer -&gt; PrivateKey
+</span><span class="hs-identifier hs-var">EC.PrivateKey</span></span><span> </span><span class="annot"><span class="annottext">Curve
+</span><a href="IC.Crypto.Secp256k1.html#curve"><span class="hs-identifier hs-var">curve</span></a></span><span> </span><span class="annot"><span class="annottext">Integer
+</span><a href="#local-6989586621679258437"><span class="hs-identifier hs-var">d</span></a></span><span class="hs-special">)</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Curve -&gt; Point -&gt; PublicKey
+</span><span class="hs-identifier hs-var">EC.PublicKey</span></span><span> </span><span class="annot"><span class="annottext">Curve
+</span><a href="IC.Crypto.Secp256k1.html#curve"><span class="hs-identifier hs-var">curve</span></a></span><span> </span><span class="annot"><span class="annottext">Point
+</span><a href="#local-6989586621679258436"><span class="hs-identifier hs-var">q</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-41"></span><span>  </span><span class="hs-keyword">where</span><span>
+</span><span id="line-42"></span><span>    </span><span id="local-6989586621679258435"><span class="annot"><span class="annottext">n :: Integer
+</span><a href="#local-6989586621679258435"><span class="hs-identifier hs-var hs-var">n</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">CurveCommon -&gt; Integer
+</span><span class="hs-identifier hs-var hs-var">EC.ecc_n</span></span><span> </span><span class="annot"><span class="annottext">(CurveCommon -&gt; Integer) -&gt; CurveCommon -&gt; Integer
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">Curve -&gt; CurveCommon
+</span><span class="hs-identifier hs-var">EC.common_curve</span></span><span> </span><span class="annot"><span class="annottext">Curve
+</span><a href="IC.Crypto.Secp256k1.html#curve"><span class="hs-identifier hs-var">curve</span></a></span><span>
+</span><span id="line-43"></span><span>    </span><span id="local-6989586621679258437"><span class="annot"><span class="annottext">d :: Integer
+</span><a href="#local-6989586621679258437"><span class="hs-identifier hs-var hs-var">d</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Int -&gt; Integer
+forall a b. (Integral a, Num b) =&gt; a -&gt; b
+</span><span class="hs-identifier hs-var">fromIntegral</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">ByteString -&gt; Int
+forall a. Hashable a =&gt; a -&gt; Int
+</span><span class="hs-identifier hs-var">hash</span></span><span> </span><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679258439"><span class="hs-identifier hs-var">seed</span></a></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">Integer -&gt; Integer -&gt; Integer
+forall a. Integral a =&gt; a -&gt; a -&gt; a
+</span><span class="hs-operator hs-var">`mod`</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Integer
+</span><a href="#local-6989586621679258435"><span class="hs-identifier hs-var">n</span></a></span><span class="annot"><span class="annottext">Integer -&gt; Integer -&gt; Integer
+forall a. Num a =&gt; a -&gt; a -&gt; a
+</span><span class="hs-glyph hs-var">-</span></span><span class="annot"><span class="annottext">Integer
+</span><span class="hs-number">2</span></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">Integer -&gt; Integer -&gt; Integer
+forall a. Num a =&gt; a -&gt; a -&gt; a
+</span><span class="hs-operator hs-var">+</span></span><span> </span><span class="annot"><span class="annottext">Integer
+</span><span class="hs-number">1</span></span><span>
+</span><span id="line-44"></span><span>    </span><span id="local-6989586621679258436"><span class="annot"><span class="annottext">q :: Point
+</span><a href="#local-6989586621679258436"><span class="hs-identifier hs-var hs-var">q</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Curve -&gt; Integer -&gt; Point
+</span><span class="hs-identifier hs-var">EC.generateQ</span></span><span> </span><span class="annot"><span class="annottext">Curve
+</span><a href="IC.Crypto.Secp256k1.html#curve"><span class="hs-identifier hs-var">curve</span></a></span><span> </span><span class="annot"><span class="annottext">Integer
+</span><a href="#local-6989586621679258437"><span class="hs-identifier hs-var">d</span></a></span><span>
+</span><span id="line-45"></span><span>
+</span><span id="line-46"></span><span class="annot"><a href="IC.Crypto.Secp256k1.html#sign"><span class="hs-identifier hs-type">sign</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Crypto.Secp256k1.html#SecretKey"><span class="hs-identifier hs-type">SecretKey</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">BS.ByteString</span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">IO</span></span><span> </span><span class="annot"><span class="hs-identifier hs-type">BS.ByteString</span></span><span>
+</span><span id="line-47"></span><span id="sign"><span class="annot"><span class="annottext">sign :: SecretKey -&gt; ByteString -&gt; IO ByteString
+</span><a href="IC.Crypto.Secp256k1.html#sign"><span class="hs-identifier hs-var hs-var">sign</span></a></span></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Crypto.Secp256k1.html#SecretKey"><span class="hs-identifier hs-type">SecretKey</span></a></span><span> </span><span id="local-6989586621679258416"><span class="annot"><span class="annottext">PrivateKey
+</span><a href="#local-6989586621679258416"><span class="hs-identifier hs-var">sk</span></a></span></span><span> </span><span class="annot"><span class="annottext">PublicKey
+</span><span class="hs-identifier">_</span></span><span class="hs-special">)</span><span> </span><span id="local-6989586621679258415"><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679258415"><span class="hs-identifier hs-var">msg</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-48"></span><span>  </span><span class="annot"><span class="hs-identifier hs-type">EC.Signature</span></span><span> </span><span id="local-6989586621679258413"><span class="annot"><span class="annottext">Integer
+</span><a href="#local-6989586621679258413"><span class="hs-identifier hs-var">r</span></a></span></span><span> </span><span id="local-6989586621679258412"><span class="annot"><span class="annottext">Integer
+</span><a href="#local-6989586621679258412"><span class="hs-identifier hs-var">s</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">PrivateKey -&gt; SHA256 -&gt; ByteString -&gt; IO Signature
+forall msg hash (m :: * -&gt; *).
+(ByteArrayAccess msg, HashAlgorithm hash, MonadRandom m) =&gt;
+PrivateKey -&gt; hash -&gt; msg -&gt; m Signature
+</span><span class="hs-identifier hs-var">EC.sign</span></span><span> </span><span class="annot"><span class="annottext">PrivateKey
+</span><a href="#local-6989586621679258416"><span class="hs-identifier hs-var">sk</span></a></span><span> </span><span class="annot"><span class="annottext">SHA256
+</span><span class="hs-identifier hs-var">SHA256</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">ByteString -&gt; ByteString
+</span><span class="hs-identifier hs-var">BS.toStrict</span></span><span> </span><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679258415"><span class="hs-identifier hs-var">msg</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-49"></span><span>  </span><span class="annot"><span class="annottext">ByteString -&gt; IO ByteString
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><span class="hs-identifier hs-var">return</span></span><span> </span><span class="annot"><span class="annottext">(ByteString -&gt; IO ByteString) -&gt; ByteString -&gt; IO ByteString
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">ByteString -&gt; ByteString
+</span><span class="hs-identifier hs-var">BS.fromStrict</span></span><span> </span><span class="annot"><span class="annottext">(ByteString -&gt; ByteString) -&gt; ByteString -&gt; ByteString
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">Int -&gt; Integer -&gt; ByteString
+forall ba. ByteArray ba =&gt; Int -&gt; Integer -&gt; ba
+</span><span class="hs-identifier hs-var">i2ospOf_</span></span><span> </span><span class="annot"><span class="annottext">Int
+</span><span class="hs-number">32</span></span><span> </span><span class="annot"><span class="annottext">Integer
+</span><a href="#local-6989586621679258413"><span class="hs-identifier hs-var">r</span></a></span><span> </span><span class="annot"><span class="annottext">ByteString -&gt; ByteString -&gt; ByteString
+forall a. Semigroup a =&gt; a -&gt; a -&gt; a
+</span><span class="hs-operator hs-var">&lt;&gt;</span></span><span> </span><span class="annot"><span class="annottext">Int -&gt; Integer -&gt; ByteString
+forall ba. ByteArray ba =&gt; Int -&gt; Integer -&gt; ba
+</span><span class="hs-identifier hs-var">i2ospOf_</span></span><span> </span><span class="annot"><span class="annottext">Int
+</span><span class="hs-number">32</span></span><span> </span><span class="annot"><span class="annottext">Integer
+</span><a href="#local-6989586621679258412"><span class="hs-identifier hs-var">s</span></a></span><span>
+</span><span id="line-50"></span><span>
+</span><span id="line-51"></span><span class="hs-comment">-- Parsing SEC keys. Unfortunately not supported directly in cryptonite</span><span>
+</span><span id="line-52"></span><span class="hs-comment">-- https://github.com/haskell-crypto/cryptonite/issues/302</span><span>
+</span><span id="line-53"></span><span class="annot"><a href="IC.Crypto.Secp256k1.html#parsePublicKey"><span class="hs-identifier hs-type">parsePublicKey</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><span class="hs-identifier hs-type">BS.ByteString</span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Either</span></span><span> </span><span class="annot"><span class="hs-identifier hs-type">T.Text</span></span><span> </span><span class="annot"><span class="hs-identifier hs-type">EC.PublicKey</span></span><span>
+</span><span id="line-54"></span><span id="parsePublicKey"><span class="annot"><span class="annottext">parsePublicKey :: ByteString -&gt; Either Text PublicKey
+</span><a href="IC.Crypto.Secp256k1.html#parsePublicKey"><span class="hs-identifier hs-var hs-var">parsePublicKey</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">(String -&gt; Text)
+-&gt; Either String PublicKey -&gt; Either Text PublicKey
+forall (p :: * -&gt; * -&gt; *) a b c.
+Bifunctor p =&gt;
+(a -&gt; b) -&gt; p a c -&gt; p b c
+</span><span class="hs-identifier hs-var">first</span></span><span> </span><span class="annot"><span class="annottext">String -&gt; Text
+</span><span class="hs-identifier hs-var">T.pack</span></span><span> </span><span class="annot"><span class="annottext">(Either String PublicKey -&gt; Either Text PublicKey)
+-&gt; (ByteString -&gt; Either String PublicKey)
+-&gt; ByteString
+-&gt; Either Text PublicKey
+forall b c a. (b -&gt; c) -&gt; (a -&gt; b) -&gt; a -&gt; c
+</span><span class="hs-operator hs-var">.</span></span><span> </span><span class="annot"><span class="annottext">Get PublicKey -&gt; ByteString -&gt; Either String PublicKey
+forall a. Get a -&gt; ByteString -&gt; Either String a
+</span><span class="hs-identifier hs-var">runGetLazy</span></span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-55"></span><span>    </span><span id="local-6989586621679258403"><span class="annot"><span class="annottext">Word8
+</span><a href="#local-6989586621679258403"><span class="hs-identifier hs-var">t</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">Get Word8
+</span><span class="hs-identifier hs-var">getWord8</span></span><span>
+</span><span id="line-56"></span><span>    </span><span class="annot"><span class="annottext">Bool -&gt; Get () -&gt; Get ()
+forall (f :: * -&gt; *). Applicative f =&gt; Bool -&gt; f () -&gt; f ()
+</span><span class="hs-identifier hs-var">when</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Word8
+</span><a href="#local-6989586621679258403"><span class="hs-identifier hs-var">t</span></a></span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Word8 -&gt; Bool
+forall a. Eq a =&gt; a -&gt; a -&gt; Bool
+</span><span class="hs-operator hs-var">==</span></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">0x03</span></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">(Get () -&gt; Get ()) -&gt; Get () -&gt; Get ()
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-57"></span><span>        </span><span class="annot"><span class="annottext">String -&gt; Get ()
+forall (m :: * -&gt; *) a. MonadFail m =&gt; String -&gt; m a
+</span><span class="hs-identifier hs-var">fail</span></span><span> </span><span class="annot"><span class="annottext">String
+</span><span class="hs-string">&quot;compressed secp256k1 public keys not supported&quot;</span></span><span>
+</span><span id="line-58"></span><span>    </span><span class="annot"><span class="annottext">Bool -&gt; Get () -&gt; Get ()
+forall (f :: * -&gt; *). Applicative f =&gt; Bool -&gt; f () -&gt; f ()
+</span><span class="hs-identifier hs-var">when</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Word8
+</span><a href="#local-6989586621679258403"><span class="hs-identifier hs-var">t</span></a></span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Word8 -&gt; Bool
+forall a. Eq a =&gt; a -&gt; a -&gt; Bool
+</span><span class="hs-operator hs-var">/=</span></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">0x04</span></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">(Get () -&gt; Get ()) -&gt; Get () -&gt; Get ()
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span>
+</span><span id="line-59"></span><span>        </span><span class="annot"><span class="annottext">String -&gt; Get ()
+forall (m :: * -&gt; *) a. MonadFail m =&gt; String -&gt; m a
+</span><span class="hs-identifier hs-var">fail</span></span><span> </span><span class="annot"><span class="annottext">String
+</span><span class="hs-string">&quot;unexpected public key byte t&quot;</span></span><span>
+</span><span id="line-60"></span><span>    </span><span id="local-6989586621679258399"><span class="annot"><span class="annottext">Integer
+</span><a href="#local-6989586621679258399"><span class="hs-identifier hs-var">x</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">ByteString -&gt; Integer
+forall ba. ByteArrayAccess ba =&gt; ba -&gt; Integer
+</span><span class="hs-identifier hs-var">os2ip</span></span><span> </span><span class="annot"><span class="annottext">(ByteString -&gt; Integer) -&gt; Get ByteString -&gt; Get Integer
+forall (f :: * -&gt; *) a b. Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b
+</span><span class="hs-operator hs-var">&lt;$&gt;</span></span><span> </span><span class="annot"><span class="annottext">Int -&gt; Get ByteString
+</span><span class="hs-identifier hs-var">getByteString</span></span><span> </span><span class="annot"><span class="annottext">Int
+</span><span class="hs-number">32</span></span><span>
+</span><span id="line-61"></span><span>    </span><span id="local-6989586621679258395"><span class="annot"><span class="annottext">Integer
+</span><a href="#local-6989586621679258395"><span class="hs-identifier hs-var">y</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">ByteString -&gt; Integer
+forall ba. ByteArrayAccess ba =&gt; ba -&gt; Integer
+</span><span class="hs-identifier hs-var">os2ip</span></span><span> </span><span class="annot"><span class="annottext">(ByteString -&gt; Integer) -&gt; Get ByteString -&gt; Get Integer
+forall (f :: * -&gt; *) a b. Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b
+</span><span class="hs-operator hs-var">&lt;$&gt;</span></span><span> </span><span class="annot"><span class="annottext">Int -&gt; Get ByteString
+</span><span class="hs-identifier hs-var">getByteString</span></span><span> </span><span class="annot"><span class="annottext">Int
+</span><span class="hs-number">32</span></span><span>
+</span><span id="line-62"></span><span>    </span><span class="hs-keyword">let</span><span> </span><span id="local-6989586621679258394"><span class="annot"><span class="annottext">p :: Point
+</span><a href="#local-6989586621679258394"><span class="hs-identifier hs-var hs-var">p</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Integer -&gt; Integer -&gt; Point
+</span><span class="hs-identifier hs-var">EC.Point</span></span><span> </span><span class="annot"><span class="annottext">Integer
+</span><a href="#local-6989586621679258399"><span class="hs-identifier hs-var">x</span></a></span><span> </span><span class="annot"><span class="annottext">Integer
+</span><a href="#local-6989586621679258395"><span class="hs-identifier hs-var">y</span></a></span><span>
+</span><span id="line-63"></span><span>    </span><span class="annot"><span class="annottext">Bool -&gt; Get () -&gt; Get ()
+forall (f :: * -&gt; *). Applicative f =&gt; Bool -&gt; f () -&gt; f ()
+</span><span class="hs-identifier hs-var">unless</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Curve -&gt; Point -&gt; Bool
+</span><span class="hs-identifier hs-var">EC.isPointValid</span></span><span> </span><span class="annot"><span class="annottext">Curve
+</span><a href="IC.Crypto.Secp256k1.html#curve"><span class="hs-identifier hs-var">curve</span></a></span><span> </span><span class="annot"><span class="annottext">Point
+</span><a href="#local-6989586621679258394"><span class="hs-identifier hs-var">p</span></a></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">(Get () -&gt; Get ()) -&gt; Get () -&gt; Get ()
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-64"></span><span>        </span><span class="annot"><span class="annottext">String -&gt; Get ()
+forall (m :: * -&gt; *) a. MonadFail m =&gt; String -&gt; m a
+</span><span class="hs-identifier hs-var">fail</span></span><span> </span><span class="annot"><span class="annottext">String
+</span><span class="hs-string">&quot;point not vaild&quot;</span></span><span>
+</span><span id="line-65"></span><span>    </span><span class="annot"><span class="annottext">PublicKey -&gt; Get PublicKey
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><span class="hs-identifier hs-var">return</span></span><span> </span><span class="annot"><span class="annottext">(PublicKey -&gt; Get PublicKey) -&gt; PublicKey -&gt; Get PublicKey
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">Curve -&gt; Point -&gt; PublicKey
+</span><span class="hs-identifier hs-var">EC.PublicKey</span></span><span> </span><span class="annot"><span class="annottext">Curve
+</span><a href="IC.Crypto.Secp256k1.html#curve"><span class="hs-identifier hs-var">curve</span></a></span><span> </span><span class="annot"><span class="annottext">Point
+</span><a href="#local-6989586621679258394"><span class="hs-identifier hs-var">p</span></a></span><span>
+</span><span id="line-66"></span><span>
+</span><span id="line-67"></span><span class="annot"><a href="IC.Crypto.Secp256k1.html#parseSig"><span class="hs-identifier hs-type">parseSig</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><span class="hs-identifier hs-type">BS.ByteString</span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Either</span></span><span> </span><span class="annot"><span class="hs-identifier hs-type">T.Text</span></span><span> </span><span class="annot"><span class="hs-identifier hs-type">EC.Signature</span></span><span>
+</span><span id="line-68"></span><span id="parseSig"><span class="annot"><span class="annottext">parseSig :: ByteString -&gt; Either Text Signature
+</span><a href="IC.Crypto.Secp256k1.html#parseSig"><span class="hs-identifier hs-var hs-var">parseSig</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">(String -&gt; Text)
+-&gt; Either String Signature -&gt; Either Text Signature
+forall (p :: * -&gt; * -&gt; *) a b c.
+Bifunctor p =&gt;
+(a -&gt; b) -&gt; p a c -&gt; p b c
+</span><span class="hs-identifier hs-var">first</span></span><span> </span><span class="annot"><span class="annottext">String -&gt; Text
+</span><span class="hs-identifier hs-var">T.pack</span></span><span> </span><span class="annot"><span class="annottext">(Either String Signature -&gt; Either Text Signature)
+-&gt; (ByteString -&gt; Either String Signature)
+-&gt; ByteString
+-&gt; Either Text Signature
+forall b c a. (b -&gt; c) -&gt; (a -&gt; b) -&gt; a -&gt; c
+</span><span class="hs-operator hs-var">.</span></span><span> </span><span class="annot"><span class="annottext">Get Signature -&gt; ByteString -&gt; Either String Signature
+forall a. Get a -&gt; ByteString -&gt; Either String a
+</span><span class="hs-identifier hs-var">runGetLazy</span></span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-69"></span><span>    </span><span id="local-6989586621679258390"><span class="annot"><span class="annottext">Integer
+</span><a href="#local-6989586621679258390"><span class="hs-identifier hs-var">r</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">ByteString -&gt; Integer
+forall ba. ByteArrayAccess ba =&gt; ba -&gt; Integer
+</span><span class="hs-identifier hs-var">os2ip</span></span><span> </span><span class="annot"><span class="annottext">(ByteString -&gt; Integer) -&gt; Get ByteString -&gt; Get Integer
+forall (f :: * -&gt; *) a b. Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b
+</span><span class="hs-operator hs-var">&lt;$&gt;</span></span><span> </span><span class="annot"><span class="annottext">Int -&gt; Get ByteString
+</span><span class="hs-identifier hs-var">getByteString</span></span><span> </span><span class="annot"><span class="annottext">Int
+</span><span class="hs-number">32</span></span><span>
+</span><span id="line-70"></span><span>    </span><span id="local-6989586621679258389"><span class="annot"><span class="annottext">Integer
+</span><a href="#local-6989586621679258389"><span class="hs-identifier hs-var">s</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">ByteString -&gt; Integer
+forall ba. ByteArrayAccess ba =&gt; ba -&gt; Integer
+</span><span class="hs-identifier hs-var">os2ip</span></span><span> </span><span class="annot"><span class="annottext">(ByteString -&gt; Integer) -&gt; Get ByteString -&gt; Get Integer
+forall (f :: * -&gt; *) a b. Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b
+</span><span class="hs-operator hs-var">&lt;$&gt;</span></span><span> </span><span class="annot"><span class="annottext">Int -&gt; Get ByteString
+</span><span class="hs-identifier hs-var">getByteString</span></span><span> </span><span class="annot"><span class="annottext">Int
+</span><span class="hs-number">32</span></span><span>
+</span><span id="line-71"></span><span>    </span><span class="annot"><span class="annottext">Signature -&gt; Get Signature
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><span class="hs-identifier hs-var">return</span></span><span> </span><span class="annot"><span class="annottext">(Signature -&gt; Get Signature) -&gt; Signature -&gt; Get Signature
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">Integer -&gt; Integer -&gt; Signature
+</span><span class="hs-identifier hs-var">EC.Signature</span></span><span> </span><span class="annot"><span class="annottext">Integer
+</span><a href="#local-6989586621679258390"><span class="hs-identifier hs-var">r</span></a></span><span> </span><span class="annot"><span class="annottext">Integer
+</span><a href="#local-6989586621679258389"><span class="hs-identifier hs-var">s</span></a></span><span>
+</span><span id="line-72"></span><span>
+</span><span id="line-73"></span><span class="annot"><a href="IC.Crypto.Secp256k1.html#verify"><span class="hs-identifier hs-type">verify</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><span class="hs-identifier hs-type">BS.ByteString</span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">BS.ByteString</span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">BS.ByteString</span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Either</span></span><span> </span><span class="annot"><span class="hs-identifier hs-type">T.Text</span></span><span> </span><span class="hs-special">(</span><span class="hs-special">)</span><span>
+</span><span id="line-74"></span><span id="verify"><span class="annot"><span class="annottext">verify :: ByteString -&gt; ByteString -&gt; ByteString -&gt; Either Text ()
+</span><a href="IC.Crypto.Secp256k1.html#verify"><span class="hs-identifier hs-var hs-var">verify</span></a></span></span><span> </span><span id="local-6989586621679258388"><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679258388"><span class="hs-identifier hs-var">pk</span></a></span></span><span> </span><span id="local-6989586621679258387"><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679258387"><span class="hs-identifier hs-var">msg</span></a></span></span><span> </span><span id="local-6989586621679258386"><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679258386"><span class="hs-identifier hs-var">sig</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-75"></span><span>    </span><span id="local-6989586621679258385"><span class="annot"><span class="annottext">PublicKey
+</span><a href="#local-6989586621679258385"><span class="hs-identifier hs-var">pk</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">ByteString -&gt; Either Text PublicKey
+</span><a href="IC.Crypto.Secp256k1.html#parsePublicKey"><span class="hs-identifier hs-var">parsePublicKey</span></a></span><span> </span><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679258388"><span class="hs-identifier hs-var">pk</span></a></span><span>
+</span><span id="line-76"></span><span>    </span><span id="local-6989586621679258384"><span class="annot"><span class="annottext">Signature
+</span><a href="#local-6989586621679258384"><span class="hs-identifier hs-var">sig</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">ByteString -&gt; Either Text Signature
+</span><a href="IC.Crypto.Secp256k1.html#parseSig"><span class="hs-identifier hs-var">parseSig</span></a></span><span> </span><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679258386"><span class="hs-identifier hs-var">sig</span></a></span><span>
+</span><span id="line-77"></span><span>    </span><span class="annot"><span class="annottext">Bool -&gt; Either Text () -&gt; Either Text ()
+forall (f :: * -&gt; *). Applicative f =&gt; Bool -&gt; f () -&gt; f ()
+</span><span class="hs-identifier hs-var">unless</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">SHA256 -&gt; PublicKey -&gt; Signature -&gt; ByteString -&gt; Bool
+forall msg hash.
+(ByteArrayAccess msg, HashAlgorithm hash) =&gt;
+hash -&gt; PublicKey -&gt; Signature -&gt; msg -&gt; Bool
+</span><span class="hs-identifier hs-var">EC.verify</span></span><span> </span><span class="annot"><span class="annottext">SHA256
+</span><span class="hs-identifier hs-var">SHA256</span></span><span> </span><span class="annot"><span class="annottext">PublicKey
+</span><a href="#local-6989586621679258385"><span class="hs-identifier hs-var">pk</span></a></span><span> </span><span class="annot"><span class="annottext">Signature
+</span><a href="#local-6989586621679258384"><span class="hs-identifier hs-var">sig</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">ByteString -&gt; ByteString
+</span><span class="hs-identifier hs-var">BS.toStrict</span></span><span> </span><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679258387"><span class="hs-identifier hs-var">msg</span></a></span><span class="hs-special">)</span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">(Either Text () -&gt; Either Text ())
+-&gt; Either Text () -&gt; Either Text ()
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span>
+</span><span id="line-78"></span><span>        </span><span class="annot"><span class="annottext">Text -&gt; Either Text ()
+forall e (m :: * -&gt; *) a. MonadError e m =&gt; e -&gt; m a
+</span><span class="hs-identifier hs-var">throwError</span></span><span> </span><span class="annot"><span class="annottext">Text
+</span><span class="hs-string">&quot;secp256k1 signature did not validate&quot;</span></span><span>
+</span><span id="line-79"></span></pre></body></html>

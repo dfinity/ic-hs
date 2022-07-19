@@ -1,0 +1,756 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><link rel="stylesheet" type="text/css" href="style.css" /><script type="text/javascript" src="highlight.js"></script></head><body><pre><span class="hs-comment">{- |
+
+Helpers to program the &#8220;Universal module&#8221;. This is essentially a small,
+type-safe DSL to produce the small stack-based programming language interpreted
+by the universal canister.
+
+This DSL is expression-based, not stack based; seems to suite all our needs and is
+simpler to work with.
+
+This language is not stable; therefore there is no separarte documentation of
+specification than this file and `universal-canister/src/`
+-}</span><span>
+</span><span id="line-13"></span><span>
+</span><span id="line-14"></span><span class="hs-pragma">{-# LANGUAGE KindSignatures #-}</span><span>
+</span><span id="line-15"></span><span class="hs-pragma">{-# LANGUAGE DataKinds #-}</span><span>
+</span><span id="line-16"></span><span class="hs-pragma">{-# LANGUAGE GADTs #-}</span><span>
+</span><span id="line-17"></span><span class="hs-pragma">{-# LANGUAGE FlexibleInstances #-}</span><span>
+</span><span id="line-18"></span><span class="hs-pragma">{-# LANGUAGE OverloadedStrings #-}</span><span>
+</span><span id="line-19"></span><span>
+</span><span id="line-20"></span><span class="hs-keyword">module</span><span> </span><span class="hs-identifier">IC.Test.Universal</span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-21"></span><span>
+</span><span id="line-22"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><span class="hs-identifier">Data.ByteString.Lazy</span></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">BS</span></span><span>
+</span><span id="line-23"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Data.ByteString.Builder</span></span><span>
+</span><span id="line-24"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Data.Word</span></span><span>
+</span><span id="line-25"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Data.String</span></span><span>
+</span><span id="line-26"></span><span>
+</span><span id="line-27"></span><span class="hs-comment">-- The types of our little language are i32, i64, pair of i64s and blobs</span><span>
+</span><span id="line-28"></span><span>
+</span><span id="line-29"></span><span class="hs-keyword">data</span><span> </span><span id="T"><span class="annot"><a href="IC.Test.Universal.html#T"><span class="hs-identifier hs-var">T</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span id="I"><span class="annot"><a href="IC.Test.Universal.html#I"><span class="hs-identifier hs-var">I</span></a></span></span><span> </span><span class="hs-glyph">|</span><span> </span><span id="I64"><span class="annot"><a href="IC.Test.Universal.html#I64"><span class="hs-identifier hs-var">I64</span></a></span></span><span> </span><span class="hs-glyph">|</span><span> </span><span id="B"><span class="annot"><a href="IC.Test.Universal.html#B"><span class="hs-identifier hs-var">B</span></a></span></span><span>
+</span><span id="line-30"></span><span>
+</span><span id="line-31"></span><span class="hs-comment">-- We deal with expressions (return a value, thus have a type) and programs (do</span><span>
+</span><span id="line-32"></span><span class="hs-comment">-- something, but do not return a type). They are represented simply</span><span>
+</span><span id="line-33"></span><span class="hs-comment">-- by the encoded stack program; no need for an AST or something that complicated</span><span>
+</span><span id="line-34"></span><span>
+</span><span id="line-35"></span><span class="hs-keyword">newtype</span><span> </span><span id="Exp"><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-var">Exp</span></a></span></span><span> </span><span class="hs-special">(</span><span id="local-6989586621679261464"><span class="annot"><a href="#local-6989586621679261464"><span class="hs-identifier hs-type">result</span></a></span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#T"><span class="hs-identifier hs-type">T</span></a></span><span class="hs-special">)</span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-36"></span><span>    </span><span id="local-6989586621679261627"><span id="Exp"><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-var">Exp</span></a></span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Builder</span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679261627"><span class="hs-identifier hs-type">a</span></a></span></span><span>
+</span><span id="line-37"></span><span>
+</span><span id="line-38"></span><span class="hs-keyword">newtype</span><span> </span><span id="Prog"><span class="annot"><a href="IC.Test.Universal.html#Prog"><span class="hs-identifier hs-var">Prog</span></a></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-39"></span><span>    </span><span id="Prog"><span class="annot"><a href="IC.Test.Universal.html#Prog"><span class="hs-identifier hs-var">Prog</span></a></span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Builder</span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Prog"><span class="hs-identifier hs-type">Prog</span></a></span><span>
+</span><span id="line-40"></span><span>
+</span><span id="line-41"></span><span class="hs-comment">-- We extracting the actual stack program bytecode from a program.</span><span>
+</span><span id="line-42"></span><span>
+</span><span id="line-43"></span><span class="annot"><a href="IC.Test.Universal.html#run"><span class="hs-identifier hs-type">run</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Prog"><span class="hs-identifier hs-type">Prog</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">BS.ByteString</span></span><span>
+</span><span id="line-44"></span><span id="run"><span class="annot"><span class="annottext">run :: Prog -&gt; ByteString
+</span><a href="IC.Test.Universal.html#run"><span class="hs-identifier hs-var hs-var">run</span></a></span></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Test.Universal.html#Prog"><span class="hs-identifier hs-type">Prog</span></a></span><span> </span><span id="local-6989586621679261460"><span class="annot"><span class="annottext">Builder
+</span><a href="#local-6989586621679261460"><span class="hs-identifier hs-var">x</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Builder -&gt; ByteString
+</span><span class="hs-identifier hs-var">toLazyByteString</span></span><span> </span><span class="annot"><span class="annottext">Builder
+</span><a href="#local-6989586621679261460"><span class="hs-identifier hs-var">x</span></a></span><span>
+</span><span id="line-45"></span><span>
+</span><span id="line-46"></span><span class="hs-comment">-- Programs can be sequenced using (&gt;&gt;&gt;); this naturally forms a Monoid</span><span>
+</span><span id="line-47"></span><span>
+</span><span id="line-48"></span><span class="annot"><a href="IC.Test.Universal.html#%3E%3E%3E"><span class="hs-operator hs-type">(&gt;&gt;&gt;)</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Prog"><span class="hs-identifier hs-type">Prog</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Prog"><span class="hs-identifier hs-type">Prog</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Prog"><span class="hs-identifier hs-type">Prog</span></a></span><span>
+</span><span id="line-49"></span><span class="annot"><a href="IC.Test.Universal.html#Prog"><span class="hs-identifier hs-type">Prog</span></a></span><span> </span><span id="local-6989586621679261457"><span class="annot"><span class="annottext">Builder
+</span><a href="#local-6989586621679261457"><span class="hs-identifier hs-var">a</span></a></span></span><span> </span><span id="%3E%3E%3E"><span class="annot"><span class="annottext">&gt;&gt;&gt; :: Prog -&gt; Prog -&gt; Prog
+</span><a href="IC.Test.Universal.html#%3E%3E%3E"><span class="hs-operator hs-var hs-var">&gt;&gt;&gt;</span></a></span></span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Prog"><span class="hs-identifier hs-type">Prog</span></a></span><span> </span><span id="local-6989586621679261456"><span class="annot"><span class="annottext">Builder
+</span><a href="#local-6989586621679261456"><span class="hs-identifier hs-var">b</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Builder -&gt; Prog
+</span><a href="IC.Test.Universal.html#Prog"><span class="hs-identifier hs-var">Prog</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Builder
+</span><a href="#local-6989586621679261457"><span class="hs-identifier hs-var">a</span></a></span><span> </span><span class="annot"><span class="annottext">Builder -&gt; Builder -&gt; Builder
+forall a. Semigroup a =&gt; a -&gt; a -&gt; a
+</span><span class="hs-operator hs-var">&lt;&gt;</span></span><span> </span><span class="annot"><span class="annottext">Builder
+</span><a href="#local-6989586621679261456"><span class="hs-identifier hs-var">b</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-50"></span><span>
+</span><span id="line-51"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679261451"><span id="local-6989586621679261453"><span class="annot"><span class="hs-identifier hs-type">Semigroup</span></span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Prog"><span class="hs-identifier hs-type">Prog</span></a></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-52"></span><span>    </span><span id="local-6989586621679261449"><span class="annot"><span class="annottext">&lt;&gt; :: Prog -&gt; Prog -&gt; Prog
+</span><span class="hs-operator hs-var hs-var hs-var hs-var">(&lt;&gt;)</span></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Prog -&gt; Prog -&gt; Prog
+</span><a href="IC.Test.Universal.html#%3E%3E%3E"><span class="hs-operator hs-var">(&gt;&gt;&gt;)</span></a></span><span>
+</span><span id="line-53"></span><span>
+</span><span id="line-54"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679261442"><span id="local-6989586621679261444"><span class="annot"><span class="hs-identifier hs-type">Monoid</span></span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Prog"><span class="hs-identifier hs-type">Prog</span></a></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-55"></span><span>    </span><span id="local-6989586621679261438"><span class="annot"><span class="annottext">mempty :: Prog
+</span><span class="hs-identifier hs-var hs-var hs-var hs-var">mempty</span></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Builder -&gt; Prog
+</span><a href="IC.Test.Universal.html#Prog"><span class="hs-identifier hs-var">Prog</span></a></span><span> </span><span class="annot"><span class="annottext">Builder
+forall a. Monoid a =&gt; a
+</span><span class="hs-identifier hs-var">mempty</span></span><span>
+</span><span id="line-56"></span><span>
+</span><span id="line-57"></span><span class="hs-comment">-- A utility class to easily defined functions and programs of any arity</span><span>
+</span><span id="line-58"></span><span class="hs-comment">-- simply by specifying their type.</span><span>
+</span><span id="line-59"></span><span>
+</span><span id="line-60"></span><span class="hs-keyword">class</span><span> </span><span id="Op"><span class="annot"><a href="IC.Test.Universal.html#Op"><span class="hs-identifier hs-var">Op</span></a></span></span><span> </span><span id="local-6989586621679261632"><span class="annot"><a href="#local-6989586621679261632"><span class="hs-identifier hs-type">a</span></a></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-61"></span><span>    </span><span id="mkOp"><span class="annot"><a href="IC.Test.Universal.html#mkOp"><span class="hs-identifier hs-type">mkOp</span></a></span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Word8</span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Builder</span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="#local-6989586621679261632"><span class="hs-identifier hs-type">a</span></a></span><span>
+</span><span id="line-62"></span><span>
+</span><span id="line-63"></span><span class="hs-keyword">instance</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Op"><span class="hs-identifier hs-type">Op</span></a></span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Prog"><span class="hs-identifier hs-type">Prog</span></a></span><span>
+</span><span id="line-64"></span><span>    </span><span class="hs-keyword">where</span><span> </span><span id="local-6989586621679261433"><span class="annot"><span class="annottext">mkOp :: Word8 -&gt; Builder -&gt; Prog
+</span><a href="#local-6989586621679261433"><span class="hs-identifier hs-var hs-var hs-var hs-var">mkOp</span></a></span></span><span> </span><span id="local-6989586621679261432"><span class="annot"><span class="annottext">Word8
+</span><a href="#local-6989586621679261432"><span class="hs-identifier hs-var">x</span></a></span></span><span> </span><span id="local-6989586621679261431"><span class="annot"><span class="annottext">Builder
+</span><a href="#local-6989586621679261431"><span class="hs-identifier hs-var">args</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Builder -&gt; Prog
+</span><a href="IC.Test.Universal.html#Prog"><span class="hs-identifier hs-var">Prog</span></a></span><span> </span><span class="annot"><span class="annottext">(Builder -&gt; Prog) -&gt; Builder -&gt; Prog
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">Builder
+</span><a href="#local-6989586621679261431"><span class="hs-identifier hs-var">args</span></a></span><span> </span><span class="annot"><span class="annottext">Builder -&gt; Builder -&gt; Builder
+forall a. Semigroup a =&gt; a -&gt; a -&gt; a
+</span><span class="hs-operator hs-var">&lt;&gt;</span></span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Builder
+</span><span class="hs-identifier hs-var">word8</span></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><a href="#local-6989586621679261432"><span class="hs-identifier hs-var">x</span></a></span><span>
+</span><span id="line-65"></span><span id="local-6989586621679261637"><span class="hs-keyword">instance</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Op"><span class="hs-identifier hs-type">Op</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679261637"><span class="hs-identifier hs-type">t</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-66"></span><span>    </span><span class="hs-keyword">where</span><span> </span><span id="local-6989586621679261427"><span class="annot"><span class="annottext">mkOp :: Word8 -&gt; Builder -&gt; Exp t
+</span><a href="#local-6989586621679261427"><span class="hs-identifier hs-var hs-var hs-var hs-var">mkOp</span></a></span></span><span> </span><span id="local-6989586621679261426"><span class="annot"><span class="annottext">Word8
+</span><a href="#local-6989586621679261426"><span class="hs-identifier hs-var">x</span></a></span></span><span> </span><span id="local-6989586621679261425"><span class="annot"><span class="annottext">Builder
+</span><a href="#local-6989586621679261425"><span class="hs-identifier hs-var">args</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Builder -&gt; Exp t
+forall (a :: T). Builder -&gt; Exp a
+</span><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-var">Exp</span></a></span><span> </span><span class="annot"><span class="annottext">(Builder -&gt; Exp t) -&gt; Builder -&gt; Exp t
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">Builder
+</span><a href="#local-6989586621679261425"><span class="hs-identifier hs-var">args</span></a></span><span> </span><span class="annot"><span class="annottext">Builder -&gt; Builder -&gt; Builder
+forall a. Semigroup a =&gt; a -&gt; a -&gt; a
+</span><span class="hs-operator hs-var">&lt;&gt;</span></span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Builder
+</span><span class="hs-identifier hs-var">word8</span></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><a href="#local-6989586621679261426"><span class="hs-identifier hs-var">x</span></a></span></span><span>
+</span><span id="line-67"></span><span id="local-6989586621679261638"><span id="local-6989586621679261639"><span class="hs-keyword">instance</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Op"><span class="hs-identifier hs-type">Op</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679261639"><span class="hs-identifier hs-type">a</span></a></span><span> </span><span class="hs-glyph">=&gt;</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Op"><span class="hs-identifier hs-type">Op</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679261638"><span class="hs-identifier hs-type">t</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="#local-6989586621679261639"><span class="hs-identifier hs-type">a</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-68"></span><span>    </span><span class="hs-keyword">where</span><span> </span><span id="local-6989586621679261420"><span class="annot"><span class="annottext">mkOp :: Word8 -&gt; Builder -&gt; Exp t -&gt; a
+</span><a href="#local-6989586621679261420"><span class="hs-identifier hs-var hs-var hs-var hs-var">mkOp</span></a></span></span><span> </span><span id="local-6989586621679261419"><span class="annot"><span class="annottext">Word8
+</span><a href="#local-6989586621679261419"><span class="hs-identifier hs-var">x</span></a></span></span><span> </span><span id="local-6989586621679261418"><span class="annot"><span class="annottext">Builder
+</span><a href="#local-6989586621679261418"><span class="hs-identifier hs-var">args</span></a></span></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span id="local-6989586621679261417"><span class="annot"><span class="annottext">Builder
+</span><a href="#local-6989586621679261417"><span class="hs-identifier hs-var">a</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Builder -&gt; a
+forall a. Op a =&gt; Word8 -&gt; Builder -&gt; a
+</span><a href="IC.Test.Universal.html#mkOp"><span class="hs-identifier hs-var">mkOp</span></a></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><a href="#local-6989586621679261419"><span class="hs-identifier hs-var">x</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Builder
+</span><a href="#local-6989586621679261418"><span class="hs-identifier hs-var">args</span></a></span><span> </span><span class="annot"><span class="annottext">Builder -&gt; Builder -&gt; Builder
+forall a. Semigroup a =&gt; a -&gt; a -&gt; a
+</span><span class="hs-operator hs-var">&lt;&gt;</span></span><span> </span><span class="annot"><span class="annottext">Builder
+</span><a href="#local-6989586621679261417"><span class="hs-identifier hs-var">a</span></a></span><span class="hs-special">)</span></span></span><span>
+</span><span id="line-69"></span><span>
+</span><span id="line-70"></span><span id="local-6989586621679261624"><span class="annot"><a href="IC.Test.Universal.html#op"><span class="hs-identifier hs-type">op</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Op"><span class="hs-identifier hs-type">Op</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679261624"><span class="hs-identifier hs-type">a</span></a></span><span> </span><span class="hs-glyph">=&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Word8</span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="#local-6989586621679261624"><span class="hs-identifier hs-type">a</span></a></span></span><span>
+</span><span id="line-71"></span><span id="op"><span class="annot"><span class="annottext">op :: forall a. Op a =&gt; Word8 -&gt; a
+</span><a href="IC.Test.Universal.html#op"><span class="hs-identifier hs-var hs-var">op</span></a></span></span><span> </span><span id="local-6989586621679261412"><span class="annot"><span class="annottext">Word8
+</span><a href="#local-6989586621679261412"><span class="hs-identifier hs-var">x</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Builder -&gt; a
+forall a. Op a =&gt; Word8 -&gt; Builder -&gt; a
+</span><a href="IC.Test.Universal.html#mkOp"><span class="hs-identifier hs-var">mkOp</span></a></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><a href="#local-6989586621679261412"><span class="hs-identifier hs-var">x</span></a></span><span> </span><span class="annot"><span class="annottext">Builder
+forall a. Monoid a =&gt; a
+</span><span class="hs-identifier hs-var">mempty</span></span><span>
+</span><span id="line-72"></span><span>
+</span><span id="line-73"></span><span class="hs-comment">-- Now, all the op codes defined by the universal canister.</span><span>
+</span><span id="line-74"></span><span class="hs-comment">-- Most can be simply be defined by specifiying their type and using the 'op'</span><span>
+</span><span id="line-75"></span><span class="hs-comment">-- combinator</span><span>
+</span><span id="line-76"></span><span>
+</span><span id="line-77"></span><span class="annot"><a href="IC.Test.Universal.html#noop"><span class="hs-identifier hs-type">noop</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Prog"><span class="hs-identifier hs-type">Prog</span></a></span><span>
+</span><span id="line-78"></span><span id="noop"><span class="annot"><span class="annottext">noop :: Prog
+</span><a href="IC.Test.Universal.html#noop"><span class="hs-identifier hs-var hs-var">noop</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Prog
+forall a. Op a =&gt; Word8 -&gt; a
+</span><a href="IC.Test.Universal.html#op"><span class="hs-identifier hs-var">op</span></a></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">0</span></span><span>
+</span><span id="line-79"></span><span>
+</span><span id="line-80"></span><span id="local-6989586621679261622"><span class="annot"><a href="IC.Test.Universal.html#ignore"><span class="hs-identifier hs-type">ignore</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679261622"><span class="hs-identifier hs-type">t</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Prog"><span class="hs-identifier hs-type">Prog</span></a></span></span><span>
+</span><span id="line-81"></span><span id="ignore"><span class="annot"><span class="annottext">ignore :: forall (t :: T). Exp t -&gt; Prog
+</span><a href="IC.Test.Universal.html#ignore"><span class="hs-identifier hs-var hs-var">ignore</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Exp t -&gt; Prog
+forall a. Op a =&gt; Word8 -&gt; a
+</span><a href="IC.Test.Universal.html#op"><span class="hs-identifier hs-var">op</span></a></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">1</span></span><span>
+</span><span id="line-82"></span><span>
+</span><span id="line-83"></span><span class="annot"><a href="IC.Test.Universal.html#int"><span class="hs-identifier hs-type">int</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Word32</span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#I"><span class="hs-identifier hs-type">I</span></a></span><span>
+</span><span id="line-84"></span><span id="int"><span class="annot"><span class="annottext">int :: Word32 -&gt; Exp 'I
+</span><a href="IC.Test.Universal.html#int"><span class="hs-identifier hs-var hs-var">int</span></a></span></span><span> </span><span id="local-6989586621679261406"><span class="annot"><span class="annottext">Word32
+</span><a href="#local-6989586621679261406"><span class="hs-identifier hs-var">x</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Builder -&gt; Exp 'I
+forall (a :: T). Builder -&gt; Exp a
+</span><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-var">Exp</span></a></span><span> </span><span class="annot"><span class="annottext">(Builder -&gt; Exp 'I) -&gt; Builder -&gt; Exp 'I
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Builder
+</span><span class="hs-identifier hs-var">word8</span></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">2</span></span><span> </span><span class="annot"><span class="annottext">Builder -&gt; Builder -&gt; Builder
+forall a. Semigroup a =&gt; a -&gt; a -&gt; a
+</span><span class="hs-operator hs-var">&lt;&gt;</span></span><span> </span><span class="annot"><span class="annottext">Word32 -&gt; Builder
+</span><span class="hs-identifier hs-var">word32LE</span></span><span> </span><span class="annot"><span class="annottext">Word32
+</span><a href="#local-6989586621679261406"><span class="hs-identifier hs-var">x</span></a></span><span>
+</span><span id="line-85"></span><span>
+</span><span id="line-86"></span><span class="annot"><a href="IC.Test.Universal.html#int64"><span class="hs-identifier hs-type">int64</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Word64</span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#I64"><span class="hs-identifier hs-type">I64</span></a></span><span>
+</span><span id="line-87"></span><span id="int64"><span class="annot"><span class="annottext">int64 :: Word64 -&gt; Exp 'I64
+</span><a href="IC.Test.Universal.html#int64"><span class="hs-identifier hs-var hs-var">int64</span></a></span></span><span> </span><span id="local-6989586621679261403"><span class="annot"><span class="annottext">Word64
+</span><a href="#local-6989586621679261403"><span class="hs-identifier hs-var">x</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Builder -&gt; Exp 'I64
+forall (a :: T). Builder -&gt; Exp a
+</span><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-var">Exp</span></a></span><span> </span><span class="annot"><span class="annottext">(Builder -&gt; Exp 'I64) -&gt; Builder -&gt; Exp 'I64
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Builder
+</span><span class="hs-identifier hs-var">word8</span></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">31</span></span><span> </span><span class="annot"><span class="annottext">Builder -&gt; Builder -&gt; Builder
+forall a. Semigroup a =&gt; a -&gt; a -&gt; a
+</span><span class="hs-operator hs-var">&lt;&gt;</span></span><span> </span><span class="annot"><span class="annottext">Word64 -&gt; Builder
+</span><span class="hs-identifier hs-var">word64LE</span></span><span> </span><span class="annot"><span class="annottext">Word64
+</span><a href="#local-6989586621679261403"><span class="hs-identifier hs-var">x</span></a></span><span>
+</span><span id="line-88"></span><span>
+</span><span id="line-89"></span><span class="annot"><a href="IC.Test.Universal.html#bytes"><span class="hs-identifier hs-type">bytes</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><span class="hs-identifier hs-type">BS.ByteString</span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#B"><span class="hs-identifier hs-type">B</span></a></span><span>
+</span><span id="line-90"></span><span id="bytes"><span class="annot"><span class="annottext">bytes :: ByteString -&gt; Exp 'B
+</span><a href="IC.Test.Universal.html#bytes"><span class="hs-identifier hs-var hs-var">bytes</span></a></span></span><span> </span><span id="local-6989586621679261400"><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679261400"><span class="hs-identifier hs-var">bytes</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Builder -&gt; Exp 'B
+forall (a :: T). Builder -&gt; Exp a
+</span><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-var">Exp</span></a></span><span> </span><span class="annot"><span class="annottext">(Builder -&gt; Exp 'B) -&gt; Builder -&gt; Exp 'B
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span>
+</span><span id="line-91"></span><span>    </span><span class="annot"><span class="annottext">Word8 -&gt; Builder
+</span><span class="hs-identifier hs-var">word8</span></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">3</span></span><span> </span><span class="annot"><span class="annottext">Builder -&gt; Builder -&gt; Builder
+forall a. Semigroup a =&gt; a -&gt; a -&gt; a
+</span><span class="hs-operator hs-var">&lt;&gt;</span></span><span>
+</span><span id="line-92"></span><span>    </span><span class="annot"><span class="annottext">Word32 -&gt; Builder
+</span><span class="hs-identifier hs-var">word32LE</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Int64 -&gt; Word32
+forall a b. (Integral a, Num b) =&gt; a -&gt; b
+</span><span class="hs-identifier hs-var">fromIntegral</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">ByteString -&gt; Int64
+</span><span class="hs-identifier hs-var">BS.length</span></span><span> </span><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679261400"><span class="hs-identifier hs-var">bytes</span></a></span><span class="hs-special">)</span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">Builder -&gt; Builder -&gt; Builder
+forall a. Semigroup a =&gt; a -&gt; a -&gt; a
+</span><span class="hs-operator hs-var">&lt;&gt;</span></span><span>
+</span><span id="line-93"></span><span>    </span><span class="annot"><span class="annottext">ByteString -&gt; Builder
+</span><span class="hs-identifier hs-var">lazyByteString</span></span><span> </span><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679261400"><span class="hs-identifier hs-var">bytes</span></a></span><span>
+</span><span id="line-94"></span><span>
+</span><span id="line-95"></span><span class="annot"><a href="IC.Test.Universal.html#replyDataAppend"><span class="hs-identifier hs-type">replyDataAppend</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#B"><span class="hs-identifier hs-type">B</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Prog"><span class="hs-identifier hs-type">Prog</span></a></span><span>
+</span><span id="line-96"></span><span id="replyDataAppend"><span class="annot"><span class="annottext">replyDataAppend :: Exp 'B -&gt; Prog
+</span><a href="IC.Test.Universal.html#replyDataAppend"><span class="hs-identifier hs-var hs-var">replyDataAppend</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Exp 'B -&gt; Prog
+forall a. Op a =&gt; Word8 -&gt; a
+</span><a href="IC.Test.Universal.html#op"><span class="hs-identifier hs-var">op</span></a></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">4</span></span><span>
+</span><span id="line-97"></span><span>
+</span><span id="line-98"></span><span class="annot"><a href="IC.Test.Universal.html#reply"><span class="hs-identifier hs-type">reply</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Prog"><span class="hs-identifier hs-type">Prog</span></a></span><span>
+</span><span id="line-99"></span><span id="reply"><span class="annot"><span class="annottext">reply :: Prog
+</span><a href="IC.Test.Universal.html#reply"><span class="hs-identifier hs-var hs-var">reply</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Prog
+forall a. Op a =&gt; Word8 -&gt; a
+</span><a href="IC.Test.Universal.html#op"><span class="hs-identifier hs-var">op</span></a></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">5</span></span><span>
+</span><span id="line-100"></span><span>
+</span><span id="line-101"></span><span class="annot"><a href="IC.Test.Universal.html#self"><span class="hs-identifier hs-type">self</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#B"><span class="hs-identifier hs-type">B</span></a></span><span>
+</span><span id="line-102"></span><span id="self"><span class="annot"><span class="annottext">self :: Exp 'B
+</span><a href="IC.Test.Universal.html#self"><span class="hs-identifier hs-var hs-var">self</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Exp 'B
+forall a. Op a =&gt; Word8 -&gt; a
+</span><a href="IC.Test.Universal.html#op"><span class="hs-identifier hs-var">op</span></a></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">6</span></span><span>
+</span><span id="line-103"></span><span>
+</span><span id="line-104"></span><span class="annot"><a href="IC.Test.Universal.html#reject"><span class="hs-identifier hs-type">reject</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#B"><span class="hs-identifier hs-type">B</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Prog"><span class="hs-identifier hs-type">Prog</span></a></span><span>
+</span><span id="line-105"></span><span id="reject"><span class="annot"><span class="annottext">reject :: Exp 'B -&gt; Prog
+</span><a href="IC.Test.Universal.html#reject"><span class="hs-identifier hs-var hs-var">reject</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Exp 'B -&gt; Prog
+forall a. Op a =&gt; Word8 -&gt; a
+</span><a href="IC.Test.Universal.html#op"><span class="hs-identifier hs-var">op</span></a></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">7</span></span><span>
+</span><span id="line-106"></span><span>
+</span><span id="line-107"></span><span class="annot"><a href="IC.Test.Universal.html#caller"><span class="hs-identifier hs-type">caller</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#B"><span class="hs-identifier hs-type">B</span></a></span><span>
+</span><span id="line-108"></span><span id="caller"><span class="annot"><span class="annottext">caller :: Exp 'B
+</span><a href="IC.Test.Universal.html#caller"><span class="hs-identifier hs-var hs-var">caller</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Exp 'B
+forall a. Op a =&gt; Word8 -&gt; a
+</span><a href="IC.Test.Universal.html#op"><span class="hs-identifier hs-var">op</span></a></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">8</span></span><span>
+</span><span id="line-109"></span><span>
+</span><span id="line-110"></span><span class="annot"><a href="IC.Test.Universal.html#reject_msg"><span class="hs-identifier hs-type">reject_msg</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#B"><span class="hs-identifier hs-type">B</span></a></span><span>
+</span><span id="line-111"></span><span id="reject_msg"><span class="annot"><span class="annottext">reject_msg :: Exp 'B
+</span><a href="IC.Test.Universal.html#reject_msg"><span class="hs-identifier hs-var hs-var">reject_msg</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Exp 'B
+forall a. Op a =&gt; Word8 -&gt; a
+</span><a href="IC.Test.Universal.html#op"><span class="hs-identifier hs-var">op</span></a></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">10</span></span><span>
+</span><span id="line-112"></span><span>
+</span><span id="line-113"></span><span class="annot"><a href="IC.Test.Universal.html#reject_code"><span class="hs-identifier hs-type">reject_code</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#I"><span class="hs-identifier hs-type">I</span></a></span><span>
+</span><span id="line-114"></span><span id="reject_code"><span class="annot"><span class="annottext">reject_code :: Exp 'I
+</span><a href="IC.Test.Universal.html#reject_code"><span class="hs-identifier hs-var hs-var">reject_code</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Exp 'I
+forall a. Op a =&gt; Word8 -&gt; a
+</span><a href="IC.Test.Universal.html#op"><span class="hs-identifier hs-var">op</span></a></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">11</span></span><span>
+</span><span id="line-115"></span><span>
+</span><span id="line-116"></span><span class="annot"><a href="IC.Test.Universal.html#i2b"><span class="hs-identifier hs-type">i2b</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#I"><span class="hs-identifier hs-type">I</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#B"><span class="hs-identifier hs-type">B</span></a></span><span>
+</span><span id="line-117"></span><span id="i2b"><span class="annot"><span class="annottext">i2b :: Exp 'I -&gt; Exp 'B
+</span><a href="IC.Test.Universal.html#i2b"><span class="hs-identifier hs-var hs-var">i2b</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Exp 'I -&gt; Exp 'B
+forall a. Op a =&gt; Word8 -&gt; a
+</span><a href="IC.Test.Universal.html#op"><span class="hs-identifier hs-var">op</span></a></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">12</span></span><span>
+</span><span id="line-118"></span><span>
+</span><span id="line-119"></span><span class="annot"><a href="IC.Test.Universal.html#i64tob"><span class="hs-identifier hs-type">i64tob</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#I64"><span class="hs-identifier hs-type">I64</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#B"><span class="hs-identifier hs-type">B</span></a></span><span>
+</span><span id="line-120"></span><span id="i64tob"><span class="annot"><span class="annottext">i64tob :: Exp 'I64 -&gt; Exp 'B
+</span><a href="IC.Test.Universal.html#i64tob"><span class="hs-identifier hs-var hs-var">i64tob</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Exp 'I64 -&gt; Exp 'B
+forall a. Op a =&gt; Word8 -&gt; a
+</span><a href="IC.Test.Universal.html#op"><span class="hs-identifier hs-var">op</span></a></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">25</span></span><span>
+</span><span id="line-121"></span><span>
+</span><span id="line-122"></span><span class="annot"><a href="IC.Test.Universal.html#argData"><span class="hs-identifier hs-type">argData</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#B"><span class="hs-identifier hs-type">B</span></a></span><span>
+</span><span id="line-123"></span><span id="argData"><span class="annot"><span class="annottext">argData :: Exp 'B
+</span><a href="IC.Test.Universal.html#argData"><span class="hs-identifier hs-var hs-var">argData</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Exp 'B
+forall a. Op a =&gt; Word8 -&gt; a
+</span><a href="IC.Test.Universal.html#op"><span class="hs-identifier hs-var">op</span></a></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">13</span></span><span>
+</span><span id="line-124"></span><span>
+</span><span id="line-125"></span><span class="annot"><a href="IC.Test.Universal.html#cat"><span class="hs-identifier hs-type">cat</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#B"><span class="hs-identifier hs-type">B</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#B"><span class="hs-identifier hs-type">B</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#B"><span class="hs-identifier hs-type">B</span></a></span><span>
+</span><span id="line-126"></span><span id="cat"><span class="annot"><span class="annottext">cat :: Exp 'B -&gt; Exp 'B -&gt; Exp 'B
+</span><a href="IC.Test.Universal.html#cat"><span class="hs-identifier hs-var hs-var">cat</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Exp 'B -&gt; Exp 'B -&gt; Exp 'B
+forall a. Op a =&gt; Word8 -&gt; a
+</span><a href="IC.Test.Universal.html#op"><span class="hs-identifier hs-var">op</span></a></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">14</span></span><span>
+</span><span id="line-127"></span><span>
+</span><span id="line-128"></span><span class="annot"><a href="IC.Test.Universal.html#stableSize"><span class="hs-identifier hs-type">stableSize</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#I"><span class="hs-identifier hs-type">I</span></a></span><span>
+</span><span id="line-129"></span><span id="stableSize"><span class="annot"><span class="annottext">stableSize :: Exp 'I
+</span><a href="IC.Test.Universal.html#stableSize"><span class="hs-identifier hs-var hs-var">stableSize</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Exp 'I
+forall a. Op a =&gt; Word8 -&gt; a
+</span><a href="IC.Test.Universal.html#op"><span class="hs-identifier hs-var">op</span></a></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">15</span></span><span>
+</span><span id="line-130"></span><span>
+</span><span id="line-131"></span><span class="annot"><a href="IC.Test.Universal.html#stableGrow"><span class="hs-identifier hs-type">stableGrow</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#I"><span class="hs-identifier hs-type">I</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#I"><span class="hs-identifier hs-type">I</span></a></span><span>
+</span><span id="line-132"></span><span id="stableGrow"><span class="annot"><span class="annottext">stableGrow :: Exp 'I -&gt; Exp 'I
+</span><a href="IC.Test.Universal.html#stableGrow"><span class="hs-identifier hs-var hs-var">stableGrow</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Exp 'I -&gt; Exp 'I
+forall a. Op a =&gt; Word8 -&gt; a
+</span><a href="IC.Test.Universal.html#op"><span class="hs-identifier hs-var">op</span></a></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">16</span></span><span>
+</span><span id="line-133"></span><span>
+</span><span id="line-134"></span><span class="annot"><a href="IC.Test.Universal.html#stableRead"><span class="hs-identifier hs-type">stableRead</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#I"><span class="hs-identifier hs-type">I</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#I"><span class="hs-identifier hs-type">I</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#B"><span class="hs-identifier hs-type">B</span></a></span><span>
+</span><span id="line-135"></span><span id="stableRead"><span class="annot"><span class="annottext">stableRead :: Exp 'I -&gt; Exp 'I -&gt; Exp 'B
+</span><a href="IC.Test.Universal.html#stableRead"><span class="hs-identifier hs-var hs-var">stableRead</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Exp 'I -&gt; Exp 'I -&gt; Exp 'B
+forall a. Op a =&gt; Word8 -&gt; a
+</span><a href="IC.Test.Universal.html#op"><span class="hs-identifier hs-var">op</span></a></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">17</span></span><span>
+</span><span id="line-136"></span><span>
+</span><span id="line-137"></span><span class="annot"><a href="IC.Test.Universal.html#stableWrite"><span class="hs-identifier hs-type">stableWrite</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#I"><span class="hs-identifier hs-type">I</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#B"><span class="hs-identifier hs-type">B</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Prog"><span class="hs-identifier hs-type">Prog</span></a></span><span>
+</span><span id="line-138"></span><span id="stableWrite"><span class="annot"><span class="annottext">stableWrite :: Exp 'I -&gt; Exp 'B -&gt; Prog
+</span><a href="IC.Test.Universal.html#stableWrite"><span class="hs-identifier hs-var hs-var">stableWrite</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Exp 'I -&gt; Exp 'B -&gt; Prog
+forall a. Op a =&gt; Word8 -&gt; a
+</span><a href="IC.Test.Universal.html#op"><span class="hs-identifier hs-var">op</span></a></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">18</span></span><span>
+</span><span id="line-139"></span><span>
+</span><span id="line-140"></span><span class="annot"><a href="IC.Test.Universal.html#getTime"><span class="hs-identifier hs-type">getTime</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#I64"><span class="hs-identifier hs-type">I64</span></a></span><span>
+</span><span id="line-141"></span><span id="getTime"><span class="annot"><span class="annottext">getTime :: Exp 'I64
+</span><a href="IC.Test.Universal.html#getTime"><span class="hs-identifier hs-var hs-var">getTime</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Exp 'I64
+forall a. Op a =&gt; Word8 -&gt; a
+</span><a href="IC.Test.Universal.html#op"><span class="hs-identifier hs-var">op</span></a></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">26</span></span><span>
+</span><span id="line-142"></span><span>
+</span><span id="line-143"></span><span class="annot"><a href="IC.Test.Universal.html#getAvailableCycles"><span class="hs-identifier hs-type">getAvailableCycles</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#I64"><span class="hs-identifier hs-type">I64</span></a></span><span>
+</span><span id="line-144"></span><span id="getAvailableCycles"><span class="annot"><span class="annottext">getAvailableCycles :: Exp 'I64
+</span><a href="IC.Test.Universal.html#getAvailableCycles"><span class="hs-identifier hs-var hs-var">getAvailableCycles</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Exp 'I64
+forall a. Op a =&gt; Word8 -&gt; a
+</span><a href="IC.Test.Universal.html#op"><span class="hs-identifier hs-var">op</span></a></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">27</span></span><span>
+</span><span id="line-145"></span><span>
+</span><span id="line-146"></span><span class="annot"><a href="IC.Test.Universal.html#getBalance"><span class="hs-identifier hs-type">getBalance</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#I64"><span class="hs-identifier hs-type">I64</span></a></span><span>
+</span><span id="line-147"></span><span id="getBalance"><span class="annot"><span class="annottext">getBalance :: Exp 'I64
+</span><a href="IC.Test.Universal.html#getBalance"><span class="hs-identifier hs-var hs-var">getBalance</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Exp 'I64
+forall a. Op a =&gt; Word8 -&gt; a
+</span><a href="IC.Test.Universal.html#op"><span class="hs-identifier hs-var">op</span></a></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">28</span></span><span>
+</span><span id="line-148"></span><span>
+</span><span id="line-149"></span><span class="annot"><a href="IC.Test.Universal.html#getRefund"><span class="hs-identifier hs-type">getRefund</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#I64"><span class="hs-identifier hs-type">I64</span></a></span><span>
+</span><span id="line-150"></span><span id="getRefund"><span class="annot"><span class="annottext">getRefund :: Exp 'I64
+</span><a href="IC.Test.Universal.html#getRefund"><span class="hs-identifier hs-var hs-var">getRefund</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Exp 'I64
+forall a. Op a =&gt; Word8 -&gt; a
+</span><a href="IC.Test.Universal.html#op"><span class="hs-identifier hs-var">op</span></a></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">29</span></span><span>
+</span><span id="line-151"></span><span>
+</span><span id="line-152"></span><span class="annot"><a href="IC.Test.Universal.html#acceptCycles"><span class="hs-identifier hs-type">acceptCycles</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#I64"><span class="hs-identifier hs-type">I64</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#I64"><span class="hs-identifier hs-type">I64</span></a></span><span>
+</span><span id="line-153"></span><span id="acceptCycles"><span class="annot"><span class="annottext">acceptCycles :: Exp 'I64 -&gt; Exp 'I64
+</span><a href="IC.Test.Universal.html#acceptCycles"><span class="hs-identifier hs-var hs-var">acceptCycles</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Exp 'I64 -&gt; Exp 'I64
+forall a. Op a =&gt; Word8 -&gt; a
+</span><a href="IC.Test.Universal.html#op"><span class="hs-identifier hs-var">op</span></a></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">30</span></span><span>
+</span><span id="line-154"></span><span>
+</span><span id="line-155"></span><span class="annot"><a href="IC.Test.Universal.html#debugPrint"><span class="hs-identifier hs-type">debugPrint</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#B"><span class="hs-identifier hs-type">B</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Prog"><span class="hs-identifier hs-type">Prog</span></a></span><span>
+</span><span id="line-156"></span><span id="debugPrint"><span class="annot"><span class="annottext">debugPrint :: Exp 'B -&gt; Prog
+</span><a href="IC.Test.Universal.html#debugPrint"><span class="hs-identifier hs-var hs-var">debugPrint</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Exp 'B -&gt; Prog
+forall a. Op a =&gt; Word8 -&gt; a
+</span><a href="IC.Test.Universal.html#op"><span class="hs-identifier hs-var">op</span></a></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">19</span></span><span>
+</span><span id="line-157"></span><span>
+</span><span id="line-158"></span><span class="annot"><a href="IC.Test.Universal.html#trap"><span class="hs-identifier hs-type">trap</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#B"><span class="hs-identifier hs-type">B</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Prog"><span class="hs-identifier hs-type">Prog</span></a></span><span>
+</span><span id="line-159"></span><span id="trap"><span class="annot"><span class="annottext">trap :: Exp 'B -&gt; Prog
+</span><a href="IC.Test.Universal.html#trap"><span class="hs-identifier hs-var hs-var">trap</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Exp 'B -&gt; Prog
+forall a. Op a =&gt; Word8 -&gt; a
+</span><a href="IC.Test.Universal.html#op"><span class="hs-identifier hs-var">op</span></a></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">20</span></span><span>
+</span><span id="line-160"></span><span>
+</span><span id="line-161"></span><span class="annot"><a href="IC.Test.Universal.html#setGlobal"><span class="hs-identifier hs-type">setGlobal</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#B"><span class="hs-identifier hs-type">B</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Prog"><span class="hs-identifier hs-type">Prog</span></a></span><span>
+</span><span id="line-162"></span><span id="setGlobal"><span class="annot"><span class="annottext">setGlobal :: Exp 'B -&gt; Prog
+</span><a href="IC.Test.Universal.html#setGlobal"><span class="hs-identifier hs-var hs-var">setGlobal</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Exp 'B -&gt; Prog
+forall a. Op a =&gt; Word8 -&gt; a
+</span><a href="IC.Test.Universal.html#op"><span class="hs-identifier hs-var">op</span></a></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">21</span></span><span>
+</span><span id="line-163"></span><span>
+</span><span id="line-164"></span><span class="annot"><a href="IC.Test.Universal.html#getGlobal"><span class="hs-identifier hs-type">getGlobal</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#B"><span class="hs-identifier hs-type">B</span></a></span><span>
+</span><span id="line-165"></span><span id="getGlobal"><span class="annot"><span class="annottext">getGlobal :: Exp 'B
+</span><a href="IC.Test.Universal.html#getGlobal"><span class="hs-identifier hs-var hs-var">getGlobal</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Exp 'B
+forall a. Op a =&gt; Word8 -&gt; a
+</span><a href="IC.Test.Universal.html#op"><span class="hs-identifier hs-var">op</span></a></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">22</span></span><span>
+</span><span id="line-166"></span><span>
+</span><span id="line-167"></span><span class="annot"><a href="IC.Test.Universal.html#badPrint"><span class="hs-identifier hs-type">badPrint</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Prog"><span class="hs-identifier hs-type">Prog</span></a></span><span>
+</span><span id="line-168"></span><span id="badPrint"><span class="annot"><span class="annottext">badPrint :: Prog
+</span><a href="IC.Test.Universal.html#badPrint"><span class="hs-identifier hs-var hs-var">badPrint</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Prog
+forall a. Op a =&gt; Word8 -&gt; a
+</span><a href="IC.Test.Universal.html#op"><span class="hs-identifier hs-var">op</span></a></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">23</span></span><span>
+</span><span id="line-169"></span><span>
+</span><span id="line-170"></span><span class="annot"><a href="IC.Test.Universal.html#onPreUpgrade"><span class="hs-identifier hs-type">onPreUpgrade</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#B"><span class="hs-identifier hs-type">B</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Prog"><span class="hs-identifier hs-type">Prog</span></a></span><span>
+</span><span id="line-171"></span><span id="onPreUpgrade"><span class="annot"><span class="annottext">onPreUpgrade :: Exp 'B -&gt; Prog
+</span><a href="IC.Test.Universal.html#onPreUpgrade"><span class="hs-identifier hs-var hs-var">onPreUpgrade</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Exp 'B -&gt; Prog
+forall a. Op a =&gt; Word8 -&gt; a
+</span><a href="IC.Test.Universal.html#op"><span class="hs-identifier hs-var">op</span></a></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">24</span></span><span>
+</span><span id="line-172"></span><span>
+</span><span id="line-173"></span><span class="annot"><a href="IC.Test.Universal.html#callNew"><span class="hs-identifier hs-type">callNew</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#B"><span class="hs-identifier hs-type">B</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#B"><span class="hs-identifier hs-type">B</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#B"><span class="hs-identifier hs-type">B</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#B"><span class="hs-identifier hs-type">B</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Prog"><span class="hs-identifier hs-type">Prog</span></a></span><span>
+</span><span id="line-174"></span><span id="callNew"><span class="annot"><span class="annottext">callNew :: Exp 'B -&gt; Exp 'B -&gt; Exp 'B -&gt; Exp 'B -&gt; Prog
+</span><a href="IC.Test.Universal.html#callNew"><span class="hs-identifier hs-var hs-var">callNew</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Exp 'B -&gt; Exp 'B -&gt; Exp 'B -&gt; Exp 'B -&gt; Prog
+forall a. Op a =&gt; Word8 -&gt; a
+</span><a href="IC.Test.Universal.html#op"><span class="hs-identifier hs-var">op</span></a></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">32</span></span><span>
+</span><span id="line-175"></span><span>
+</span><span id="line-176"></span><span class="annot"><a href="IC.Test.Universal.html#callDataAppend"><span class="hs-identifier hs-type">callDataAppend</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#B"><span class="hs-identifier hs-type">B</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Prog"><span class="hs-identifier hs-type">Prog</span></a></span><span>
+</span><span id="line-177"></span><span id="callDataAppend"><span class="annot"><span class="annottext">callDataAppend :: Exp 'B -&gt; Prog
+</span><a href="IC.Test.Universal.html#callDataAppend"><span class="hs-identifier hs-var hs-var">callDataAppend</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Exp 'B -&gt; Prog
+forall a. Op a =&gt; Word8 -&gt; a
+</span><a href="IC.Test.Universal.html#op"><span class="hs-identifier hs-var">op</span></a></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">33</span></span><span>
+</span><span id="line-178"></span><span>
+</span><span id="line-179"></span><span class="annot"><a href="IC.Test.Universal.html#callCyclesAdd"><span class="hs-identifier hs-type">callCyclesAdd</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#I64"><span class="hs-identifier hs-type">I64</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Prog"><span class="hs-identifier hs-type">Prog</span></a></span><span>
+</span><span id="line-180"></span><span id="callCyclesAdd"><span class="annot"><span class="annottext">callCyclesAdd :: Exp 'I64 -&gt; Prog
+</span><a href="IC.Test.Universal.html#callCyclesAdd"><span class="hs-identifier hs-var hs-var">callCyclesAdd</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Exp 'I64 -&gt; Prog
+forall a. Op a =&gt; Word8 -&gt; a
+</span><a href="IC.Test.Universal.html#op"><span class="hs-identifier hs-var">op</span></a></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">34</span></span><span>
+</span><span id="line-181"></span><span>
+</span><span id="line-182"></span><span class="annot"><a href="IC.Test.Universal.html#callPerform"><span class="hs-identifier hs-type">callPerform</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Prog"><span class="hs-identifier hs-type">Prog</span></a></span><span>
+</span><span id="line-183"></span><span id="callPerform"><span class="annot"><span class="annottext">callPerform :: Prog
+</span><a href="IC.Test.Universal.html#callPerform"><span class="hs-identifier hs-var hs-var">callPerform</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Prog
+forall a. Op a =&gt; Word8 -&gt; a
+</span><a href="IC.Test.Universal.html#op"><span class="hs-identifier hs-var">op</span></a></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">35</span></span><span>
+</span><span id="line-184"></span><span>
+</span><span id="line-185"></span><span class="annot"><a href="IC.Test.Universal.html#setCertifiedData"><span class="hs-identifier hs-type">setCertifiedData</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#B"><span class="hs-identifier hs-type">B</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Prog"><span class="hs-identifier hs-type">Prog</span></a></span><span>
+</span><span id="line-186"></span><span id="setCertifiedData"><span class="annot"><span class="annottext">setCertifiedData :: Exp 'B -&gt; Prog
+</span><a href="IC.Test.Universal.html#setCertifiedData"><span class="hs-identifier hs-var hs-var">setCertifiedData</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Exp 'B -&gt; Prog
+forall a. Op a =&gt; Word8 -&gt; a
+</span><a href="IC.Test.Universal.html#op"><span class="hs-identifier hs-var">op</span></a></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">36</span></span><span>
+</span><span id="line-187"></span><span>
+</span><span id="line-188"></span><span class="annot"><a href="IC.Test.Universal.html#getCertificatePresent"><span class="hs-identifier hs-type">getCertificatePresent</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#I"><span class="hs-identifier hs-type">I</span></a></span><span>
+</span><span id="line-189"></span><span id="getCertificatePresent"><span class="annot"><span class="annottext">getCertificatePresent :: Exp 'I
+</span><a href="IC.Test.Universal.html#getCertificatePresent"><span class="hs-identifier hs-var hs-var">getCertificatePresent</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Exp 'I
+forall a. Op a =&gt; Word8 -&gt; a
+</span><a href="IC.Test.Universal.html#op"><span class="hs-identifier hs-var">op</span></a></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">37</span></span><span>
+</span><span id="line-190"></span><span>
+</span><span id="line-191"></span><span class="annot"><a href="IC.Test.Universal.html#getCertificate"><span class="hs-identifier hs-type">getCertificate</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#B"><span class="hs-identifier hs-type">B</span></a></span><span>
+</span><span id="line-192"></span><span id="getCertificate"><span class="annot"><span class="annottext">getCertificate :: Exp 'B
+</span><a href="IC.Test.Universal.html#getCertificate"><span class="hs-identifier hs-var hs-var">getCertificate</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Exp 'B
+forall a. Op a =&gt; Word8 -&gt; a
+</span><a href="IC.Test.Universal.html#op"><span class="hs-identifier hs-var">op</span></a></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">38</span></span><span>
+</span><span id="line-193"></span><span>
+</span><span id="line-194"></span><span class="annot"><a href="IC.Test.Universal.html#getStatus"><span class="hs-identifier hs-type">getStatus</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#I"><span class="hs-identifier hs-type">I</span></a></span><span>
+</span><span id="line-195"></span><span id="getStatus"><span class="annot"><span class="annottext">getStatus :: Exp 'I
+</span><a href="IC.Test.Universal.html#getStatus"><span class="hs-identifier hs-var hs-var">getStatus</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Exp 'I
+forall a. Op a =&gt; Word8 -&gt; a
+</span><a href="IC.Test.Universal.html#op"><span class="hs-identifier hs-var">op</span></a></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">39</span></span><span>
+</span><span id="line-196"></span><span>
+</span><span id="line-197"></span><span class="annot"><a href="IC.Test.Universal.html#acceptMessage"><span class="hs-identifier hs-type">acceptMessage</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Prog"><span class="hs-identifier hs-type">Prog</span></a></span><span>
+</span><span id="line-198"></span><span id="acceptMessage"><span class="annot"><span class="annottext">acceptMessage :: Prog
+</span><a href="IC.Test.Universal.html#acceptMessage"><span class="hs-identifier hs-var hs-var">acceptMessage</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Prog
+forall a. Op a =&gt; Word8 -&gt; a
+</span><a href="IC.Test.Universal.html#op"><span class="hs-identifier hs-var">op</span></a></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">40</span></span><span>
+</span><span id="line-199"></span><span>
+</span><span id="line-200"></span><span class="annot"><a href="IC.Test.Universal.html#onInspectMessage"><span class="hs-identifier hs-type">onInspectMessage</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#B"><span class="hs-identifier hs-type">B</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Prog"><span class="hs-identifier hs-type">Prog</span></a></span><span>
+</span><span id="line-201"></span><span id="onInspectMessage"><span class="annot"><span class="annottext">onInspectMessage :: Exp 'B -&gt; Prog
+</span><a href="IC.Test.Universal.html#onInspectMessage"><span class="hs-identifier hs-var hs-var">onInspectMessage</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Exp 'B -&gt; Prog
+forall a. Op a =&gt; Word8 -&gt; a
+</span><a href="IC.Test.Universal.html#op"><span class="hs-identifier hs-var">op</span></a></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">41</span></span><span>
+</span><span id="line-202"></span><span>
+</span><span id="line-203"></span><span class="annot"><a href="IC.Test.Universal.html#methodName"><span class="hs-identifier hs-type">methodName</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#B"><span class="hs-identifier hs-type">B</span></a></span><span>
+</span><span id="line-204"></span><span id="methodName"><span class="annot"><span class="annottext">methodName :: Exp 'B
+</span><a href="IC.Test.Universal.html#methodName"><span class="hs-identifier hs-var hs-var">methodName</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Exp 'B
+forall a. Op a =&gt; Word8 -&gt; a
+</span><a href="IC.Test.Universal.html#op"><span class="hs-identifier hs-var">op</span></a></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">42</span></span><span>
+</span><span id="line-205"></span><span>
+</span><span id="line-206"></span><span class="annot"><a href="IC.Test.Universal.html#trapIfEq"><span class="hs-identifier hs-type">trapIfEq</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#B"><span class="hs-identifier hs-type">B</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#B"><span class="hs-identifier hs-type">B</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#B"><span class="hs-identifier hs-type">B</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Prog"><span class="hs-identifier hs-type">Prog</span></a></span><span>
+</span><span id="line-207"></span><span id="trapIfEq"><span class="annot"><span class="annottext">trapIfEq :: Exp 'B -&gt; Exp 'B -&gt; Exp 'B -&gt; Prog
+</span><a href="IC.Test.Universal.html#trapIfEq"><span class="hs-identifier hs-var hs-var">trapIfEq</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Exp 'B -&gt; Exp 'B -&gt; Exp 'B -&gt; Prog
+forall a. Op a =&gt; Word8 -&gt; a
+</span><a href="IC.Test.Universal.html#op"><span class="hs-identifier hs-var">op</span></a></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">43</span></span><span>
+</span><span id="line-208"></span><span>
+</span><span id="line-209"></span><span class="annot"><a href="IC.Test.Universal.html#callOnCleanup"><span class="hs-identifier hs-type">callOnCleanup</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#B"><span class="hs-identifier hs-type">B</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Prog"><span class="hs-identifier hs-type">Prog</span></a></span><span>
+</span><span id="line-210"></span><span id="callOnCleanup"><span class="annot"><span class="annottext">callOnCleanup :: Exp 'B -&gt; Prog
+</span><a href="IC.Test.Universal.html#callOnCleanup"><span class="hs-identifier hs-var hs-var">callOnCleanup</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Exp 'B -&gt; Prog
+forall a. Op a =&gt; Word8 -&gt; a
+</span><a href="IC.Test.Universal.html#op"><span class="hs-identifier hs-var">op</span></a></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">44</span></span><span>
+</span><span id="line-211"></span><span>
+</span><span id="line-212"></span><span class="annot"><a href="IC.Test.Universal.html#stable64Size"><span class="hs-identifier hs-type">stable64Size</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#I64"><span class="hs-identifier hs-type">I64</span></a></span><span>
+</span><span id="line-213"></span><span id="stable64Size"><span class="annot"><span class="annottext">stable64Size :: Exp 'I64
+</span><a href="IC.Test.Universal.html#stable64Size"><span class="hs-identifier hs-var hs-var">stable64Size</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Exp 'I64
+forall a. Op a =&gt; Word8 -&gt; a
+</span><a href="IC.Test.Universal.html#op"><span class="hs-identifier hs-var">op</span></a></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">45</span></span><span>
+</span><span id="line-214"></span><span>
+</span><span id="line-215"></span><span class="annot"><a href="IC.Test.Universal.html#stable64Grow"><span class="hs-identifier hs-type">stable64Grow</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#I64"><span class="hs-identifier hs-type">I64</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#I64"><span class="hs-identifier hs-type">I64</span></a></span><span>
+</span><span id="line-216"></span><span id="stable64Grow"><span class="annot"><span class="annottext">stable64Grow :: Exp 'I64 -&gt; Exp 'I64
+</span><a href="IC.Test.Universal.html#stable64Grow"><span class="hs-identifier hs-var hs-var">stable64Grow</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Exp 'I64 -&gt; Exp 'I64
+forall a. Op a =&gt; Word8 -&gt; a
+</span><a href="IC.Test.Universal.html#op"><span class="hs-identifier hs-var">op</span></a></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">46</span></span><span>
+</span><span id="line-217"></span><span>
+</span><span id="line-218"></span><span class="annot"><a href="IC.Test.Universal.html#stable64Read"><span class="hs-identifier hs-type">stable64Read</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#I64"><span class="hs-identifier hs-type">I64</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#I64"><span class="hs-identifier hs-type">I64</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#B"><span class="hs-identifier hs-type">B</span></a></span><span>
+</span><span id="line-219"></span><span id="stable64Read"><span class="annot"><span class="annottext">stable64Read :: Exp 'I64 -&gt; Exp 'I64 -&gt; Exp 'B
+</span><a href="IC.Test.Universal.html#stable64Read"><span class="hs-identifier hs-var hs-var">stable64Read</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Exp 'I64 -&gt; Exp 'I64 -&gt; Exp 'B
+forall a. Op a =&gt; Word8 -&gt; a
+</span><a href="IC.Test.Universal.html#op"><span class="hs-identifier hs-var">op</span></a></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">47</span></span><span>
+</span><span id="line-220"></span><span>
+</span><span id="line-221"></span><span class="annot"><a href="IC.Test.Universal.html#stable64Write"><span class="hs-identifier hs-type">stable64Write</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#I64"><span class="hs-identifier hs-type">I64</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#B"><span class="hs-identifier hs-type">B</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Prog"><span class="hs-identifier hs-type">Prog</span></a></span><span>
+</span><span id="line-222"></span><span id="stable64Write"><span class="annot"><span class="annottext">stable64Write :: Exp 'I64 -&gt; Exp 'B -&gt; Prog
+</span><a href="IC.Test.Universal.html#stable64Write"><span class="hs-identifier hs-var hs-var">stable64Write</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Exp 'I64 -&gt; Exp 'B -&gt; Prog
+forall a. Op a =&gt; Word8 -&gt; a
+</span><a href="IC.Test.Universal.html#op"><span class="hs-identifier hs-var">op</span></a></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">48</span></span><span>
+</span><span id="line-223"></span><span>
+</span><span id="line-224"></span><span class="annot"><a href="IC.Test.Universal.html#onHeartbeat"><span class="hs-identifier hs-type">onHeartbeat</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#B"><span class="hs-identifier hs-type">B</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Prog"><span class="hs-identifier hs-type">Prog</span></a></span><span>
+</span><span id="line-225"></span><span id="onHeartbeat"><span class="annot"><span class="annottext">onHeartbeat :: Exp 'B -&gt; Prog
+</span><a href="IC.Test.Universal.html#onHeartbeat"><span class="hs-identifier hs-var hs-var">onHeartbeat</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Exp 'B -&gt; Prog
+forall a. Op a =&gt; Word8 -&gt; a
+</span><a href="IC.Test.Universal.html#op"><span class="hs-identifier hs-var">op</span></a></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">49</span></span><span>
+</span><span id="line-226"></span><span>
+</span><span id="line-227"></span><span class="annot"><a href="IC.Test.Universal.html#performanceCounter"><span class="hs-identifier hs-type">performanceCounter</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#I"><span class="hs-identifier hs-type">I</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#I64"><span class="hs-identifier hs-type">I64</span></a></span><span>
+</span><span id="line-228"></span><span id="performanceCounter"><span class="annot"><span class="annottext">performanceCounter :: Exp 'I -&gt; Exp 'I64
+</span><a href="IC.Test.Universal.html#performanceCounter"><span class="hs-identifier hs-var hs-var">performanceCounter</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Exp 'I -&gt; Exp 'I64
+forall a. Op a =&gt; Word8 -&gt; a
+</span><a href="IC.Test.Universal.html#op"><span class="hs-identifier hs-var">op</span></a></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">50</span></span><span>
+</span><span id="line-229"></span><span>
+</span><span id="line-230"></span><span class="annot"><a href="IC.Test.Universal.html#getBalance128"><span class="hs-identifier hs-type">getBalance128</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#B"><span class="hs-identifier hs-type">B</span></a></span><span>
+</span><span id="line-231"></span><span id="getBalance128"><span class="annot"><span class="annottext">getBalance128 :: Exp 'B
+</span><a href="IC.Test.Universal.html#getBalance128"><span class="hs-identifier hs-var hs-var">getBalance128</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Exp 'B
+forall a. Op a =&gt; Word8 -&gt; a
+</span><a href="IC.Test.Universal.html#op"><span class="hs-identifier hs-var">op</span></a></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">51</span></span><span>
+</span><span id="line-232"></span><span>
+</span><span id="line-233"></span><span class="annot"><a href="IC.Test.Universal.html#getAvailableCycles128"><span class="hs-identifier hs-type">getAvailableCycles128</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#B"><span class="hs-identifier hs-type">B</span></a></span><span>
+</span><span id="line-234"></span><span id="getAvailableCycles128"><span class="annot"><span class="annottext">getAvailableCycles128 :: Exp 'B
+</span><a href="IC.Test.Universal.html#getAvailableCycles128"><span class="hs-identifier hs-var hs-var">getAvailableCycles128</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Exp 'B
+forall a. Op a =&gt; Word8 -&gt; a
+</span><a href="IC.Test.Universal.html#op"><span class="hs-identifier hs-var">op</span></a></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">52</span></span><span>
+</span><span id="line-235"></span><span>
+</span><span id="line-236"></span><span class="annot"><a href="IC.Test.Universal.html#getRefund128"><span class="hs-identifier hs-type">getRefund128</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#B"><span class="hs-identifier hs-type">B</span></a></span><span>
+</span><span id="line-237"></span><span id="getRefund128"><span class="annot"><span class="annottext">getRefund128 :: Exp 'B
+</span><a href="IC.Test.Universal.html#getRefund128"><span class="hs-identifier hs-var hs-var">getRefund128</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Exp 'B
+forall a. Op a =&gt; Word8 -&gt; a
+</span><a href="IC.Test.Universal.html#op"><span class="hs-identifier hs-var">op</span></a></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">53</span></span><span>
+</span><span id="line-238"></span><span>
+</span><span id="line-239"></span><span class="annot"><a href="IC.Test.Universal.html#acceptCycles128"><span class="hs-identifier hs-type">acceptCycles128</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#I64"><span class="hs-identifier hs-type">I64</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#I64"><span class="hs-identifier hs-type">I64</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#B"><span class="hs-identifier hs-type">B</span></a></span><span>
+</span><span id="line-240"></span><span id="acceptCycles128"><span class="annot"><span class="annottext">acceptCycles128 :: Exp 'I64 -&gt; Exp 'I64 -&gt; Exp 'B
+</span><a href="IC.Test.Universal.html#acceptCycles128"><span class="hs-identifier hs-var hs-var">acceptCycles128</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Exp 'I64 -&gt; Exp 'I64 -&gt; Exp 'B
+forall a. Op a =&gt; Word8 -&gt; a
+</span><a href="IC.Test.Universal.html#op"><span class="hs-identifier hs-var">op</span></a></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">54</span></span><span>
+</span><span id="line-241"></span><span>
+</span><span id="line-242"></span><span class="annot"><a href="IC.Test.Universal.html#callCyclesAdd128"><span class="hs-identifier hs-type">callCyclesAdd128</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#I64"><span class="hs-identifier hs-type">I64</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#I64"><span class="hs-identifier hs-type">I64</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Prog"><span class="hs-identifier hs-type">Prog</span></a></span><span>
+</span><span id="line-243"></span><span id="callCyclesAdd128"><span class="annot"><span class="annottext">callCyclesAdd128 :: Exp 'I64 -&gt; Exp 'I64 -&gt; Prog
+</span><a href="IC.Test.Universal.html#callCyclesAdd128"><span class="hs-identifier hs-var hs-var">callCyclesAdd128</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Exp 'I64 -&gt; Exp 'I64 -&gt; Prog
+forall a. Op a =&gt; Word8 -&gt; a
+</span><a href="IC.Test.Universal.html#op"><span class="hs-identifier hs-var">op</span></a></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">55</span></span><span>
+</span><span id="line-244"></span><span>
+</span><span id="line-245"></span><span class="annot"><a href="IC.Test.Universal.html#onTransform"><span class="hs-identifier hs-type">onTransform</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#B"><span class="hs-identifier hs-type">B</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Prog"><span class="hs-identifier hs-type">Prog</span></a></span><span>
+</span><span id="line-246"></span><span id="onTransform"><span class="annot"><span class="annottext">onTransform :: Exp 'B -&gt; Prog
+</span><a href="IC.Test.Universal.html#onTransform"><span class="hs-identifier hs-var hs-var">onTransform</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Word8 -&gt; Exp 'B -&gt; Prog
+forall a. Op a =&gt; Word8 -&gt; a
+</span><a href="IC.Test.Universal.html#op"><span class="hs-identifier hs-var">op</span></a></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">56</span></span><span>
+</span><span id="line-247"></span><span>
+</span><span id="line-248"></span><span class="hs-comment">-- Some convenience combinators</span><span>
+</span><span id="line-249"></span><span>
+</span><span id="line-250"></span><span class="hs-comment">-- This allows us to write byte expressions as plain string literals</span><span>
+</span><span id="line-251"></span><span class="hs-keyword">instance</span><span> </span><span class="annot"><span class="hs-identifier hs-type">IsString</span></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#B"><span class="hs-identifier hs-type">B</span></a></span><span class="hs-special">)</span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-252"></span><span>  </span><span id="local-6989586621679261343"><span class="annot"><span class="annottext">fromString :: String -&gt; Exp 'B
+</span><span class="hs-identifier hs-var hs-var hs-var hs-var">fromString</span></span></span><span> </span><span id="local-6989586621679261342"><span class="annot"><span class="annottext">String
+</span><a href="#local-6989586621679261342"><span class="hs-identifier hs-var">s</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">ByteString -&gt; Exp 'B
+</span><a href="IC.Test.Universal.html#bytes"><span class="hs-identifier hs-var">bytes</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">String -&gt; ByteString
+forall a. IsString a =&gt; String -&gt; a
+</span><span class="hs-identifier hs-var">fromString</span></span><span> </span><span class="annot"><span class="annottext">String
+</span><a href="#local-6989586621679261342"><span class="hs-identifier hs-var">s</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-253"></span><span>
+</span><span id="line-254"></span><span class="annot"><a href="IC.Test.Universal.html#callback"><span class="hs-identifier hs-type">callback</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Prog"><span class="hs-identifier hs-type">Prog</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#B"><span class="hs-identifier hs-type">B</span></a></span><span>
+</span><span id="line-255"></span><span id="callback"><span class="annot"><span class="annottext">callback :: Prog -&gt; Exp 'B
+</span><a href="IC.Test.Universal.html#callback"><span class="hs-identifier hs-var hs-var">callback</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">ByteString -&gt; Exp 'B
+</span><a href="IC.Test.Universal.html#bytes"><span class="hs-identifier hs-var">bytes</span></a></span><span> </span><span class="annot"><span class="annottext">(ByteString -&gt; Exp 'B) -&gt; (Prog -&gt; ByteString) -&gt; Prog -&gt; Exp 'B
+forall b c a. (b -&gt; c) -&gt; (a -&gt; b) -&gt; a -&gt; c
+</span><span class="hs-operator hs-var">.</span></span><span> </span><span class="annot"><span class="annottext">Prog -&gt; ByteString
+</span><a href="IC.Test.Universal.html#run"><span class="hs-identifier hs-var">run</span></a></span><span>
+</span><span id="line-256"></span><span>
+</span><span id="line-257"></span><span class="annot"><a href="IC.Test.Universal.html#replyData"><span class="hs-identifier hs-type">replyData</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Exp"><span class="hs-identifier hs-type">Exp</span></a></span><span> </span><span class="hs-special">'</span><span class="annot"><a href="IC.Test.Universal.html#B"><span class="hs-identifier hs-type">B</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Prog"><span class="hs-identifier hs-type">Prog</span></a></span><span>
+</span><span id="line-258"></span><span id="replyData"><span class="annot"><span class="annottext">replyData :: Exp 'B -&gt; Prog
+</span><a href="IC.Test.Universal.html#replyData"><span class="hs-identifier hs-var hs-var">replyData</span></a></span></span><span> </span><span id="local-6989586621679261338"><span class="annot"><span class="annottext">Exp 'B
+</span><a href="#local-6989586621679261338"><span class="hs-identifier hs-var">a</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Exp 'B -&gt; Prog
+</span><a href="IC.Test.Universal.html#replyDataAppend"><span class="hs-identifier hs-var">replyDataAppend</span></a></span><span> </span><span class="annot"><span class="annottext">Exp 'B
+</span><a href="#local-6989586621679261338"><span class="hs-identifier hs-var">a</span></a></span><span> </span><span class="annot"><span class="annottext">Prog -&gt; Prog -&gt; Prog
+</span><a href="IC.Test.Universal.html#%3E%3E%3E"><span class="hs-operator hs-var">&gt;&gt;&gt;</span></a></span><span> </span><span class="annot"><span class="annottext">Prog
+</span><a href="IC.Test.Universal.html#reply"><span class="hs-identifier hs-var">reply</span></a></span><span>
+</span><span id="line-259"></span><span>
+</span><span id="line-260"></span><span class="hs-comment">-- Convenient inter-canister calling</span><span>
+</span><span id="line-261"></span><span>
+</span><span id="line-262"></span><span class="hs-keyword">data</span><span> </span><span id="CallArgs"><span class="annot"><a href="IC.Test.Universal.html#CallArgs"><span class="hs-identifier hs-var">CallArgs</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span id="CallArgs"><span class="annot"><a href="IC.Test.Universal.html#CallArgs"><span class="hs-identifier hs-var">CallArgs</span></a></span></span><span>
+</span><span id="line-263"></span><span>    </span><span class="hs-special">{</span><span> </span><span id="on_reply"><span class="annot"><span class="annottext">CallArgs -&gt; Prog
+</span><a href="IC.Test.Universal.html#on_reply"><span class="hs-identifier hs-var hs-var">on_reply</span></a></span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Prog"><span class="hs-identifier hs-type">Prog</span></a></span><span>
+</span><span id="line-264"></span><span>    </span><span class="hs-special">,</span><span> </span><span id="on_reject"><span class="annot"><span class="annottext">CallArgs -&gt; Prog
+</span><a href="IC.Test.Universal.html#on_reject"><span class="hs-identifier hs-var hs-var">on_reject</span></a></span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Prog"><span class="hs-identifier hs-type">Prog</span></a></span><span>
+</span><span id="line-265"></span><span>    </span><span class="hs-special">,</span><span> </span><span id="on_cleanup"><span class="annot"><span class="annottext">CallArgs -&gt; Maybe Prog
+</span><a href="IC.Test.Universal.html#on_cleanup"><span class="hs-identifier hs-var hs-var">on_cleanup</span></a></span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Maybe</span></span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Prog"><span class="hs-identifier hs-type">Prog</span></a></span><span>
+</span><span id="line-266"></span><span>    </span><span class="hs-special">,</span><span> </span><span id="other_side"><span class="annot"><span class="annottext">CallArgs -&gt; Prog
+</span><a href="IC.Test.Universal.html#other_side"><span class="hs-identifier hs-var hs-var">other_side</span></a></span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Prog"><span class="hs-identifier hs-type">Prog</span></a></span><span>
+</span><span id="line-267"></span><span>    </span><span class="hs-special">,</span><span> </span><span id="cycles"><span class="annot"><span class="annottext">CallArgs -&gt; Word64
+</span><a href="IC.Test.Universal.html#cycles"><span class="hs-identifier hs-var hs-var">cycles</span></a></span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Word64</span></span><span>
+</span><span id="line-268"></span><span>    </span><span class="hs-special">,</span><span> </span><span id="icpts"><span class="annot"><span class="annottext">CallArgs -&gt; Word64
+</span><a href="IC.Test.Universal.html#icpts"><span class="hs-identifier hs-var hs-var">icpts</span></a></span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Word64</span></span><span>
+</span><span id="line-269"></span><span>    </span><span class="hs-special">}</span><span>
+</span><span id="line-270"></span><span>
+</span><span id="line-271"></span><span class="annot"><a href="IC.Test.Universal.html#inter_call"><span class="hs-identifier hs-type">inter_call</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><span class="hs-identifier hs-type">BS.ByteString</span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">BS.ByteString</span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#CallArgs"><span class="hs-identifier hs-type">CallArgs</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Prog"><span class="hs-identifier hs-type">Prog</span></a></span><span>
+</span><span id="line-272"></span><span id="inter_call"><span class="annot"><span class="annottext">inter_call :: ByteString -&gt; ByteString -&gt; CallArgs -&gt; Prog
+</span><a href="IC.Test.Universal.html#inter_call"><span class="hs-identifier hs-var hs-var">inter_call</span></a></span></span><span> </span><span id="local-6989586621679261329"><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679261329"><span class="hs-identifier hs-var">callee</span></a></span></span><span> </span><span id="local-6989586621679261328"><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679261328"><span class="hs-identifier hs-var">method_name</span></a></span></span><span> </span><span id="local-6989586621679261327"><span class="annot"><span class="annottext">CallArgs
+</span><a href="#local-6989586621679261327"><span class="hs-identifier hs-var">ca</span></a></span></span><span> </span><span class="hs-glyph">=</span><span>
+</span><span id="line-273"></span><span>    </span><span class="annot"><span class="annottext">Exp 'B -&gt; Exp 'B -&gt; Exp 'B -&gt; Exp 'B -&gt; Prog
+</span><a href="IC.Test.Universal.html#callNew"><span class="hs-identifier hs-var">callNew</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">ByteString -&gt; Exp 'B
+</span><a href="IC.Test.Universal.html#bytes"><span class="hs-identifier hs-var">bytes</span></a></span><span> </span><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679261329"><span class="hs-identifier hs-var">callee</span></a></span><span class="hs-special">)</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">ByteString -&gt; Exp 'B
+</span><a href="IC.Test.Universal.html#bytes"><span class="hs-identifier hs-var">bytes</span></a></span><span> </span><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679261328"><span class="hs-identifier hs-var">method_name</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-274"></span><span>            </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Prog -&gt; Exp 'B
+</span><a href="IC.Test.Universal.html#callback"><span class="hs-identifier hs-var">callback</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">CallArgs -&gt; Prog
+</span><a href="IC.Test.Universal.html#on_reply"><span class="hs-identifier hs-var hs-var">on_reply</span></a></span><span> </span><span class="annot"><span class="annottext">CallArgs
+</span><a href="#local-6989586621679261327"><span class="hs-identifier hs-var">ca</span></a></span><span class="hs-special">)</span><span class="hs-special">)</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Prog -&gt; Exp 'B
+</span><a href="IC.Test.Universal.html#callback"><span class="hs-identifier hs-var">callback</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">CallArgs -&gt; Prog
+</span><a href="IC.Test.Universal.html#on_reject"><span class="hs-identifier hs-var hs-var">on_reject</span></a></span><span> </span><span class="annot"><span class="annottext">CallArgs
+</span><a href="#local-6989586621679261327"><span class="hs-identifier hs-var">ca</span></a></span><span class="hs-special">)</span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">Prog -&gt; Prog -&gt; Prog
+</span><a href="IC.Test.Universal.html#%3E%3E%3E"><span class="hs-operator hs-var">&gt;&gt;&gt;</span></a></span><span>
+</span><span id="line-275"></span><span>    </span><span class="annot"><span class="annottext">Prog -&gt; (Prog -&gt; Prog) -&gt; Maybe Prog -&gt; Prog
+forall b a. b -&gt; (a -&gt; b) -&gt; Maybe a -&gt; b
+</span><span class="hs-identifier hs-var">maybe</span></span><span> </span><span class="annot"><span class="annottext">Prog
+</span><a href="IC.Test.Universal.html#noop"><span class="hs-identifier hs-var">noop</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Exp 'B -&gt; Prog
+</span><a href="IC.Test.Universal.html#callOnCleanup"><span class="hs-identifier hs-var">callOnCleanup</span></a></span><span> </span><span class="annot"><span class="annottext">(Exp 'B -&gt; Prog) -&gt; (Prog -&gt; Exp 'B) -&gt; Prog -&gt; Prog
+forall b c a. (b -&gt; c) -&gt; (a -&gt; b) -&gt; a -&gt; c
+</span><span class="hs-operator hs-var">.</span></span><span> </span><span class="annot"><span class="annottext">Prog -&gt; Exp 'B
+</span><a href="IC.Test.Universal.html#callback"><span class="hs-identifier hs-var">callback</span></a></span><span class="hs-special">)</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">CallArgs -&gt; Maybe Prog
+</span><a href="IC.Test.Universal.html#on_cleanup"><span class="hs-identifier hs-var hs-var">on_cleanup</span></a></span><span> </span><span class="annot"><span class="annottext">CallArgs
+</span><a href="#local-6989586621679261327"><span class="hs-identifier hs-var">ca</span></a></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">Prog -&gt; Prog -&gt; Prog
+</span><a href="IC.Test.Universal.html#%3E%3E%3E"><span class="hs-operator hs-var">&gt;&gt;&gt;</span></a></span><span>
+</span><span id="line-276"></span><span>    </span><span class="annot"><span class="annottext">Exp 'B -&gt; Prog
+</span><a href="IC.Test.Universal.html#callDataAppend"><span class="hs-identifier hs-var">callDataAppend</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Prog -&gt; Exp 'B
+</span><a href="IC.Test.Universal.html#callback"><span class="hs-identifier hs-var">callback</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">CallArgs -&gt; Prog
+</span><a href="IC.Test.Universal.html#other_side"><span class="hs-identifier hs-var hs-var">other_side</span></a></span><span> </span><span class="annot"><span class="annottext">CallArgs
+</span><a href="#local-6989586621679261327"><span class="hs-identifier hs-var">ca</span></a></span><span class="hs-special">)</span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">Prog -&gt; Prog -&gt; Prog
+</span><a href="IC.Test.Universal.html#%3E%3E%3E"><span class="hs-operator hs-var">&gt;&gt;&gt;</span></a></span><span>
+</span><span id="line-277"></span><span>    </span><span class="hs-special">(</span><span class="hs-keyword">if</span><span> </span><span class="annot"><span class="annottext">CallArgs -&gt; Word64
+</span><a href="IC.Test.Universal.html#cycles"><span class="hs-identifier hs-var hs-var">cycles</span></a></span><span> </span><span class="annot"><span class="annottext">CallArgs
+</span><a href="#local-6989586621679261327"><span class="hs-identifier hs-var">ca</span></a></span><span> </span><span class="annot"><span class="annottext">Word64 -&gt; Word64 -&gt; Bool
+forall a. Ord a =&gt; a -&gt; a -&gt; Bool
+</span><span class="hs-operator hs-var">&gt;</span></span><span> </span><span class="annot"><span class="annottext">Word64
+</span><span class="hs-number">0</span></span><span> </span><span class="hs-keyword">then</span><span> </span><span class="annot"><span class="annottext">Exp 'I64 -&gt; Prog
+</span><a href="IC.Test.Universal.html#callCyclesAdd"><span class="hs-identifier hs-var">callCyclesAdd</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Word64 -&gt; Exp 'I64
+</span><a href="IC.Test.Universal.html#int64"><span class="hs-identifier hs-var">int64</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">CallArgs -&gt; Word64
+</span><a href="IC.Test.Universal.html#cycles"><span class="hs-identifier hs-var hs-var">cycles</span></a></span><span> </span><span class="annot"><span class="annottext">CallArgs
+</span><a href="#local-6989586621679261327"><span class="hs-identifier hs-var">ca</span></a></span><span class="hs-special">)</span><span class="hs-special">)</span><span> </span><span class="hs-keyword">else</span><span> </span><span class="annot"><span class="annottext">Prog
+</span><a href="IC.Test.Universal.html#noop"><span class="hs-identifier hs-var">noop</span></a></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">Prog -&gt; Prog -&gt; Prog
+</span><a href="IC.Test.Universal.html#%3E%3E%3E"><span class="hs-operator hs-var">&gt;&gt;&gt;</span></a></span><span>
+</span><span id="line-278"></span><span>    </span><span class="annot"><span class="annottext">Prog
+</span><a href="IC.Test.Universal.html#callPerform"><span class="hs-identifier hs-var">callPerform</span></a></span><span>
+</span><span id="line-279"></span><span>
+</span><span id="line-280"></span><span class="annot"><a href="IC.Test.Universal.html#inter_update"><span class="hs-identifier hs-type">inter_update</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><span class="hs-identifier hs-type">BS.ByteString</span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#CallArgs"><span class="hs-identifier hs-type">CallArgs</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Prog"><span class="hs-identifier hs-type">Prog</span></a></span><span>
+</span><span id="line-281"></span><span id="inter_update"><span class="annot"><span class="annottext">inter_update :: ByteString -&gt; CallArgs -&gt; Prog
+</span><a href="IC.Test.Universal.html#inter_update"><span class="hs-identifier hs-var hs-var">inter_update</span></a></span></span><span> </span><span id="local-6989586621679261323"><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679261323"><span class="hs-identifier hs-var">callee</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">ByteString -&gt; ByteString -&gt; CallArgs -&gt; Prog
+</span><a href="IC.Test.Universal.html#inter_call"><span class="hs-identifier hs-var">inter_call</span></a></span><span> </span><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679261323"><span class="hs-identifier hs-var">callee</span></a></span><span> </span><span class="annot"><span class="annottext">ByteString
+</span><span class="hs-string">&quot;update&quot;</span></span><span>
+</span><span id="line-282"></span><span>
+</span><span id="line-283"></span><span class="annot"><a href="IC.Test.Universal.html#inter_query"><span class="hs-identifier hs-type">inter_query</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><span class="hs-identifier hs-type">BS.ByteString</span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#CallArgs"><span class="hs-identifier hs-type">CallArgs</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Prog"><span class="hs-identifier hs-type">Prog</span></a></span><span>
+</span><span id="line-284"></span><span id="inter_query"><span class="annot"><span class="annottext">inter_query :: ByteString -&gt; CallArgs -&gt; Prog
+</span><a href="IC.Test.Universal.html#inter_query"><span class="hs-identifier hs-var hs-var">inter_query</span></a></span></span><span> </span><span id="local-6989586621679261321"><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679261321"><span class="hs-identifier hs-var">callee</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">ByteString -&gt; ByteString -&gt; CallArgs -&gt; Prog
+</span><a href="IC.Test.Universal.html#inter_call"><span class="hs-identifier hs-var">inter_call</span></a></span><span> </span><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679261321"><span class="hs-identifier hs-var">callee</span></a></span><span> </span><span class="annot"><span class="annottext">ByteString
+</span><span class="hs-string">&quot;query&quot;</span></span><span>
+</span><span id="line-285"></span><span>
+</span><span id="line-286"></span><span class="hs-comment">-- | By default, the other side responds with some text</span><span>
+</span><span id="line-287"></span><span class="hs-comment">-- indicating caller and callee, and the callbacks reply with the response.</span><span>
+</span><span id="line-288"></span><span class="annot"><a href="IC.Test.Universal.html#defArgs"><span class="hs-identifier hs-type">defArgs</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#CallArgs"><span class="hs-identifier hs-type">CallArgs</span></a></span><span>
+</span><span id="line-289"></span><span id="defArgs"><span class="annot"><span class="annottext">defArgs :: CallArgs
+</span><a href="IC.Test.Universal.html#defArgs"><span class="hs-identifier hs-var hs-var">defArgs</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">CallArgs :: Prog -&gt; Prog -&gt; Maybe Prog -&gt; Prog -&gt; Word64 -&gt; Word64 -&gt; CallArgs
+</span><a href="IC.Test.Universal.html#CallArgs"><span class="hs-identifier hs-type">CallArgs</span></a></span><span>
+</span><span id="line-290"></span><span>    </span><span class="hs-special">{</span><span> </span><span class="annot"><span class="annottext">on_reply :: Prog
+</span><a href="IC.Test.Universal.html#on_reply"><span class="hs-identifier hs-var">on_reply</span></a></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Prog
+</span><a href="IC.Test.Universal.html#relayReply"><span class="hs-identifier hs-var">relayReply</span></a></span><span>
+</span><span id="line-291"></span><span>    </span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">on_reject :: Prog
+</span><a href="IC.Test.Universal.html#on_reject"><span class="hs-identifier hs-var">on_reject</span></a></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Prog
+</span><a href="IC.Test.Universal.html#relayReject"><span class="hs-identifier hs-var">relayReject</span></a></span><span>
+</span><span id="line-292"></span><span>    </span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">on_cleanup :: Maybe Prog
+</span><a href="IC.Test.Universal.html#on_cleanup"><span class="hs-identifier hs-var">on_cleanup</span></a></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Maybe Prog
+forall a. Maybe a
+</span><span class="hs-identifier hs-var">Nothing</span></span><span>
+</span><span id="line-293"></span><span>    </span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">other_side :: Prog
+</span><a href="IC.Test.Universal.html#other_side"><span class="hs-identifier hs-var">other_side</span></a></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Prog
+</span><a href="IC.Test.Universal.html#defaultOtherSide"><span class="hs-identifier hs-var">defaultOtherSide</span></a></span><span>
+</span><span id="line-294"></span><span>    </span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">cycles :: Word64
+</span><a href="IC.Test.Universal.html#cycles"><span class="hs-identifier hs-var">cycles</span></a></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Word64
+</span><span class="hs-number">0</span></span><span>
+</span><span id="line-295"></span><span>    </span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">icpts :: Word64
+</span><a href="IC.Test.Universal.html#icpts"><span class="hs-identifier hs-var">icpts</span></a></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Word64
+</span><span class="hs-number">0</span></span><span>
+</span><span id="line-296"></span><span>    </span><span class="hs-special">}</span><span>
+</span><span id="line-297"></span><span>
+</span><span id="line-298"></span><span class="annot"><a href="IC.Test.Universal.html#defaultOtherSide"><span class="hs-identifier hs-type">defaultOtherSide</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Prog"><span class="hs-identifier hs-type">Prog</span></a></span><span>
+</span><span id="line-299"></span><span id="defaultOtherSide"><span class="annot"><span class="annottext">defaultOtherSide :: Prog
+</span><a href="IC.Test.Universal.html#defaultOtherSide"><span class="hs-identifier hs-var hs-var">defaultOtherSide</span></a></span></span><span> </span><span class="hs-glyph">=</span><span>
+</span><span id="line-300"></span><span>    </span><span class="annot"><span class="annottext">Exp 'B -&gt; Prog
+</span><a href="IC.Test.Universal.html#replyDataAppend"><span class="hs-identifier hs-var">replyDataAppend</span></a></span><span> </span><span class="annot"><span class="annottext">Exp 'B
+</span><span class="hs-string">&quot;Hello &quot;</span></span><span> </span><span class="annot"><span class="annottext">Prog -&gt; Prog -&gt; Prog
+</span><a href="IC.Test.Universal.html#%3E%3E%3E"><span class="hs-operator hs-var">&gt;&gt;&gt;</span></a></span><span>
+</span><span id="line-301"></span><span>    </span><span class="annot"><span class="annottext">Exp 'B -&gt; Prog
+</span><a href="IC.Test.Universal.html#replyDataAppend"><span class="hs-identifier hs-var">replyDataAppend</span></a></span><span> </span><span class="annot"><span class="annottext">Exp 'B
+</span><a href="IC.Test.Universal.html#caller"><span class="hs-identifier hs-var">caller</span></a></span><span>  </span><span class="annot"><span class="annottext">Prog -&gt; Prog -&gt; Prog
+</span><a href="IC.Test.Universal.html#%3E%3E%3E"><span class="hs-operator hs-var">&gt;&gt;&gt;</span></a></span><span>
+</span><span id="line-302"></span><span>    </span><span class="annot"><span class="annottext">Exp 'B -&gt; Prog
+</span><a href="IC.Test.Universal.html#replyDataAppend"><span class="hs-identifier hs-var">replyDataAppend</span></a></span><span> </span><span class="annot"><span class="annottext">Exp 'B
+</span><span class="hs-string">&quot; this is &quot;</span></span><span> </span><span class="annot"><span class="annottext">Prog -&gt; Prog -&gt; Prog
+</span><a href="IC.Test.Universal.html#%3E%3E%3E"><span class="hs-operator hs-var">&gt;&gt;&gt;</span></a></span><span>
+</span><span id="line-303"></span><span>    </span><span class="annot"><span class="annottext">Exp 'B -&gt; Prog
+</span><a href="IC.Test.Universal.html#replyDataAppend"><span class="hs-identifier hs-var">replyDataAppend</span></a></span><span> </span><span class="annot"><span class="annottext">Exp 'B
+</span><a href="IC.Test.Universal.html#self"><span class="hs-identifier hs-var">self</span></a></span><span>  </span><span class="annot"><span class="annottext">Prog -&gt; Prog -&gt; Prog
+</span><a href="IC.Test.Universal.html#%3E%3E%3E"><span class="hs-operator hs-var">&gt;&gt;&gt;</span></a></span><span>
+</span><span id="line-304"></span><span>    </span><span class="annot"><span class="annottext">Prog
+</span><a href="IC.Test.Universal.html#reply"><span class="hs-identifier hs-var">reply</span></a></span><span>
+</span><span id="line-305"></span><span>
+</span><span id="line-306"></span><span class="annot"><a href="IC.Test.Universal.html#relayReply"><span class="hs-identifier hs-type">relayReply</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Prog"><span class="hs-identifier hs-type">Prog</span></a></span><span>
+</span><span id="line-307"></span><span id="relayReply"><span class="annot"><span class="annottext">relayReply :: Prog
+</span><a href="IC.Test.Universal.html#relayReply"><span class="hs-identifier hs-var hs-var">relayReply</span></a></span></span><span> </span><span class="hs-glyph">=</span><span>
+</span><span id="line-308"></span><span>    </span><span class="annot"><span class="annottext">Exp 'B -&gt; Prog
+</span><a href="IC.Test.Universal.html#replyDataAppend"><span class="hs-identifier hs-var">replyDataAppend</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Exp 'I -&gt; Exp 'B
+</span><a href="IC.Test.Universal.html#i2b"><span class="hs-identifier hs-var">i2b</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Word32 -&gt; Exp 'I
+</span><a href="IC.Test.Universal.html#int"><span class="hs-identifier hs-var">int</span></a></span><span> </span><span class="annot"><span class="annottext">Word32
+</span><span class="hs-number">0</span></span><span class="hs-special">)</span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">Prog -&gt; Prog -&gt; Prog
+</span><a href="IC.Test.Universal.html#%3E%3E%3E"><span class="hs-operator hs-var">&gt;&gt;&gt;</span></a></span><span>
+</span><span id="line-309"></span><span>    </span><span class="annot"><span class="annottext">Exp 'B -&gt; Prog
+</span><a href="IC.Test.Universal.html#replyDataAppend"><span class="hs-identifier hs-var">replyDataAppend</span></a></span><span> </span><span class="annot"><span class="annottext">Exp 'B
+</span><a href="IC.Test.Universal.html#argData"><span class="hs-identifier hs-var">argData</span></a></span><span> </span><span class="annot"><span class="annottext">Prog -&gt; Prog -&gt; Prog
+</span><a href="IC.Test.Universal.html#%3E%3E%3E"><span class="hs-operator hs-var">&gt;&gt;&gt;</span></a></span><span>
+</span><span id="line-310"></span><span>    </span><span class="annot"><span class="annottext">Prog
+</span><a href="IC.Test.Universal.html#reply"><span class="hs-identifier hs-var">reply</span></a></span><span>
+</span><span id="line-311"></span><span>
+</span><span id="line-312"></span><span class="annot"><a href="IC.Test.Universal.html#relayReject"><span class="hs-identifier hs-type">relayReject</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Universal.html#Prog"><span class="hs-identifier hs-type">Prog</span></a></span><span>
+</span><span id="line-313"></span><span id="relayReject"><span class="annot"><span class="annottext">relayReject :: Prog
+</span><a href="IC.Test.Universal.html#relayReject"><span class="hs-identifier hs-var hs-var">relayReject</span></a></span></span><span> </span><span class="hs-glyph">=</span><span>
+</span><span id="line-314"></span><span>    </span><span class="annot"><span class="annottext">Exp 'B -&gt; Prog
+</span><a href="IC.Test.Universal.html#replyDataAppend"><span class="hs-identifier hs-var">replyDataAppend</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Exp 'I -&gt; Exp 'B
+</span><a href="IC.Test.Universal.html#i2b"><span class="hs-identifier hs-var">i2b</span></a></span><span> </span><span class="annot"><span class="annottext">Exp 'I
+</span><a href="IC.Test.Universal.html#reject_code"><span class="hs-identifier hs-var">reject_code</span></a></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">Prog -&gt; Prog -&gt; Prog
+</span><a href="IC.Test.Universal.html#%3E%3E%3E"><span class="hs-operator hs-var">&gt;&gt;&gt;</span></a></span><span>
+</span><span id="line-315"></span><span>    </span><span class="annot"><span class="annottext">Exp 'B -&gt; Prog
+</span><a href="IC.Test.Universal.html#replyDataAppend"><span class="hs-identifier hs-var">replyDataAppend</span></a></span><span> </span><span class="annot"><span class="annottext">Exp 'B
+</span><a href="IC.Test.Universal.html#reject_msg"><span class="hs-identifier hs-var">reject_msg</span></a></span><span> </span><span class="annot"><span class="annottext">Prog -&gt; Prog -&gt; Prog
+</span><a href="IC.Test.Universal.html#%3E%3E%3E"><span class="hs-operator hs-var">&gt;&gt;&gt;</span></a></span><span>
+</span><span id="line-316"></span><span>    </span><span class="annot"><span class="annottext">Prog
+</span><a href="IC.Test.Universal.html#reply"><span class="hs-identifier hs-var">reply</span></a></span><span>
+</span><span id="line-317"></span><span>
+</span><span id="line-318"></span></pre></body></html>

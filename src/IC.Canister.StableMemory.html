@@ -1,0 +1,488 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><link rel="stylesheet" type="text/css" href="style.css" /><script type="text/javascript" src="highlight.js"></script></head><body><pre><span class="hs-pragma">{-# LANGUAGE ScopedTypeVariables #-}</span><span>
+</span><span id="line-2"></span><span class="hs-comment">{-|
+This module provides a wrapper around primitive byte array, exposing just
+the bits needed for accessing the stable memory.
+-}</span><span>
+</span><span id="line-6"></span><span class="hs-keyword">module</span><span> </span><span class="hs-identifier">IC.Canister.StableMemory</span><span>
+</span><span id="line-7"></span><span>  </span><span class="hs-special">(</span><span> </span><span class="annot"><a href="IC.Canister.StableMemory.html#Memory"><span class="hs-identifier">Memory</span></a></span><span>
+</span><span id="line-8"></span><span>  </span><span class="hs-special">,</span><span> </span><span class="annot"><a href="IC.Canister.StableMemory.html#Repr"><span class="hs-identifier">Repr</span></a></span><span>
+</span><span id="line-9"></span><span>  </span><span class="hs-special">,</span><span> </span><span class="annot"><a href="IC.Canister.StableMemory.html#new"><span class="hs-identifier">new</span></a></span><span>
+</span><span id="line-10"></span><span>  </span><span class="hs-special">,</span><span> </span><span class="annot"><a href="IC.Canister.StableMemory.html#size"><span class="hs-identifier">size</span></a></span><span>
+</span><span id="line-11"></span><span>  </span><span class="hs-special">,</span><span> </span><span class="annot"><a href="IC.Canister.StableMemory.html#grow"><span class="hs-identifier">grow</span></a></span><span>
+</span><span id="line-12"></span><span>  </span><span class="hs-special">,</span><span> </span><span class="annot"><a href="IC.Canister.StableMemory.html#read"><span class="hs-identifier">read</span></a></span><span>
+</span><span id="line-13"></span><span>  </span><span class="hs-special">,</span><span> </span><span class="annot"><a href="IC.Canister.StableMemory.html#write"><span class="hs-identifier">write</span></a></span><span>
+</span><span id="line-14"></span><span>  </span><span class="hs-special">,</span><span> </span><span class="annot"><a href="IC.Canister.StableMemory.html#export"><span class="hs-keyword">export</span></a></span><span>
+</span><span id="line-15"></span><span>  </span><span class="hs-special">,</span><span> </span><span class="annot"><a href="IC.Canister.StableMemory.html#imp"><span class="hs-identifier">imp</span></a></span><span>
+</span><span id="line-16"></span><span>  </span><span class="hs-special">,</span><span> </span><span class="annot"><a href="IC.Canister.StableMemory.html#serialize"><span class="hs-identifier">serialize</span></a></span><span>
+</span><span id="line-17"></span><span>  </span><span class="hs-special">,</span><span> </span><span class="annot"><a href="IC.Canister.StableMemory.html#deserialize"><span class="hs-identifier">deserialize</span></a></span><span>
+</span><span id="line-18"></span><span>  </span><span class="hs-special">)</span><span>
+</span><span id="line-19"></span><span class="hs-keyword">where</span><span>
+</span><span id="line-20"></span><span>
+</span><span id="line-21"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Prelude</span></span><span> </span><span class="hs-keyword">hiding</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier">read</span></span><span class="hs-special">)</span><span>
+</span><span id="line-22"></span><span>
+</span><span id="line-23"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Data.ByteString.Lazy</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier">ByteString</span></span><span class="hs-special">)</span><span>
+</span><span id="line-24"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Data.Word</span></span><span>
+</span><span id="line-25"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Data.STRef</span></span><span>
+</span><span id="line-26"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Foreign.Ptr</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier">plusPtr</span></span><span class="hs-special">)</span><span>
+</span><span id="line-27"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Foreign.ForeignPtr</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier">withForeignPtr</span></span><span class="hs-special">)</span><span>
+</span><span id="line-28"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Control.Monad.Except</span></span><span>
+</span><span id="line-29"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Control.Monad.ST</span></span><span>
+</span><span id="line-30"></span><span>
+</span><span id="line-31"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><span class="hs-identifier">Data.ByteString</span></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">BS</span></span><span>
+</span><span id="line-32"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><span class="hs-identifier">Data.ByteString.Lazy</span></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">BL</span></span><span>
+</span><span id="line-33"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><span class="hs-identifier">Data.ByteString.Internal</span></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">BI</span></span><span>
+</span><span id="line-34"></span><span>
+</span><span id="line-35"></span><span class="hs-keyword">type</span><span> </span><span id="Size"><span class="annot"><a href="IC.Canister.StableMemory.html#Size"><span class="hs-identifier hs-var">Size</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Word64</span></span><span>
+</span><span id="line-36"></span><span class="hs-keyword">type</span><span> </span><span id="Address"><span class="annot"><a href="IC.Canister.StableMemory.html#Address"><span class="hs-identifier hs-var">Address</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Word64</span></span><span>
+</span><span id="line-37"></span><span>
+</span><span id="line-38"></span><span class="hs-keyword">type</span><span> </span><span id="HostM"><span class="annot"><a href="IC.Canister.StableMemory.html#HostM"><span class="hs-identifier hs-var">HostM</span></a></span></span><span> </span><span id="local-6989586621679257291"><span class="annot"><a href="#local-6989586621679257291"><span class="hs-identifier hs-type">s</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="hs-identifier hs-type">ExceptT</span></span><span> </span><span class="annot"><span class="hs-identifier hs-type">String</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier hs-type">ST</span></span><span> </span><span class="annot"><a href="#local-6989586621679257291"><span class="hs-identifier hs-type">s</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-39"></span><span class="hs-keyword">type</span><span> </span><span id="Memory"><span class="annot"><a href="IC.Canister.StableMemory.html#Memory"><span class="hs-identifier hs-var">Memory</span></a></span></span><span> </span><span id="local-6989586621679257290"><span class="annot"><a href="#local-6989586621679257290"><span class="hs-identifier hs-type">s</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="hs-identifier hs-type">STRef</span></span><span> </span><span class="annot"><a href="#local-6989586621679257290"><span class="hs-identifier hs-type">s</span></a></span><span> </span><span class="annot"><a href="IC.Canister.StableMemory.html#Repr"><span class="hs-identifier hs-type">Repr</span></a></span><span>
+</span><span id="line-40"></span><span>
+</span><span id="line-41"></span><span class="hs-comment">-- | Size of a WebAssembly page.</span><span>
+</span><span id="line-42"></span><span class="annot"><a href="IC.Canister.StableMemory.html#pageSize"><span class="hs-identifier hs-type">pageSize</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Canister.StableMemory.html#Size"><span class="hs-identifier hs-type">Size</span></a></span><span>
+</span><span id="line-43"></span><span id="pageSize"><span class="annot"><span class="annottext">pageSize :: Size
+</span><a href="IC.Canister.StableMemory.html#pageSize"><span class="hs-identifier hs-var hs-var">pageSize</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Size
+</span><span class="hs-number">65536</span></span><span>
+</span><span id="line-44"></span><span>
+</span><span id="line-45"></span><span class="hs-comment">-- NOTE: This stable memory representation is optimized for sparse writes and</span><span>
+</span><span id="line-46"></span><span class="hs-comment">-- arbitrary resizes.</span><span>
+</span><span id="line-47"></span><span class="hs-comment">--</span><span>
+</span><span id="line-48"></span><span class="hs-comment">-- Resizes and writes are very cheap, but the cost of reads is propotional to</span><span>
+</span><span id="line-49"></span><span class="hs-comment">-- the size of the write history. This enables us to work with large memories</span><span>
+</span><span id="line-50"></span><span class="hs-comment">-- without allocating gigabytes of storage. The main motivation for this</span><span>
+</span><span id="line-51"></span><span class="hs-comment">-- representation was testing 64 bit stable memory API and its interaction with</span><span>
+</span><span id="line-52"></span><span class="hs-comment">-- 32 bit API.</span><span>
+</span><span id="line-53"></span><span class="hs-comment">--</span><span>
+</span><span id="line-54"></span><span class="hs-comment">-- See https://github.com/dfinity/ic-hs/issues/28 for more details.</span><span>
+</span><span id="line-55"></span><span>
+</span><span id="line-56"></span><span class="hs-comment">-- | Immutable representation of stable memory that can be used for snapshotting.</span><span>
+</span><span id="line-57"></span><span class="hs-keyword">data</span><span> </span><span id="Repr"><span class="annot"><a href="IC.Canister.StableMemory.html#Repr"><span class="hs-identifier hs-var">Repr</span></a></span></span><span>
+</span><span id="line-58"></span><span>  </span><span class="hs-glyph">=</span><span> </span><span id="Repr"><span class="annot"><a href="IC.Canister.StableMemory.html#Repr"><span class="hs-identifier hs-var">Repr</span></a></span></span><span>
+</span><span id="line-59"></span><span>  </span><span class="hs-special">{</span><span> </span><span id="smSize"><span class="annot"><span class="annottext">Repr -&gt; Size
+</span><a href="IC.Canister.StableMemory.html#smSize"><span class="hs-identifier hs-var hs-var">smSize</span></a></span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Canister.StableMemory.html#Size"><span class="hs-identifier hs-type">Size</span></a></span><span>
+</span><span id="line-60"></span><span>  </span><span class="hs-special">,</span><span> </span><span id="smWrites"><span class="annot"><span class="annottext">Repr -&gt; [(Size, ByteString)]
+</span><a href="IC.Canister.StableMemory.html#smWrites"><span class="hs-identifier hs-var hs-var">smWrites</span></a></span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="hs-special">[</span><span class="hs-special">(</span><span class="annot"><a href="IC.Canister.StableMemory.html#Address"><span class="hs-identifier hs-type">Address</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><span class="hs-identifier hs-type">BS.ByteString</span></span><span class="hs-special">)</span><span class="hs-special">]</span><span>
+</span><span id="line-61"></span><span>  </span><span class="hs-special">}</span><span> </span><span class="hs-keyword">deriving</span><span> </span><span class="hs-special">(</span><span id="local-6989586621679257273"><span id="local-6989586621679257275"><span id="local-6989586621679257284"><span class="annot"><span class="annottext">Int -&gt; Repr -&gt; ShowS
+[Repr] -&gt; ShowS
+Repr -&gt; String
+(Int -&gt; Repr -&gt; ShowS)
+-&gt; (Repr -&gt; String) -&gt; ([Repr] -&gt; ShowS) -&gt; Show Repr
+forall a.
+(Int -&gt; a -&gt; ShowS) -&gt; (a -&gt; String) -&gt; ([a] -&gt; ShowS) -&gt; Show a
+showList :: [Repr] -&gt; ShowS
+$cshowList :: [Repr] -&gt; ShowS
+show :: Repr -&gt; String
+$cshow :: Repr -&gt; String
+showsPrec :: Int -&gt; Repr -&gt; ShowS
+$cshowsPrec :: Int -&gt; Repr -&gt; ShowS
+</span><span class="hs-identifier hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var">Show</span></span></span></span></span><span class="hs-special">)</span><span>
+</span><span id="line-62"></span><span>
+</span><span id="line-63"></span><span class="hs-comment">-- | Constructs a new empty memory.</span><span>
+</span><span id="line-64"></span><span id="local-6989586621679257428"><span class="annot"><a href="IC.Canister.StableMemory.html#new"><span class="hs-identifier hs-type">new</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Canister.StableMemory.html#HostM"><span class="hs-identifier hs-type">HostM</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679257428"><span class="hs-identifier hs-type">s</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Canister.StableMemory.html#Memory"><span class="hs-identifier hs-type">Memory</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679257428"><span class="hs-identifier hs-type">s</span></a></span><span class="hs-special">)</span></span><span>
+</span><span id="line-65"></span><span id="new"><span class="annot"><span class="annottext">new :: forall s. HostM s (Memory s)
+</span><a href="IC.Canister.StableMemory.html#new"><span class="hs-identifier hs-var hs-var">new</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">ST s (STRef s Repr) -&gt; ExceptT String (ST s) (STRef s Repr)
+forall (t :: (* -&gt; *) -&gt; * -&gt; *) (m :: * -&gt; *) a.
+(MonadTrans t, Monad m) =&gt;
+m a -&gt; t m a
+</span><span class="hs-identifier hs-var">lift</span></span><span> </span><span class="annot"><span class="annottext">(ST s (STRef s Repr) -&gt; ExceptT String (ST s) (STRef s Repr))
+-&gt; ST s (STRef s Repr) -&gt; ExceptT String (ST s) (STRef s Repr)
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Repr -&gt; ST s (STRef s Repr)
+forall a s. a -&gt; ST s (STRef s a)
+</span><span class="hs-identifier hs-var">newSTRef</span></span><span> </span><span class="annot"><span class="annottext">(Repr -&gt; ST s (STRef s Repr)) -&gt; Repr -&gt; ST s (STRef s Repr)
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">Size -&gt; [(Size, ByteString)] -&gt; Repr
+</span><a href="IC.Canister.StableMemory.html#Repr"><span class="hs-identifier hs-var">Repr</span></a></span><span> </span><span class="annot"><span class="annottext">Size
+</span><span class="hs-number">0</span></span><span> </span><span class="hs-special">[</span><span class="hs-special">]</span><span class="hs-special">)</span><span>
+</span><span id="line-66"></span><span>
+</span><span id="line-67"></span><span id="local-6989586621679257409"><span class="annot"><a href="IC.Canister.StableMemory.html#memorySizeInBytes"><span class="hs-identifier hs-type">memorySizeInBytes</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Canister.StableMemory.html#Memory"><span class="hs-identifier hs-type">Memory</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679257409"><span class="hs-identifier hs-type">s</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">ST</span></span><span> </span><span class="annot"><a href="#local-6989586621679257409"><span class="hs-identifier hs-type">s</span></a></span><span> </span><span class="annot"><a href="IC.Canister.StableMemory.html#Size"><span class="hs-identifier hs-type">Size</span></a></span></span><span>
+</span><span id="line-68"></span><span id="memorySizeInBytes"><span class="annot"><span class="annottext">memorySizeInBytes :: forall s. Memory s -&gt; ST s Size
+</span><a href="IC.Canister.StableMemory.html#memorySizeInBytes"><span class="hs-identifier hs-var hs-var">memorySizeInBytes</span></a></span></span><span> </span><span id="local-6989586621679257257"><span class="annot"><span class="annottext">Memory s
+</span><a href="#local-6989586621679257257"><span class="hs-identifier hs-var">mem</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Size
+</span><a href="IC.Canister.StableMemory.html#pageSize"><span class="hs-identifier hs-var">pageSize</span></a></span><span> </span><span class="annot"><span class="annottext">Size -&gt; Size -&gt; Size
+forall a. Num a =&gt; a -&gt; a -&gt; a
+</span><span class="hs-operator hs-var">*</span></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">(Size -&gt; Size) -&gt; ST s Size -&gt; ST s Size
+forall (f :: * -&gt; *) a b. Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b
+</span><span class="hs-operator hs-var">&lt;$&gt;</span></span><span> </span><span class="annot"><span class="annottext">Memory s -&gt; ST s Size
+forall s. Memory s -&gt; ST s Size
+</span><a href="IC.Canister.StableMemory.html#memorySizeInPages"><span class="hs-identifier hs-var">memorySizeInPages</span></a></span><span> </span><span class="annot"><span class="annottext">Memory s
+</span><a href="#local-6989586621679257257"><span class="hs-identifier hs-var">mem</span></a></span><span>
+</span><span id="line-69"></span><span>
+</span><span id="line-70"></span><span id="local-6989586621679257253"><span class="annot"><a href="IC.Canister.StableMemory.html#memorySizeInPages"><span class="hs-identifier hs-type">memorySizeInPages</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Canister.StableMemory.html#Memory"><span class="hs-identifier hs-type">Memory</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679257253"><span class="hs-identifier hs-type">s</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">ST</span></span><span> </span><span class="annot"><a href="#local-6989586621679257253"><span class="hs-identifier hs-type">s</span></a></span><span> </span><span class="annot"><a href="IC.Canister.StableMemory.html#Size"><span class="hs-identifier hs-type">Size</span></a></span></span><span>
+</span><span id="line-71"></span><span id="memorySizeInPages"><span class="annot"><span class="annottext">memorySizeInPages :: forall s. Memory s -&gt; ST s Size
+</span><a href="IC.Canister.StableMemory.html#memorySizeInPages"><span class="hs-identifier hs-var hs-var">memorySizeInPages</span></a></span></span><span> </span><span id="local-6989586621679257251"><span class="annot"><span class="annottext">Memory s
+</span><a href="#local-6989586621679257251"><span class="hs-identifier hs-var">mem</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Repr -&gt; Size
+</span><a href="IC.Canister.StableMemory.html#smSize"><span class="hs-identifier hs-var hs-var">smSize</span></a></span><span> </span><span class="annot"><span class="annottext">(Repr -&gt; Size) -&gt; ST s Repr -&gt; ST s Size
+forall (f :: * -&gt; *) a b. Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b
+</span><span class="hs-operator hs-var">&lt;$&gt;</span></span><span> </span><span class="annot"><span class="annottext">Memory s -&gt; ST s Repr
+forall s a. STRef s a -&gt; ST s a
+</span><span class="hs-identifier hs-var">readSTRef</span></span><span> </span><span class="annot"><span class="annottext">Memory s
+</span><a href="#local-6989586621679257251"><span class="hs-identifier hs-var">mem</span></a></span><span>
+</span><span id="line-72"></span><span>
+</span><span id="line-73"></span><span class="hs-comment">-- | Checks that range [offset, offset + len] lies within the memory.</span><span>
+</span><span id="line-74"></span><span id="local-6989586621679257399"><span class="annot"><a href="IC.Canister.StableMemory.html#checkAccess"><span class="hs-identifier hs-type">checkAccess</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Canister.StableMemory.html#Memory"><span class="hs-identifier hs-type">Memory</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679257399"><span class="hs-identifier hs-type">s</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Canister.StableMemory.html#Address"><span class="hs-identifier hs-type">Address</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Canister.StableMemory.html#Size"><span class="hs-identifier hs-type">Size</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Canister.StableMemory.html#HostM"><span class="hs-identifier hs-type">HostM</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679257399"><span class="hs-identifier hs-type">s</span></a></span><span> </span><span class="hs-special">(</span><span class="hs-special">)</span></span><span>
+</span><span id="line-75"></span><span id="checkAccess"><span class="annot"><span class="annottext">checkAccess :: forall s. Memory s -&gt; Size -&gt; Size -&gt; HostM s ()
+</span><a href="IC.Canister.StableMemory.html#checkAccess"><span class="hs-identifier hs-var hs-var">checkAccess</span></a></span></span><span> </span><span id="local-6989586621679257228"><span class="annot"><span class="annottext">Memory s
+</span><a href="#local-6989586621679257228"><span class="hs-identifier hs-var">mem</span></a></span></span><span> </span><span id="local-6989586621679257227"><span class="annot"><span class="annottext">Size
+</span><a href="#local-6989586621679257227"><span class="hs-identifier hs-var">offset</span></a></span></span><span> </span><span id="local-6989586621679257226"><span class="annot"><span class="annottext">Size
+</span><a href="#local-6989586621679257226"><span class="hs-identifier hs-var">len</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-76"></span><span>  </span><span id="local-6989586621679257225"><span class="annot"><span class="annottext">Size
+</span><a href="#local-6989586621679257225"><span class="hs-identifier hs-var">n</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">ST s Size -&gt; ExceptT String (ST s) Size
+forall (t :: (* -&gt; *) -&gt; * -&gt; *) (m :: * -&gt; *) a.
+(MonadTrans t, Monad m) =&gt;
+m a -&gt; t m a
+</span><span class="hs-identifier hs-var">lift</span></span><span> </span><span class="annot"><span class="annottext">(ST s Size -&gt; ExceptT String (ST s) Size)
+-&gt; ST s Size -&gt; ExceptT String (ST s) Size
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">Memory s -&gt; ST s Size
+forall s. Memory s -&gt; ST s Size
+</span><a href="IC.Canister.StableMemory.html#memorySizeInBytes"><span class="hs-identifier hs-var">memorySizeInBytes</span></a></span><span> </span><span class="annot"><span class="annottext">Memory s
+</span><a href="#local-6989586621679257228"><span class="hs-identifier hs-var">mem</span></a></span><span>
+</span><span id="line-77"></span><span>  </span><span class="annot"><span class="annottext">Bool -&gt; HostM s () -&gt; HostM s ()
+forall (f :: * -&gt; *). Applicative f =&gt; Bool -&gt; f () -&gt; f ()
+</span><span class="hs-identifier hs-var">when</span></span><span> </span><span class="hs-special">(</span><span class="hs-special">(</span><span class="annot"><span class="annottext">Size -&gt; Integer
+forall a b. (Integral a, Num b) =&gt; a -&gt; b
+</span><span class="hs-identifier hs-var">fromIntegral</span></span><span> </span><span class="annot"><span class="annottext">Size
+</span><a href="#local-6989586621679257227"><span class="hs-identifier hs-var">offset</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Integer</span></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">Integer -&gt; Integer -&gt; Integer
+forall a. Num a =&gt; a -&gt; a -&gt; a
+</span><span class="hs-operator hs-var">+</span></span><span> </span><span class="annot"><span class="annottext">Size -&gt; Integer
+forall a b. (Integral a, Num b) =&gt; a -&gt; b
+</span><span class="hs-identifier hs-var">fromIntegral</span></span><span> </span><span class="annot"><span class="annottext">Size
+</span><a href="#local-6989586621679257226"><span class="hs-identifier hs-var">len</span></a></span><span> </span><span class="annot"><span class="annottext">Integer -&gt; Integer -&gt; Bool
+forall a. Ord a =&gt; a -&gt; a -&gt; Bool
+</span><span class="hs-operator hs-var">&gt;</span></span><span> </span><span class="annot"><span class="annottext">Size -&gt; Integer
+forall a b. (Integral a, Num b) =&gt; a -&gt; b
+</span><span class="hs-identifier hs-var">fromIntegral</span></span><span> </span><span class="annot"><span class="annottext">Size
+</span><a href="#local-6989586621679257225"><span class="hs-identifier hs-var">n</span></a></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">(HostM s () -&gt; HostM s ()) -&gt; HostM s () -&gt; HostM s ()
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span>
+</span><span id="line-78"></span><span>    </span><span class="annot"><span class="annottext">String -&gt; HostM s ()
+forall e (m :: * -&gt; *) a. MonadError e m =&gt; e -&gt; m a
+</span><span class="hs-identifier hs-var">throwError</span></span><span> </span><span class="annot"><span class="annottext">String
+</span><span class="hs-string">&quot;stable memory error: out of bounds&quot;</span></span><span>
+</span><span id="line-79"></span><span>
+</span><span id="line-80"></span><span class="hs-comment">-- | Extracts a bytestring from stable memory representation.</span><span>
+</span><span id="line-81"></span><span class="annot"><a href="IC.Canister.StableMemory.html#toByteString"><span class="hs-identifier hs-type">toByteString</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Canister.StableMemory.html#Repr"><span class="hs-identifier hs-type">Repr</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Canister.StableMemory.html#Address"><span class="hs-identifier hs-type">Address</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Canister.StableMemory.html#Size"><span class="hs-identifier hs-type">Size</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">ByteString</span></span><span>
+</span><span id="line-82"></span><span id="toByteString"><span class="annot"><span class="annottext">toByteString :: Repr -&gt; Size -&gt; Size -&gt; ByteString
+</span><a href="IC.Canister.StableMemory.html#toByteString"><span class="hs-identifier hs-var hs-var">toByteString</span></a></span></span><span> </span><span id="local-6989586621679257219"><span class="annot"><span class="annottext">Repr
+</span><a href="#local-6989586621679257219"><span class="hs-identifier hs-var">repr</span></a></span></span><span> </span><span id="local-6989586621679257218"><span class="annot"><span class="annottext">Size
+</span><a href="#local-6989586621679257218"><span class="hs-identifier hs-var">offset</span></a></span></span><span> </span><span id="local-6989586621679257217"><span class="annot"><span class="annottext">Size
+</span><a href="#local-6989586621679257217"><span class="hs-identifier hs-var">len</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">ByteString -&gt; ByteString
+</span><span class="hs-identifier hs-var">BL.fromStrict</span></span><span> </span><span class="annot"><span class="annottext">(ByteString -&gt; ByteString) -&gt; ByteString -&gt; ByteString
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">Int -&gt; (Ptr Word8 -&gt; IO ()) -&gt; ByteString
+</span><span class="hs-identifier hs-var">BI.unsafeCreate</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Size -&gt; Int
+forall a b. (Integral a, Num b) =&gt; a -&gt; b
+</span><span class="hs-identifier hs-var">fromIntegral</span></span><span> </span><span class="annot"><span class="annottext">Size
+</span><a href="#local-6989586621679257217"><span class="hs-identifier hs-var">len</span></a></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">((Ptr Word8 -&gt; IO ()) -&gt; ByteString)
+-&gt; (Ptr Word8 -&gt; IO ()) -&gt; ByteString
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="hs-glyph">\</span><span id="local-6989586621679257214"><span class="annot"><span class="annottext">Ptr Word8
+</span><a href="#local-6989586621679257214"><span class="hs-identifier hs-var">dst</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-83"></span><span>  </span><span class="annot"><span class="annottext">Ptr Word8
+</span><span class="hs-identifier">_</span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">Ptr Word8 -&gt; Word8 -&gt; CSize -&gt; IO (Ptr Word8)
+</span><span class="hs-identifier hs-var">BI.memset</span></span><span> </span><span class="annot"><span class="annottext">Ptr Word8
+</span><a href="#local-6989586621679257214"><span class="hs-identifier hs-var">dst</span></a></span><span> </span><span class="annot"><span class="annottext">Word8
+</span><span class="hs-number">0</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Size -&gt; CSize
+forall a b. (Integral a, Num b) =&gt; a -&gt; b
+</span><span class="hs-identifier hs-var">fromIntegral</span></span><span> </span><span class="annot"><span class="annottext">Size
+</span><a href="#local-6989586621679257217"><span class="hs-identifier hs-var">len</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-84"></span><span>  </span><span class="annot"><span class="annottext">[(Size, ByteString)] -&gt; ((Size, ByteString) -&gt; IO ()) -&gt; IO ()
+forall (t :: * -&gt; *) (m :: * -&gt; *) a b.
+(Foldable t, Monad m) =&gt;
+t a -&gt; (a -&gt; m b) -&gt; m ()
+</span><span class="hs-identifier hs-var">forM_</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">[(Size, ByteString)] -&gt; [(Size, ByteString)]
+forall a. [a] -&gt; [a]
+</span><span class="hs-identifier hs-var">reverse</span></span><span> </span><span class="annot"><span class="annottext">([(Size, ByteString)] -&gt; [(Size, ByteString)])
+-&gt; [(Size, ByteString)] -&gt; [(Size, ByteString)]
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">Repr -&gt; [(Size, ByteString)]
+</span><a href="IC.Canister.StableMemory.html#smWrites"><span class="hs-identifier hs-var hs-var">smWrites</span></a></span><span> </span><span class="annot"><span class="annottext">Repr
+</span><a href="#local-6989586621679257219"><span class="hs-identifier hs-var">repr</span></a></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">(((Size, ByteString) -&gt; IO ()) -&gt; IO ())
+-&gt; ((Size, ByteString) -&gt; IO ()) -&gt; IO ()
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="hs-glyph">\</span><span class="hs-special">(</span><span id="local-6989586621679257210"><span class="annot"><span class="annottext">Size
+</span><a href="#local-6989586621679257210"><span class="hs-identifier hs-var">addr</span></a></span></span><span class="hs-special">,</span><span> </span><span id="local-6989586621679257209"><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679257209"><span class="hs-identifier hs-var">blob</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-85"></span><span>    </span><span class="hs-keyword">let</span><span> </span><span id="local-6989586621679257205"><span class="annot"><span class="annottext">n :: Size
+</span><a href="#local-6989586621679257205"><span class="hs-identifier hs-var hs-var">n</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Int -&gt; Size
+forall a b. (Integral a, Num b) =&gt; a -&gt; b
+</span><span class="hs-identifier hs-var">fromIntegral</span></span><span> </span><span class="annot"><span class="annottext">(Int -&gt; Size) -&gt; Int -&gt; Size
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">ByteString -&gt; Int
+</span><span class="hs-identifier hs-var">BS.length</span></span><span> </span><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679257209"><span class="hs-identifier hs-var">blob</span></a></span><span>
+</span><span id="line-86"></span><span>    </span><span class="hs-keyword">let</span><span> </span><span id="local-6989586621679257202"><span class="annot"><span class="annottext">copyStart :: Size
+</span><a href="#local-6989586621679257202"><span class="hs-identifier hs-var hs-var">copyStart</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Size -&gt; Size -&gt; Size
+forall a. Ord a =&gt; a -&gt; a -&gt; a
+</span><span class="hs-identifier hs-var">max</span></span><span> </span><span class="annot"><span class="annottext">Size
+</span><a href="#local-6989586621679257218"><span class="hs-identifier hs-var">offset</span></a></span><span> </span><span class="annot"><span class="annottext">Size
+</span><a href="#local-6989586621679257210"><span class="hs-identifier hs-var">addr</span></a></span><span>
+</span><span id="line-87"></span><span>    </span><span class="hs-keyword">let</span><span> </span><span id="local-6989586621679257197"><span class="annot"><span class="annottext">copyEnd :: Size
+</span><a href="#local-6989586621679257197"><span class="hs-identifier hs-var hs-var">copyEnd</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Size -&gt; Size -&gt; Size
+forall a. Ord a =&gt; a -&gt; a -&gt; a
+</span><span class="hs-identifier hs-var">min</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Size
+</span><a href="#local-6989586621679257218"><span class="hs-identifier hs-var">offset</span></a></span><span> </span><span class="annot"><span class="annottext">Size -&gt; Size -&gt; Size
+forall a. Num a =&gt; a -&gt; a -&gt; a
+</span><span class="hs-operator hs-var">+</span></span><span> </span><span class="annot"><span class="annottext">Size
+</span><a href="#local-6989586621679257217"><span class="hs-identifier hs-var">len</span></a></span><span class="hs-special">)</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Size
+</span><a href="#local-6989586621679257210"><span class="hs-identifier hs-var">addr</span></a></span><span> </span><span class="annot"><span class="annottext">Size -&gt; Size -&gt; Size
+forall a. Num a =&gt; a -&gt; a -&gt; a
+</span><span class="hs-operator hs-var">+</span></span><span> </span><span class="annot"><span class="annottext">Size
+</span><a href="#local-6989586621679257205"><span class="hs-identifier hs-var">n</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-88"></span><span>    </span><span class="annot"><span class="annottext">Bool -&gt; IO () -&gt; IO ()
+forall (f :: * -&gt; *). Applicative f =&gt; Bool -&gt; f () -&gt; f ()
+</span><span class="hs-identifier hs-var">when</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Size
+</span><a href="#local-6989586621679257202"><span class="hs-identifier hs-var">copyStart</span></a></span><span> </span><span class="annot"><span class="annottext">Size -&gt; Size -&gt; Bool
+forall a. Ord a =&gt; a -&gt; a -&gt; Bool
+</span><span class="hs-operator hs-var">&lt;</span></span><span> </span><span class="annot"><span class="annottext">Size
+</span><a href="#local-6989586621679257197"><span class="hs-identifier hs-var">copyEnd</span></a></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">(IO () -&gt; IO ()) -&gt; IO () -&gt; IO ()
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-89"></span><span>      </span><span class="hs-keyword">let</span><span> </span><span class="hs-special">(</span><span id="local-6989586621679257194"><span class="annot"><span class="annottext">ForeignPtr Word8
+</span><a href="#local-6989586621679257194"><span class="hs-identifier hs-var">fptr</span></a></span></span><span class="hs-special">,</span><span> </span><span id="local-6989586621679257193"><span class="annot"><span class="annottext">Int
+</span><a href="#local-6989586621679257193"><span class="hs-identifier hs-var">blobOffset</span></a></span></span><span class="hs-special">,</span><span> </span><span id="local-6989586621679257192"><span class="annot"><span class="annottext">Int
+</span><a href="#local-6989586621679257192"><span class="hs-identifier hs-var">_len</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">ByteString -&gt; (ForeignPtr Word8, Int, Int)
+</span><span class="hs-identifier hs-var">BI.toForeignPtr</span></span><span> </span><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679257209"><span class="hs-identifier hs-var">blob</span></a></span><span>
+</span><span id="line-90"></span><span>      </span><span class="annot"><span class="annottext">ForeignPtr Word8 -&gt; (Ptr Word8 -&gt; IO ()) -&gt; IO ()
+forall a b. ForeignPtr a -&gt; (Ptr a -&gt; IO b) -&gt; IO b
+</span><span class="hs-identifier hs-var">withForeignPtr</span></span><span> </span><span class="annot"><span class="annottext">ForeignPtr Word8
+</span><a href="#local-6989586621679257194"><span class="hs-identifier hs-var">fptr</span></a></span><span> </span><span class="annot"><span class="annottext">((Ptr Word8 -&gt; IO ()) -&gt; IO ()) -&gt; (Ptr Word8 -&gt; IO ()) -&gt; IO ()
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="hs-glyph">\</span><span id="local-6989586621679257190"><span class="annot"><span class="annottext">Ptr Word8
+</span><a href="#local-6989586621679257190"><span class="hs-identifier hs-var">src</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span>
+</span><span id="line-91"></span><span>        </span><span class="annot"><span class="annottext">Ptr Word8 -&gt; Ptr Word8 -&gt; Int -&gt; IO ()
+</span><span class="hs-identifier hs-var">BI.memcpy</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Ptr Word8 -&gt; Int -&gt; Ptr Word8
+forall a b. Ptr a -&gt; Int -&gt; Ptr b
+</span><span class="hs-identifier hs-var">plusPtr</span></span><span> </span><span class="annot"><span class="annottext">Ptr Word8
+</span><a href="#local-6989586621679257214"><span class="hs-identifier hs-var">dst</span></a></span><span> </span><span class="annot"><span class="annottext">(Int -&gt; Ptr Word8) -&gt; Int -&gt; Ptr Word8
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">Size -&gt; Int
+forall a b. (Integral a, Num b) =&gt; a -&gt; b
+</span><span class="hs-identifier hs-var">fromIntegral</span></span><span> </span><span class="annot"><span class="annottext">(Size -&gt; Int) -&gt; Size -&gt; Int
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">Size
+</span><a href="#local-6989586621679257202"><span class="hs-identifier hs-var">copyStart</span></a></span><span> </span><span class="annot"><span class="annottext">Size -&gt; Size -&gt; Size
+forall a. Num a =&gt; a -&gt; a -&gt; a
+</span><span class="hs-glyph hs-var">-</span></span><span> </span><span class="annot"><span class="annottext">Size
+</span><a href="#local-6989586621679257218"><span class="hs-identifier hs-var">offset</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-92"></span><span>                  </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Ptr Word8 -&gt; Int -&gt; Ptr Word8
+forall a b. Ptr a -&gt; Int -&gt; Ptr b
+</span><span class="hs-identifier hs-var">plusPtr</span></span><span> </span><span class="annot"><span class="annottext">Ptr Word8
+</span><a href="#local-6989586621679257190"><span class="hs-identifier hs-var">src</span></a></span><span> </span><span class="annot"><span class="annottext">(Int -&gt; Ptr Word8) -&gt; Int -&gt; Ptr Word8
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">Int
+</span><a href="#local-6989586621679257193"><span class="hs-identifier hs-var">blobOffset</span></a></span><span> </span><span class="annot"><span class="annottext">Int -&gt; Int -&gt; Int
+forall a. Num a =&gt; a -&gt; a -&gt; a
+</span><span class="hs-operator hs-var">+</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Size -&gt; Int
+forall a b. (Integral a, Num b) =&gt; a -&gt; b
+</span><span class="hs-identifier hs-var">fromIntegral</span></span><span> </span><span class="annot"><span class="annottext">(Size -&gt; Int) -&gt; Size -&gt; Int
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">Size
+</span><a href="#local-6989586621679257202"><span class="hs-identifier hs-var">copyStart</span></a></span><span> </span><span class="annot"><span class="annottext">Size -&gt; Size -&gt; Size
+forall a. Num a =&gt; a -&gt; a -&gt; a
+</span><span class="hs-glyph hs-var">-</span></span><span> </span><span class="annot"><span class="annottext">Size
+</span><a href="#local-6989586621679257210"><span class="hs-identifier hs-var">addr</span></a></span><span class="hs-special">)</span><span class="hs-special">)</span><span>
+</span><span id="line-93"></span><span>                  </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Size -&gt; Int
+forall a b. (Integral a, Num b) =&gt; a -&gt; b
+</span><span class="hs-identifier hs-var">fromIntegral</span></span><span> </span><span class="annot"><span class="annottext">(Size -&gt; Int) -&gt; Size -&gt; Int
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">Size
+</span><a href="#local-6989586621679257197"><span class="hs-identifier hs-var">copyEnd</span></a></span><span> </span><span class="annot"><span class="annottext">Size -&gt; Size -&gt; Size
+forall a. Num a =&gt; a -&gt; a -&gt; a
+</span><span class="hs-glyph hs-var">-</span></span><span> </span><span class="annot"><span class="annottext">Size
+</span><a href="#local-6989586621679257202"><span class="hs-identifier hs-var">copyStart</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-94"></span><span>
+</span><span id="line-95"></span><span class="hs-comment">-- | Returns the size of stable memory in WebAssembly pages.</span><span>
+</span><span id="line-96"></span><span id="local-6989586621679257372"><span class="annot"><a href="IC.Canister.StableMemory.html#size"><span class="hs-identifier hs-type">size</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Canister.StableMemory.html#Memory"><span class="hs-identifier hs-type">Memory</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679257372"><span class="hs-identifier hs-type">s</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Canister.StableMemory.html#HostM"><span class="hs-identifier hs-type">HostM</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679257372"><span class="hs-identifier hs-type">s</span></a></span><span> </span><span class="annot"><a href="IC.Canister.StableMemory.html#Size"><span class="hs-identifier hs-type">Size</span></a></span></span><span>
+</span><span id="line-97"></span><span id="size"><span class="annot"><span class="annottext">size :: forall s. Memory s -&gt; HostM s Size
+</span><a href="IC.Canister.StableMemory.html#size"><span class="hs-identifier hs-var hs-var">size</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">ST s Size -&gt; ExceptT String (ST s) Size
+forall (t :: (* -&gt; *) -&gt; * -&gt; *) (m :: * -&gt; *) a.
+(MonadTrans t, Monad m) =&gt;
+m a -&gt; t m a
+</span><span class="hs-identifier hs-var">lift</span></span><span> </span><span class="annot"><span class="annottext">(ST s Size -&gt; ExceptT String (ST s) Size)
+-&gt; (Memory s -&gt; ST s Size)
+-&gt; Memory s
+-&gt; ExceptT String (ST s) Size
+forall b c a. (b -&gt; c) -&gt; (a -&gt; b) -&gt; a -&gt; c
+</span><span class="hs-operator hs-var">.</span></span><span> </span><span class="annot"><span class="annottext">Memory s -&gt; ST s Size
+forall s. Memory s -&gt; ST s Size
+</span><a href="IC.Canister.StableMemory.html#memorySizeInPages"><span class="hs-identifier hs-var">memorySizeInPages</span></a></span><span>
+</span><span id="line-98"></span><span>
+</span><span id="line-99"></span><span class="hs-comment">-- | Attempts to grow stable memory by @delta@ pages.</span><span>
+</span><span id="line-100"></span><span id="local-6989586621679257367"><span class="annot"><a href="IC.Canister.StableMemory.html#grow"><span class="hs-identifier hs-type">grow</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Canister.StableMemory.html#Memory"><span class="hs-identifier hs-type">Memory</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679257367"><span class="hs-identifier hs-type">s</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Canister.StableMemory.html#Size"><span class="hs-identifier hs-type">Size</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Canister.StableMemory.html#HostM"><span class="hs-identifier hs-type">HostM</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679257367"><span class="hs-identifier hs-type">s</span></a></span><span> </span><span class="annot"><a href="IC.Canister.StableMemory.html#Size"><span class="hs-identifier hs-type">Size</span></a></span></span><span>
+</span><span id="line-101"></span><span id="grow"><span class="annot"><span class="annottext">grow :: forall s. Memory s -&gt; Size -&gt; HostM s Size
+</span><a href="IC.Canister.StableMemory.html#grow"><span class="hs-identifier hs-var hs-var">grow</span></a></span></span><span> </span><span id="local-6989586621679257179"><span class="annot"><span class="annottext">Memory s
+</span><a href="#local-6989586621679257179"><span class="hs-identifier hs-var">mem</span></a></span></span><span> </span><span id="local-6989586621679257178"><span class="annot"><span class="annottext">Size
+</span><a href="#local-6989586621679257178"><span class="hs-identifier hs-var">delta</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">ST s Size -&gt; ExceptT String (ST s) Size
+forall (t :: (* -&gt; *) -&gt; * -&gt; *) (m :: * -&gt; *) a.
+(MonadTrans t, Monad m) =&gt;
+m a -&gt; t m a
+</span><span class="hs-identifier hs-var">lift</span></span><span> </span><span class="annot"><span class="annottext">(ST s Size -&gt; ExceptT String (ST s) Size)
+-&gt; ST s Size -&gt; ExceptT String (ST s) Size
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-102"></span><span>  </span><span id="local-6989586621679257177"><span class="annot"><span class="annottext">Repr
+</span><a href="#local-6989586621679257177"><span class="hs-identifier hs-var">repr</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">Memory s -&gt; ST s Repr
+forall s a. STRef s a -&gt; ST s a
+</span><span class="hs-identifier hs-var">readSTRef</span></span><span> </span><span class="annot"><span class="annottext">Memory s
+</span><a href="#local-6989586621679257179"><span class="hs-identifier hs-var">mem</span></a></span><span>
+</span><span id="line-103"></span><span>  </span><span class="hs-keyword">let</span><span> </span><span id="local-6989586621679257176"><span class="annot"><span class="annottext">oldSize :: Size
+</span><a href="#local-6989586621679257176"><span class="hs-identifier hs-var hs-var">oldSize</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Repr -&gt; Size
+</span><a href="IC.Canister.StableMemory.html#smSize"><span class="hs-identifier hs-var hs-var">smSize</span></a></span><span> </span><span class="annot"><span class="annottext">Repr
+</span><a href="#local-6989586621679257177"><span class="hs-identifier hs-var">repr</span></a></span><span>
+</span><span id="line-104"></span><span>  </span><span class="annot"><span class="annottext">Memory s -&gt; Repr -&gt; ST s ()
+forall s a. STRef s a -&gt; a -&gt; ST s ()
+</span><span class="hs-identifier hs-var">writeSTRef</span></span><span> </span><span class="annot"><span class="annottext">Memory s
+</span><a href="#local-6989586621679257179"><span class="hs-identifier hs-var">mem</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Repr
+</span><a href="#local-6989586621679257177"><span class="hs-identifier hs-var">repr</span></a></span><span> </span><span class="hs-special">{</span><span> </span><span class="annot"><span class="annottext">smSize :: Size
+</span><a href="IC.Canister.StableMemory.html#smSize"><span class="hs-identifier hs-var">smSize</span></a></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Size
+</span><a href="#local-6989586621679257176"><span class="hs-identifier hs-var">oldSize</span></a></span><span> </span><span class="annot"><span class="annottext">Size -&gt; Size -&gt; Size
+forall a. Num a =&gt; a -&gt; a -&gt; a
+</span><span class="hs-operator hs-var">+</span></span><span> </span><span class="annot"><span class="annottext">Size
+</span><a href="#local-6989586621679257178"><span class="hs-identifier hs-var">delta</span></a></span><span> </span><span class="hs-special">}</span><span class="hs-special">)</span><span>
+</span><span id="line-105"></span><span>  </span><span class="annot"><span class="annottext">Size -&gt; ST s Size
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><span class="hs-identifier hs-var">return</span></span><span> </span><span class="annot"><span class="annottext">Size
+</span><a href="#local-6989586621679257176"><span class="hs-identifier hs-var">oldSize</span></a></span><span>
+</span><span id="line-106"></span><span>
+</span><span id="line-107"></span><span class="hs-comment">-- | Reads a range of bytes from memory.</span><span>
+</span><span id="line-108"></span><span id="local-6989586621679257361"><span class="annot"><a href="IC.Canister.StableMemory.html#read"><span class="hs-identifier hs-type">read</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Canister.StableMemory.html#Memory"><span class="hs-identifier hs-type">Memory</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679257361"><span class="hs-identifier hs-type">s</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Canister.StableMemory.html#Address"><span class="hs-identifier hs-type">Address</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Canister.StableMemory.html#Size"><span class="hs-identifier hs-type">Size</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Canister.StableMemory.html#HostM"><span class="hs-identifier hs-type">HostM</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679257361"><span class="hs-identifier hs-type">s</span></a></span><span> </span><span class="annot"><span class="hs-identifier hs-type">ByteString</span></span></span><span>
+</span><span id="line-109"></span><span id="read"><span class="annot"><span class="annottext">read :: forall s. Memory s -&gt; Size -&gt; Size -&gt; HostM s ByteString
+</span><a href="IC.Canister.StableMemory.html#read"><span class="hs-identifier hs-var hs-var">read</span></a></span></span><span> </span><span id="local-6989586621679257168"><span class="annot"><span class="annottext">Memory s
+</span><a href="#local-6989586621679257168"><span class="hs-identifier hs-var">mem</span></a></span></span><span> </span><span id="local-6989586621679257167"><span class="annot"><span class="annottext">Size
+</span><a href="#local-6989586621679257167"><span class="hs-identifier hs-var">ptr</span></a></span></span><span> </span><span id="local-6989586621679257166"><span class="annot"><span class="annottext">Size
+</span><a href="#local-6989586621679257166"><span class="hs-identifier hs-var">len</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-110"></span><span>  </span><span class="annot"><span class="annottext">Memory s -&gt; Size -&gt; Size -&gt; HostM s ()
+forall s. Memory s -&gt; Size -&gt; Size -&gt; HostM s ()
+</span><a href="IC.Canister.StableMemory.html#checkAccess"><span class="hs-identifier hs-var">checkAccess</span></a></span><span> </span><span class="annot"><span class="annottext">Memory s
+</span><a href="#local-6989586621679257168"><span class="hs-identifier hs-var">mem</span></a></span><span> </span><span class="annot"><span class="annottext">Size
+</span><a href="#local-6989586621679257167"><span class="hs-identifier hs-var">ptr</span></a></span><span> </span><span class="annot"><span class="annottext">Size
+</span><a href="#local-6989586621679257166"><span class="hs-identifier hs-var">len</span></a></span><span>
+</span><span id="line-111"></span><span>  </span><span class="annot"><span class="annottext">ST s ByteString -&gt; HostM s ByteString
+forall (t :: (* -&gt; *) -&gt; * -&gt; *) (m :: * -&gt; *) a.
+(MonadTrans t, Monad m) =&gt;
+m a -&gt; t m a
+</span><span class="hs-identifier hs-var">lift</span></span><span> </span><span class="annot"><span class="annottext">(ST s ByteString -&gt; HostM s ByteString)
+-&gt; ST s ByteString -&gt; HostM s ByteString
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-112"></span><span>    </span><span id="local-6989586621679257165"><span class="annot"><span class="annottext">Repr
+</span><a href="#local-6989586621679257165"><span class="hs-identifier hs-var">repr</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">Memory s -&gt; ST s Repr
+forall s a. STRef s a -&gt; ST s a
+</span><span class="hs-identifier hs-var">readSTRef</span></span><span> </span><span class="annot"><span class="annottext">Memory s
+</span><a href="#local-6989586621679257168"><span class="hs-identifier hs-var">mem</span></a></span><span>
+</span><span id="line-113"></span><span>    </span><span class="annot"><span class="annottext">ByteString -&gt; ST s ByteString
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><span class="hs-identifier hs-var">return</span></span><span> </span><span class="annot"><span class="annottext">(ByteString -&gt; ST s ByteString) -&gt; ByteString -&gt; ST s ByteString
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">Repr -&gt; Size -&gt; Size -&gt; ByteString
+</span><a href="IC.Canister.StableMemory.html#toByteString"><span class="hs-identifier hs-var">toByteString</span></a></span><span> </span><span class="annot"><span class="annottext">Repr
+</span><a href="#local-6989586621679257165"><span class="hs-identifier hs-var">repr</span></a></span><span> </span><span class="annot"><span class="annottext">Size
+</span><a href="#local-6989586621679257167"><span class="hs-identifier hs-var">ptr</span></a></span><span> </span><span class="annot"><span class="annottext">Size
+</span><a href="#local-6989586621679257166"><span class="hs-identifier hs-var">len</span></a></span><span>
+</span><span id="line-114"></span><span>
+</span><span id="line-115"></span><span class="hs-comment">-- | Writes a byte string at the specified offset.</span><span>
+</span><span id="line-116"></span><span id="local-6989586621679257359"><span class="annot"><a href="IC.Canister.StableMemory.html#write"><span class="hs-identifier hs-type">write</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Canister.StableMemory.html#Memory"><span class="hs-identifier hs-type">Memory</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679257359"><span class="hs-identifier hs-type">s</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Canister.StableMemory.html#Address"><span class="hs-identifier hs-type">Address</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">ByteString</span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Canister.StableMemory.html#HostM"><span class="hs-identifier hs-type">HostM</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679257359"><span class="hs-identifier hs-type">s</span></a></span><span> </span><span class="hs-special">(</span><span class="hs-special">)</span></span><span>
+</span><span id="line-117"></span><span id="write"><span class="annot"><span class="annottext">write :: forall s. Memory s -&gt; Size -&gt; ByteString -&gt; HostM s ()
+</span><a href="IC.Canister.StableMemory.html#write"><span class="hs-identifier hs-var hs-var">write</span></a></span></span><span> </span><span id="local-6989586621679257157"><span class="annot"><span class="annottext">Memory s
+</span><a href="#local-6989586621679257157"><span class="hs-identifier hs-var">mem</span></a></span></span><span> </span><span id="local-6989586621679257156"><span class="annot"><span class="annottext">Size
+</span><a href="#local-6989586621679257156"><span class="hs-identifier hs-var">ptr</span></a></span></span><span> </span><span id="local-6989586621679257155"><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679257155"><span class="hs-identifier hs-var">blob</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-118"></span><span>  </span><span class="annot"><span class="annottext">Memory s -&gt; Size -&gt; Size -&gt; HostM s ()
+forall s. Memory s -&gt; Size -&gt; Size -&gt; HostM s ()
+</span><a href="IC.Canister.StableMemory.html#checkAccess"><span class="hs-identifier hs-var">checkAccess</span></a></span><span> </span><span class="annot"><span class="annottext">Memory s
+</span><a href="#local-6989586621679257157"><span class="hs-identifier hs-var">mem</span></a></span><span> </span><span class="annot"><span class="annottext">Size
+</span><a href="#local-6989586621679257156"><span class="hs-identifier hs-var">ptr</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Int64 -&gt; Size
+forall a b. (Integral a, Num b) =&gt; a -&gt; b
+</span><span class="hs-identifier hs-var">fromIntegral</span></span><span> </span><span class="annot"><span class="annottext">(Int64 -&gt; Size) -&gt; Int64 -&gt; Size
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">ByteString -&gt; Int64
+</span><span class="hs-identifier hs-var">BL.length</span></span><span> </span><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679257155"><span class="hs-identifier hs-var">blob</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-119"></span><span>  </span><span class="annot"><span class="annottext">ST s () -&gt; HostM s ()
+forall (t :: (* -&gt; *) -&gt; * -&gt; *) (m :: * -&gt; *) a.
+(MonadTrans t, Monad m) =&gt;
+m a -&gt; t m a
+</span><span class="hs-identifier hs-var">lift</span></span><span> </span><span class="annot"><span class="annottext">(ST s () -&gt; HostM s ()) -&gt; ST s () -&gt; HostM s ()
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">Memory s -&gt; (Repr -&gt; Repr) -&gt; ST s ()
+forall s a. STRef s a -&gt; (a -&gt; a) -&gt; ST s ()
+</span><span class="hs-identifier hs-var">modifySTRef'</span></span><span> </span><span class="annot"><span class="annottext">Memory s
+</span><a href="#local-6989586621679257157"><span class="hs-identifier hs-var">mem</span></a></span><span> </span><span class="hs-special">(</span><span class="hs-glyph">\</span><span id="local-6989586621679257152"><span class="annot"><span class="annottext">Repr
+</span><a href="#local-6989586621679257152"><span class="hs-identifier hs-var">repr</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">Repr
+</span><a href="#local-6989586621679257152"><span class="hs-identifier hs-var">repr</span></a></span><span> </span><span class="hs-special">{</span><span> </span><span class="annot"><span class="annottext">smWrites :: [(Size, ByteString)]
+</span><a href="IC.Canister.StableMemory.html#smWrites"><span class="hs-identifier hs-var">smWrites</span></a></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Size
+</span><a href="#local-6989586621679257156"><span class="hs-identifier hs-var">ptr</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">ByteString -&gt; ByteString
+</span><span class="hs-identifier hs-var">BL.toStrict</span></span><span> </span><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679257155"><span class="hs-identifier hs-var">blob</span></a></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">(Size, ByteString) -&gt; [(Size, ByteString)] -&gt; [(Size, ByteString)]
+forall a. a -&gt; [a] -&gt; [a]
+</span><span class="hs-glyph hs-var">:</span></span><span> </span><span class="annot"><span class="annottext">Repr -&gt; [(Size, ByteString)]
+</span><a href="IC.Canister.StableMemory.html#smWrites"><span class="hs-identifier hs-var hs-var">smWrites</span></a></span><span> </span><span class="annot"><span class="annottext">Repr
+</span><a href="#local-6989586621679257152"><span class="hs-identifier hs-var">repr</span></a></span><span> </span><span class="hs-special">}</span><span class="hs-special">)</span><span>
+</span><span id="line-120"></span><span>
+</span><span id="line-121"></span><span class="hs-comment">-- | Exports immutable memory representation.</span><span>
+</span><span id="line-122"></span><span id="local-6989586621679257355"><span class="annot"><a href="IC.Canister.StableMemory.html#export"><span class="hs-keyword hs-type">export</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Canister.StableMemory.html#Memory"><span class="hs-identifier hs-type">Memory</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679257355"><span class="hs-identifier hs-type">s</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">ST</span></span><span> </span><span class="annot"><a href="#local-6989586621679257355"><span class="hs-identifier hs-type">s</span></a></span><span> </span><span class="annot"><a href="IC.Canister.StableMemory.html#Repr"><span class="hs-identifier hs-type">Repr</span></a></span></span><span>
+</span><span id="line-123"></span><span id="export"><span class="annot"><span class="annottext">export :: forall s. Memory s -&gt; ST s Repr
+</span><a href="IC.Canister.StableMemory.html#export"><span class="hs-keyword hs-var hs-var">export</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">STRef s Repr -&gt; ST s Repr
+forall s a. STRef s a -&gt; ST s a
+</span><span class="hs-identifier hs-var">readSTRef</span></span><span>
+</span><span id="line-124"></span><span>
+</span><span id="line-125"></span><span class="hs-comment">-- | Sets the contents of memory to a previously exported value.</span><span>
+</span><span id="line-126"></span><span id="local-6989586621679257353"><span class="annot"><a href="IC.Canister.StableMemory.html#imp"><span class="hs-identifier hs-type">imp</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Canister.StableMemory.html#Memory"><span class="hs-identifier hs-type">Memory</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679257353"><span class="hs-identifier hs-type">s</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Canister.StableMemory.html#Repr"><span class="hs-identifier hs-type">Repr</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">ST</span></span><span> </span><span class="annot"><a href="#local-6989586621679257353"><span class="hs-identifier hs-type">s</span></a></span><span> </span><span class="hs-special">(</span><span class="hs-special">)</span></span><span>
+</span><span id="line-127"></span><span id="imp"><span class="annot"><span class="annottext">imp :: forall s. Memory s -&gt; Repr -&gt; ST s ()
+</span><a href="IC.Canister.StableMemory.html#imp"><span class="hs-identifier hs-var hs-var">imp</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">STRef s Repr -&gt; Repr -&gt; ST s ()
+forall s a. STRef s a -&gt; a -&gt; ST s ()
+</span><span class="hs-identifier hs-var">writeSTRef</span></span><span>
+</span><span id="line-128"></span><span>
+</span><span id="line-129"></span><span class="hs-comment">-- | Converts internal memory representation into a bytestring.</span><span>
+</span><span id="line-130"></span><span class="annot"><a href="IC.Canister.StableMemory.html#serialize"><span class="hs-identifier hs-type">serialize</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Canister.StableMemory.html#Repr"><span class="hs-identifier hs-type">Repr</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">ByteString</span></span><span>
+</span><span id="line-131"></span><span id="serialize"><span class="annot"><span class="annottext">serialize :: Repr -&gt; ByteString
+</span><a href="IC.Canister.StableMemory.html#serialize"><span class="hs-identifier hs-var hs-var">serialize</span></a></span></span><span> </span><span id="local-6989586621679257150"><span class="annot"><span class="annottext">Repr
+</span><a href="#local-6989586621679257150"><span class="hs-identifier hs-var">repr</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Repr -&gt; Size -&gt; Size -&gt; ByteString
+</span><a href="IC.Canister.StableMemory.html#toByteString"><span class="hs-identifier hs-var">toByteString</span></a></span><span> </span><span class="annot"><span class="annottext">Repr
+</span><a href="#local-6989586621679257150"><span class="hs-identifier hs-var">repr</span></a></span><span> </span><span class="annot"><span class="annottext">Size
+</span><span class="hs-number">0</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Size
+</span><a href="IC.Canister.StableMemory.html#pageSize"><span class="hs-identifier hs-var">pageSize</span></a></span><span> </span><span class="annot"><span class="annottext">Size -&gt; Size -&gt; Size
+forall a. Num a =&gt; a -&gt; a -&gt; a
+</span><span class="hs-operator hs-var">*</span></span><span> </span><span class="annot"><span class="annottext">Repr -&gt; Size
+</span><a href="IC.Canister.StableMemory.html#smSize"><span class="hs-identifier hs-var hs-var">smSize</span></a></span><span> </span><span class="annot"><span class="annottext">Repr
+</span><a href="#local-6989586621679257150"><span class="hs-identifier hs-var">repr</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-132"></span><span>
+</span><span id="line-133"></span><span class="hs-comment">-- | Constructs internal memory representation from a @blob@.</span><span>
+</span><span id="line-134"></span><span class="hs-comment">-- Throws an exception if the length of the @blob@ is not a multiple of 64KiB.</span><span>
+</span><span id="line-135"></span><span class="annot"><a href="IC.Canister.StableMemory.html#deserialize"><span class="hs-identifier hs-type">deserialize</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><span class="hs-identifier hs-type">ByteString</span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Canister.StableMemory.html#Repr"><span class="hs-identifier hs-type">Repr</span></a></span><span>
+</span><span id="line-136"></span><span id="deserialize"><span class="annot"><span class="annottext">deserialize :: ByteString -&gt; Repr
+</span><a href="IC.Canister.StableMemory.html#deserialize"><span class="hs-identifier hs-var hs-var">deserialize</span></a></span></span><span> </span><span id="local-6989586621679257149"><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679257149"><span class="hs-identifier hs-var">blob</span></a></span></span><span> </span><span class="hs-glyph">=</span><span>
+</span><span id="line-137"></span><span>  </span><span class="hs-keyword">let</span><span> </span><span id="local-6989586621679257146"><span class="annot"><span class="annottext">n :: Size
+</span><a href="#local-6989586621679257146"><span class="hs-identifier hs-var hs-var">n</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Int64 -&gt; Size
+forall a b. (Integral a, Num b) =&gt; a -&gt; b
+</span><span class="hs-identifier hs-var">fromIntegral</span></span><span> </span><span class="annot"><span class="annottext">(Int64 -&gt; Size) -&gt; Int64 -&gt; Size
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">ByteString -&gt; Int64
+</span><span class="hs-identifier hs-var">BL.length</span></span><span> </span><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679257149"><span class="hs-identifier hs-var">blob</span></a></span><span>
+</span><span id="line-138"></span><span>  </span><span class="hs-keyword">in</span><span> </span><span class="hs-keyword">if</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Size
+</span><a href="#local-6989586621679257146"><span class="hs-identifier hs-var">n</span></a></span><span> </span><span class="annot"><span class="annottext">Size -&gt; Size -&gt; Size
+forall a. Integral a =&gt; a -&gt; a -&gt; a
+</span><span class="hs-operator hs-var">`mod`</span></span><span> </span><span class="annot"><span class="annottext">Size
+</span><a href="IC.Canister.StableMemory.html#pageSize"><span class="hs-identifier hs-var">pageSize</span></a></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">Size -&gt; Size -&gt; Bool
+forall a. Eq a =&gt; a -&gt; a -&gt; Bool
+</span><span class="hs-operator hs-var">/=</span></span><span> </span><span class="annot"><span class="annottext">Size
+</span><span class="hs-number">0</span></span><span>
+</span><span id="line-139"></span><span>     </span><span class="hs-keyword">then</span><span> </span><span class="annot"><span class="annottext">String -&gt; Repr
+forall a. HasCallStack =&gt; String -&gt; a
+</span><span class="hs-identifier hs-var">error</span></span><span> </span><span class="annot"><span class="annottext">String
+</span><span class="hs-string">&quot;StableMemory.deserialize: blob size is not a multiple of 64KiB&quot;</span></span><span>
+</span><span id="line-140"></span><span>     </span><span class="hs-keyword">else</span><span> </span><span class="annot"><span class="annottext">Size -&gt; [(Size, ByteString)] -&gt; Repr
+</span><a href="IC.Canister.StableMemory.html#Repr"><span class="hs-identifier hs-var">Repr</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Size
+</span><a href="#local-6989586621679257146"><span class="hs-identifier hs-var">n</span></a></span><span> </span><span class="annot"><span class="annottext">Size -&gt; Size -&gt; Size
+forall a. Integral a =&gt; a -&gt; a -&gt; a
+</span><span class="hs-operator hs-var">`quot`</span></span><span> </span><span class="annot"><span class="annottext">Size
+</span><a href="IC.Canister.StableMemory.html#pageSize"><span class="hs-identifier hs-var">pageSize</span></a></span><span class="hs-special">)</span><span> </span><span class="hs-special">[</span><span class="hs-special">(</span><span class="annot"><span class="annottext">Size
+</span><span class="hs-number">0</span></span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">ByteString -&gt; ByteString
+</span><span class="hs-identifier hs-var">BL.toStrict</span></span><span> </span><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679257149"><span class="hs-identifier hs-var">blob</span></a></span><span class="hs-special">)</span><span class="hs-special">]</span><span>
+</span><span id="line-141"></span></pre></body></html>

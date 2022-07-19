@@ -1,0 +1,69 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><link rel="stylesheet" type="text/css" href="style.css" /><script type="text/javascript" src="highlight.js"></script></head><body><pre><span class="hs-comment">-- Encoding and decoding of state tree values</span><span>
+</span><span id="line-2"></span><span>
+</span><span id="line-3"></span><span class="hs-pragma">{-# LANGUAGE TypeSynonymInstances #-}</span><span>
+</span><span id="line-4"></span><span class="hs-keyword">module</span><span> </span><span class="hs-identifier">IC.Certificate.Value</span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Certificate.Value.html#CertVal"><span class="hs-identifier">CertVal</span></a></span><span class="hs-special">(</span><span class="hs-glyph">..</span><span class="hs-special">)</span><span class="hs-special">)</span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-5"></span><span>
+</span><span id="line-6"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><span class="hs-identifier">Data.Text</span></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">T</span></span><span>
+</span><span id="line-7"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><span class="hs-identifier">Data.ByteString.Lazy</span></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">BS</span></span><span>
+</span><span id="line-8"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Data.Serialize.LEB128</span></span><span>
+</span><span id="line-9"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Numeric.Natural</span></span><span>
+</span><span id="line-10"></span><span>
+</span><span id="line-11"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="IC.Types.html"><span class="hs-identifier">IC.Types</span></a></span><span>
+</span><span id="line-12"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="IC.Utils.html"><span class="hs-identifier">IC.Utils</span></a></span><span>
+</span><span id="line-13"></span><span>
+</span><span id="line-14"></span><span class="hs-keyword">class</span><span> </span><span id="CertVal"><span class="annot"><a href="IC.Certificate.Value.html#CertVal"><span class="hs-identifier hs-var">CertVal</span></a></span></span><span> </span><span id="local-6989586621679264205"><span class="annot"><a href="#local-6989586621679264205"><span class="hs-identifier hs-type">a</span></a></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-15"></span><span>     </span><span id="toCertVal"><span class="annot"><a href="IC.Certificate.Value.html#toCertVal"><span class="hs-identifier hs-type">toCertVal</span></a></span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="#local-6989586621679264205"><span class="hs-identifier hs-type">a</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Types.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span>
+</span><span id="line-16"></span><span>     </span><span id="fromCertVal"><span class="annot"><a href="IC.Certificate.Value.html#fromCertVal"><span class="hs-identifier hs-type">fromCertVal</span></a></span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Types.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Maybe</span></span><span> </span><span class="annot"><a href="#local-6989586621679264205"><span class="hs-identifier hs-type">a</span></a></span><span>
+</span><span id="line-17"></span><span>
+</span><span id="line-18"></span><span class="hs-keyword">instance</span><span> </span><span class="annot"><a href="IC.Certificate.Value.html#CertVal"><span class="hs-identifier hs-type">CertVal</span></a></span><span> </span><span class="annot"><a href="IC.Types.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-19"></span><span>    </span><span id="local-6989586621679264179"><span class="annot"><span class="annottext">toCertVal :: Blob -&gt; Blob
+</span><a href="#local-6989586621679264179"><span class="hs-identifier hs-var hs-var hs-var hs-var">toCertVal</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Blob -&gt; Blob
+forall a. a -&gt; a
+</span><span class="hs-identifier hs-var">id</span></span><span>
+</span><span id="line-20"></span><span>    </span><span id="local-6989586621679264177"><span class="annot"><span class="annottext">fromCertVal :: Blob -&gt; Maybe Blob
+</span><a href="#local-6989586621679264177"><span class="hs-identifier hs-var hs-var hs-var hs-var">fromCertVal</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Blob -&gt; Maybe Blob
+forall a. a -&gt; Maybe a
+</span><span class="hs-identifier hs-var">Just</span></span><span>
+</span><span id="line-21"></span><span>
+</span><span id="line-22"></span><span class="hs-keyword">instance</span><span> </span><span class="annot"><a href="IC.Certificate.Value.html#CertVal"><span class="hs-identifier hs-type">CertVal</span></a></span><span> </span><span class="annot"><span class="hs-identifier hs-type">T.Text</span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-23"></span><span>    </span><span id="local-6989586621679264173"><span class="annot"><span class="annottext">toCertVal :: Text -&gt; Blob
+</span><a href="#local-6989586621679264173"><span class="hs-identifier hs-var hs-var hs-var hs-var">toCertVal</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Text -&gt; Blob
+</span><a href="IC.Utils.html#toUtf8"><span class="hs-identifier hs-var">toUtf8</span></a></span><span>
+</span><span id="line-24"></span><span>    </span><span id="local-6989586621679264171"><span class="annot"><span class="annottext">fromCertVal :: Blob -&gt; Maybe Text
+</span><a href="#local-6989586621679264171"><span class="hs-identifier hs-var hs-var hs-var hs-var">fromCertVal</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Blob -&gt; Maybe Text
+</span><a href="IC.Utils.html#fromUtf8"><span class="hs-identifier hs-var">fromUtf8</span></a></span><span>
+</span><span id="line-25"></span><span>
+</span><span id="line-26"></span><span class="hs-keyword">instance</span><span> </span><span class="annot"><a href="IC.Certificate.Value.html#CertVal"><span class="hs-identifier hs-type">CertVal</span></a></span><span> </span><span class="annot"><span class="hs-identifier hs-type">Natural</span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-27"></span><span>    </span><span id="local-6989586621679264164"><span class="annot"><span class="annottext">toCertVal :: Natural -&gt; Blob
+</span><a href="#local-6989586621679264164"><span class="hs-identifier hs-var hs-var hs-var hs-var">toCertVal</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">ByteString -&gt; Blob
+</span><span class="hs-identifier hs-var">BS.fromStrict</span></span><span> </span><span class="annot"><span class="annottext">(ByteString -&gt; Blob) -&gt; (Natural -&gt; ByteString) -&gt; Natural -&gt; Blob
+forall b c a. (b -&gt; c) -&gt; (a -&gt; b) -&gt; a -&gt; c
+</span><span class="hs-operator hs-var">.</span></span><span> </span><span class="annot"><span class="annottext">Natural -&gt; ByteString
+forall a. LEB128 a =&gt; a -&gt; ByteString
+</span><span class="hs-identifier hs-var">toLEB128</span></span><span>
+</span><span id="line-28"></span><span>    </span><span id="local-6989586621679264159"><span class="annot"><span class="annottext">fromCertVal :: Blob -&gt; Maybe Natural
+</span><a href="#local-6989586621679264159"><span class="hs-identifier hs-var hs-var hs-var hs-var">fromCertVal</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Either String Natural -&gt; Maybe Natural
+forall a b. Either a b -&gt; Maybe b
+</span><a href="IC.Certificate.Value.html#forgetLeft"><span class="hs-identifier hs-var">forgetLeft</span></a></span><span> </span><span class="annot"><span class="annottext">(Either String Natural -&gt; Maybe Natural)
+-&gt; (Blob -&gt; Either String Natural) -&gt; Blob -&gt; Maybe Natural
+forall b c a. (b -&gt; c) -&gt; (a -&gt; b) -&gt; a -&gt; c
+</span><span class="hs-operator hs-var">.</span></span><span> </span><span class="annot"><span class="annottext">ByteString -&gt; Either String Natural
+forall a. LEB128 a =&gt; ByteString -&gt; Either String a
+</span><span class="hs-identifier hs-var">fromLEB128</span></span><span> </span><span class="annot"><span class="annottext">(ByteString -&gt; Either String Natural)
+-&gt; (Blob -&gt; ByteString) -&gt; Blob -&gt; Either String Natural
+forall b c a. (b -&gt; c) -&gt; (a -&gt; b) -&gt; a -&gt; c
+</span><span class="hs-operator hs-var">.</span></span><span> </span><span class="annot"><span class="annottext">Blob -&gt; ByteString
+</span><span class="hs-identifier hs-var">BS.toStrict</span></span><span>
+</span><span id="line-29"></span><span>
+</span><span id="line-30"></span><span id="local-6989586621679264194"><span id="local-6989586621679264195"><span class="annot"><a href="IC.Certificate.Value.html#forgetLeft"><span class="hs-identifier hs-type">forgetLeft</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Either</span></span><span> </span><span class="annot"><a href="#local-6989586621679264195"><span class="hs-identifier hs-type">a</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679264194"><span class="hs-identifier hs-type">b</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Maybe</span></span><span> </span><span class="annot"><a href="#local-6989586621679264194"><span class="hs-identifier hs-type">b</span></a></span></span></span><span>
+</span><span id="line-31"></span><span id="forgetLeft"><span class="annot"><span class="annottext">forgetLeft :: forall a b. Either a b -&gt; Maybe b
+</span><a href="IC.Certificate.Value.html#forgetLeft"><span class="hs-identifier hs-var hs-var">forgetLeft</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">(a -&gt; Maybe b) -&gt; (b -&gt; Maybe b) -&gt; Either a b -&gt; Maybe b
+forall a c b. (a -&gt; c) -&gt; (b -&gt; c) -&gt; Either a b -&gt; c
+</span><span class="hs-identifier hs-var">either</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Maybe b -&gt; a -&gt; Maybe b
+forall a b. a -&gt; b -&gt; a
+</span><span class="hs-identifier hs-var">const</span></span><span> </span><span class="annot"><span class="annottext">Maybe b
+forall a. Maybe a
+</span><span class="hs-identifier hs-var">Nothing</span></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">b -&gt; Maybe b
+forall a. a -&gt; Maybe a
+</span><span class="hs-identifier hs-var">Just</span></span><span>
+</span><span id="line-32"></span></pre></body></html>
