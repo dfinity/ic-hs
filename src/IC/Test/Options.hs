@@ -26,7 +26,7 @@ instance IsOption TestPort where
   optionName = return "test_port"
   optionHelp = return "Port a test HTTP server listens on (default: 8003)"
 
-newtype PollTimeout = PollTimeout Integer
+newtype PollTimeout = PollTimeout Int
 
 instance IsOption PollTimeout where
   defaultValue = PollTimeout 300

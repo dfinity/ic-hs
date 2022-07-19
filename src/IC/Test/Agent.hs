@@ -171,10 +171,10 @@ data AgentConfig = AgentConfig
     , tc_manager :: Manager
     , tc_endPoint :: String
     , tc_test_port :: Int
-    , tc_timeout :: Integer
+    , tc_timeout :: Int
     }
 
-makeAgentConfig :: String -> Int -> Integer -> IO AgentConfig
+makeAgentConfig :: String -> Int -> Int -> IO AgentConfig
 makeAgentConfig ep' tp to = do
     manager <- newTlsManagerWith $ tlsManagerSettings
       { managerResponseTimeout = responseTimeoutMicro 60_000_000 -- 60s
@@ -211,7 +211,7 @@ preFlight os = do
 newtype ReplWrapper = R (forall a. (HasAgentConfig => a) -> a)
 
 -- |  This is for use from the Haskell REPL, see README.md
-connect :: String -> Int -> Integer -> IO ReplWrapper
+connect :: String -> Int -> Int -> IO ReplWrapper
 connect ep tp to = do
     agentConfig <- makeAgentConfig ep tp to
     let ?agentConfig = agentConfig
@@ -552,7 +552,7 @@ loop act = getCurrentTime >>= go
       Just r -> return r
       Nothing -> do
         now <- getCurrentTime
-        if diffUTCTime now init > fromInteger (tc_timeout agentConfig) then assertFailure "Polling timed out"
+        if diffUTCTime now init > fromIntegral (tc_timeout agentConfig) then assertFailure "Polling timed out"
         else go init
 
 awaitStatus :: HasAgentConfig => IO ReqStatus -> IO ReqResponse
