@@ -1754,7 +1754,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
         -- (At some point, the max was 100T, but that is no longer the case)
         -- So lets try to stay away from these limits.
         -- The lowest denomination we deal with below is def_cycles`div`4
-        def_cycles = 80_000_000_000_000 :: Word64
+        def_cycles = 80_000_000_000_000_000 :: Word64
 
         -- The system burns cycles at unspecified rates. To cater for such behaviour,
         -- we make the assumption that no test burns more than the following epsilon.
@@ -1790,6 +1790,38 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
           ic_top_up ic00 cid large
           query' cid replyBalance >>= isReject [5]
           queryBalance128 cid >>= isRoughly (large + fromIntegral def_cycles)
+        , testCase "hotfix" $ do
+          cid <- ic_provisional_create ic00 (Just (2^(60::Int))) empty
+          installAt cid noop
+          cid1 <- create_via cid def_cycles
+          cid2 <- create_via cid def_cycles
+          cid3 <- create_via cid def_cycles
+          ocyc1 <- (awaitCall cid $ callRequest cid1 replyBalance) >>= isReply >>= asWord64
+          ocyc2 <- (awaitCall cid $ callRequest cid2 replyBalance) >>= isReply >>= asWord64
+          ocyc3 <- (awaitCall cid $ callRequest cid3 replyBalance) >>= isReply >>= asWord64
+          putStrLn ""
+          putStrLn $ "before"
+          putStrLn $ show ocyc1
+          putStrLn $ show ocyc2
+          putStrLn $ show ocyc3
+          putStrLn $ "total: " ++ show (ocyc1 + ocyc2 + ocyc3)
+          _ <- awaitCall cid1 $ callRequest cid1 $ inter_call cid2 "update" defArgs
+            { other_side =
+              inter_call cid3 "update" defArgs
+                {
+                  on_reply = acceptAll
+                } >>> reply
+            , cycles = def_cycles `div` 2
+            }
+          ncyc1 <- (awaitCall cid $ callRequest cid1 replyBalance) >>= isReply >>= asWord64
+          ncyc2 <- (awaitCall cid $ callRequest cid2 replyBalance) >>= isReply >>= asWord64
+          ncyc3 <- (awaitCall cid $ callRequest cid3 replyBalance) >>= isReply >>= asWord64
+          putStrLn $ "after"
+          putStrLn $ show ncyc1
+          putStrLn $ show ncyc2
+          putStrLn $ show ncyc3
+          putStrLn $ "total: " ++ show (ncyc1 + ncyc2 + ncyc3)
+          assertBool "cycle monotonicity" (ncyc1 + ncyc2 + ncyc3 <= ocyc1 + ocyc2 + ocyc3)
         ]
     , testGroup "can use balance API" $
         let getBalanceTwice = join cat (i64tob getBalance)

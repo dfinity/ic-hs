@@ -62,7 +62,6 @@ mod ic0 {
         pub fn data_certificate_copy(dst: u32, offset: u32, size: u32) -> ();
 
         pub fn time() -> u64;
-        pub fn performance_counter(_type: u32) -> u64;
     }
 }
 
@@ -296,10 +295,6 @@ pub fn time() -> u64 {
 
 pub fn accept_message() {
     unsafe { ic0::accept_message() }
-}
-
-pub fn performance_counter(_type: u32) -> u64 {
-    unsafe { ic0::performance_counter(_type) }
 }
 
 pub fn method_name() -> Vec<u8> {
