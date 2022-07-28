@@ -284,11 +284,6 @@ fn eval(ops: Ops) {
             // canister heartbeat script
             49 => set_heartbeat(stack.pop_blob()),
 
-            50 => {
-                let _type = stack.pop_int() as u32;
-                stack.push_int64(api::performance_counter(_type))
-            }
-
             // 128-bit cycles API
             51 => stack.push_blob(api::balance128()),
             52 => stack.push_blob(api::cycles_available128()),
