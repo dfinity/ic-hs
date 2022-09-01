@@ -779,7 +779,7 @@ textual :: Blob -> String
 textual = T.unpack . prettyPrincipal . Principal
 
 shorten :: Int -> String -> String
-shorten n s = a ++ (if null b then "" else "…")
+shorten n s = a ++ (if null b then "" else "...")
   where (a,b) = splitAt n s
 
 toHash256 :: Blob -> Haskoin.Hash256

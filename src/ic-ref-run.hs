@@ -48,27 +48,27 @@ dummyUserId = EntityId $ B.pack [0xCA, 0xFF, 0xEE]
 
 printCallRequest :: CallRequest -> IO ()
 printCallRequest (CallRequest _ _ method arg) =
-    printf "→ update %s%s\n" method (shorten 60 (candidOrPretty arg))
+    printf "=> update %s%s\n" method (shorten 60 (candidOrPretty arg))
 
 printReadStateRequest :: ReadStateRequest -> IO ()
 printReadStateRequest (ReadStateRequest _ paths) =
-    printf "→ state? %s\n" (intercalate ", " $ map (intercalate "/" . map show) paths)
+    printf "=> state? %s\n" (intercalate ", " $ map (intercalate "/" . map show) paths)
 
 printQueryRequest :: QueryRequest -> IO ()
 printQueryRequest (QueryRequest _ _ method arg) =
-    printf "→ query %s%s\n" method (shorten 60 (candidOrPretty arg))
+    printf "=> query %s%s\n" method (shorten 60 (candidOrPretty arg))
 
 printCallResponse :: CallResponse -> IO ()
 printCallResponse (Rejected (c, s, _err)) =
-    printf "← rejected (%s): %s\n" (show c) s
+    printf "<= rejected (%s): %s\n" (show c) s
 printCallResponse (Replied blob) =
-    printf "← replied: %s\n" (shorten 100 (candidOrPretty blob))
+    printf "<= replied: %s\n" (shorten 100 (candidOrPretty blob))
 
 printReqStatus :: RequestStatus -> IO ()
 printReqStatus Received =
-    printf "← received\n"
+    printf "<= received\n"
 printReqStatus Processing =
-    printf "← processing\n"
+    printf "<= processing\n"
 printReqStatus (CallResponse c) = printCallResponse c
 
 printReqResponse :: ReqResponse -> IO ()
@@ -85,7 +85,7 @@ candidOrPretty b
 
 
 shorten :: Int -> String -> String
-shorten n s = a ++ (if null b then "" else "…")
+shorten n s = a ++ (if null b then "" else "...")
   where (a,b) = splitAt n s
 
 
