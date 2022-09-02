@@ -405,7 +405,8 @@ authReadStateRequest t ecid ev (ReadStateRequest user_id paths) = do
               unless (S.member user_id cs) $
                 throwError "User is not authorized to read this metadata field"
             _ -> return () -- public or absent
-      ("request_status":rid: _) ->
+      ("request_status":rid: _) | BS.length rid /= 32 -> throwError "Request IDs must be 32 bytes in length."
+      ("request_status":rid: _) ->                            
         gets (findRequest rid) >>= \case
           Just (ar@(CallRequest cid _ meth arg),_) -> do
             checkEffectiveCanisterID ecid cid meth arg
