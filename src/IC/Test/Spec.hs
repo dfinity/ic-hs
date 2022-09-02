@@ -1590,11 +1590,17 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
         cert <- getStateCert anonymousUser cid [["canister", cid, "module_hash"]]
         certValue @Blob cert ["canister", cid, "module_hash"] >>= is (sha256 universal_wasm)
 
+    , testGroup "malformed request id"
+        [ simpleTestCase ("rid \"" ++ shorten 8 (asHex rid) ++ "\"") $ \cid -> do
+            getStateCert' defaultUser cid [["request_status", rid]] >>= code4xx
+        | rid <- [ "", "foo" ]
+        ]
+
     , testGroup "non-existence proofs for non-existing request id"
         [ simpleTestCase ("rid \"" ++ shorten 8 (asHex rid) ++ "\"") $ \cid -> do
             cert <- getStateCert defaultUser cid [["request_status", rid]]
             certValueAbsent cert ["request_status", rid, "status"]
-        | rid <- [ "", BS.replicate 32 0, BS.replicate 32 8, BS.replicate 32 255 ]
+        | rid <- [ BS.replicate 32 0, BS.replicate 32 8, BS.replicate 32 255 ]
         ]
 
     , simpleTestCase "can ask for portion of request status " $ \cid -> do
