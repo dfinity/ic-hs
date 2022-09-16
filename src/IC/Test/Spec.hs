@@ -1692,6 +1692,12 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
           ic_install ic00 (enum #install) cid mod ""
           cert <- getStateCert anonymousUser cid [["canister", cid, "metadata", ""]]
           lookupPath (cert_tree cert) ["canister", cid, "metadata", ""] @?= Found "bar"
+      , testCase "metadata section name with spaces" $ do
+          let mod = withSections [("icp:public metadata section name with spaces", "bar")]
+          cid <- create
+          ic_install ic00 (enum #install) cid mod ""
+          cert <- getStateCert anonymousUser cid [["canister", cid, "metadata", "metadata section name with spaces"]]
+          lookupPath (cert_tree cert) ["canister", cid, "metadata", "metadata section name with spaces"] @?= Found "bar"
       ]
     ]
 
