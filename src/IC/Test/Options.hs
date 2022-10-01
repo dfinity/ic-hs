@@ -22,7 +22,7 @@ newtype CanisterHttpRequestsEndpoint = CanisterHttpRequestsEndpoint String
 
 instance IsOption CanisterHttpRequestsEndpoint where
   defaultValue = CanisterHttpRequestsEndpoint "http://localhost:80/"
-  parseValue p = Just $ CanisterHttpRequestsEndpoint $ read p
+  parseValue p = Just $ CanisterHttpRequestsEndpoint $ p
   optionName = return "canister_http_requests_endpoint"
   optionHelp = return "Endpoint of test HTTP server (default: http://localhost:80/)"
 
