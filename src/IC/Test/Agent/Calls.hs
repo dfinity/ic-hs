@@ -146,7 +146,7 @@ ic_http_request ::
     HasAgentConfig => IC00 -> Blob -> Maybe String -> IO b
 ic_http_request ic00 canister_id transform =
   callIC ic00 "" #http_request $ empty
-    .+ #url .== (T.pack $ "http://localhost:" ++ show testPort)
+    .+ #url .== (T.pack $ show canisterHttpRequestsEndpoint)
     .+ #max_response_bytes .== Nothing
     .+ #method .== enum #get
     .+ #headers .== Vec.empty
@@ -239,7 +239,7 @@ ic_ecdsa_public_key' ic00 canister_id path =
 ic_http_request' :: HasAgentConfig => IC00 -> Blob -> (Maybe String, Blob) -> IO ReqResponse
 ic_http_request' ic00 canister_id (transform, cid) =
   callIC' ic00 canister_id #http_request $ empty
-    .+ #url .== (T.pack $ "http://localhost:" ++ show testPort)
+    .+ #url .== (T.pack $ show canisterHttpRequestsEndpoint)
     .+ #max_response_bytes .== Nothing
     .+ #method .== enum #get
     .+ #headers .== Vec.empty
@@ -297,7 +297,7 @@ ic_raw_rand'' user = do
 ic_http_request'' :: HasAgentConfig => Blob -> IO (HTTPErrOr ReqResponse)
 ic_http_request'' user =
   callIC'' user "" #http_request $ empty
-    .+ #url .== (T.pack $ "http://localhost:" ++ show testPort)
+    .+ #url .== (T.pack $ show canisterHttpRequestsEndpoint)
     .+ #max_response_bytes .== Nothing
     .+ #method .== enum #get
     .+ #headers .== Vec.empty
@@ -326,8 +326,8 @@ ic_sign_with_ecdsa'' user msg =
 
 --------------------------------------------------------------------------------
 
-testPort :: HasAgentConfig => Int
-testPort = tc_test_port agentConfig
+canisterHttpRequestsEndpoint :: HasAgentConfig => String
+canisterHttpRequestsEndpoint = tc_canister_http_requests_endpoint agentConfig
 
 toTransformFn :: (AllUniqueLabels r1, (r1 .! "function") ~ Candid.FuncRef r2) => 
                  Maybe String -> Blob -> Maybe (Var r1)

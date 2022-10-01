@@ -28,8 +28,6 @@ main :: IO ()
 main = do
     BLS.init
     os <- parseOptions ingredients (testGroup "dummy" [])
-    let TestPort tp = lookupOption os
-    startTestServer tp
     ac <- preFlight os
     defaultMainWithIngredients ingredients (icTests ac)
   where
@@ -37,7 +35,7 @@ main = do
       [ rerunningTests
         [ listingTests
         , includingOptions [endpointOption]
-        , includingOptions [testportOption]
+        , includingOptions [canisterhttprequestsendpointOption]
         , includingOptions [polltimeoutOption]
         , antXMLRunner `composeReporters` htmlRunner `composeReporters` consoleTestReporter
         ]

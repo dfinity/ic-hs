@@ -18,13 +18,13 @@ instance IsOption Endpoint where
   optionHelp = return "Internet Computer endpoint to connect to (default: http://0.0.0.0:8001)"
   optionCLParser = mkOptionCLParser (metavar "URL")
 
-newtype TestPort = TestPort Int
+newtype CanisterHttpRequestsEndpoint = CanisterHttpRequestsEndpoint String
 
-instance IsOption TestPort where
-  defaultValue = TestPort 80
-  parseValue p = Just $ TestPort $ read p
-  optionName = return "test_port"
-  optionHelp = return "Port a test HTTP server listens on (default: 8003)"
+instance IsOption CanisterHttpRequestsEndpoint where
+  defaultValue = CanisterHttpRequestsEndpoint "http://localhost:80/"
+  parseValue p = Just $ CanisterHttpRequestsEndpoint $ read p
+  optionName = return "canister_http_requests_endpoint"
+  optionHelp = return "Endpoint of test HTTP server (default: http://localhost:80/)"
 
 newtype PollTimeout = PollTimeout Int
 
@@ -37,8 +37,8 @@ instance IsOption PollTimeout where
 endpointOption :: OptionDescription
 endpointOption = Option (Proxy :: Proxy Endpoint)
 
-testportOption :: OptionDescription
-testportOption = Option (Proxy :: Proxy TestPort)
+canisterhttprequestsendpointOption :: OptionDescription
+canisterhttprequestsendpointOption = Option (Proxy :: Proxy CanisterHttpRequestsEndpoint)
 
 polltimeoutOption :: OptionDescription
 polltimeoutOption = Option (Proxy :: Proxy PollTimeout)
