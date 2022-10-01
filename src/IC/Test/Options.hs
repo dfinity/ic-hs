@@ -21,10 +21,11 @@ instance IsOption Endpoint where
 newtype CanisterHttpRequestsEndpoint = CanisterHttpRequestsEndpoint String
 
 instance IsOption CanisterHttpRequestsEndpoint where
-  defaultValue = CanisterHttpRequestsEndpoint "http://localhost:80/"
+  defaultValue = CanisterHttpRequestsEndpoint "https://httpbin.org/base64/SGVsbG8gd29ybGQh"
   parseValue p = Just $ CanisterHttpRequestsEndpoint $ p
   optionName = return "canister_http_requests_endpoint"
-  optionHelp = return "Endpoint of test HTTP server (default: http://localhost:80/)"
+  optionHelp = return "URL of canister http request (default: https://httpbin.org/base64/SGVsbG8gd29ybGQh)"
+  optionCLParser = mkOptionCLParser (metavar "URL")
 
 newtype PollTimeout = PollTimeout Int
 

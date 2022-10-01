@@ -388,22 +388,22 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
   , IC.Test.Spec.TECDSA.tests
   , testGroup "canister http calls"
     [ simpleTestCase "simple call, no transform" $ \cid -> do
-      resp <- ic_http_request (ic00viaWithCycles cid 310117300000) cid Nothing
+      resp <- ic_http_request (ic00viaWithCycles cid 300000000000) cid Nothing
       (resp .! #status) @?= 200
       (resp .! #body) @?= "Hello world!"
 
     , testCase "non-existent transform function" $ do
       cid <- install noop
-      ic_http_request' (ic00via cid) cid (Just "nonExistent", cid) >>= isReject [5]
+      ic_http_request' (ic00viaWithCycles cid 300000000000) cid (Just "nonExistent", cid) >>= isReject [3]
 
     , testCase "reference to a transform function exposed by another canister" $ do
       cid <- install noop
       cid2 <- install (onTransform (callback (replyData (bytes (Candid.encode dummyResponse)))))
-      ic_http_request' (ic00via cid) cid (Just "transform", cid2) >>= isReject [5]
+      ic_http_request' (ic00viaWithCycles cid 300000000000) cid (Just "transform", cid2) >>= isReject [4]
 
     , testCase "simple call with transform" $ do
       cid <- install (onTransform (callback (replyData (bytes (Candid.encode dummyResponse)))))
-      resp <- ic_http_request (ic00via cid) cid (Just "transform")
+      resp <- ic_http_request (ic00viaWithCycles cid 300000000000) cid (Just "transform")
       (resp .! #status) @?= 202
       (resp .! #body) @?= "Dummy!"
     ]
