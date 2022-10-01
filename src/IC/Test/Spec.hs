@@ -388,7 +388,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
   , IC.Test.Spec.TECDSA.tests
   , testGroup "canister http calls"
     [ simpleTestCase "simple call, no transform" $ \cid -> do
-      resp <- ic_http_request (ic00via cid) cid Nothing
+      resp <- ic_http_request (ic00viaWithCycles cid 310117300000) cid Nothing
       (resp .! #status) @?= 200
       (resp .! #body) @?= "Hello world!"
 

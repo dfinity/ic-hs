@@ -37,6 +37,8 @@ main = do
       [ rerunningTests
         [ listingTests
         , includingOptions [endpointOption]
+        , includingOptions [testportOption]
+        , includingOptions [polltimeoutOption]
         , antXMLRunner `composeReporters` htmlRunner `composeReporters` consoleTestReporter
         ]
       ]

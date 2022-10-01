@@ -147,6 +147,7 @@ ic_http_request ::
 ic_http_request ic00 canister_id transform =
   callIC ic00 "" #http_request $ empty
     .+ #url .== (T.pack $ "http://localhost:" ++ show testPort)
+    .+ #max_response_bytes .== Nothing
     .+ #method .== enum #get
     .+ #headers .== Vec.empty
     .+ #body .== Nothing
@@ -239,6 +240,7 @@ ic_http_request' :: HasAgentConfig => IC00 -> Blob -> (Maybe String, Blob) -> IO
 ic_http_request' ic00 canister_id (transform, cid) =
   callIC' ic00 canister_id #http_request $ empty
     .+ #url .== (T.pack $ "http://localhost:" ++ show testPort)
+    .+ #max_response_bytes .== Nothing
     .+ #method .== enum #get
     .+ #headers .== Vec.empty
     .+ #body .== Nothing
@@ -296,6 +298,7 @@ ic_http_request'' :: HasAgentConfig => Blob -> IO (HTTPErrOr ReqResponse)
 ic_http_request'' user =
   callIC'' user "" #http_request $ empty
     .+ #url .== (T.pack $ "http://localhost:" ++ show testPort)
+    .+ #max_response_bytes .== Nothing
     .+ #method .== enum #get
     .+ #headers .== Vec.empty
     .+ #body .== Nothing

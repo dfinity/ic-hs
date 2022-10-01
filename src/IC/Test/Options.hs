@@ -21,7 +21,7 @@ instance IsOption Endpoint where
 newtype TestPort = TestPort Int
 
 instance IsOption TestPort where
-  defaultValue = TestPort 8003
+  defaultValue = TestPort 80
   parseValue p = Just $ TestPort $ read p
   optionName = return "test_port"
   optionHelp = return "Port a test HTTP server listens on (default: 8003)"
@@ -36,3 +36,9 @@ instance IsOption PollTimeout where
 
 endpointOption :: OptionDescription
 endpointOption = Option (Proxy :: Proxy Endpoint)
+
+testportOption :: OptionDescription
+testportOption = Option (Proxy :: Proxy TestPort)
+
+polltimeoutOption :: OptionDescription
+polltimeoutOption = Option (Proxy :: Proxy PollTimeout)

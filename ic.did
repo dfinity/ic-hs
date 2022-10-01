@@ -56,12 +56,11 @@ service ic : {
   raw_rand : () -> (blob);
   http_request : (record {
     url : text;
-    method : variant { get };
-    headers: vec http_header;
+    max_response_bytes: opt nat64;
+    headers : vec http_header;
+    method : variant { get; head; post };
     body : opt blob;
-    transform : opt variant {
-      function: func (http_response) -> (http_response) query
-    };
+    transform : opt variant { function: func (http_response) -> (http_response) query };
   }) -> (http_response);
 
   // Threshold ECDSA signature
