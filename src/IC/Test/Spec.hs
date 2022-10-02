@@ -1643,10 +1643,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
             where sized x = BS.fromStrict (toLEB128 @Natural (fromIntegral (BS.length x))) <> x
           withSections xs = foldl withCustomSection trivialWasmModule xs
       in
-      [ simpleTestCase "absent" $ \cid -> do
-          cert <- getStateCert defaultUser cid [["canister", cid, "metadata", "foo"]]
-          lookupPath (cert_tree cert) ["canister", cid, "metadata", "foo"] @?= Absent
-      , testCase "public" $ do
+      [ testCase "public" $ do
           let mod = withSections [("icp:public test", "bar")]
           cid <- create
           ic_install ic00 (enum #install) cid mod ""
