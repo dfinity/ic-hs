@@ -170,12 +170,12 @@ data AgentConfig = AgentConfig
     { tc_root_key :: Blob
     , tc_manager :: Manager
     , tc_endPoint :: String
-    , tc_canister_http_requests_endpoint :: String
+    , tc_httpbin :: String
     , tc_timeout :: Int
     }
 
 makeAgentConfig :: String -> String -> Int -> IO AgentConfig
-makeAgentConfig ep' url to = do
+makeAgentConfig ep' httpbin' to = do
     manager <- newTlsManagerWith $ tlsManagerSettings
       { managerResponseTimeout = responseTimeoutMicro 60_000_000 -- 60s
       }
@@ -191,7 +191,7 @@ makeAgentConfig ep' url to = do
         { tc_root_key = status_root_key s
         , tc_manager = manager
         , tc_endPoint = ep
-        , tc_canister_http_requests_endpoint = url
+        , tc_httpbin = httpbin
         , tc_timeout = to
         }
   where
@@ -199,21 +199,24 @@ makeAgentConfig ep' url to = do
     ep | null ep'        = error "empty endpoint"
        | last ep' == '/' = init ep'
        | otherwise       = ep'
+    httpbin | null httpbin'        = error "empty httpbin"
+            | last httpbin' == '/' = init httpbin'
+            | otherwise            = httpbin'
 
 preFlight :: OptionSet -> IO AgentConfig
 preFlight os = do
     let Endpoint ep = lookupOption os
-    let CanisterHttpRequestsEndpoint url = lookupOption os
+    let Httpbin httpbin = lookupOption os
     let PollTimeout to = lookupOption os
-    makeAgentConfig ep url to
+    makeAgentConfig ep httpbin to
 
 
 newtype ReplWrapper = R (forall a. (HasAgentConfig => a) -> a)
 
 -- |  This is for use from the Haskell REPL, see README.md
 connect :: String -> String -> Int -> IO ReplWrapper
-connect ep url to = do
-    agentConfig <- makeAgentConfig ep url to
+connect ep httpbin to = do
+    agentConfig <- makeAgentConfig ep httpbin to
     let ?agentConfig = agentConfig
     return (R $ \x -> x)
 

@@ -18,13 +18,13 @@ instance IsOption Endpoint where
   optionHelp = return "Internet Computer endpoint to connect to (default: http://0.0.0.0:8001)"
   optionCLParser = mkOptionCLParser (metavar "URL")
 
-newtype CanisterHttpRequestsEndpoint = CanisterHttpRequestsEndpoint String
+newtype Httpbin = Httpbin String
 
-instance IsOption CanisterHttpRequestsEndpoint where
-  defaultValue = CanisterHttpRequestsEndpoint "https://httpbin.org/base64/SGVsbG8gd29ybGQh"
-  parseValue p = Just $ CanisterHttpRequestsEndpoint $ p
-  optionName = return "canister_http_requests_endpoint"
-  optionHelp = return "URL of canister http request (default: https://httpbin.org/base64/SGVsbG8gd29ybGQh)"
+instance IsOption Httpbin where
+  defaultValue = Httpbin "https://httpbin.org"
+  parseValue = Just . Httpbin
+  optionName = return "httpbin"
+  optionHelp = return "httpbin endpoint (default: https://httpbin.org)"
   optionCLParser = mkOptionCLParser (metavar "URL")
 
 newtype PollTimeout = PollTimeout Int
@@ -38,8 +38,8 @@ instance IsOption PollTimeout where
 endpointOption :: OptionDescription
 endpointOption = Option (Proxy :: Proxy Endpoint)
 
-canisterhttprequestsendpointOption :: OptionDescription
-canisterhttprequestsendpointOption = Option (Proxy :: Proxy CanisterHttpRequestsEndpoint)
+httpbinOption :: OptionDescription
+httpbinOption = Option (Proxy :: Proxy Httpbin)
 
 polltimeoutOption :: OptionDescription
 polltimeoutOption = Option (Proxy :: Proxy PollTimeout)

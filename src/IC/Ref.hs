@@ -1319,15 +1319,15 @@ reject code msg err = throwError (code, msg, err)
 
 -- To maintain the abstraction that the management canister is a canister,
 -- all its errors are turned into canister errors
-canisterRejectCode :: RejectCode -> Bool
-canisterRejectCode RC_SYS_FATAL           = False
-canisterRejectCode RC_SYS_TRANSIENT       = False
-canisterRejectCode RC_DESTINATION_INVALID = True
-canisterRejectCode RC_CANISTER_REJECT     = True
-canisterRejectCode RC_CANISTER_ERROR      = True
+isCanisterRejectedCode :: RejectCode -> Bool
+isCanisterRejectedCode RC_SYS_FATAL           = False
+isCanisterRejectedCode RC_SYS_TRANSIENT       = False
+isCanisterRejectedCode RC_DESTINATION_INVALID = True
+isCanisterRejectedCode RC_CANISTER_REJECT     = True
+isCanisterRejectedCode RC_CANISTER_ERROR      = True
 
 rejectAsCanister :: CanReject m => m a -> m a
-rejectAsCanister act = catchError act (\(c, msg, err) -> if canisterRejectCode c then reject c msg err else reject RC_CANISTER_ERROR msg (Just EC_CANISTER_REJECTED))
+rejectAsCanister act = catchError act (\(c, msg, err) -> if isCanisterRejectedCode c then reject c msg err else reject RC_CANISTER_ERROR msg (Just EC_CANISTER_REJECTED))
 
 canisterRejected :: (RejectCode, String, Maybe ErrorCode) -> CallResponse
 canisterRejected (rc, msg, err) =  Rejected (rc, msg, Just $ maybe EC_CANISTER_REJECTED id err)

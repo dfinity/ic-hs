@@ -28,7 +28,7 @@ main = do
       [ rerunningTests
         [ listingTests
         , includingOptions [endpointOption]
-        , includingOptions [canisterhttprequestsendpointOption]
+        , includingOptions [httpbinOption]
         , includingOptions [polltimeoutOption]
         , antXMLRunner `composeReporters` htmlRunner `composeReporters` consoleTestReporter
         ]
