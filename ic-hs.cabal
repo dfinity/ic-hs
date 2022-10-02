@@ -197,6 +197,7 @@ executable ic-ref-run
   build-depends: haskoin-core
   build-depends: hex-text
   build-depends: http-client >= 0.7.11
+  build-depends: http-client-tls
   build-depends: http-types
   build-depends: leb128-cereal
   build-depends: memory
@@ -420,6 +421,7 @@ test-suite unit-test
   build-depends: haskoin-core
   build-depends: hex-text
   build-depends: http-client >= 0.7.11
+  build-depends: http-client-tls
   build-depends: http-types
   build-depends: leb128-cereal
   build-depends: memory
