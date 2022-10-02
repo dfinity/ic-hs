@@ -49,6 +49,39 @@ import IC.Test.Agent.Calls
 import IC.Test.Spec.Utils
 import qualified IC.Test.Spec.TECDSA
 
+-- * Canister http calls
+
+canister_http_calls base per_byte =
+  [ simpleTestCase "simple call, no transform" $ \cid -> do
+      resp <- ic_http_request (\fee -> ic00viaWithCycles cid (fee base per_byte)) cid Nothing
+      (resp .! #status) @?= 200
+      (resp .! #body) @?= "Hello world!"
+
+    , testCase "non-existent transform function" $ do
+      cid <- install noop
+      ic_http_request' (\fee -> ic00viaWithCycles cid (fee base per_byte)) cid (Just "nonExistent", cid) >>= isReject [3]
+
+    , testCase "reference to a transform function exposed by another canister" $ do
+      cid <- install noop
+      cid2 <- install (onTransform (callback (replyData (bytes (Candid.encode dummyResponse)))))
+      ic_http_request' (\fee -> ic00viaWithCycles cid (fee base per_byte)) cid (Just "transform", cid2) >>= isReject [4]
+
+    , testCase "simple call with transform" $ do
+      cid <- install (onTransform (callback (replyData (bytes (Candid.encode dummyResponse)))))
+      resp <- ic_http_request (\fee -> ic00viaWithCycles cid (fee base per_byte)) cid (Just "transform")
+      (resp .! #status) @?= 202
+      (resp .! #body) @?= "Dummy!"
+  ]
+
+canister_http_calls_missing_cycles base per_byte =
+  [ simpleTestCase "simple call, no transform" $ \cid -> do
+      ic_http_request' (\fee -> ic00viaWithCycles cid (fee base per_byte - 1)) cid (Nothing, cid) >>= isReject [4]
+
+    , testCase "simple call with transform, missing cycles" $ do
+      cid <- install (onTransform (callback (replyData (bytes (Candid.encode dummyResponse)))))
+      ic_http_request' (\fee -> ic00viaWithCycles cid (fee base per_byte - 1)) cid (Just "transform", cid) >>= isReject [4]
+  ]
+
 -- * The test suite (see below for helper functions)
 
 icTests :: AgentConfig -> TestTree
@@ -386,27 +419,9 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     assertBool "random blobs are different" $ r1 /= r2
 
   , IC.Test.Spec.TECDSA.tests
-  , testGroup "canister http calls"
-    [ simpleTestCase "simple call, no transform" $ \cid -> do
-      resp <- ic_http_request (ic00viaWithCycles cid 300000000000) cid Nothing
-      (resp .! #status) @?= 200
-      (resp .! #body) @?= "Hello world!"
-
-    , testCase "non-existent transform function" $ do
-      cid <- install noop
-      ic_http_request' (ic00viaWithCycles cid 300000000000) cid (Just "nonExistent", cid) >>= isReject [3]
-
-    , testCase "reference to a transform function exposed by another canister" $ do
-      cid <- install noop
-      cid2 <- install (onTransform (callback (replyData (bytes (Candid.encode dummyResponse)))))
-      ic_http_request' (ic00viaWithCycles cid 300000000000) cid (Just "transform", cid2) >>= isReject [4]
-
-    , testCase "simple call with transform" $ do
-      cid <- install (onTransform (callback (replyData (bytes (Candid.encode dummyResponse)))))
-      resp <- ic_http_request (ic00viaWithCycles cid 300000000000) cid (Just "transform")
-      (resp .! #status) @?= 202
-      (resp .! #body) @?= "Dummy!"
-    ]
+  , testGroup "canister http calls.only_system" $ canister_http_calls 0 0
+  , testGroup "canister http calls.only_application" $ canister_http_calls 400000000 100000
+  , testGroup "canister http calls with missing cycles.only_application" $ canister_http_calls_missing_cycles 400000000 100000
 
   , testGroup "simple calls"
     [ simpleTestCase "Call" $ \cid ->

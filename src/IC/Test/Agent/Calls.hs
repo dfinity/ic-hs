@@ -65,6 +65,7 @@ import qualified Data.Row.Records as R
 import qualified Data.Row.Variants as V
 import qualified Data.Row.Internal as R
 import qualified Data.Row.Dictionaries as R
+import qualified Data.Word as W
 
 import IC.Management
 import IC.Id.Forms
@@ -141,17 +142,35 @@ ic_raw_rand :: HasAgentConfig => IC00 -> IO Blob
 ic_raw_rand ic00 =
   callIC ic00 "" #raw_rand ()
 
+max_inter_canister_payload_in_bytes :: W.Word64
+max_inter_canister_payload_in_bytes = 2 * 1024 * 1024; -- 2 MiB
+
+http_request_fee r base per_byte = fromIntegral base + fromIntegral per_byte * total_bytes
+  where
+    response_size_fee Nothing = max_inter_canister_payload_in_bytes
+    response_size_fee (Just max_response_size) = max_response_size
+    transform_fee Nothing = 0
+    transform_fee (Just v) = dec_var (V.trial' v #function)
+    dec_var (Just (Candid.FuncRef _ t)) = T.length t
+    total_bytes = response_size_fee (r .! #max_response_bytes)
+      + (fromIntegral $ T.length $ r .! #url)
+      + (fromIntegral $ sum $ map (\h -> T.length (h .! #name) + T.length (h .! #value)) $ Vec.toList (r .! #headers))
+      + (fromIntegral $ length (r .! #body))
+      + (fromIntegral $ transform_fee (r .! #transform))
+
 ic_http_request ::
     forall a b. (a -> IO b) ~ (ICManagement IO .! "http_request") =>
-    HasAgentConfig => IC00 -> Blob -> Maybe String -> IO b
+    HasAgentConfig => ((Int -> Int -> W.Word64) -> IC00) -> Blob -> Maybe String -> IO b
 ic_http_request ic00 canister_id transform =
-  callIC ic00 "" #http_request $ empty
-    .+ #url .== (T.pack $ canisterHttpRequestsEndpoint)
-    .+ #max_response_bytes .== Nothing
-    .+ #method .== enum #get
-    .+ #headers .== Vec.empty
-    .+ #body .== Nothing
-    .+ #transform .== (toTransformFn transform canister_id)
+  callIC (ic00 $ http_request_fee request) "" #http_request request
+  where
+    request = empty
+      .+ #url .== (T.pack $ canisterHttpRequestsEndpoint)
+      .+ #max_response_bytes .== Nothing
+      .+ #method .== enum #get
+      .+ #headers .== Vec.empty
+      .+ #body .== Nothing
+      .+ #transform .== (toTransformFn transform canister_id)
 
 ic_ecdsa_public_key ::
     forall a b. (a -> IO b) ~ (ICManagement IO .! "ecdsa_public_key") =>
@@ -236,15 +255,17 @@ ic_ecdsa_public_key' ic00 canister_id path =
        .+ #name .== (T.pack "0")
     )
 
-ic_http_request' :: HasAgentConfig => IC00 -> Blob -> (Maybe String, Blob) -> IO ReqResponse
+ic_http_request' :: HasAgentConfig => ((Int -> Int -> W.Word64) -> IC00) -> Blob -> (Maybe String, Blob) -> IO ReqResponse
 ic_http_request' ic00 canister_id (transform, cid) =
-  callIC' ic00 canister_id #http_request $ empty
-    .+ #url .== (T.pack $ canisterHttpRequestsEndpoint)
-    .+ #max_response_bytes .== Nothing
-    .+ #method .== enum #get
-    .+ #headers .== Vec.empty
-    .+ #body .== Nothing
-    .+ #transform .== (toTransformFn transform cid)
+  callIC' (ic00 $ http_request_fee request) canister_id #http_request request
+  where
+    request = empty
+      .+ #url .== (T.pack $ canisterHttpRequestsEndpoint)
+      .+ #max_response_bytes .== Nothing
+      .+ #method .== enum #get
+      .+ #headers .== Vec.empty
+      .+ #body .== Nothing
+      .+ #transform .== (toTransformFn transform cid)
 
 ic_install'' :: (HasCallStack, HasAgentConfig) => Blob -> InstallMode -> Blob -> Blob -> Blob -> IO (HTTPErrOr ReqResponse)
 ic_install'' user mode canister_id wasm_module arg =
