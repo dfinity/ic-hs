@@ -135,7 +135,13 @@ let
   ic-hs-coverage = nixpkgs.haskell.lib.doCheck (nixpkgs.haskell.lib.doCoverage ic-hs);
 in
 
-
+let
+  httpbin =
+    let
+      python = nixpkgs.python3.withPackages
+        (ps: [ ps.httpbin ps.gunicorn ps.gevent ]);
+    in "${python}/bin/gunicorn -b 0.0.0.0:8003 httpbin:app -k gevent";
+in
 
 rec {
   inherit ic-hs;
@@ -153,6 +159,7 @@ rec {
       sleep 1
       test -e port
       mkdir -p $out
+      ${httpbin} &
       LANG=C.UTF8 ic-ref-test --endpoint "http://0.0.0.0:$(cat port)/" --html $out/report.html
 
       mkdir -p $out/nix-support
@@ -170,6 +177,7 @@ rec {
       trap kill_ic_ref EXIT PIPE
       sleep 1
       test -e port
+      ${httpbin} &
       LANG=C.UTF8 ic-ref-test --endpoint "http://0.0.0.0:$(cat port)/"
       kill -INT %1
       trap - EXIT PIPE
