@@ -228,6 +228,7 @@ mkDerivation {
     haskoin-core
     hex-text
     http-client
+    http-client-tls
     http-types
     leb128-cereal
     memory
