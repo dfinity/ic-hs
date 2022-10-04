@@ -160,7 +160,8 @@ rec {
       test -e port
       mkdir -p $out
       ${httpbin} &
-      LANG=C.UTF8 ic-ref-test --endpoint "http://0.0.0.0:$(cat port)/" --httpbin "http://0.0.0.0:8003" --html $out/report.html
+      sleep 1
+      LANG=C.UTF8 ic-ref-test --endpoint "http://0.0.0.0:$(cat port)/" --httpbin "http://127.0.0.1:8003" --html $out/report.html
 
       mkdir -p $out/nix-support
       echo "report test-results $out report.html" >> $out/nix-support/hydra-build-products
@@ -178,7 +179,8 @@ rec {
       sleep 1
       test -e port
       ${httpbin} &
-      LANG=C.UTF8 ic-ref-test --endpoint "http://0.0.0.0:$(cat port)/" --httpbin "http://0.0.0.0:8003"
+      sleep 1
+      LANG=C.UTF8 ic-ref-test --endpoint "http://0.0.0.0:$(cat port)/" --httpbin "http://127.0.0.1:8003"
       kill -INT %1
       trap - EXIT PIPE
       sleep 5 # wait for ic-ref.tix to be written
