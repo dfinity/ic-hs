@@ -153,16 +153,21 @@ rec {
   ic-ref-test = nixpkgs.runCommandNoCC "ic-ref-test" {
       nativeBuildInputs = [ ic-hs ];
     } ''
-      function kill_ic_ref () { kill %1; }
+      function kill_jobs () {
+        pids="$(jobs -p)"
+        kill $pids
+      }
       ic-ref --pick-port --write-port-to port &
-      trap kill_ic_ref EXIT PIPE
+      trap kill_jobs EXIT PIPE
       sleep 1
       test -e port
       mkdir -p $out
       ${httpbin} &
       sleep 1
       LANG=C.UTF8 ic-ref-test --endpoint "http://127.0.0.1:$(cat port)/" --httpbin "http://127.0.0.1:8003" --html $out/report.html
-
+      pids="$(jobs -p)"
+      kill -INT $pids
+      trap - EXIT PIPE
       mkdir -p $out/nix-support
       echo "report test-results $out report.html" >> $out/nix-support/hydra-build-products
     '';
@@ -173,15 +178,19 @@ rec {
       srcdir = nixpkgs.lib.sourceByRegex (nixpkgs.subpath ./.)
         [ "^src.*" "^ic-hs.cabal" "^cbits.*" "^LICENSE" "^ic.did" ];
     } ''
-      function kill_ic_ref () { kill  %1; }
+      function kill_jobs () {
+        pids="$(jobs -p)"
+        kill $pids
+      }
       ic-ref --pick-port --write-port-to port &
-      trap kill_ic_ref EXIT PIPE
+      trap kill_jobs EXIT PIPE
       sleep 1
       test -e port
       ${httpbin} &
       sleep 1
       LANG=C.UTF8 ic-ref-test --endpoint "http://127.0.0.1:$(cat port)/" --httpbin "http://127.0.0.1:8003"
-      kill -INT %1
+      pids="$(jobs -p)"
+      kill -INT $pids
       trap - EXIT PIPE
       sleep 5 # wait for ic-ref.tix to be written
 
