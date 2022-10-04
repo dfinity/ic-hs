@@ -140,7 +140,7 @@ let
     let
       python = nixpkgs.python3.withPackages
         (ps: [ ps.httpbin ps.gunicorn ps.gevent ]);
-    in "${python}/bin/gunicorn -b 0.0.0.0:8003 httpbin:app -k gevent";
+    in "${python}/bin/gunicorn -b 127.0.0.1:8003 httpbin:app -k gevent";
 in
 
 rec {
