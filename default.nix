@@ -135,7 +135,13 @@ let
   ic-hs-coverage = nixpkgs.haskell.lib.doCheck (nixpkgs.haskell.lib.doCoverage ic-hs);
 in
 
-
+let
+  httpbin =
+    let
+      python = nixpkgs.python3.withPackages
+        (ps: [ ps.httpbin ps.gunicorn ps.gevent ]);
+    in "${python}/bin/gunicorn -b 127.0.0.1:8003 httpbin:app -k gevent";
+in
 
 rec {
   inherit ic-hs;
@@ -147,14 +153,21 @@ rec {
   ic-ref-test = nixpkgs.runCommandNoCC "ic-ref-test" {
       nativeBuildInputs = [ ic-hs ];
     } ''
-      function kill_ic_ref () { kill %1; }
+      function kill_jobs () {
+        pids="$(jobs -p)"
+        kill $pids
+      }
       ic-ref --pick-port --write-port-to port &
-      trap kill_ic_ref EXIT PIPE
+      trap kill_jobs EXIT PIPE
       sleep 1
       test -e port
       mkdir -p $out
-      LANG=C.UTF8 ic-ref-test --endpoint "http://0.0.0.0:$(cat port)/" --html $out/report.html
-
+      ${httpbin} &
+      sleep 1
+      LANG=C.UTF8 ic-ref-test --endpoint "http://127.0.0.1:$(cat port)/" --httpbin "http://127.0.0.1:8003" --html $out/report.html
+      pids="$(jobs -p)"
+      kill -INT $pids
+      trap - EXIT PIPE
       mkdir -p $out/nix-support
       echo "report test-results $out report.html" >> $out/nix-support/hydra-build-products
     '';
@@ -165,13 +178,19 @@ rec {
       srcdir = nixpkgs.lib.sourceByRegex (nixpkgs.subpath ./.)
         [ "^src.*" "^ic-hs.cabal" "^cbits.*" "^LICENSE" "^ic.did" ];
     } ''
-      function kill_ic_ref () { kill  %1; }
+      function kill_jobs () {
+        pids="$(jobs -p)"
+        kill $pids
+      }
       ic-ref --pick-port --write-port-to port &
-      trap kill_ic_ref EXIT PIPE
+      trap kill_jobs EXIT PIPE
       sleep 1
       test -e port
-      LANG=C.UTF8 ic-ref-test --endpoint "http://0.0.0.0:$(cat port)/"
-      kill -INT %1
+      ${httpbin} &
+      sleep 1
+      LANG=C.UTF8 ic-ref-test --endpoint "http://127.0.0.1:$(cat port)/" --httpbin "http://127.0.0.1:8003"
+      pids="$(jobs -p)"
+      kill -INT $pids
       trap - EXIT PIPE
       sleep 5 # wait for ic-ref.tix to be written
 

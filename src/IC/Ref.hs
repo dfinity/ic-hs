@@ -881,16 +881,16 @@ icHttpRequest caller r = do
     case (r .! #transform) of
       Nothing -> return resp
       Just t -> case V.trial' t #function of
-        Nothing -> reject RC_CANISTER_REJECT "transform needs to be a function" (Just EC_INVALID_ARGUMENT)
+        Nothing -> reject RC_CANISTER_REJECT "transform needs to be a function" (Just EC_CANISTER_REJECTED)
         Just (FuncRef p m) -> do
             let cid = principalToEntityId p
             unless (cid == caller) $
-              reject RC_CANISTER_REJECT "transform needs to be exported by a caller canister" (Just EC_INVALID_ARGUMENT) 
+              reject RC_CANISTER_REJECT "transform needs to be exported by a caller canister" (Just EC_CANISTER_REJECTED)
             can_mod <- getCanisterMod cid
             wasm_state <- getCanisterState cid
             env <- canisterEnv cid
             case M.lookup (T.unpack m) (query_methods can_mod) of
-              Nothing -> reject RC_CANISTER_ERROR "transform function with a given name does not exist" (Just EC_INVALID_ARGUMENT)
+              Nothing -> reject RC_DESTINATION_INVALID "transform function with a given name does not exist" (Just EC_METHOD_NOT_FOUND)
               Just f -> case f cid env (Codec.Candid.encode resp) wasm_state of
                 Return (Reply r) -> case Codec.Candid.decode @HttpResponse r of
                   Left _ -> reject RC_CANISTER_ERROR "could not decode the response" (Just EC_INVALID_ENCODING)
@@ -1319,8 +1319,15 @@ reject code msg err = throwError (code, msg, err)
 
 -- To maintain the abstraction that the management canister is a canister,
 -- all its errors are turned into canister errors
+isCanisterRejectedCode :: RejectCode -> Bool
+isCanisterRejectedCode RC_SYS_FATAL           = False
+isCanisterRejectedCode RC_SYS_TRANSIENT       = False
+isCanisterRejectedCode RC_DESTINATION_INVALID = True
+isCanisterRejectedCode RC_CANISTER_REJECT     = True
+isCanisterRejectedCode RC_CANISTER_ERROR      = True
+
 rejectAsCanister :: CanReject m => m a -> m a
-rejectAsCanister act = catchError act (\(_c, msg, _err) -> reject RC_CANISTER_ERROR msg (Just EC_CANISTER_REJECTED))
+rejectAsCanister act = catchError act (\(c, msg, err) -> if isCanisterRejectedCode c then reject c msg err else reject RC_CANISTER_ERROR msg (Just EC_CANISTER_REJECTED))
 
 canisterRejected :: (RejectCode, String, Maybe ErrorCode) -> CallResponse
 canisterRejected (rc, msg, err) =  Rejected (rc, msg, Just $ maybe EC_CANISTER_REJECTED id err)

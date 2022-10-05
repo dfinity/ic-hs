@@ -18,13 +18,14 @@ instance IsOption Endpoint where
   optionHelp = return "Internet Computer endpoint to connect to (default: http://0.0.0.0:8001)"
   optionCLParser = mkOptionCLParser (metavar "URL")
 
-newtype TestPort = TestPort Int
+newtype Httpbin = Httpbin String
 
-instance IsOption TestPort where
-  defaultValue = TestPort 8003
-  parseValue p = Just $ TestPort $ read p
-  optionName = return "test_port"
-  optionHelp = return "Port a test HTTP server listens on (default: 8003)"
+instance IsOption Httpbin where
+  defaultValue = Httpbin "https://httpbin.org"
+  parseValue = Just . Httpbin
+  optionName = return "httpbin"
+  optionHelp = return "httpbin endpoint (default: https://httpbin.org)"
+  optionCLParser = mkOptionCLParser (metavar "URL")
 
 newtype PollTimeout = PollTimeout Int
 
@@ -36,3 +37,9 @@ instance IsOption PollTimeout where
 
 endpointOption :: OptionDescription
 endpointOption = Option (Proxy :: Proxy Endpoint)
+
+httpbinOption :: OptionDescription
+httpbinOption = Option (Proxy :: Proxy Httpbin)
+
+polltimeoutOption :: OptionDescription
+polltimeoutOption = Option (Proxy :: Proxy PollTimeout)

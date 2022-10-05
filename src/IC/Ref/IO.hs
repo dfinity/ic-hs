@@ -8,6 +8,7 @@ import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.Vector as Vec
 import qualified Network.HTTP.Client as C
+import qualified Network.HTTP.Client.TLS as C
 import Network.HTTP.Types.Status (statusCode)
 import Data.CaseInsensitive (original)
 import Data.Row ((.==), (.+))
@@ -16,7 +17,7 @@ import IC.Management (HttpResponse)
 
 sendHttpRequest :: T.Text -> IO HttpResponse
 sendHttpRequest url = do
-    m <- C.newManager C.defaultManagerSettings
+    m <- C.newManager C.tlsManagerSettings
     initReq <- C.parseRequest (T.unpack url)
     let req = initReq {
       C.method = "GET"

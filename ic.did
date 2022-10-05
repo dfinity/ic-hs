@@ -56,7 +56,8 @@ service ic : {
   raw_rand : () -> (blob);
   http_request : (record {
     url : text;
-    method : variant { get };
+    max_response_bytes: opt nat64;
+    method : variant { get; post; head };
     headers: vec http_header;
     body : opt blob;
     transform : opt variant {
