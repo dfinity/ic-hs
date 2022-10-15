@@ -90,6 +90,11 @@ instance ToJSON Response where
     toJSON     = genericToJSON customOptions
     toEncoding = genericToEncoding customOptions
 
+deriving instance Generic SubnetType
+instance ToJSON SubnetType where
+    toJSON     = genericToJSON customOptions
+    toEncoding = genericToEncoding customOptions
+
 deriving instance Generic WasmClosure
 instance ToJSON WasmClosure where
     toJSON     = genericToJSON customOptions

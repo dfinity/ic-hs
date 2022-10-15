@@ -122,12 +122,12 @@ callManagement user_id l x =
   submitAndRun $
     CallRequest (EntityId mempty) user_id (symbolVal l) (Candid.encode x)
 
-work :: FilePath -> IO ()
-work msg_file = do
+work :: SubnetType -> FilePath -> IO ()
+work subnet msg_file = do
   msgs <- parseFile msg_file
 
   let user_id = dummyUserId
-  ic <- initialIC
+  ic <- initialIC subnet
   flip evalStateT ic $
     forM_ msgs $ \case
       Create ->
@@ -173,13 +173,18 @@ main = join . customExecParser (prefs showHelpOnError) $
       <*> infoOption (T.unpack specVersion) (long "spec-version" <> help "show spec version number")
     parser :: Parser (IO ())
     parser = work
-      <$  strOption
-          (  long "config"
-          <> short 'c'
-          <> metavar "CONFIG"
-          <> value ""
+          <$>
+        (
+          (
+            option auto
+            (  long "subnet-type"
+            <> help "choose a subnet type [possible values: application, verified_application, system] (default: application)"
+            )
           )
-      <*> strArgument
-          (  metavar "script"
+        <|> pure Application
+        )
+      <*> strOption
+          (  long "script"
+          <> metavar "script"
           <> help "messages to execute"
-              )
+        )

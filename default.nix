@@ -140,7 +140,8 @@ let
     let
       python = nixpkgs.python3.withPackages
         (ps: [ ps.httpbin ps.gunicorn ps.gevent ]);
-    in "${python}/bin/gunicorn -b 127.0.0.1:8003 httpbin:app -k gevent";
+      openssl = nixpkgs.openssl;
+    in "${openssl}/bin/openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -sha256 -nodes -subj '/C=/ST=/L=/O=/CN=127.0.0.1'; ${python}/bin/gunicorn -b 127.0.0.1:8003 --certfile cert.pem --keyfile key.pem httpbin:app -k gevent";
 in
 
 rec {
@@ -164,7 +165,7 @@ rec {
       mkdir -p $out
       ${httpbin} &
       sleep 1
-      LANG=C.UTF8 ic-ref-test --endpoint "http://127.0.0.1:$(cat port)/" --httpbin "http://127.0.0.1:8003" --html $out/report.html
+      LANG=C.UTF8 ic-ref-test --endpoint "http://127.0.0.1:$(cat port)/" --httpbin "127.0.0.1:8003" --html $out/report.html
       pids="$(jobs -p)"
       kill -INT $pids
       trap - EXIT PIPE
@@ -188,7 +189,7 @@ rec {
       test -e port
       ${httpbin} &
       sleep 1
-      LANG=C.UTF8 ic-ref-test --endpoint "http://127.0.0.1:$(cat port)/" --httpbin "http://127.0.0.1:8003"
+      LANG=C.UTF8 ic-ref-test --endpoint "http://127.0.0.1:$(cat port)/" --httpbin "127.0.0.1:8003"
       pids="$(jobs -p)"
       kill -INT $pids
       trap - EXIT PIPE

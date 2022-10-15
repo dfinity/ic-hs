@@ -25,9 +25,9 @@ import IC.Serialise ()
 import IC.StateFile
 import IC.Crypto
 
-withApp :: Maybe FilePath -> (Application -> IO a) -> IO a
-withApp backingFile action =
-    withStore initialIC backingFile (action . handle)
+withApp :: SubnetType -> Maybe FilePath -> (Application -> IO a) -> IO a
+withApp subnet backingFile action =
+    withStore (initialIC subnet) backingFile (action . handle)
 
 handle :: Store IC -> Application
 handle store req respond = case (requestMethod req, pathInfo req) of

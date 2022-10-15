@@ -78,6 +78,7 @@ executable ic-ref
   build-depends: case-insensitive
   build-depends: cborg
   build-depends: cereal
+  build-depends: connection >= 0.3.1
   build-depends: containers
   build-depends: crc
   build-depends: cryptonite
@@ -187,6 +188,7 @@ executable ic-ref-run
   build-depends: case-insensitive
   build-depends: cborg
   build-depends: cereal
+  build-depends: connection >= 0.3.1
   build-depends: containers
   build-depends: crc
   build-depends: cryptonite
@@ -282,6 +284,7 @@ executable ic-ref-test
   build-depends: case-insensitive
   build-depends: cborg
   build-depends: cereal
+  build-depends: connection >= 0.3.1
   build-depends: containers
   build-depends: crc
   build-depends: cryptonite
@@ -409,6 +412,7 @@ test-suite unit-test
   build-depends: case-insensitive
   build-depends: cborg
   build-depends: cereal
+  build-depends: connection >= 0.3.1
   build-depends: containers
   build-depends: crc
   build-depends: cryptonite
@@ -519,6 +523,7 @@ library
   build-depends: case-insensitive
   build-depends: cborg
   build-depends: cereal
+  build-depends: connection >= 0.3.1
   build-depends: containers
   build-depends: crc
   build-depends: cryptonite

@@ -46,38 +46,51 @@ import IC.Certificate
 import IC.Hash
 import IC.Test.Agent
 import IC.Test.Agent.Calls
+import IC.Test.Options (SubnetType(..))
 import IC.Test.Spec.Utils
 import qualified IC.Test.Spec.TECDSA
 
 -- * Canister http calls
 
-canister_http_calls :: HasAgentConfig => Word64 -> Word64 -> [TestTree]
-canister_http_calls base_fee per_byte_fee =
+canister_http_calls_from_subnet :: HasAgentConfig => SubnetType -> [TestTree]
+canister_http_calls_from_subnet Application = canister_http_calls False 400000000 100000
+canister_http_calls_from_subnet VerifiedApplication = canister_http_calls False 400000000 100000
+canister_http_calls_from_subnet System = canister_http_calls True 0 0
+
+canister_http_calls :: HasAgentConfig => Bool -> Word64 -> Word64 -> [TestTree]
+canister_http_calls is_system base_fee per_byte_fee =
   [ simpleTestCase "simple call, no transform" $ \cid -> do
       resp <- ic_http_request (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "base64/SGVsbG8gd29ybGQh" cid Nothing
       (resp .! #status) @?= 200
       (resp .! #body) @?= "Hello world!"
-
-    , testCase "non-existent transform function" $ do
-      cid <- install noop
-      ic_http_request' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "base64/SGVsbG8gd29ybGQh" cid (Just "nonExistent", cid) >>= isReject [3]
-
-    , testCase "reference to a transform function exposed by another canister" $ do
-      cid <- install noop
-      cid2 <- install (onTransform (callback (replyData (bytes (Candid.encode dummyResponse)))))
-      ic_http_request' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "base64/SGVsbG8gd29ybGQh" cid (Just "transform", cid2) >>= isReject [4]
 
     , testCase "simple call with transform" $ do
       cid <- install (onTransform (callback (replyData (bytes (Candid.encode dummyResponse)))))
       resp <- ic_http_request (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "base64/SGVsbG8gd29ybGQh" cid (Just "transform")
       (resp .! #status) @?= 202
       (resp .! #body) @?= "Dummy!"
+
+    , testCase "non-existent transform function" $ do
+      cid <- install noop
+      ic_http_request' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "https://" "base64/SGVsbG8gd29ybGQh" cid (Just "nonExistent", cid) >>= isReject [3]
+
+    , testCase "reference to a transform function exposed by another canister" $ do
+      cid <- install noop
+      cid2 <- install (onTransform (callback (replyData (bytes (Candid.encode dummyResponse)))))
+      ic_http_request' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "https://" "base64/SGVsbG8gd29ybGQh" cid (Just "transform", cid2) >>= isReject [4]
+
+    , testCase "url must start with https://" $ do
+      cid <- install noop
+      ic_http_request' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "http://" "base64/SGVsbG8gd29ybGQh" cid (Nothing, cid) >>= isReject [1]
+  ] ++ if is_system then [] else
+  [ simpleTestCase "simple call, no transform, not enough cycles" $ \cid -> do
+      ic_http_request' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee - 1)) "https://" "base64/SGVsbG8gd29ybGQh" cid (Nothing, cid) >>= isReject [4]
   ]
 
 -- * The test suite (see below for helper functions)
 
-icTests :: AgentConfig -> TestTree
-icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
+icTests :: SubnetType -> AgentConfig -> TestTree
+icTests subnet = withAgentConfig $ testGroup "Interface Spec acceptance tests"
   [ simpleTestCase "create and install" $ \_ ->
       return ()
 
@@ -411,8 +424,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     assertBool "random blobs are different" $ r1 /= r2
 
   , IC.Test.Spec.TECDSA.tests
-  , testGroup "canister http calls.only_system" $ canister_http_calls 0 0
-  , testGroup "canister http calls.only_application" $ canister_http_calls 400000000 100000
+  , testGroup "canister http calls" $ canister_http_calls_from_subnet subnet
 
   , testGroup "simple calls"
     [ simpleTestCase "Call" $ \cid ->
@@ -558,46 +570,37 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
         cs .! #settings .! #freezing_threshold @?= 1000_000
 
     , testGroup "via provisional_create_canister_with_cycles:"
-        [ testCase "Invalid compute allocation" $ do
+        [ testCase "Invalid compute allocation (101)" $ do
             ic_provisional_create' ic00 Nothing (#compute_allocation .== 101)
-               >>= isReject [3,5]
-        , testCase "Invalid memory allocation (2^49)" $ do
-            ic_provisional_create' ic00 Nothing (#compute_allocation .== 2^(49::Int))
-               >>= isReject [3,5]
-        , testCase "Invalid memory allocation (2^70)" $ do
-            ic_provisional_create' ic00 Nothing (#compute_allocation .== 2^(70::Int))
-               >>= isReject [3,5]
-        , testCase "Invalid freezing threshold (2^70)" $ do
-            ic_provisional_create' ic00 Nothing (#freezing_threshold .== 2^(70::Int))
-               >>= isReject [3,5]
+               >>= isReject [5]
+        , testCase "Invalid memory allocation (2^48+1)" $ do
+            ic_provisional_create' ic00 Nothing (#memory_allocation .== (2^(48::Int)+1))
+               >>= isReject [5]
+        , testCase "Invalid freezing threshold (2^64)" $ do
+            ic_provisional_create' ic00 Nothing (#freezing_threshold .== 2^(64::Int))
+               >>= isReject [5]
         ]
     , testGroup "via create_canister:"
-        [ simpleTestCase "Invalid compute allocation" $ \cid -> do
+        [ simpleTestCase "Invalid compute allocation (101)" $ \cid -> do
             ic_create' (ic00via cid) (#compute_allocation .== 101)
-               >>= isReject [3,5]
-        , simpleTestCase "Invalid memory allocation (2^49)" $ \cid -> do
-            ic_create' (ic00via cid) (#compute_allocation .== 2^(49::Int))
-               >>= isReject [3,5]
-        , simpleTestCase "Invalid memory allocation (2^70)" $ \cid -> do
-            ic_create' (ic00via cid) (#compute_allocation .== 2^(70::Int))
-               >>= isReject [3,5]
-        , simpleTestCase "Invalid freezing threshold (2^70)" $ \cid -> do
-            ic_create' (ic00via cid) (#freezing_threshold .== 2^(70::Int))
-               >>= isReject [3,5]
+               >>= isReject [5]
+        , simpleTestCase "Invalid memory allocation (2^48+1)" $ \cid -> do
+            ic_create' (ic00via cid) (#memory_allocation .== (2^(48::Int)+1))
+               >>= isReject [5]
+        , simpleTestCase "Invalid freezing threshold (2^64)" $ \cid -> do
+            ic_create' (ic00via cid) (#freezing_threshold .== 2^(64::Int))
+               >>= isReject [5]
         ]
     , testGroup "via update_settings"
-        [ simpleTestCase "Invalid compute allocation" $ \cid -> do
+        [ simpleTestCase "Invalid compute allocation (101)" $ \cid -> do
             ic_update_settings' ic00 cid (#compute_allocation .== 101)
-               >>= isReject [3,5]
-        , simpleTestCase "Invalid memory allocation (2^49)" $ \cid -> do
-            ic_update_settings' ic00 cid (#compute_allocation .== 2^(49::Int))
-               >>= isReject [3,5]
-        , simpleTestCase "Invalid memory allocation (2^70)" $ \cid -> do
-            ic_update_settings' ic00 cid (#compute_allocation .== 2^(70::Int))
-               >>= isReject [3,5]
-        , simpleTestCase "Invalid freezing threshold (2^70)" $ \cid -> do
-            ic_update_settings' ic00 cid (#freezing_threshold .== 2^(70::Int))
-               >>= isReject [3,5]
+               >>= isReject [5]
+        , simpleTestCase "Invalid memory allocation (2^48+1)" $ \cid -> do
+            ic_update_settings' ic00 cid (#memory_allocation .== (2^(48::Int)+1))
+               >>= isReject [5]
+        , simpleTestCase "Invalid freezing threshold (2^64)" $ \cid -> do
+            ic_update_settings' ic00 cid (#freezing_threshold .== 2^(64::Int))
+               >>= isReject [5]
         ]
     ]
 

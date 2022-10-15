@@ -54,19 +54,19 @@ tests = testGroup "ic-ref unit tests"
         removeFile fn
 
         -- Create the state
-        withStore initialIC (Just fn) $ \store -> do
+        withStore (initialIC Application) (Just fn) $ \store -> do
           modifyStore store $ submitRequest "dummyrequestid" $
             CallRequest (EntityId mempty) (EntityId "yay") "create_canister" "DIDL\x01\x6c\0\1\0"
 
         -- now the file should exist
         doesFileExist fn  >>= assertBool "File exists"
 
-        withStore initialIC (Just fn) $ \store -> do
+        withStore (initialIC Application) (Just fn) $ \store -> do
           ic <- peekStore store
           assertBool "No canisters yet expected" (null (canisters ic))
           modifyStore store runToCompletion
 
-        withStore initialIC (Just fn) $ \store -> do
+        withStore (initialIC Application) (Just fn) $ \store -> do
           ic <- peekStore store
           case M.elems (canisters ic) of
             [] -> assertFailure "No canisters created"

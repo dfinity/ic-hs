@@ -87,6 +87,8 @@ import IC.Certificate.CBOR
 import IC.Crypto
 import IC.Crypto.Bitcoin as Bitcoin
 import IC.Ref.IO (sendHttpRequest)
+import qualified Data.Word as W
+import qualified Codec.Candid as Candid
 
 -- Abstract HTTP Interface
 
@@ -195,17 +197,18 @@ data IC = IC
   , rng :: StdGen
   , secretRootKey :: SecretKey
   , secretSubnetKey :: SecretKey
+  , subnet_type :: SubnetType
   }
   deriving (Show)
 
 -- The functions below want stateful access to a value of type 'IC'
 type ICM m = (MonadState IC m, HasCallStack, MonadIO m)
 
-initialIC :: IO IC
-initialIC = do
+initialIC :: SubnetType -> IO IC
+initialIC subnet = do
     let sk1 = createSecretKeyBLS "ic-ref's very secure secret key"
     let sk2 = createSecretKeyBLS "ic-ref's very secure subnet key"
-    IC mempty mempty mempty mempty <$> newStdGen <*> pure sk1 <*> pure sk2
+    IC mempty mempty mempty mempty <$> newStdGen <*> pure sk1 <*> pure sk2 <*> pure subnet
 
 -- Request handling
 
@@ -331,6 +334,9 @@ setBalance cid balance = modCanister cid $
 setCertifiedData :: ICM m => CanisterId -> Blob -> m ()
 setCertifiedData cid b = modCanister cid $
     \cs -> cs { certified_data = b }
+
+getSubnetType :: ICM m => m SubnetType
+getSubnetType = gets subnet_type
 
 getRunStatus :: ICM m => CanisterId -> m RunStatus
 getRunStatus cid = run_status <$> getCanister cid
@@ -745,8 +751,7 @@ processMessage m = case m of
     if callee == managementCanisterId
     then do
       caller <- callerOfCallID ctxt_id
-      rejectAsCanister $
-        invokeManagementCanister caller ctxt_id entry
+      invokeManagementCanister caller ctxt_id entry
     else do
       canisterMustExist callee
       status <- getRunStatus callee
@@ -849,7 +854,7 @@ invokeManagementCanister caller ctxt_id (Public method_name arg) =
       "provisional_create_canister_with_cycles" -> atomic $ icCreateCanisterWithCycles caller
       "provisional_top_up_canister" -> atomic icTopUpCanister
       "raw_rand" -> atomic icRawRand
-      "http_request" -> atomic $ icHttpRequest caller
+      "http_request" -> atomic $ icHttpRequest caller ctxt_id
       "ecdsa_public_key" -> atomic $ icEcdsaPublicKey caller
       "sign_with_ecdsa" -> atomic $ icSignWithEcdsa caller
       _ -> reject RC_DESTINATION_INVALID ("Unsupported management function " ++ method_name) (Just EC_METHOD_NOT_FOUND)
@@ -875,27 +880,74 @@ invokeManagementCanister caller ctxt_id (Public method_name arg) =
 invokeManagementCanister _ _ Closure{} = error "closure invoked on management canister"
 invokeManagementCanister _ _ Heartbeat = error "heartbeat invoked on management canister"
 
-icHttpRequest :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "http_request"
-icHttpRequest caller r = do
-    resp <- liftIO $ sendHttpRequest (r .! #url)
-    case (r .! #transform) of
-      Nothing -> return resp
-      Just t -> case V.trial' t #function of
-        Nothing -> reject RC_CANISTER_REJECT "transform needs to be a function" (Just EC_CANISTER_REJECTED)
-        Just (FuncRef p m) -> do
-            let cid = principalToEntityId p
-            unless (cid == caller) $
-              reject RC_CANISTER_REJECT "transform needs to be exported by a caller canister" (Just EC_CANISTER_REJECTED)
-            can_mod <- getCanisterMod cid
-            wasm_state <- getCanisterState cid
-            env <- canisterEnv cid
-            case M.lookup (T.unpack m) (query_methods can_mod) of
-              Nothing -> reject RC_DESTINATION_INVALID "transform function with a given name does not exist" (Just EC_METHOD_NOT_FOUND)
-              Just f -> case f cid env (Codec.Candid.encode resp) wasm_state of
-                Return (Reply r) -> case Codec.Candid.decode @HttpResponse r of
-                  Left _ -> reject RC_CANISTER_ERROR "could not decode the response" (Just EC_INVALID_ENCODING)
-                  Right r -> return r
-                _ -> reject RC_CANISTER_ERROR "canister did not return a response properly" (Just EC_CANISTER_DID_NOT_REPLY)
+max_inter_canister_payload_in_bytes :: Natural
+max_inter_canister_payload_in_bytes = 2 * 1024 * 1024 -- 2 MiB
+
+http_request_fee :: (Foldable t,
+                     (r1 .! "transform") ~ Maybe (V.Var r2),
+                     (r1 .! "headers") ~ Vec.Vector (R.Rec r3), (r3 .! "name") ~ T.Text,
+                     (r1 .! "max_response_bytes") ~ Maybe W.Word64,
+                     (r2 .! "function") ~ Candid.FuncRef r4, (r1 .! "url") ~ T.Text,
+                     (r3 .! "value") ~ T.Text, (r1 .! "body") ~ t a) =>
+                    R.Rec r1 -> Cycles -> Cycles -> Cycles
+http_request_fee r base per_byte = base + per_byte * total_bytes
+  where
+    response_size_fee Nothing = max_inter_canister_payload_in_bytes
+    response_size_fee (Just max_response_size) = max_response_size
+    transform_fee Nothing = 0
+    transform_fee (Just v) = dec_var (V.trial' v #function)
+    dec_var Nothing = error "transform variant in http_request must be #function"
+    dec_var (Just (Candid.FuncRef _ t)) = T.length t
+    total_bytes = response_size_fee (fmap fromIntegral $ r .! #max_response_bytes)
+      + (fromIntegral $ T.length $ r .! #url)
+      + (fromIntegral $ sum $ map (\h -> T.length (h .! #name) + T.length (h .! #value)) $ Vec.toList $ r .! #headers)
+      + (fromIntegral $ length $ r .! #body)
+      + (fromIntegral $ transform_fee $ r .! #transform)
+
+getHttpRequestBaseFee :: ICM m => m Cycles
+getHttpRequestBaseFee = do
+  subnet <- getSubnetType
+  return $ case subnet of Application -> 400000000
+                          VerifiedApplication -> 400000000
+                          System -> 0
+
+getHttpRequestPerByteFee :: ICM m => m Cycles
+getHttpRequestPerByteFee = do
+  subnet <- getSubnetType
+  return $ case subnet of Application -> 100000
+                          VerifiedApplication -> 100000
+                          System -> 0
+
+icHttpRequest :: (ICM m, CanReject m) => EntityId -> CallId -> ICManagement m .! "http_request"
+icHttpRequest caller ctxt_id r =
+    if not (isPrefixOf "https://" $ T.unpack $ r .! #url) then reject RC_SYS_FATAL "url must start with https://" (Just EC_INVALID_ARGUMENT)
+    else do
+      available <- getCallContextCycles ctxt_id
+      base <- getHttpRequestBaseFee
+      per_byte <- getHttpRequestPerByteFee
+      let fee = http_request_fee r base per_byte
+      if available < fee then reject RC_CANISTER_REJECT ("http_request request sent with " ++ show available ++ " cycles, but " ++ show fee ++ " cycles are required.") (Just EC_CANISTER_REJECTED)
+      else do
+        setCallContextCycles ctxt_id (available - fee)
+        resp <- liftIO $ sendHttpRequest (r .! #url)
+        case (r .! #transform) of
+          Nothing -> return resp
+          Just t -> case V.trial' t #function of
+            Nothing -> reject RC_CANISTER_REJECT "transform needs to be a function" (Just EC_CANISTER_REJECTED)
+            Just (FuncRef p m) -> do
+                let cid = principalToEntityId p
+                unless (cid == caller) $
+                  reject RC_CANISTER_REJECT "transform needs to be exported by a caller canister" (Just EC_CANISTER_REJECTED)
+                can_mod <- getCanisterMod cid
+                wasm_state <- getCanisterState cid
+                env <- canisterEnv cid
+                case M.lookup (T.unpack m) (query_methods can_mod) of
+                  Nothing -> reject RC_DESTINATION_INVALID "transform function with a given name does not exist" (Just EC_METHOD_NOT_FOUND)
+                  Just f -> case f cid env (Codec.Candid.encode resp) wasm_state of
+                    Return (Reply r) -> case Codec.Candid.decode @HttpResponse r of
+                      Left _ -> reject RC_CANISTER_ERROR "could not decode the response" (Just EC_INVALID_ENCODING)
+                      Right r -> return r
+                    _ -> reject RC_CANISTER_ERROR "canister did not return a response properly" (Just EC_CANISTER_DID_NOT_REPLY)
 
 icCreateCanister :: (ICM m, CanReject m) => EntityId -> CallId -> ICManagement m .! "create_canister"
 icCreateCanister caller ctxt_id r = do
@@ -926,16 +978,16 @@ validateSettings :: CanReject m => Settings -> m ()
 validateSettings r = do
     forM_ (r .! #compute_allocation) $ \n -> do
         unless (n <= 100) $
-            reject RC_SYS_FATAL  "Compute allocation not <= 100" (Just EC_INVALID_ARGUMENT)
+            reject RC_CANISTER_ERROR "Compute allocation not <= 100" (Just EC_CANISTER_CONTRACT_VIOLATION)
     forM_ (r .! #memory_allocation) $ \n -> do
         unless (n <= 2^(48::Int)) $
-            reject RC_SYS_FATAL  "Memory allocation not <= 2^48" (Just EC_INVALID_ARGUMENT)
+            reject RC_CANISTER_ERROR "Memory allocation not <= 2^48" (Just EC_CANISTER_CONTRACT_VIOLATION)
     forM_ (r .! #freezing_threshold) $ \n -> do
         unless (n < 2^(64::Int)) $
-            reject RC_SYS_FATAL  "Memory allocation not < 2^64" (Just EC_INVALID_ARGUMENT)
+            reject RC_CANISTER_ERROR "Freezing threshold not < 2^64" (Just EC_CANISTER_CONTRACT_VIOLATION)
     forM_ (r .! #controllers) $ \n -> do
         unless (length n <= 10) $
-            reject RC_SYS_FATAL  "Controllers cannot be > 10" (Just EC_INVALID_ARGUMENT)
+            reject RC_CANISTER_ERROR "Controllers cannot be > 10" (Just EC_CANISTER_CONTRACT_VIOLATION)
 
 applySettings :: ICM m => EntityId -> Settings -> m ()
 applySettings cid r = do
@@ -953,7 +1005,7 @@ onlyController caller act r = do
     controllers <- getControllers canister_id
     if caller `S.member` controllers
     then act r
-    else reject RC_SYS_FATAL (
+    else reject RC_CANISTER_ERROR (
         prettyID caller <> " is not authorized to manage canister " <>
         prettyID canister_id <> ", Controllers are: " <> intercalate ", " (map prettyID (S.toList controllers)))
         (Just EC_NOT_AUTHORIZED)
@@ -963,7 +1015,7 @@ icInstallCode caller r = do
     let canister_id = principalToEntityId (r .! #canister_id)
     let arg = r .! #arg
     new_can_mod <- return (parseCanister (r .! #wasm_module))
-      `onErr` (\err -> reject RC_SYS_FATAL ("Parsing failed: " ++ err) (Just EC_INVALID_MODULE))
+      `onErr` (\err -> reject RC_CANISTER_ERROR ("Parsing failed: " ++ err) (Just EC_INVALID_MODULE))
     was_empty <- isCanisterEmpty canister_id
     env <- canisterEnv canister_id
 
@@ -1092,8 +1144,8 @@ icDeleteCanister :: (ICM m, CanReject m) => ICManagement m .! "delete_canister"
 icDeleteCanister r = do
     let canister_id = principalToEntityId (r .! #canister_id)
     getRunStatus canister_id >>= \case
-        IsRunning -> reject RC_SYS_FATAL "Cannot delete running canister" (Just EC_CANISTER_NOT_STOPPED)
-        IsStopping _pending -> reject RC_SYS_FATAL "Cannot delete stopping canister" (Just EC_CANISTER_NOT_STOPPED)
+        IsRunning -> reject RC_CANISTER_ERROR "Cannot delete running canister" (Just EC_CANISTER_NOT_STOPPED)
+        IsStopping _pending -> reject RC_CANISTER_ERROR "Cannot delete stopping canister" (Just EC_CANISTER_NOT_STOPPED)
         IsStopped -> return ()
         IsDeleted -> error "deleted canister encountered"
 
@@ -1316,18 +1368,6 @@ runToCompletion = repeatWhileTrue runStep
 type CanReject = MonadError (RejectCode, String, Maybe ErrorCode)
 reject :: CanReject m => RejectCode -> String -> Maybe ErrorCode -> m a2
 reject code msg err = throwError (code, msg, err)
-
--- To maintain the abstraction that the management canister is a canister,
--- all its errors are turned into canister errors
-isCanisterRejectedCode :: RejectCode -> Bool
-isCanisterRejectedCode RC_SYS_FATAL           = False
-isCanisterRejectedCode RC_SYS_TRANSIENT       = False
-isCanisterRejectedCode RC_DESTINATION_INVALID = True
-isCanisterRejectedCode RC_CANISTER_REJECT     = True
-isCanisterRejectedCode RC_CANISTER_ERROR      = True
-
-rejectAsCanister :: CanReject m => m a -> m a
-rejectAsCanister act = catchError act (\(c, msg, err) -> if isCanisterRejectedCode c then reject c msg err else reject RC_CANISTER_ERROR msg (Just EC_CANISTER_REJECTED))
 
 canisterRejected :: (RejectCode, String, Maybe ErrorCode) -> CallResponse
 canisterRejected (rc, msg, err) =  Rejected (rc, msg, Just $ maybe EC_CANISTER_REJECTED id err)

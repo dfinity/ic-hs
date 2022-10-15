@@ -10,16 +10,17 @@ import qualified Data.Text as T
 import IC.HTTP
 import IC.Version
 import qualified IC.Crypto.BLS as BLS
+import IC.Types(SubnetType(..))
 
 defaultPort :: Port
 defaultPort = 8001
 
 
-work :: Maybe Int -> Maybe FilePath -> Maybe FilePath -> Bool ->  IO ()
-work portToUse writePortTo backingFile log = do
+work :: SubnetType -> Maybe Int -> Maybe FilePath -> Maybe FilePath -> Bool ->  IO ()
+work subnet portToUse writePortTo backingFile log = do
     putStrLn "Starting ic-ref..."
     BLS.init
-    withApp backingFile $ \app -> do
+    withApp subnet backingFile $ \app -> do
         let app' =  laxCorsSettings $ if log then logStdoutDev app else app
         case portToUse of
           Nothing ->
@@ -62,6 +63,16 @@ main = join . customExecParser (prefs showHelpOnError) $
     parser :: Parser (IO ())
     parser = work
       <$>
+        (
+          (
+            option auto
+            (  long "subnet-type"
+            <> help "choose a subnet type [possible values: application, verified_application, system] (default: application)"
+            )
+          )
+        <|> pure Application
+        )
+      <*>
         ( flag' Nothing
           (  long "pick-port"
           <> help ("pick a free port (instead of binding to 127.0.0.1:" ++ show defaultPort ++ ")")

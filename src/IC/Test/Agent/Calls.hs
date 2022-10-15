@@ -173,7 +173,7 @@ ic_http_request ic00 path canister_id transform =
   callIC (ic00 $ http_request_fee request) "" #http_request request
   where
     request = empty
-      .+ #url .== (T.pack $ httpbin ++ "/" ++ path)
+      .+ #url .== (T.pack $ "https://" ++ httpbin ++ "/" ++ path)
       .+ #max_response_bytes .== Nothing
       .+ #method .== enum #get
       .+ #headers .== Vec.empty
@@ -263,12 +263,12 @@ ic_ecdsa_public_key' ic00 canister_id path =
        .+ #name .== (T.pack "0")
     )
 
-ic_http_request' :: HasAgentConfig => ((W.Word64 -> W.Word64 -> W.Word64) -> IC00) -> String -> Blob -> (Maybe String, Blob) -> IO ReqResponse
-ic_http_request' ic00 path canister_id (transform, cid) =
+ic_http_request' :: HasAgentConfig => ((W.Word64 -> W.Word64 -> W.Word64) -> IC00) -> String -> String -> Blob -> (Maybe String, Blob) -> IO ReqResponse
+ic_http_request' ic00 proto path canister_id (transform, cid) =
   callIC' (ic00 $ http_request_fee request) canister_id #http_request request
   where
     request = empty
-      .+ #url .== (T.pack $ httpbin ++ "/" ++ path)
+      .+ #url .== (T.pack $ proto ++ httpbin ++ "/" ++ path)
       .+ #max_response_bytes .== Nothing
       .+ #method .== enum #get
       .+ #headers .== Vec.empty
@@ -326,7 +326,7 @@ ic_raw_rand'' user = do
 ic_http_request'' :: HasAgentConfig => Blob -> IO (HTTPErrOr ReqResponse)
 ic_http_request'' user =
   callIC'' user "" #http_request $ empty
-    .+ #url .== (T.pack $ httpbin)
+    .+ #url .== (T.pack $ "https://" ++ httpbin)
     .+ #max_response_bytes .== Nothing
     .+ #method .== enum #get
     .+ #headers .== Vec.empty
