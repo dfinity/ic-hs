@@ -13,16 +13,18 @@ import Network.HTTP.Types.Status (statusCode)
 import Network.Connection (TLSSettings(..))
 import Data.CaseInsensitive (original)
 import Data.Row ((.==), (.+))
+import Data.List(isPrefixOf)
 
 import IC.Management (HttpResponse)
 
 sendHttpRequest :: T.Text -> IO HttpResponse
 sendHttpRequest url = do
-    let tlsSettings = TLSSettingsSimple { settingDisableCertificateValidation = True
+    let localTlsSettings = TLSSettingsSimple { settingDisableCertificateValidation = True
       , settingDisableSession = False
       , settingUseServerName = False
       }
-    m <- C.newManager $ C.mkManagerSettings tlsSettings Nothing
+    let localUrl = isPrefixOf "https://127.0.0.1:" $ T.unpack url
+    m <- C.newManager $ if localUrl then C.mkManagerSettings localTlsSettings Nothing else C.tlsManagerSettings
     initReq <- C.parseRequest (T.unpack url)
     let req = initReq {
       C.method = "GET"
