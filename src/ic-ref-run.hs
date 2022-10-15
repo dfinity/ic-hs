@@ -173,7 +173,13 @@ main = join . customExecParser (prefs showHelpOnError) $
       <*> infoOption (T.unpack specVersion) (long "spec-version" <> help "show spec version number")
     parser :: Parser (IO ())
     parser = work
-          <$>
+      <$  strOption
+          (  long "config"
+          <> short 'c'
+          <> metavar "CONFIG"
+          <> value ""
+          )
+      <*>
         (
           (
             option auto
@@ -181,10 +187,9 @@ main = join . customExecParser (prefs showHelpOnError) $
             <> help "choose a subnet type [possible values: application, verified_application, system] (default: application)"
             )
           )
-        <|> pure Application
+          <|> pure Application
         )
-      <*> strOption
-          (  long "script"
-          <> metavar "script"
+      <*> strArgument
+          (  metavar "script"
           <> help "messages to execute"
-        )
+              )
