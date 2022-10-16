@@ -277,6 +277,7 @@ executable ic-ref-test
   build-depends: asn1-types
   build-depends: base32
   build-depends: base >=4.12 && <5
+  build-depends: base64 >= 0.4.2.4
   build-depends: base64-bytestring >= 1.1
   build-depends: binary
   build-depends: bytestring
@@ -316,6 +317,7 @@ executable ic-ref-test
   build-depends: time
   build-depends: transformers
   build-depends: unordered-containers
+  build-depends: utf8-string
   build-depends: vector
   build-depends: wai
   build-depends: warp
@@ -405,6 +407,7 @@ test-suite unit-test
   build-depends: base32
   build-depends: base >=4.12 && <5
   build-depends: base >= 4 && < 5
+  build-depends: base64 >= 0.4.2.4
   build-depends: base64-bytestring >= 1.1
   build-depends: binary
   build-depends: bytestring
@@ -516,6 +519,7 @@ library
   build-depends: base32
   build-depends: base >=4.12 && <5
   build-depends: base >= 4 && < 5
+  build-depends: base64 >= 0.4.2.4
   build-depends: base64-bytestring >= 1.1
   build-depends: binary
   build-depends: bytestring

@@ -19,6 +19,8 @@ import qualified Data.HashMap.Lazy as HM
 import qualified Data.Map.Lazy as M
 import qualified Data.Set as S
 import qualified Data.Vector as Vec
+import qualified Data.ByteString.Lazy.UTF8 as BLU
+import Data.Text.Encoding.Base64(encodeBase64)
 import Numeric.Natural
 import Data.List
 import Test.Tasty
@@ -60,31 +62,43 @@ canister_http_calls_from_subnet System = canister_http_calls True 0 0
 canister_http_calls :: HasAgentConfig => Bool -> Word64 -> Word64 -> [TestTree]
 canister_http_calls is_system base_fee per_byte_fee =
   [ simpleTestCase "simple call, no transform" $ \cid -> do
-      resp <- ic_http_request (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "base64/SGVsbG8gd29ybGQh" cid Nothing
+      let s = "Hello world!"
+      let enc = T.unpack $ encodeBase64 $ T.pack s
+      resp <- ic_http_request (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) ("base64/" ++ enc) cid Nothing
       (resp .! #status) @?= 200
-      (resp .! #body) @?= "Hello world!"
+      (resp .! #body) @?= BLU.fromString s
 
     , testCase "simple call with transform" $ do
+      let s = "Hello world!"
+      let enc = T.unpack $ encodeBase64 $ T.pack s
       cid <- install (onTransform (callback (replyData (bytes (Candid.encode dummyResponse)))))
-      resp <- ic_http_request (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "base64/SGVsbG8gd29ybGQh" cid (Just "transform")
+      resp <- ic_http_request (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) ("base64/" ++ enc) cid (Just "transform")
       (resp .! #status) @?= 202
       (resp .! #body) @?= "Dummy!"
 
     , testCase "non-existent transform function" $ do
+      let s = "Hello world!"
+      let enc = T.unpack $ encodeBase64 $ T.pack s
       cid <- install noop
-      ic_http_request' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "https://" "base64/SGVsbG8gd29ybGQh" cid (Just "nonExistent", cid) >>= isReject [3]
+      ic_http_request' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "https://" ("base64/" ++ enc) cid (Just "nonExistent", cid) >>= isReject [3]
 
     , testCase "reference to a transform function exposed by another canister" $ do
+      let s = "Hello world!"
+      let enc = T.unpack $ encodeBase64 $ T.pack s
       cid <- install noop
       cid2 <- install (onTransform (callback (replyData (bytes (Candid.encode dummyResponse)))))
-      ic_http_request' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "https://" "base64/SGVsbG8gd29ybGQh" cid (Just "transform", cid2) >>= isReject [4]
+      ic_http_request' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "https://" ("base64/" ++ enc) cid (Just "transform", cid2) >>= isReject [4]
 
     , testCase "url must start with https://" $ do
+      let s = "Hello world!"
+      let enc = T.unpack $ encodeBase64 $ T.pack s
       cid <- install noop
-      ic_http_request' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "http://" "base64/SGVsbG8gd29ybGQh" cid (Nothing, cid) >>= isReject [1]
+      ic_http_request' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "http://" ("base64/" ++ enc) cid (Nothing, cid) >>= isReject [1]
   ] ++ if is_system then [] else
   [ simpleTestCase "simple call, no transform, not enough cycles" $ \cid -> do
-      ic_http_request' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee - 1)) "https://" "base64/SGVsbG8gd29ybGQh" cid (Nothing, cid) >>= isReject [4]
+      let s = "Hello world!"
+      let enc = T.unpack $ encodeBase64 $ T.pack s
+      ic_http_request' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee - 1)) "https://" ("base64/" ++ enc) cid (Nothing, cid) >>= isReject [4]
   ]
 
 -- * The test suite (see below for helper functions)

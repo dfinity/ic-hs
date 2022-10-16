@@ -9,6 +9,7 @@
 , atomic-write
 , base
 , base32
+, base64
 , base64-bytestring
 , binary
 , bytestring
@@ -16,6 +17,7 @@
 , case-insensitive
 , cborg
 , cereal
+, connection
 , containers
 , crc
 , cryptonite
@@ -89,6 +91,7 @@ mkDerivation {
     case-insensitive
     cborg
     cereal
+    connection
     containers
     crc
     cryptonite
@@ -147,6 +150,7 @@ mkDerivation {
     atomic-write
     base
     base32
+    base64
     base64-bytestring
     binary
     bytestring
@@ -154,6 +158,7 @@ mkDerivation {
     case-insensitive
     cborg
     cereal
+    connection
     containers
     crc
     cryptonite
@@ -216,6 +221,7 @@ mkDerivation {
     case-insensitive
     cborg
     cereal
+    connection
     containers
     crc
     cryptonite
