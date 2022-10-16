@@ -68,6 +68,13 @@ canister_http_calls is_system base_fee per_byte_fee =
       (resp .! #status) @?= 200
       (resp .! #body) @?= BLU.fromString s
 
+    , simpleTestCase "simple call, no transform, very long url" $ \cid -> do
+      let s = take 2097152 $ repeat 'x'
+      let enc = T.unpack $ encodeBase64 $ T.pack s
+      resp <- ic_http_request (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) ("base64/" ++ enc) cid Nothing
+      (resp .! #status) @?= 200
+      (resp .! #body) @?= BLU.fromString s
+
     , testCase "simple call with transform" $ do
       let s = "Hello world!"
       let enc = T.unpack $ encodeBase64 $ T.pack s

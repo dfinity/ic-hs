@@ -883,6 +883,12 @@ invokeManagementCanister _ _ Heartbeat = error "heartbeat invoked on management 
 max_inter_canister_payload_in_bytes :: Natural
 max_inter_canister_payload_in_bytes = 2 * 1024 * 1024 -- 2 MiB
 
+max_response_size :: (r1 .! "max_response_bytes") ~ Maybe W.Word64 => R.Rec r1 -> Natural
+max_response_size r = aux $ fmap fromIntegral $ r .! #max_response_bytes
+  where
+    aux Nothing = max_inter_canister_payload_in_bytes
+    aux (Just w) = w
+
 http_request_fee :: (Foldable t,
                      (r1 .! "transform") ~ Maybe (V.Var r2),
                      (r1 .! "headers") ~ Vec.Vector (R.Rec r3), (r3 .! "name") ~ T.Text,
@@ -920,7 +926,11 @@ getHttpRequestPerByteFee = do
 
 icHttpRequest :: (ICM m, CanReject m) => EntityId -> CallId -> ICManagement m .! "http_request"
 icHttpRequest caller ctxt_id r =
-    if not (isPrefixOf "https://" $ T.unpack $ r .! #url) then reject RC_SYS_FATAL "url must start with https://" (Just EC_INVALID_ARGUMENT)
+    let max_resp_size = max_response_size r in
+    if not (isPrefixOf "https://" $ T.unpack $ r .! #url) then
+      reject RC_SYS_FATAL "url must start with https://" (Just EC_INVALID_ARGUMENT)
+    else if max_resp_size > max_inter_canister_payload_in_bytes then
+      reject RC_SYS_FATAL ("max_response_bytes cannot exceed " ++ show max_inter_canister_payload_in_bytes) (Just EC_CANISTER_REJECTED)
     else do
       available <- getCallContextCycles ctxt_id
       base <- getHttpRequestBaseFee
@@ -930,24 +940,31 @@ icHttpRequest caller ctxt_id r =
       else do
         setCallContextCycles ctxt_id (available - fee)
         resp <- liftIO $ sendHttpRequest (r .! #url)
-        case (r .! #transform) of
-          Nothing -> return resp
-          Just t -> case V.trial' t #function of
-            Nothing -> reject RC_CANISTER_REJECT "transform needs to be a function" (Just EC_CANISTER_REJECTED)
-            Just (FuncRef p m) -> do
-                let cid = principalToEntityId p
-                unless (cid == caller) $
-                  reject RC_CANISTER_REJECT "transform needs to be exported by a caller canister" (Just EC_CANISTER_REJECTED)
-                can_mod <- getCanisterMod cid
-                wasm_state <- getCanisterState cid
-                env <- canisterEnv cid
-                case M.lookup (T.unpack m) (query_methods can_mod) of
-                  Nothing -> reject RC_DESTINATION_INVALID "transform function with a given name does not exist" (Just EC_METHOD_NOT_FOUND)
-                  Just f -> case f cid env (Codec.Candid.encode resp) wasm_state of
-                    Return (Reply r) -> case Codec.Candid.decode @HttpResponse r of
-                      Left _ -> reject RC_CANISTER_ERROR "could not decode the response" (Just EC_INVALID_ENCODING)
-                      Right r -> return r
-                    _ -> reject RC_CANISTER_ERROR "canister did not return a response properly" (Just EC_CANISTER_DID_NOT_REPLY)
+        if fromIntegral (BS.length (resp .! #body)) > max_resp_size then
+          reject RC_CANISTER_REJECT ("response body size cannot exceed max_response_bytes (" ++ show max_resp_size ++ ")") (Just EC_CANISTER_REJECTED)
+        else do
+          case (r .! #transform) of
+            Nothing -> return resp
+            Just t -> case V.trial' t #function of
+              Nothing -> reject RC_CANISTER_REJECT "transform needs to be a function" (Just EC_CANISTER_REJECTED)
+              Just (FuncRef p m) -> do
+                  let cid = principalToEntityId p
+                  unless (cid == caller) $
+                    reject RC_CANISTER_REJECT "transform needs to be exported by a caller canister" (Just EC_CANISTER_REJECTED)
+                  can_mod <- getCanisterMod cid
+                  wasm_state <- getCanisterState cid
+                  env <- canisterEnv cid
+                  case M.lookup (T.unpack m) (query_methods can_mod) of
+                    Nothing -> reject RC_DESTINATION_INVALID "transform function with a given name does not exist" (Just EC_METHOD_NOT_FOUND)
+                    Just f -> case f cid env (Codec.Candid.encode resp) wasm_state of
+                      Return (Reply r) -> case Codec.Candid.decode @HttpResponse r of
+                        Left _ -> reject RC_CANISTER_ERROR "could not decode the response" (Just EC_INVALID_ENCODING)
+                        Right r ->
+                          if fromIntegral (BS.length (r .! #body)) > max_inter_canister_payload_in_bytes then
+                            reject RC_CANISTER_REJECT ("transformed response body size cannot exceed max_response_bytes (" ++ show max_resp_size ++ ")") (Just EC_CANISTER_REJECTED)
+                          else
+                            return r
+                      _ -> reject RC_CANISTER_ERROR "canister did not return a response properly" (Just EC_CANISTER_DID_NOT_REPLY)
 
 icCreateCanister :: (ICM m, CanReject m) => EntityId -> CallId -> ICManagement m .! "create_canister"
 icCreateCanister caller ctxt_id r = do
