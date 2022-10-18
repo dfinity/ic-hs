@@ -871,6 +871,10 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
             ]
       addNonceExpiryEnv req >>= postQueryCBOR cid2 >>= code4xx
 
+    , simpleTestCase "in read_state" $ \cid -> do
+        cid2 <- install noop
+        getStateCert' defaultUser cid2 [["canisters", cid, "controllers"]] >>= code4xx
+
     -- read_state tested in read_state group
     --
     , simpleTestCase "in mangement call" $ \cid1 -> do
@@ -1590,7 +1594,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
         cert <- getStateCert defaultUser cid [["canister", cid, "controllers"]]
         certValue @Blob cert ["canister", cid, "controllers"] >>= asCBORBlobList >>= isSet []
 
-    , testCase "module_hash of empty canister" $ do
+    , testCase "module_hash of universal canister" $ do
         cid <- install noop
         universal_wasm <- getTestWasm "universal_canister"
         cert <- getStateCert anonymousUser cid [["canister", cid, "module_hash"]]
