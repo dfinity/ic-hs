@@ -898,7 +898,7 @@ icHttpRequest caller ctxt_id r =
         setCallContextCycles ctxt_id (available - fee)
         resp <- liftIO $ sendHttpRequest (r .! #url)
         if fromIntegral (BS.length (resp .! #body)) > max_resp_size then
-          reject RC_CANISTER_REJECT ("response body size cannot exceed " ++ show max_resp_size ++ " bytes") (Just EC_CANISTER_REJECTED)
+          reject RC_SYS_FATAL ("response body size cannot exceed " ++ show max_resp_size ++ " bytes") (Just EC_CANISTER_REJECTED)
         else do
           case (r .! #transform) of
             Nothing -> return resp
@@ -918,7 +918,7 @@ icHttpRequest caller ctxt_id r =
                         Left _ -> reject RC_CANISTER_ERROR "could not decode the response" (Just EC_INVALID_ENCODING)
                         Right r ->
                           if fromIntegral (BS.length (r .! #body)) > max_inter_canister_payload_in_bytes then
-                            reject RC_CANISTER_REJECT ("transformed response body size cannot exceed " ++ show max_inter_canister_payload_in_bytes ++ " bytes") (Just EC_CANISTER_REJECTED)
+                            reject RC_SYS_FATAL ("transformed response body size cannot exceed " ++ show max_inter_canister_payload_in_bytes ++ " bytes") (Just EC_CANISTER_REJECTED)
                           else
                             return r
                       _ -> reject RC_CANISTER_ERROR "canister did not return a response properly" (Just EC_CANISTER_DID_NOT_REPLY)
