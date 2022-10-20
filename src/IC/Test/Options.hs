@@ -42,7 +42,7 @@ newtype PollTimeout = PollTimeout Int
 instance IsOption PollTimeout where
   defaultValue = PollTimeout 300
   parseValue p = Just $ PollTimeout $ read p
-  optionName = return "poll_timeout"
+  optionName = return "poll-timeout"
   optionHelp = return "Timeout for request polling in seconds (default: 300)"
 
 polltimeoutOption :: OptionDescription
@@ -71,7 +71,7 @@ instance IsOption SubnetType where
     | p == "verified_application" = Just VerifiedApplication
     | p == "system" = Just System
     | otherwise = Nothing
-  optionName = return "subnet_type"
+  optionName = return "subnet-type"
   optionHelp = return "Subnet type [possible values: application, verified_application, system] (default: application)"
 
 subnettypeOption :: OptionDescription

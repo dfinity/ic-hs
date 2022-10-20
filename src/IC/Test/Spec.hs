@@ -38,6 +38,7 @@ import Data.Serialize.LEB128 (toLEB128)
 import IC.Types (EntityId(..))
 import IC.HTTP.GenR
 import IC.HTTP.RequestId
+import IC.Constants
 import IC.Crypto
 import qualified IC.Crypto.CanisterSig as CanisterSig
 import qualified IC.Crypto.DER as DER
@@ -68,8 +69,8 @@ canister_http_calls is_system base_fee per_byte_fee =
       (resp .! #status) @?= 200
       (resp .! #body) @?= BLU.fromString s
 
-    , simpleTestCase "simple call, no transform, very long url" $ \cid -> do
-      let s = take 2097152 $ repeat 'x'
+    , simpleTestCase "simple call, no transform, very long url, maximum possible response body size" $ \cid -> do
+      let s = take (fromIntegral max_inter_canister_payload_in_bytes) $ repeat 'x'
       let enc = T.unpack $ encodeBase64 $ T.pack s
       resp <- ic_http_request (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) ("base64/" ++ enc) cid Nothing
       (resp .! #status) @?= 200

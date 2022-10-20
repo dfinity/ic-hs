@@ -87,8 +87,6 @@ import IC.Certificate.CBOR
 import IC.Crypto
 import IC.Crypto.Bitcoin as Bitcoin
 import IC.Ref.IO (sendHttpRequest)
-import qualified Data.Word as W
-import qualified Codec.Candid as Candid
 
 -- Abstract HTTP Interface
 
@@ -880,50 +878,6 @@ invokeManagementCanister caller ctxt_id (Public method_name arg) =
 invokeManagementCanister _ _ Closure{} = error "closure invoked on management canister"
 invokeManagementCanister _ _ Heartbeat = error "heartbeat invoked on management canister"
 
-max_inter_canister_payload_in_bytes :: Natural
-max_inter_canister_payload_in_bytes = 2 * 1024 * 1024 -- 2 MiB
-
-max_response_size :: (r1 .! "max_response_bytes") ~ Maybe W.Word64 => R.Rec r1 -> Natural
-max_response_size r = aux $ fmap fromIntegral $ r .! #max_response_bytes
-  where
-    aux Nothing = max_inter_canister_payload_in_bytes
-    aux (Just w) = w
-
-http_request_fee :: (Foldable t,
-                     (r1 .! "transform") ~ Maybe (V.Var r2),
-                     (r1 .! "headers") ~ Vec.Vector (R.Rec r3), (r3 .! "name") ~ T.Text,
-                     (r1 .! "max_response_bytes") ~ Maybe W.Word64,
-                     (r2 .! "function") ~ Candid.FuncRef r4, (r1 .! "url") ~ T.Text,
-                     (r3 .! "value") ~ T.Text, (r1 .! "body") ~ t a) =>
-                    R.Rec r1 -> Cycles -> Cycles -> Cycles
-http_request_fee r base per_byte = base + per_byte * total_bytes
-  where
-    response_size_fee Nothing = max_inter_canister_payload_in_bytes
-    response_size_fee (Just max_response_size) = max_response_size
-    transform_fee Nothing = 0
-    transform_fee (Just v) = dec_var (V.trial' v #function)
-    dec_var Nothing = error "transform variant in http_request must be #function"
-    dec_var (Just (Candid.FuncRef _ t)) = T.length t
-    total_bytes = response_size_fee (fmap fromIntegral $ r .! #max_response_bytes)
-      + (fromIntegral $ T.length $ r .! #url)
-      + (fromIntegral $ sum $ map (\h -> T.length (h .! #name) + T.length (h .! #value)) $ Vec.toList $ r .! #headers)
-      + (fromIntegral $ length $ r .! #body)
-      + (fromIntegral $ transform_fee $ r .! #transform)
-
-getHttpRequestBaseFee :: ICM m => m Cycles
-getHttpRequestBaseFee = do
-  subnet <- getSubnetType
-  return $ case subnet of Application -> 400000000
-                          VerifiedApplication -> 400000000
-                          System -> 0
-
-getHttpRequestPerByteFee :: ICM m => m Cycles
-getHttpRequestPerByteFee = do
-  subnet <- getSubnetType
-  return $ case subnet of Application -> 100000
-                          VerifiedApplication -> 100000
-                          System -> 0
-
 icHttpRequest :: (ICM m, CanReject m) => EntityId -> CallId -> ICManagement m .! "http_request"
 icHttpRequest caller ctxt_id r =
     let max_resp_size = max_response_size r in
@@ -933,9 +887,10 @@ icHttpRequest caller ctxt_id r =
       reject RC_SYS_FATAL ("max_response_bytes cannot exceed " ++ show max_inter_canister_payload_in_bytes) (Just EC_CANISTER_REJECTED)
     else do
       available <- getCallContextCycles ctxt_id
-      base <- getHttpRequestBaseFee
-      per_byte <- getHttpRequestPerByteFee
-      let fee = http_request_fee r base per_byte
+      subnet <- getSubnetType
+      let base = getHttpRequestBaseFee subnet
+      let per_byte = getHttpRequestPerByteFee subnet
+      let fee = fromIntegral $ http_request_fee r base per_byte
       if available < fee then reject RC_CANISTER_REJECT ("http_request request sent with " ++ show available ++ " cycles, but " ++ show fee ++ " cycles are required.") (Just EC_CANISTER_REJECTED)
       else do
         setCallContextCycles ctxt_id (available - fee)
@@ -961,7 +916,7 @@ icHttpRequest caller ctxt_id r =
                         Left _ -> reject RC_CANISTER_ERROR "could not decode the response" (Just EC_INVALID_ENCODING)
                         Right r ->
                           if fromIntegral (BS.length (r .! #body)) > max_inter_canister_payload_in_bytes then
-                            reject RC_CANISTER_REJECT ("transformed response body size cannot exceed max_response_bytes (" ++ show max_resp_size ++ ")") (Just EC_CANISTER_REJECTED)
+                            reject RC_CANISTER_REJECT ("transformed response body size cannot exceed " ++ show max_inter_canister_payload_in_bytes ++ " bytes") (Just EC_CANISTER_REJECTED)
                           else
                             return r
                       _ -> reject RC_CANISTER_ERROR "canister did not return a response properly" (Just EC_CANISTER_DID_NOT_REPLY)

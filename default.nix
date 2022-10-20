@@ -141,7 +141,8 @@ let
       python = nixpkgs.python3.withPackages
         (ps: [ ps.httpbin ps.gunicorn ps.gevent ]);
       openssl = nixpkgs.openssl;
-    in "${openssl}/bin/openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -sha256 -nodes -subj '/C=CH/ST=Zurich/L=Zurich/O=DFINITY/CN=127.0.0.1'; ${python}/bin/gunicorn -b 127.0.0.1:8003 --limit-request-line 0 --certfile cert.pem --keyfile key.pem httpbin:app -k gevent";
+    in "${openssl}/bin/openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -sha256 -nodes -subj '/C=CH/ST=Zurich/L=Zurich/O=DFINITY/CN=127.0.0.1' && \
+        ${python}/bin/gunicorn -b 127.0.0.1:8003 --limit-request-line 0 --certfile cert.pem --keyfile key.pem httpbin:app -k gevent";
 in
 
 rec {

@@ -84,6 +84,7 @@ mkDerivation {
     atomic-write
     base
     base32
+    base64
     base64-bytestring
     binary
     bytestring
@@ -214,6 +215,7 @@ mkDerivation {
     atomic-write
     base
     base32
+    base64
     base64-bytestring
     binary
     bytestring

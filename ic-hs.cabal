@@ -330,6 +330,7 @@ executable ic-ref-test
   other-modules: IC.Certificate.CBOR
   other-modules: IC.Certificate.Validate
   other-modules: IC.Certificate.Value
+  other-modules: IC.Constants
   other-modules: IC.Crypto.Bitcoin
   other-modules: IC.Crypto
   other-modules: IC.Crypto.BLS

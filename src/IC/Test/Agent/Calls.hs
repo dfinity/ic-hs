@@ -67,6 +67,7 @@ import qualified Data.Row.Internal as R
 import qualified Data.Row.Dictionaries as R
 import qualified Data.Word as W
 
+import IC.Constants
 import IC.Management
 import IC.Id.Forms
 import IC.Test.Agent
@@ -141,30 +142,6 @@ ic_delete_canister ic00 canister_id = do
 ic_raw_rand :: HasAgentConfig => IC00 -> IO Blob
 ic_raw_rand ic00 =
   callIC ic00 "" #raw_rand ()
-
-max_inter_canister_payload_in_bytes :: W.Word64
-max_inter_canister_payload_in_bytes = 2 * 1024 * 1024 -- 2 MiB
-
-http_request_fee :: (Foldable t,
-                     (r1 .! "transform") ~ Maybe (Var r2),
-                     (r1 .! "headers") ~ Vec.Vector (Rec r3), (r3 .! "name") ~ T.Text,
-                     (r1 .! "max_response_bytes") ~ Maybe W.Word64,
-                     (r2 .! "function") ~ Candid.FuncRef r4, (r1 .! "url") ~ T.Text,
-                     (r3 .! "value") ~ T.Text, (r1 .! "body") ~ t a) =>
-                    Rec r1 -> W.Word64 -> W.Word64 -> W.Word64
-http_request_fee r base per_byte = base + per_byte * total_bytes
-  where
-    response_size_fee Nothing = max_inter_canister_payload_in_bytes
-    response_size_fee (Just max_response_size) = max_response_size
-    transform_fee Nothing = 0
-    transform_fee (Just v) = dec_var (V.trial' v #function)
-    dec_var Nothing = error "transform variant in http_request must be #function"
-    dec_var (Just (Candid.FuncRef _ t)) = T.length t
-    total_bytes = response_size_fee (r .! #max_response_bytes)
-      + (fromIntegral $ T.length $ r .! #url)
-      + (fromIntegral $ sum $ map (\h -> T.length (h .! #name) + T.length (h .! #value)) $ Vec.toList $ r .! #headers)
-      + (fromIntegral $ length $ r .! #body)
-      + (fromIntegral $ transform_fee $ r .! #transform)
 
 ic_http_request ::
     forall a b. (a -> IO b) ~ (ICManagement IO .! "http_request") =>
