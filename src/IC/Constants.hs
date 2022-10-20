@@ -20,10 +20,14 @@ import IC.Types
 cDEFAULT_PROVISIONAL_CYCLES_BALANCE :: Natural
 cDEFAULT_PROVISIONAL_CYCLES_BALANCE = 100_000_000_000_000
 
--- Canister http_request fees
+-- Canister http_request constants
 max_inter_canister_payload_in_bytes :: W.Word64
 max_inter_canister_payload_in_bytes = 2 * 1024 * 1024 -- 2 MiB
 
+max_http_request_url_length :: Int
+max_http_request_url_length = 65534
+
+-- Canister http_request fees
 max_response_size :: (r1 .! "max_response_bytes") ~ Maybe W.Word64 => R.Rec r1 -> W.Word64
 max_response_size r = aux $ fmap fromIntegral $ r .! #max_response_bytes
   where

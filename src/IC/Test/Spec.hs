@@ -69,12 +69,13 @@ canister_http_calls is_system base_fee per_byte_fee =
       (resp .! #status) @?= 200
       (resp .! #body) @?= BLU.fromString s
 
-    , simpleTestCase "simple call, no transform, very long url, maximum possible response body size" $ \cid -> do
-      let s = take (fromIntegral max_inter_canister_payload_in_bytes) $ repeat 'x'
-      let enc = T.unpack $ encodeBase64 $ T.pack s
-      resp <- ic_http_request (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) ("base64/" ++ enc) cid Nothing
+    , simpleTestCase "simple call, no transform, maximum url size" $ \cid -> do
+      resp <- ic_http_request''' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "https://" max_http_request_url_length cid (Nothing, cid)
       (resp .! #status) @?= 200
-      (resp .! #body) @?= BLU.fromString s
+
+    , simpleTestCase "simple call, no transform, maximum possible response body size" $ \cid -> do
+      resp <- ic_http_request (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) ("bytes/" ++ show max_inter_canister_payload_in_bytes) cid Nothing
+      (resp .! #status) @?= 200
 
     , testCase "simple call with transform" $ do
       let s = "Hello world!"
@@ -83,6 +84,13 @@ canister_http_calls is_system base_fee per_byte_fee =
       resp <- ic_http_request (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) ("base64/" ++ enc) cid (Just "transform")
       (resp .! #status) @?= 202
       (resp .! #body) @?= "Dummy!"
+
+    , testCase "simple call, no transform, maximum possible response body size exceeded" $ do
+      cid <- install noop
+      ic_http_request' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "https://" ("bytes/" ++ show (max_inter_canister_payload_in_bytes + 1)) cid (Nothing, cid) >>= isReject [4]
+
+    , simpleTestCase "simple call, no transform, maximum url size exceeded" $ \cid -> do
+      ic_http_request'''' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "https://" (max_http_request_url_length + 1) cid (Nothing, cid) >>= isReject [1]
 
     , testCase "non-existent transform function" $ do
       let s = "Hello world!"

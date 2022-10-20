@@ -28,6 +28,8 @@ module IC.Test.Agent.Calls
       ic_ecdsa_public_key'',
       ic_ecdsa_public_key',
       ic_ecdsa_public_key,
+      ic_http_request'''',
+      ic_http_request''',
       ic_http_request'',
       ic_http_request',
       ic_http_request,
@@ -329,6 +331,36 @@ ic_sign_with_ecdsa'' user msg =
        .+ #curve .== enum #secp256k1
        .+ #name .== (T.pack "0")
     )
+
+ic_http_request''' :: HasAgentConfig =>
+  forall a b. (a -> IO b) ~ (ICManagement IO .! "http_request") =>
+  ((W.Word64 -> W.Word64 -> W.Word64) -> IC00) -> String -> Int -> Blob -> (Maybe String, Blob) -> IO b
+ic_http_request''' ic00 proto len canister_id (transform, cid) =
+  callIC (ic00 $ http_request_fee request) canister_id #http_request request
+  where
+    l = fromIntegral len - (length $ proto ++ httpbin ++ "/ascii/")
+    path = take l $ repeat 'x'
+    request = empty
+      .+ #url .== (T.pack $ proto ++ httpbin ++ "/ascii/" ++ path)
+      .+ #max_response_bytes .== Nothing
+      .+ #method .== enum #get
+      .+ #headers .== Vec.empty
+      .+ #body .== Nothing
+      .+ #transform .== (toTransformFn transform cid)
+
+ic_http_request'''' :: HasAgentConfig => ((W.Word64 -> W.Word64 -> W.Word64) -> IC00) -> String -> Int -> Blob -> (Maybe String, Blob) -> IO ReqResponse
+ic_http_request'''' ic00 proto len canister_id (transform, cid) =
+  callIC' (ic00 $ http_request_fee request) canister_id #http_request request
+  where
+    l = fromIntegral len - (length $ proto ++ httpbin ++ "/ascii/")
+    path = take l $ repeat 'x'
+    request = empty
+      .+ #url .== (T.pack $ proto ++ httpbin ++ "/ascii/" ++ path)
+      .+ #max_response_bytes .== Nothing
+      .+ #method .== enum #get
+      .+ #headers .== Vec.empty
+      .+ #body .== Nothing
+      .+ #transform .== (toTransformFn transform cid)
 
 --------------------------------------------------------------------------------
 

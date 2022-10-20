@@ -883,6 +883,8 @@ icHttpRequest caller ctxt_id r =
     let max_resp_size = max_response_size r in
     if not (isPrefixOf "https://" $ T.unpack $ r .! #url) then
       reject RC_SYS_FATAL "url must start with https://" (Just EC_INVALID_ARGUMENT)
+    else if T.length (r .! #url) > max_http_request_url_length then
+      reject RC_SYS_FATAL "Failed to parse URL: uri too long" (Just EC_INVALID_ARGUMENT)
     else if max_resp_size > max_inter_canister_payload_in_bytes then
       reject RC_SYS_FATAL ("max_response_bytes cannot exceed " ++ show max_inter_canister_payload_in_bytes) (Just EC_CANISTER_REJECTED)
     else do
@@ -896,7 +898,7 @@ icHttpRequest caller ctxt_id r =
         setCallContextCycles ctxt_id (available - fee)
         resp <- liftIO $ sendHttpRequest (r .! #url)
         if fromIntegral (BS.length (resp .! #body)) > max_resp_size then
-          reject RC_CANISTER_REJECT ("response body size cannot exceed max_response_bytes (" ++ show max_resp_size ++ ")") (Just EC_CANISTER_REJECTED)
+          reject RC_CANISTER_REJECT ("response body size cannot exceed " ++ show max_resp_size ++ " bytes") (Just EC_CANISTER_REJECTED)
         else do
           case (r .! #transform) of
             Nothing -> return resp
