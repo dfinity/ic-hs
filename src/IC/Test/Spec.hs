@@ -1636,12 +1636,6 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
         rid2 <- ensure_request_exists cid otherUser
         getStateCert' defaultUser cid [["request_status", rid1], ["request_status", rid2]] >>= code4xx
 
-    , simpleTestCase "access denied two status to different canisters" $ \cid -> do
-        cid2 <- install noop
-        rid1 <- ensure_request_exists cid defaultUser
-        rid2 <- ensure_request_exists cid2 defaultUser
-        getStateCert' defaultUser cid [["request_status", rid1], ["request_status", rid2]] >>= code4xx
-
     , simpleTestCase "access denied for bogus path" $ \cid -> do
         getStateCert' otherUser cid [["hello", "world"]] >>= code4xx
 
