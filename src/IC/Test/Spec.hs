@@ -69,12 +69,8 @@ canister_http_calls is_system base_fee per_byte_fee =
       (resp .! #status) @?= 200
       (resp .! #body) @?= BLU.fromString s
 
-    , simpleTestCase "simple call, no transform, maximum url size" $ \cid -> do
+    , simpleTestCase "simple call, no transform, maximum possible url size" $ \cid -> do
       resp <- ic_http_request''' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "https://" max_http_request_url_length cid (Nothing, cid)
-      (resp .! #status) @?= 200
-
-    , simpleTestCase "simple call, no transform, maximum possible response body size" $ \cid -> do
-      resp <- ic_http_request (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) ("bytes/" ++ show max_inter_canister_payload_in_bytes) cid Nothing
       (resp .! #status) @?= 200
 
     , testCase "simple call with transform" $ do
@@ -85,12 +81,18 @@ canister_http_calls is_system base_fee per_byte_fee =
       (resp .! #status) @?= 202
       (resp .! #body) @?= "Dummy!"
 
+    , testCase "simple call with transform, maximum possible response body size" $ do
+      cid <- install (onTransform (callback (replyData (bytes (Candid.encode dummyResponse)))))
+      resp <- ic_http_request (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) ("bytes/" ++ show max_inter_canister_payload_in_bytes) cid (Just "transform")
+      (resp .! #status) @?= 202
+      (resp .! #body) @?= "Dummy!"
+
+    , simpleTestCase "simple call, no transform, maximum possible url size exceeded" $ \cid -> do
+      ic_http_request'''' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "https://" (max_http_request_url_length + 1) cid (Nothing, cid) >>= isReject [1]
+
     , testCase "simple call, no transform, maximum possible response body size exceeded" $ do
       cid <- install noop
       ic_http_request' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "https://" ("bytes/" ++ show (max_inter_canister_payload_in_bytes + 1)) cid (Nothing, cid) >>= isReject [1]
-
-    , simpleTestCase "simple call, no transform, maximum url size exceeded" $ \cid -> do
-      ic_http_request'''' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "https://" (max_http_request_url_length + 1) cid (Nothing, cid) >>= isReject [1]
 
     , testCase "non-existent transform function" $ do
       let s = "Hello world!"
