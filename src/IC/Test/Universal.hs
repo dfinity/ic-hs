@@ -245,6 +245,9 @@ callCyclesAdd128 = op 55
 onTransform :: Exp 'B -> Prog
 onTransform = op 56
 
+getCandidHTTPResponse :: Exp 'I -> Exp 'B
+getCandidHTTPResponse = op 57
+
 -- Some convenience combinators
 
 -- This allows us to write byte expressions as plain string literals

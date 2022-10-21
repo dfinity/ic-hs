@@ -15,6 +15,7 @@ import qualified Data.ByteString.Lazy as BS
 import qualified Data.HashMap.Lazy as HM
 import qualified Data.Set as S
 import qualified Data.Vector as Vec
+import qualified Data.Word as W
 import Numeric.Natural
 import Data.List
 import Test.Tasty
@@ -396,3 +397,9 @@ dummyResponse = R.empty
   .+ #status .== 202
   .+ #headers .== Vec.empty
   .+ #body .== (toUtf8 "Dummy!")
+
+bodyOfSize :: W.Word32 -> BS.ByteString
+bodyOfSize n = toUtf8 $ T.pack $ take (fromIntegral n) $ repeat 'x'
+
+maximumSizeResponseBodySize :: W.Word32
+maximumSizeResponseBodySize = 2045902

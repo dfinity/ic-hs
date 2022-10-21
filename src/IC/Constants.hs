@@ -24,6 +24,9 @@ cDEFAULT_PROVISIONAL_CYCLES_BALANCE = 100_000_000_000_000
 max_inter_canister_payload_in_bytes :: W.Word64
 max_inter_canister_payload_in_bytes = 2 * 1024 * 1024
 
+canister_http_response_limit :: Natural
+canister_http_response_limit = 2 * 1024 * 1024 - 50 * 1024
+
 max_http_request_url_length :: Int
 max_http_request_url_length = 65534
 

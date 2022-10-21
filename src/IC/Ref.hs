@@ -916,11 +916,11 @@ icHttpRequest caller ctxt_id r =
                     Just f -> case f cid env (Codec.Candid.encode resp) wasm_state of
                       Return (Reply r) -> case Codec.Candid.decode @HttpResponse r of
                         Left _ -> reject RC_CANISTER_ERROR "could not decode the response" (Just EC_INVALID_ENCODING)
-                        Right r ->
-                          if fromIntegral (BS.length (r .! #body)) > max_inter_canister_payload_in_bytes then
+                        Right resp ->
+                          if fromIntegral (BS.length r) > canister_http_response_limit then
                             reject RC_SYS_FATAL ("transformed response body size cannot exceed " ++ show max_inter_canister_payload_in_bytes ++ " bytes") (Just EC_CANISTER_REJECTED)
                           else
-                            return r
+                            return resp
                       _ -> reject RC_CANISTER_ERROR "canister did not return a response properly" (Just EC_CANISTER_DID_NOT_REPLY)
 
 icCreateCanister :: (ICM m, CanReject m) => EntityId -> CallId -> ICManagement m .! "create_canister"

@@ -1,6 +1,37 @@
 use std::convert::TryInto;
 
+use candid::{CandidType, Deserialize, Encode};
+use serde::Serialize;
+
 mod api;
+
+// canister http_request types
+
+#[derive(CandidType, Clone, Deserialize, Debug, Eq, Hash, PartialEq, Serialize)]
+pub struct HttpHeader {
+    pub name: String,
+    pub value: String,
+}
+
+#[derive(CandidType, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct CanisterHttpResponsePayload {
+    pub status: u128,
+    pub headers: Vec<HttpHeader>,
+    pub body: Vec<u8>,
+}
+
+fn body(n: u64) -> Vec<u8> {
+    vec![b'x'; n.try_into().unwrap()]
+}
+
+fn candid(n: u64) -> Vec<u8> {
+    Encode!(&CanisterHttpResponsePayload {
+        status: 200 as u128,
+        headers: vec![],
+        body: body(n),
+    })
+    .unwrap()
+}
 
 // A simple dynamically typed stack
 
@@ -304,8 +335,12 @@ fn eval(ops: Ops) {
                 api::call_cycles_add128(high, low)
             }
 
-            // canister heartbeat script
+            // canister http_request calls
             56 => set_transform(stack.pop_blob()),
+            57 => {
+              let n = stack.pop_int();
+              stack.push_blob(candid(n.into()))
+            }
 
             _ => api::trap_with(&format!("unknown op {}", op)),
         }
