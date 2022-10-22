@@ -1,4 +1,7 @@
+{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE ImplicitParams #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE RankNTypes #-}
 {- |
 Generic utilities related to standard or imported data structures that we do
 don’t want to see in non-plumbing code.
@@ -39,3 +42,25 @@ fromUtf8 :: BS.ByteString -> Maybe T.Text
 fromUtf8 b = case T.decodeUtf8' (BS.toStrict b) of
     Left _ -> Nothing
     Right t -> Just t
+
+-- ic-ref config
+data RefConfig = RefConfig
+    { tc_noTls :: Bool
+    }
+
+makeRefConfig :: Bool -> IO RefConfig
+makeRefConfig noTls = do
+    return RefConfig
+        { tc_noTls = noTls
+        }
+
+type HasRefConfig = (?refConfig :: RefConfig)
+
+withRefConfig :: RefConfig -> (forall. HasRefConfig => a) -> a
+withRefConfig tc act = let ?refConfig = tc in act
+
+refConfig :: HasRefConfig => RefConfig
+refConfig = ?refConfig
+
+getNoTls :: HasRefConfig => Bool
+getNoTls = tc_noTls refConfig

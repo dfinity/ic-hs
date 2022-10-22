@@ -77,6 +77,30 @@ canister_http_calls is_system base_fee per_byte_fee =
     , simpleTestCase "simple call, no transform, maximum possible url size exceeded" $ \cid -> do
       ic_long_http_request' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "https://" (max_http_request_url_length + 1) Nothing cid >>= isReject [1]
 
+    , simpleTestCase "complex call, no transform" $ \cid -> do
+      let header_from_strings = (\a b -> empty .+ #name .== (T.pack $ a) .+ #value .== (T.pack $ b))
+      let headers = Vec.fromList [header_from_strings "name1" "value1", header_from_strings "name2" "value2"]
+      let bodyString = "Hello, world!"
+      let body = toUtf8 $ T.pack $ bodyString
+      resp <- ic_http_post_request (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) (Just 666) (Just body) headers Nothing cid
+      (resp .! #status) @?= 200
+
+    , simpleTestCase "header call, no transform" $ \cid -> do
+      let header_from_strings = (\a b -> empty .+ #name .== (T.pack $ a) .+ #value .== (T.pack $ b))
+      let headers = Vec.fromList [header_from_strings "name1" "value1", header_from_strings "name2" "value2"]
+      let bodyString = "Hello, world!"
+      let body = toUtf8 $ T.pack $ bodyString
+      resp <- ic_http_head_request (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) (Just 666) (Just body) headers Nothing cid
+      (resp .! #status) @?= 200
+      (resp .! #body) @?= toUtf8 $ T.pack ""
+
+    , simpleTestCase "complex call, no transform, maximum possible response body size exceeded" $ \cid -> do
+      let header_from_strings = (\a b -> empty .+ #name .== (T.pack $ a) .+ #value .== (T.pack $ b))
+      let headers = Vec.fromList [header_from_strings "name1" "value1", header_from_strings "name2" "value2"]
+      let body = toUtf8 $ T.pack $ "Hello, world!"
+      let bodySize = fromIntegral $ BS.length body
+      ic_http_post_request' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) (Just $ bodySize - 1) (Just body) headers Nothing cid >>= isReject [1]
+
     , testCase "simple call with transform" $ do
       let s = "Hello world!"
       let enc = T.unpack $ encodeBase64 $ T.pack s

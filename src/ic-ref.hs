@@ -11,16 +11,18 @@ import IC.HTTP
 import IC.Version
 import qualified IC.Crypto.BLS as BLS
 import IC.Types(SubnetType(..))
+import IC.Utils
 
 defaultPort :: Port
 defaultPort = 8001
 
 
-work :: SubnetType -> Maybe Int -> Maybe FilePath -> Maybe FilePath -> Bool ->  IO ()
-work subnet portToUse writePortTo backingFile log = do
+work :: SubnetType -> Bool -> Maybe Int -> Maybe FilePath -> Maybe FilePath -> Bool ->  IO ()
+work subnet noTls portToUse writePortTo backingFile log = do
     putStrLn "Starting ic-ref..."
     BLS.init
-    withApp subnet backingFile $ \app -> do
+    conf <- makeRefConfig noTls
+    withRefConfig conf $ withApp subnet backingFile $ \app -> do
         let app' =  laxCorsSettings $ if log then logStdoutDev app else app
         case portToUse of
           Nothing ->
@@ -72,6 +74,10 @@ main = join . customExecParser (prefs showHelpOnError) $
           )
         <|> pure Application
         )
+      <*> switch
+          (  long "disable-tls-cert-validation"
+          <> help "disable TLS certificate validation"
+          )
       <*>
         ( flag' Nothing
           (  long "pick-port"

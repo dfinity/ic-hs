@@ -24,12 +24,13 @@ import IC.Debug.JSON ()
 import IC.Serialise ()
 import IC.StateFile
 import IC.Crypto
+import IC.Utils
 
-withApp :: SubnetType -> Maybe FilePath -> (Application -> IO a) -> IO a
+withApp :: HasRefConfig => SubnetType -> Maybe FilePath -> (Application -> IO a) -> IO a
 withApp subnet backingFile action =
     withStore (initialIC subnet) backingFile (action . handle)
 
-handle :: Store IC -> Application
+handle :: HasRefConfig => Store IC -> Application
 handle store req respond = case (requestMethod req, pathInfo req) of
     ("GET", []) -> peekStore store >>= json status200
     ("GET", ["api","v1",_]) -> noV1 req

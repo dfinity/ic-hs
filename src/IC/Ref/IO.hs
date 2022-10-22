@@ -3,6 +3,9 @@
 
 module IC.Ref.IO where
 
+import qualified Data.ByteString as BS
+import qualified Data.ByteString.Lazy as LBS
+import qualified Data.CaseInsensitive as CI
 import qualified Data.Row as R
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
@@ -13,21 +16,21 @@ import Network.HTTP.Types.Status (statusCode)
 import Network.Connection (TLSSettings(..))
 import Data.CaseInsensitive (original)
 import Data.Row ((.==), (.+))
-import Data.List(isPrefixOf)
 
 import IC.Management (HttpResponse)
 
-sendHttpRequest :: T.Text -> IO HttpResponse
-sendHttpRequest url = do
+sendHttpRequest :: Bool -> T.Text -> BS.ByteString -> [(CI.CI BS.ByteString, BS.ByteString)] -> LBS.ByteString -> IO HttpResponse
+sendHttpRequest noTls url method headers body = do
     let localTlsSettings = TLSSettingsSimple { settingDisableCertificateValidation = True
       , settingDisableSession = False
       , settingUseServerName = False
       }
-    let localUrl = isPrefixOf "https://127.0.0.1:" $ T.unpack url
-    m <- C.newManager $ if localUrl then C.mkManagerSettings localTlsSettings Nothing else C.tlsManagerSettings
+    m <- C.newManager $ if noTls then C.mkManagerSettings localTlsSettings Nothing else C.tlsManagerSettings
     initReq <- C.parseRequest (T.unpack url)
     let req = initReq {
-      C.method = "GET"
+      C.method = method,
+      C.requestHeaders = headers,
+      C.requestBody = C.RequestBodyLBS body
     }
     toHttpResponse <$> C.httpLbs req m
   where

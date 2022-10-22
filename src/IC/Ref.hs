@@ -53,11 +53,13 @@ module IC.Ref
   )
 where
 
+import qualified Data.CaseInsensitive as CI
 import qualified Data.Map as M
 import qualified Data.Row as R
 import qualified Data.Row.Variants as V
 import qualified Data.ByteString.Lazy as BS
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as T
 import qualified Data.Vector as Vec
 import qualified Data.Set as S
 import Data.List
@@ -200,7 +202,7 @@ data IC = IC
   deriving (Show)
 
 -- The functions below want stateful access to a value of type 'IC'
-type ICM m = (MonadState IC m, HasCallStack, MonadIO m)
+type ICM m = (MonadState IC m, HasCallStack, HasRefConfig, MonadIO m)
 
 initialIC :: SubnetType -> IO IC
 initialIC subnet = do
@@ -896,7 +898,15 @@ icHttpRequest caller ctxt_id r =
       if available < fee then reject RC_CANISTER_REJECT ("http_request request sent with " ++ show available ++ " cycles, but " ++ show fee ++ " cycles are required.") (Just EC_CANISTER_REJECTED)
       else do
         setCallContextCycles ctxt_id (available - fee)
-        resp <- liftIO $ sendHttpRequest (r .! #url)
+        let noTls = getNoTls
+        let method = T.encodeUtf8 $ if (r .! #method) == V.IsJust #get () then "GET"
+                                    else if (r .! #method) == V.IsJust #post () then "POST"
+                                    else if (r .! #method) == V.IsJust #head () then "HEAD"
+                                    else "UNKNOWN"
+        let body = case r .! #body of Nothing -> ""
+                                      Just b -> b
+        let headers = map (\r -> (CI.mk $ T.encodeUtf8 $ r .! #name, T.encodeUtf8 $ r .! #value)) $ Vec.toList (r .! #headers)
+        resp <- liftIO $ sendHttpRequest noTls (r .! #url) method headers body
         if fromIntegral (BS.length (resp .! #body)) > max_resp_size then
           reject RC_SYS_FATAL ("response body size cannot exceed " ++ show max_resp_size ++ " bytes") (Just EC_CANISTER_REJECTED)
         else do

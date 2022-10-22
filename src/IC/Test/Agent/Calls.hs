@@ -33,6 +33,8 @@ module IC.Test.Agent.Calls
       ic_http_request,
       ic_http_post_request',
       ic_http_post_request,
+      ic_http_head_request',
+      ic_http_head_request,
       ic_long_http_request',
       ic_long_http_request,
       ic_install'',
@@ -176,6 +178,20 @@ ic_http_post_request ic00 max_response_bytes body headers transform canister_id 
       .+ #body .== body
       .+ #transform .== (toTransformFn transform canister_id)
 
+ic_http_head_request :: HasAgentConfig =>
+    (a -> IO b) ~ (ICManagement IO .! "http_request") =>
+    ((W.Word64 -> W.Word64 -> W.Word64) -> IC00) -> Maybe W.Word64 -> Maybe BS.ByteString -> Vec.Vector HttpHeader -> Maybe String -> Blob -> IO b
+ic_http_head_request ic00 max_response_bytes body headers transform canister_id =
+  callIC (ic00 $ http_request_fee request) "" #http_request request
+  where
+    request = empty
+      .+ #url .== (T.pack $ "https://" ++ httpbin ++ "/anything")
+      .+ #max_response_bytes .== max_response_bytes
+      .+ #method .== enum #head
+      .+ #headers .== headers
+      .+ #body .== body
+      .+ #transform .== (toTransformFn transform canister_id)
+
 ic_long_http_request :: HasAgentConfig =>
   forall a b. (a -> IO b) ~ (ICManagement IO .! "http_request") =>
   ((W.Word64 -> W.Word64 -> W.Word64) -> IC00) -> String -> Int -> Maybe String -> Blob -> IO b
@@ -295,6 +311,18 @@ ic_http_post_request' ic00 max_response_bytes body headers transform canister_id
       .+ #url .== (T.pack $ "https://" ++ httpbin ++ "/anything")
       .+ #max_response_bytes .== max_response_bytes
       .+ #method .== enum #post
+      .+ #headers .== headers
+      .+ #body .== body
+      .+ #transform .== (toTransformFn transform canister_id)
+
+ic_http_head_request' :: HasAgentConfig => ((W.Word64 -> W.Word64 -> W.Word64) -> IC00) -> Maybe W.Word64 -> Maybe BS.ByteString -> Vec.Vector HttpHeader -> Maybe String -> Blob -> IO ReqResponse
+ic_http_head_request' ic00 max_response_bytes body headers transform canister_id =
+  callIC' (ic00 $ http_request_fee request) "" #http_request request
+  where
+    request = empty
+      .+ #url .== (T.pack $ "https://" ++ httpbin ++ "/anything")
+      .+ #max_response_bytes .== max_response_bytes
+      .+ #method .== enum #head
       .+ #headers .== headers
       .+ #body .== body
       .+ #transform .== (toTransformFn transform canister_id)
