@@ -37,6 +37,7 @@ import IC.Types
 import IC.Ref
 import IC.DRun.Parse (Ingress(..), parseFile)
 import IC.Management
+import IC.Utils
 
 
 type DRun = StateT IC IO
@@ -89,7 +90,7 @@ shorten n s = a ++ (if null b then "" else "...")
   where (a,b) = splitAt n s
 
 
-submitAndRun :: CallRequest -> DRun ()
+submitAndRun :: HasRefConfig => CallRequest -> DRun ()
 submitAndRun r = do
     lift $ printCallRequest r
     rid <- lift mkRequestId
@@ -98,7 +99,7 @@ submitAndRun r = do
     r <- gets (snd . (M.! rid) . requests)
     lift $ printReqStatus r
 
-submitQuery :: QueryRequest -> DRun ()
+submitQuery :: HasRefConfig => QueryRequest -> DRun ()
 submitQuery r = do
     lift $ printQueryRequest r
     t <- lift getTimestamp
@@ -114,6 +115,7 @@ mkRequestId :: IO RequestID
 mkRequestId = B.toLazyByteString . B.word64BE <$> randomIO
 
 callManagement :: forall s a b.
+  HasRefConfig =>
   KnownSymbol s =>
   (a -> IO b) ~ (ICManagement IO .! s) =>
   Candid.CandidArg a =>
@@ -122,42 +124,43 @@ callManagement user_id l x =
   submitAndRun $
     CallRequest (EntityId mempty) user_id (symbolVal l) (Candid.encode x)
 
-work :: SubnetType -> FilePath -> IO ()
-work subnet msg_file = do
+work :: SubnetType -> Bool -> FilePath -> IO ()
+work subnet noTls msg_file = do
   msgs <- parseFile msg_file
 
   let user_id = dummyUserId
   ic <- initialIC subnet
+  conf <- makeRefConfig noTls
   flip evalStateT ic $
     forM_ msgs $ \case
       Create ->
-        callManagement user_id #create_canister $ empty
+        withRefConfig conf $ callManagement user_id #create_canister $ empty
           .+ #settings .== Nothing
       Install cid filename arg -> do
         wasm <- liftIO $ B.readFile filename
-        callManagement user_id #install_code $ empty
+        withRefConfig conf $ callManagement user_id #install_code $ empty
           .+ #mode .== V.IsJust #install ()
           .+ #canister_id .== Candid.Principal cid
           .+ #wasm_module .== wasm
           .+ #arg .== arg
       Reinstall cid filename arg -> do
         wasm <- liftIO $ B.readFile filename
-        callManagement user_id #install_code $ empty
+        withRefConfig conf $ callManagement user_id #install_code $ empty
           .+ #mode .== V.IsJust #reinstall ()
           .+ #canister_id .== Candid.Principal cid
           .+ #wasm_module .== wasm
           .+ #arg .== arg
       Upgrade cid filename arg -> do
         wasm <- liftIO $ B.readFile filename
-        callManagement user_id #install_code $ empty
+        withRefConfig conf $ callManagement user_id #install_code $ empty
           .+ #mode .== V.IsJust #upgrade ()
           .+ #canister_id .== Candid.Principal cid
           .+ #wasm_module .== wasm
           .+ #arg .== arg
       Query  cid method arg ->
-        submitQuery  (QueryRequest (EntityId cid) user_id method arg)
+        withRefConfig conf $ submitQuery (QueryRequest (EntityId cid) user_id method arg)
       Update cid method arg ->
-        submitAndRun (CallRequest (EntityId cid) user_id method arg)
+        withRefConfig conf $ submitAndRun (CallRequest (EntityId cid) user_id method arg)
 
 main :: IO ()
 main = join . customExecParser (prefs showHelpOnError) $
@@ -189,6 +192,10 @@ main = join . customExecParser (prefs showHelpOnError) $
           )
           <|> pure Application
         )
+      <*> switch
+          (  long "disable-tls-cert-validation"
+          <> help "disable TLS certificate validation"
+          )
       <*> strArgument
           (  metavar "script"
           <> help "messages to execute"

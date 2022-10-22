@@ -159,7 +159,7 @@ rec {
         pids="$(jobs -p)"
         kill $pids
       }
-      ic-ref --pick-port --write-port-to port &
+      ic-ref --pick-port --write-port-to port --disable-tls-cert-validation &
       trap kill_jobs EXIT PIPE
       sleep 1
       test -e port
@@ -184,7 +184,7 @@ rec {
         pids="$(jobs -p)"
         kill $pids
       }
-      ic-ref --pick-port --write-port-to port &
+      ic-ref --pick-port --write-port-to port --disable-tls-cert-validation &
       trap kill_jobs EXIT PIPE
       sleep 1
       test -e port
