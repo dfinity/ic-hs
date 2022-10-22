@@ -90,9 +90,10 @@ canister_http_calls is_system base_fee per_byte_fee =
       let headers = Vec.fromList [header_from_strings "name1" "value1", header_from_strings "name2" "value2"]
       let bodyString = "Hello, world!"
       let body = toUtf8 $ T.pack $ bodyString
+      let responseBody = toUtf8 $ T.pack ""
       resp <- ic_http_head_request (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) (Just 666) (Just body) headers Nothing cid
       (resp .! #status) @?= 200
-      (resp .! #body) @?= toUtf8 $ T.pack ""
+      (resp .! #body) @?= responseBody
 
     , simpleTestCase "complex call, no transform, maximum possible response body size exceeded" $ \cid -> do
       let header_from_strings = (\a b -> empty .+ #name .== (T.pack $ a) .+ #value .== (T.pack $ b))
