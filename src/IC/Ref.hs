@@ -899,10 +899,10 @@ icHttpRequest caller ctxt_id r =
       else do
         setCallContextCycles ctxt_id (available - fee)
         let noTls = getNoTls
-        let method = T.encodeUtf8 $ if (r .! #method) == V.IsJust #get () then "GET"
-                                    else if (r .! #method) == V.IsJust #post () then "POST"
-                                    else if (r .! #method) == V.IsJust #head () then "HEAD"
-                                    else "UNKNOWN"
+        method <- if (r .! #method) == V.IsJust #get () then return $ T.encodeUtf8 "GET"
+                  else if (r .! #method) == V.IsJust #post () then return $ T.encodeUtf8 "POST"
+                  else if (r .! #method) == V.IsJust #head () then return $ T.encodeUtf8 "HEAD"
+                  else reject RC_SYS_FATAL ("unknown HTTP method") (Just EC_CANISTER_REJECTED)
         let body = case r .! #body of Nothing -> ""
                                       Just b -> b
         let headers = map (\r -> (CI.mk $ T.encodeUtf8 $ r .! #name, T.encodeUtf8 $ r .! #value)) $ Vec.toList (r .! #headers)
