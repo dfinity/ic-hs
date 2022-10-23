@@ -888,7 +888,7 @@ icHttpRequest caller ctxt_id r =
     else if T.length (r .! #url) > max_http_request_url_length then
       reject RC_SYS_FATAL "Failed to parse URL: uri too long" (Just EC_INVALID_ARGUMENT)
     else if max_resp_size > max_inter_canister_payload_in_bytes then
-      reject RC_SYS_FATAL ("max_response_bytes cannot exceed " ++ show max_inter_canister_payload_in_bytes) (Just EC_CANISTER_REJECTED)
+      reject RC_CANISTER_REJECT ("max_response_bytes cannot exceed " ++ show max_inter_canister_payload_in_bytes) (Just EC_CANISTER_REJECTED)
     else do
       available <- getCallContextCycles ctxt_id
       subnet <- getSubnetType

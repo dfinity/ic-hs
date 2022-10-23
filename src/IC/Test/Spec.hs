@@ -168,6 +168,18 @@ canister_http_calls is_system base_fee per_byte_fee =
       let enc = T.unpack $ encodeBase64 $ T.pack s
       ic_http_request' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "https://" ("base64/" ++ enc) (Just $ fromIntegral $ length s - 1) Nothing cid >>= isReject [1]
 
+    , simpleTestCase "simple call, no transform, maximum possible value of max_response_bytes" $ \cid -> do
+      let s = "Hello world!"
+      let enc = T.unpack $ encodeBase64 $ T.pack s
+      resp <- ic_http_request (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) ("base64/" ++ enc) (Just max_inter_canister_payload_in_bytes) Nothing cid
+      (resp .! #status) @?= 200
+      (resp .! #body) @?= BLU.fromString s
+      check_http_response resp
+
+    , simpleTestCase "simple call, no transform, maximum possible value of max_response_bytes exceeded" $ \cid -> do
+      let enc = T.unpack $ encodeBase64 $ T.pack "Hello world!"
+      ic_http_request' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "https://" ("base64/" ++ enc) (Just $ max_inter_canister_payload_in_bytes + 1) Nothing cid >>= isReject [4]
+
     , simpleTestCase "complex call, no transform" $ \cid -> do
       let b = toUtf8 $ T.pack $ "Hello, world!"
       let hs = Vec.fromList [header_from_strings "Name1" "value1", header_from_strings "Name2" "value2"]
