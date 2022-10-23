@@ -152,13 +152,13 @@ ic_raw_rand ic00 =
 
 ic_http_request ::
     forall a b. (a -> IO b) ~ (ICManagement IO .! "http_request") =>
-    HasAgentConfig => ((W.Word64 -> W.Word64 -> W.Word64) -> IC00) -> String -> Maybe String -> Blob -> IO b
-ic_http_request ic00 path transform canister_id =
+    HasAgentConfig => ((W.Word64 -> W.Word64 -> W.Word64) -> IC00) -> String -> Maybe W.Word64 -> Maybe String -> Blob -> IO b
+ic_http_request ic00 path max_response_bytes transform canister_id =
   callIC (ic00 $ http_request_fee request) "" #http_request request
   where
     request = empty
       .+ #url .== (T.pack $ "https://" ++ httpbin ++ "/" ++ path)
-      .+ #max_response_bytes .== Nothing
+      .+ #max_response_bytes .== max_response_bytes
       .+ #method .== enum #get
       .+ #headers .== Vec.empty
       .+ #body .== Nothing
@@ -291,13 +291,13 @@ ic_ecdsa_public_key' ic00 canister_id path =
        .+ #name .== (T.pack "0")
     )
 
-ic_http_request' :: HasAgentConfig => ((W.Word64 -> W.Word64 -> W.Word64) -> IC00) -> String -> String -> Maybe String -> Blob -> IO ReqResponse
-ic_http_request' ic00 proto path transform canister_id =
+ic_http_request' :: HasAgentConfig => ((W.Word64 -> W.Word64 -> W.Word64) -> IC00) -> String -> String -> Maybe W.Word64 -> Maybe String -> Blob -> IO ReqResponse
+ic_http_request' ic00 proto path max_response_bytes transform canister_id =
   callIC' (ic00 $ http_request_fee request) "" #http_request request
   where
     request = empty
       .+ #url .== (T.pack $ proto ++ httpbin ++ "/" ++ path)
-      .+ #max_response_bytes .== Nothing
+      .+ #max_response_bytes .== max_response_bytes
       .+ #method .== enum #get
       .+ #headers .== Vec.empty
       .+ #body .== Nothing

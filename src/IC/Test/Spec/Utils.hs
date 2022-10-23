@@ -39,7 +39,7 @@ import IC.Test.Universal
 import IC.Utils
 import IC.Test.Agent
 import IC.Test.Agent.Calls
-import IC.Management (HttpResponse)
+import IC.Management (HttpResponse, HttpHeader)
 
 type Blob = BS.ByteString
 
@@ -392,11 +392,15 @@ createMessageHold = do
   let release = ic_start_canister ic00 cid
   return (holdMessage, release)
 
+header_from_strings :: String -> String -> HttpHeader
+header_from_strings a b = empty .+ #name .== (T.pack $ a) .+ #value .== (T.pack $ b)
+
 dummyResponse :: HttpResponse
 dummyResponse = R.empty
   .+ #status .== 202
-  .+ #headers .== Vec.empty
-  .+ #body .== (toUtf8 "Dummy!")
+  .+ #headers .== Vec.fromList [header_from_strings "Content-Length" (show $ length s)]
+  .+ #body .== (toUtf8 $ T.pack "Dummy!")
+  where s = "Dummy!" :: String
 
 bodyOfSize :: W.Word32 -> BS.ByteString
 bodyOfSize n = toUtf8 $ T.pack $ take (fromIntegral n) $ repeat 'x'

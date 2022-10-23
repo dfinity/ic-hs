@@ -10,6 +10,7 @@ This module contains a test suite for the Internet Computer
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE FlexibleInstances #-}
 
 module IC.Test.Spec (icTests) where
 
@@ -35,6 +36,10 @@ import Codec.Candid (Principal(..))
 import qualified Codec.Candid as Candid
 import Data.Serialize.LEB128 (toLEB128)
 
+import Data.Aeson
+import qualified Data.Aeson.KeyMap as KM
+
+import IC.Management (HttpResponse, HttpHeader)
 import IC.Types (EntityId(..))
 import IC.HTTP.GenR
 import IC.HTTP.RequestId
@@ -61,112 +66,189 @@ canister_http_calls_from_subnet Application = canister_http_calls False 40000000
 canister_http_calls_from_subnet VerifiedApplication = canister_http_calls False 400000000 100000
 canister_http_calls_from_subnet System = canister_http_calls True 0 0
 
+check_distinct_headers :: Vec.Vector HttpHeader -> Bool
+check_distinct_headers v = length xs == length (nub xs)
+  where xs = map (\r -> r .! #name) $ Vec.toList v
+
+http_headers_to_map :: Vec.Vector HttpHeader -> T.Text -> Maybe T.Text
+http_headers_to_map v n = lookup n $ map (\r -> (r .! #name, r .! #value)) $ Vec.toList v
+
+check_http_response :: HttpResponse -> IO ()
+check_http_response resp = do
+  assertBool "HTTP response header names must be distinct" $ check_distinct_headers (resp .! #headers)
+  assertBool "HTTP header \"Content-Length\" must contain the length of the body (if present)" $
+    case h (T.pack "Content-Length") of Nothing -> True
+                                        Just l  -> l == (T.pack $ show $ BS.length $ resp .! #body)
+  where
+    h = http_headers_to_map $ resp .! #headers
+
+data HttpRequest =
+  HttpRequest { method :: T.Text
+              , headers :: HttpHeaders
+              , body :: BS.ByteString
+  }
+
+newtype HttpHeaders = HttpHeaders [(T.Text, T.Text)]
+
+headers_to_headers :: HttpHeaders -> Vec.Vector HttpHeader
+headers_to_headers (HttpHeaders hs) = Vec.fromList $ map aux hs
+  where
+    aux (k, v) = empty
+      .+ #name .== k
+      .+ #value .== v
+
+instance FromJSON HttpRequest where
+  parseJSON (Object v) =
+    HttpRequest <$> v .: "method"
+                <*> v .: "headers"
+                <*> v .: "data"
+  parseJSON _          = error "unsupported"
+
+instance FromJSON HttpHeaders where
+  parseJSON (Object v) =
+    do
+      let r = foldr (\(k, v) r -> case v of String s -> fmap (\hs -> (T.pack $ tail $ init $ show k, s) : hs) r
+                                            _ -> Nothing) (Just []) (KM.toList v)
+      case r of Nothing -> error "unsupported"
+                Just hs -> return $ HttpHeaders hs
+  parseJSON _          = error "unsupported"
+
+instance FromJSON BS.ByteString where
+  parseJSON (String s) = return $ toUtf8 s
+  parseJSON _          = error "unsupported"
+
+http_headers_subset :: Vec.Vector HttpHeader -> Vec.Vector HttpHeader -> Bool
+http_headers_subset v w = all (\x -> elem x ys) xs
+  where
+    xs = Vec.toList v
+    ys = Vec.toList w
+
+check_http_json :: String -> Vec.Vector HttpHeader -> BS.ByteString -> Maybe HttpRequest -> Assertion
+check_http_json _ _ _ Nothing = assertFailure "Could not parse the original HttpRequest from the response"
+check_http_json m hs b (Just req) = do
+  assertBool "Wrong HTTP method" $ T.pack m == method req
+  assertBool "Headers were not properly included in the HTTP request" $ http_headers_subset hs (headers_to_headers $ headers req)
+  assertBool "Body was not properly included in the HTTP request" $ b == body req
+
+check_http_body :: BS.ByteString -> Bool
+check_http_body = aux . fromUtf8
+  where
+    aux Nothing = False
+    aux (Just s) = all ((==) 'x') $ T.unpack s
+
 canister_http_calls :: HasAgentConfig => Bool -> Word64 -> Word64 -> [TestTree]
 canister_http_calls is_system base_fee per_byte_fee =
   [ simpleTestCase "simple call, no transform" $ \cid -> do
       let s = "Hello world!"
       let enc = T.unpack $ encodeBase64 $ T.pack s
-      resp <- ic_http_request (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) ("base64/" ++ enc) Nothing cid
+      resp <- ic_http_request (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) ("base64/" ++ enc) Nothing Nothing cid
       (resp .! #status) @?= 200
       (resp .! #body) @?= BLU.fromString s
+      check_http_response resp
 
     , simpleTestCase "simple call, no transform, maximum possible url size" $ \cid -> do
       resp <- ic_long_http_request (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "https://" max_http_request_url_length Nothing cid
       (resp .! #status) @?= 200
+      assertBool "HTTP response body is malformed" $ check_http_body $ resp .! #body
+      check_http_response resp
 
     , simpleTestCase "simple call, no transform, maximum possible url size exceeded" $ \cid -> do
       ic_long_http_request' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "https://" (max_http_request_url_length + 1) Nothing cid >>= isReject [1]
 
-    , simpleTestCase "complex call, no transform" $ \cid -> do
-      let header_from_strings = (\a b -> empty .+ #name .== (T.pack $ a) .+ #value .== (T.pack $ b))
-      let headers = Vec.fromList [header_from_strings "name1" "value1", header_from_strings "name2" "value2"]
-      let bodyString = "Hello, world!"
-      let body = toUtf8 $ T.pack $ bodyString
-      resp <- ic_http_post_request (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) (Just 666) (Just body) headers Nothing cid
+    , simpleTestCase "simple call, no transform, maximum possible response body size" $ \cid -> do
+      let s = "Hello world!"
+      let enc = T.unpack $ encodeBase64 $ T.pack s
+      resp <- ic_http_request (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) ("base64/" ++ enc) (Just $ fromIntegral $ length s) Nothing cid
       (resp .! #status) @?= 200
+      (resp .! #body) @?= BLU.fromString s
+      check_http_response resp
+
+    , simpleTestCase "simple call, no transform, maximum possible response body size exceeded" $ \cid -> do
+      let s = "Hello world!"
+      let enc = T.unpack $ encodeBase64 $ T.pack s
+      ic_http_request' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "https://" ("base64/" ++ enc) (Just $ fromIntegral $ length s - 1) Nothing cid >>= isReject [1]
+
+    , simpleTestCase "complex call, no transform" $ \cid -> do
+      let b = toUtf8 $ T.pack $ "Hello, world!"
+      let hs = Vec.fromList [header_from_strings "Name1" "value1", header_from_strings "Name2" "value2"]
+      resp <- ic_http_post_request (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) (Just 666) (Just b) hs Nothing cid
+      (resp .! #status) @?= 200
+      check_http_response resp
+      check_http_json "POST" hs b $ (decode (resp .! #body) :: Maybe HttpRequest)
 
     , simpleTestCase "header call, no transform" $ \cid -> do
-      let header_from_strings = (\a b -> empty .+ #name .== (T.pack $ a) .+ #value .== (T.pack $ b))
-      let headers = Vec.fromList [header_from_strings "name1" "value1", header_from_strings "name2" "value2"]
-      let bodyString = "Hello, world!"
-      let body = toUtf8 $ T.pack $ bodyString
+      let b = toUtf8 $ T.pack $ "Hello, world!"
+      let hs = Vec.fromList [header_from_strings "Name1" "value1", header_from_strings "Name2" "value2"]
       let responseBody = toUtf8 $ T.pack ""
-      resp <- ic_http_head_request (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) (Just 666) (Just body) headers Nothing cid
+      resp <- ic_http_head_request (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) (Just 666) (Just b) hs Nothing cid
       (resp .! #status) @?= 200
       (resp .! #body) @?= responseBody
 
-    , simpleTestCase "complex call, no transform, maximum possible response body size exceeded" $ \cid -> do
-      let header_from_strings = (\a b -> empty .+ #name .== (T.pack $ a) .+ #value .== (T.pack $ b))
-      let headers = Vec.fromList [header_from_strings "name1" "value1", header_from_strings "name2" "value2"]
-      let body = toUtf8 $ T.pack $ "Hello, world!"
-      let bodySize = fromIntegral $ BS.length body
-      ic_http_post_request' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) (Just $ bodySize - 1) (Just body) headers Nothing cid >>= isReject [1]
-
     , testCase "simple call with transform" $ do
-      let s = "Hello world!"
-      let enc = T.unpack $ encodeBase64 $ T.pack s
+      let enc = T.unpack $ encodeBase64 $ T.pack "Hello world!"
       cid <- install (onTransform (callback (replyData (bytes (Candid.encode dummyResponse)))))
-      resp <- ic_http_request (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) ("base64/" ++ enc) (Just "transform") cid
+      resp <- ic_http_request (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) ("base64/" ++ enc) Nothing (Just "transform") cid
       (resp .! #status) @?= 202
       (resp .! #body) @?= "Dummy!"
+      check_http_response resp
 
     , testCase "complex call with transform" $ do
-      let header_from_strings = (\a b -> empty .+ #name .== (T.pack $ a) .+ #value .== (T.pack $ b))
-      let headers = [header_from_strings "name1" "value1", header_from_strings "name2" "value2"]
+      let b = toUtf8 $ T.pack $ "Hello, world!"
+      let hs = Vec.fromList [header_from_strings "Name1" "value1", header_from_strings "Name2" "value2"]
       cid <- install (onTransform (callback (replyData (bytes (Candid.encode dummyResponse)))))
-      resp <- ic_http_post_request (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) (Just 666) (Just $ toUtf8 $ T.pack $ "Hello, world!") (Vec.fromList headers) (Just "transform") cid
+      resp <- ic_http_post_request (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) (Just 666) (Just b) hs (Just "transform") cid
       (resp .! #status) @?= 202
       (resp .! #body) @?= "Dummy!"
+      check_http_response resp
 
     , testCase "simple call with transform, maximum possible response body size" $ do
       cid <- install (onTransform (callback (replyData (bytes (Candid.encode dummyResponse)))))
-      resp <- ic_http_request (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) ("bytes/" ++ show max_inter_canister_payload_in_bytes) (Just "transform") cid
+      resp <- ic_http_request (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) ("bytes/" ++ show max_inter_canister_payload_in_bytes) Nothing (Just "transform") cid
       (resp .! #status) @?= 202
       (resp .! #body) @?= "Dummy!"
+      check_http_response resp
 
     , testCase "simple call with transform, maximum possible response body size exceeded" $ do
       cid <- install (onTransform (callback (replyData (bytes (Candid.encode dummyResponse)))))
-      ic_http_request' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "https://" ("bytes/" ++ show (max_inter_canister_payload_in_bytes + 1)) (Just "transform") cid >>= isReject [1]
+      ic_http_request' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "https://" ("bytes/" ++ show (max_inter_canister_payload_in_bytes + 1)) Nothing (Just "transform") cid >>= isReject [1]
 
     , testCase "simple call with transform, maximum possible canister response size" $ do
       cid <- install (onTransform (callback (replyData (getCandidHTTPResponse (int maximumSizeResponseBodySize)))))
-      resp <- ic_http_request (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) ("bytes/" ++ show max_inter_canister_payload_in_bytes) (Just "transform") cid
+      resp <- ic_http_request (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) ("bytes/" ++ show max_inter_canister_payload_in_bytes) Nothing (Just "transform") cid
       (resp .! #status) @?= 200
       (resp .! #body) @?= bodyOfSize maximumSizeResponseBodySize
+      check_http_response resp
 
     , testCase "simple call with transform, maximum possible canister response size exceeded" $ do
       cid <- install (onTransform (callback (replyData (getCandidHTTPResponse (int $ maximumSizeResponseBodySize + 1)))))
-      ic_http_request' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "https://" ("bytes/" ++ show max_inter_canister_payload_in_bytes) (Just "transform") cid >>= isReject [1]
+      ic_http_request' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "https://" ("bytes/" ++ show max_inter_canister_payload_in_bytes) Nothing (Just "transform") cid >>= isReject [1]
 
     , testCase "non-existent transform function" $ do
-      let s = "Hello world!"
-      let enc = T.unpack $ encodeBase64 $ T.pack s
+      let enc = T.unpack $ encodeBase64 $ T.pack "Hello world!"
       cid <- install noop
-      ic_http_request' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "https://" ("base64/" ++ enc) (Just "nonExistent") cid >>= isReject [3]
+      ic_http_request' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "https://" ("base64/" ++ enc) Nothing (Just "nonExistent") cid >>= isReject [3]
 
     , testCase "reference to a transform function exposed by another canister" $ do
-      let s = "Hello world!"
-      let enc = T.unpack $ encodeBase64 $ T.pack s
+      let enc = T.unpack $ encodeBase64 $ T.pack "Hello world!"
       cid <- install noop
       cid2 <- install (onTransform (callback (replyData (bytes (Candid.encode dummyResponse)))))
-      ic_http_request' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "https://" ("base64/" ++ enc) (Just "transform") cid2 >>= isReject [4]
+      ic_http_request' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "https://" ("base64/" ++ enc) Nothing (Just "transform") cid2 >>= isReject [4]
 
     , testCase "url must start with https://" $ do
-      let s = "Hello world!"
-      let enc = T.unpack $ encodeBase64 $ T.pack s
+      let enc = T.unpack $ encodeBase64 $ T.pack "Hello world!"
       cid <- install noop
-      ic_http_request' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "http://" ("base64/" ++ enc) Nothing cid >>= isReject [1]
-  ] ++ if is_system then [] else
+      ic_http_request' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "http://" ("base64/" ++ enc) Nothing Nothing cid >>= isReject [1]
+  ]
+  ++ if is_system then [] else
   [ simpleTestCase "simple call, no transform, not enough cycles" $ \cid -> do
-      let s = "Hello world!"
-      let enc = T.unpack $ encodeBase64 $ T.pack s
-      ic_http_request' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee - 1)) "https://" ("base64/" ++ enc) Nothing cid >>= isReject [4]
+      let enc = T.unpack $ encodeBase64 $ T.pack "Hello world!"
+      ic_http_request' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee - 1)) "https://" ("base64/" ++ enc) Nothing Nothing cid >>= isReject [4]
 
     , testCase "complex call with transform, not enough cycles" $ do
-      let header_from_strings = (\a b -> empty .+ #name .== (T.pack $ a) .+ #value .== (T.pack $ b))
-      let headers = [header_from_strings "name1" "value1", header_from_strings "name2" "value2"]
+      let b = toUtf8 $ T.pack $ "Hello, world!"
+      let hs = Vec.fromList [header_from_strings "Name1" "value1", header_from_strings "Name2" "value2"]
       cid <- install (onTransform (callback (replyData (bytes (Candid.encode dummyResponse)))))
-      ic_http_post_request' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee - 1)) (Just 666) (Just $ toUtf8 $ T.pack $ "Hello, world!") (Vec.fromList headers) (Just "transform") cid >>= isReject [4]
+      ic_http_post_request' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee - 1)) (Just 666) (Just b) hs (Just "transform") cid >>= isReject [4]
   ]
 
 -- * The test suite (see below for helper functions)
