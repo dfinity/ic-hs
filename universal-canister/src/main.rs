@@ -337,9 +337,12 @@ fn eval(ops: Ops) {
 
             // canister http_request calls
             56 => set_transform(stack.pop_blob()),
+            // produce the Candid encoding of an HTTP response
+            // with status 200, no headers, and
+            // body consisting of n (argument) occurrences of the symbol 'x'
             57 => {
-              let n = stack.pop_int();
-              stack.push_blob(candid(n.into()))
+                let n = stack.pop_int();
+                stack.push_blob(candid(n.into()))
             }
 
             _ => api::trap_with(&format!("unknown op {}", op)),

@@ -903,9 +903,9 @@ icHttpRequest caller ctxt_id r =
                   else if (r .! #method) == V.IsJust #post () then return $ T.encodeUtf8 "POST"
                   else if (r .! #method) == V.IsJust #head () then return $ T.encodeUtf8 "HEAD"
                   else reject RC_SYS_FATAL ("unknown HTTP method") (Just EC_CANISTER_REJECTED)
+        let headers = map (\r -> (CI.mk $ T.encodeUtf8 $ r .! #name, T.encodeUtf8 $ r .! #value)) $ Vec.toList (r .! #headers)
         let body = case r .! #body of Nothing -> ""
                                       Just b -> b
-        let headers = map (\r -> (CI.mk $ T.encodeUtf8 $ r .! #name, T.encodeUtf8 $ r .! #value)) $ Vec.toList (r .! #headers)
         resp <- liftIO $ sendHttpRequest noTls (r .! #url) method headers body
         if fromIntegral (BS.length (resp .! #body)) > max_resp_size then
           reject RC_SYS_FATAL ("response body size cannot exceed " ++ show max_resp_size ++ " bytes") (Just EC_CANISTER_REJECTED)

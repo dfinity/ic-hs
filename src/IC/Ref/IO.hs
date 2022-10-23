@@ -21,11 +21,11 @@ import IC.Management (HttpResponse)
 
 sendHttpRequest :: Bool -> T.Text -> BS.ByteString -> [(CI.CI BS.ByteString, BS.ByteString)] -> LBS.ByteString -> IO HttpResponse
 sendHttpRequest noTls url method headers body = do
-    let localTlsSettings = TLSSettingsSimple { settingDisableCertificateValidation = True
+    let noTlsSettings = TLSSettingsSimple { settingDisableCertificateValidation = True
       , settingDisableSession = False
       , settingUseServerName = False
       }
-    m <- C.newManager $ if noTls then C.mkManagerSettings localTlsSettings Nothing else C.tlsManagerSettings
+    m <- C.newManager $ if noTls then C.mkManagerSettings noTlsSettings Nothing else C.tlsManagerSettings
     initReq <- C.parseRequest (T.unpack url)
     let req = initReq {
       C.method = method,
