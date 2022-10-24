@@ -392,13 +392,15 @@ createMessageHold = do
   let release = ic_start_canister ic00 cid
   return (holdMessage, release)
 
-header_from_strings :: String -> String -> HttpHeader
-header_from_strings a b = empty .+ #name .== (T.pack $ a) .+ #value .== (T.pack $ b)
+vec_header_from_list_text :: [(T.Text, T.Text)] -> Vec.Vector HttpHeader
+vec_header_from_list_text = Vec.fromList . map aux
+  where
+    aux (a, b) = empty .+ #name .== a .+ #value .== b
 
 dummyResponse :: HttpResponse
 dummyResponse = R.empty
   .+ #status .== 202
-  .+ #headers .== Vec.fromList [header_from_strings "Content-Length" (show $ length s)]
+  .+ #headers .== vec_header_from_list_text [(T.pack "Content-Length", T.pack $ show $ length s)]
   .+ #body .== (toUtf8 $ T.pack s)
   where s = "Dummy!" :: String
 
