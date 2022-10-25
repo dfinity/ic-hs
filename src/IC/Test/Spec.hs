@@ -140,6 +140,9 @@ canister_http_calls is_system base_fee per_byte_fee =
       (resp .! #body) @?= BLU.fromString s
       check_http_response resp
 
+    , simpleTestCase "simple call, no transform, non-ascii URL" $ \cid -> do
+      ic_http_get_request' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "https://" "ascii/안녕하세요" Nothing Nothing cid >>= isReject [1]
+
     , simpleTestCase "simple call, no transform, maximum possible url size" $ \cid -> do
       resp <- ic_long_url_http_request (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "https://" max_http_request_url_length Nothing cid
       (resp .! #status) @?= 200

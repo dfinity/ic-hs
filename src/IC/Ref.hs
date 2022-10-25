@@ -53,6 +53,7 @@ module IC.Ref
   )
 where
 
+import qualified Data.Char8 as C
 import qualified Data.CaseInsensitive as CI
 import qualified Data.Map as M
 import qualified Data.Row as R
@@ -883,9 +884,12 @@ invokeManagementCanister _ _ Heartbeat = error "heartbeat invoked on management 
 icHttpRequest :: (ICM m, CanReject m) => EntityId -> CallId -> ICManagement m .! "http_request"
 icHttpRequest caller ctxt_id r =
     let max_resp_size = max_response_size r in
-    if not (isPrefixOf "https://" $ T.unpack $ r .! #url) then
+    let url = T.unpack $ r .! #url in
+    if not (all C.isAscii url) then
+      reject RC_SYS_FATAL "url must be ASCII-encoded" (Just EC_INVALID_ARGUMENT)
+    else if not (isPrefixOf "https://" url) then
       reject RC_SYS_FATAL "url must start with https://" (Just EC_INVALID_ARGUMENT)
-    else if T.length (r .! #url) > max_http_request_url_length then
+    else if utf8_length (r .! #url) > max_http_request_url_length then
       reject RC_SYS_FATAL "Failed to parse URL: uri too long" (Just EC_INVALID_ARGUMENT)
     else if max_resp_size > max_inter_canister_payload_in_bytes then
       reject RC_CANISTER_REJECT ("max_response_bytes cannot exceed " ++ show max_inter_canister_payload_in_bytes) (Just EC_CANISTER_REJECTED)

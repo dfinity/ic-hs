@@ -118,6 +118,7 @@ executable ic-ref
   build-depends: wai-extra
   build-depends: warp
   build-depends: winter
+  build-depends: word8
   build-depends: uglymemo
   build-depends: warp
   build-depends: zlib
@@ -220,6 +221,7 @@ executable ic-ref-run
   build-depends: utf8-string
   build-depends: vector
   build-depends: winter
+  build-depends: word8
   build-depends: uglymemo
   build-depends: zlib
   build-depends: either
@@ -454,6 +456,7 @@ test-suite unit-test
   build-depends: utf8-string
   build-depends: vector
   build-depends: winter
+  build-depends: word8
   build-depends: uglymemo
   build-depends: zlib
   build-depends: either
@@ -578,6 +581,7 @@ library
   build-depends: wai-extra
   build-depends: warp
   build-depends: winter
+  build-depends: word8
   build-depends: uglymemo
   build-depends: zlib
   build-depends: either

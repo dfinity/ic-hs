@@ -194,7 +194,7 @@ ic_http_head_request ic00 max_response_bytes body headers transform canister_id 
 
 ic_long_url_http_request :: HasAgentConfig =>
   forall a b. (a -> IO b) ~ (ICManagement IO .! "http_request") =>
-  ((W.Word64 -> W.Word64 -> W.Word64) -> IC00) -> String -> Int -> Maybe String -> Blob -> IO b
+  ((W.Word64 -> W.Word64 -> W.Word64) -> IC00) -> String -> W.Word64 -> Maybe String -> Blob -> IO b
 ic_long_url_http_request ic00 proto len transform canister_id =
   callIC (ic00 $ http_request_fee request) "" #http_request request
   where
@@ -327,7 +327,7 @@ ic_http_head_request' ic00 max_response_bytes body headers transform canister_id
       .+ #body .== body
       .+ #transform .== (toTransformFn transform canister_id)
 
-ic_long_url_http_request' :: HasAgentConfig => ((W.Word64 -> W.Word64 -> W.Word64) -> IC00) -> String -> Int -> Maybe String -> Blob -> IO ReqResponse
+ic_long_url_http_request' :: HasAgentConfig => ((W.Word64 -> W.Word64 -> W.Word64) -> IC00) -> String -> W.Word64 -> Maybe String -> Blob -> IO ReqResponse
 ic_long_url_http_request' ic00 proto len transform canister_id =
   callIC' (ic00 $ http_request_fee request) "" #http_request request
   where

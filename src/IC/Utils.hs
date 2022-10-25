@@ -13,7 +13,7 @@ import qualified Data.Set as S
 import qualified Data.ByteString.Lazy as BS
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
-
+import qualified Data.Word as W
 
 freshKey :: M.Map Int a -> Int
 freshKey m | M.null m = 0
@@ -42,6 +42,10 @@ fromUtf8 :: BS.ByteString -> Maybe T.Text
 fromUtf8 b = case T.decodeUtf8' (BS.toStrict b) of
     Left _ -> Nothing
     Right t -> Just t
+
+-- Compute UTF-8 length of Text
+utf8_length :: T.Text -> W.Word64
+utf8_length = fromIntegral . BS.length . toUtf8
 
 -- ic-ref config
 data RefConfig = RefConfig

@@ -68,6 +68,7 @@
 , wai-extra
 , warp
 , winter
+, word8
 , zlib
 }:
 mkDerivation {
@@ -142,6 +143,7 @@ mkDerivation {
     wai-extra
     warp
     winter
+    word8
     zlib
   ];
   executableHaskellDepends = [
@@ -206,6 +208,7 @@ mkDerivation {
     wai-extra
     warp
     winter
+    word8
     zlib
   ];
   testHaskellDepends = [
@@ -262,6 +265,7 @@ mkDerivation {
     utf8-string
     vector
     winter
+    word8
     zlib
   ];
   doCheck = false;
