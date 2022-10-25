@@ -96,6 +96,7 @@ executable ic-ref
   build-depends: memory
   build-depends: MonadRandom
   build-depends: mtl
+  build-depends: network-uri
   build-depends: optparse-applicative
   build-depends: parallel
   build-depends: prettyprinter
@@ -206,6 +207,7 @@ executable ic-ref-run
   build-depends: memory
   build-depends: MonadRandom
   build-depends: mtl
+  build-depends: network-uri
   build-depends: optparse-applicative
   build-depends: parallel
   build-depends: prettyprinter
@@ -437,6 +439,7 @@ test-suite unit-test
   build-depends: memory
   build-depends: MonadRandom
   build-depends: mtl
+  build-depends: network-uri
   build-depends: parallel
   build-depends: primitive
   build-depends: quickcheck-io
@@ -549,6 +552,7 @@ library
   build-depends: memory
   build-depends: MonadRandom
   build-depends: mtl
+  build-depends: network-uri
   build-depends: optparse-applicative
   build-depends: parallel
   build-depends: prettyprinter

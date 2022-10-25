@@ -37,6 +37,7 @@
 , memory
 , MonadRandom
 , mtl
+, network-uri
 , optparse-applicative
 , parallel
 , prettyprinter
@@ -112,6 +113,7 @@ mkDerivation {
     memory
     MonadRandom
     mtl
+    network-uri
     optparse-applicative
     parallel
     prettyprinter
@@ -180,6 +182,7 @@ mkDerivation {
     memory
     MonadRandom
     mtl
+    network-uri
     optparse-applicative
     parallel
     prettyprinter
@@ -245,6 +248,7 @@ mkDerivation {
     memory
     MonadRandom
     mtl
+    network-uri
     parallel
     primitive
     quickcheck-io
