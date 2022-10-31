@@ -72,8 +72,10 @@ handle store req respond = case (requestMethod req, pathInfo req) of
                                 lift $ invalidRequest err
                             Right () -> do
                                 t <- lift getTimestamp
-                                r <- handleReadState t rsr
-                                lift $ cbor status200 (IC.HTTP.Request.response r)
+                                r <- handleReadState t (EntityId ecid) rsr
+                                case r of
+                                  Left err -> lift $ invalidRequest err
+                                  Right r -> lift $ cbor status200 (IC.HTTP.Request.response r)
                 _ -> notFound req
     _ -> notFound req
   where

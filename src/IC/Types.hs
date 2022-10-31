@@ -97,6 +97,21 @@ errorCode = printf "ICHS%04d" . fromEnum
 data Response = Reply Blob | Reject (RejectCode, String)
   deriving Show
 
+data SubnetType = Application | VerifiedApplication | System
+  deriving Eq
+
+instance Read SubnetType where
+  readsPrec _ x = do
+    if x == "application" then return (Application, "")
+    else if x == "verified_application" then return (VerifiedApplication, "")
+    else if x == "system" then return (System, "")
+    else fail "could not read SubnetType"
+
+instance Show SubnetType where
+  show Application = "application"
+  show VerifiedApplication = "verified_application"
+  show System = "system"
+
 -- Abstract canisters
 
 -- | This data type contains all read-only data that should be available to the
