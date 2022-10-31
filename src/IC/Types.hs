@@ -11,6 +11,7 @@ import qualified Data.ByteString.Lazy.Char8 as BS
 import qualified Data.ByteString.Builder as BS
 import qualified Data.Map as M
 import qualified Data.Text as T
+import qualified Data.Word as W
 import qualified Text.Hex as T hiding (Text)
 import Data.Digest.CRC
 import Data.Digest.CRC32
@@ -111,6 +112,12 @@ instance Show SubnetType where
   show Application = "application"
   show VerifiedApplication = "verified_application"
   show System = "system"
+
+data SubnetConfig = SubnetConfig
+    { subnet_type :: SubnetType
+    , nonce :: String
+    , canister_ranges :: [(W.Word64, W.Word64)]
+    }
 
 -- Abstract canisters
 

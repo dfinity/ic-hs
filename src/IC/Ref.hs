@@ -57,6 +57,7 @@ import qualified Data.Map as M
 import qualified Data.Row as R
 import qualified Data.Row.Variants as V
 import qualified Data.ByteString.Lazy as BS
+import qualified Data.ByteString.Lazy.UTF8 as BLU
 import qualified Data.Text as T
 import qualified Data.Vector as Vec
 import qualified Data.Set as S
@@ -79,6 +80,7 @@ import IC.Constants
 import IC.Canister
 import IC.CBOR.Utils
 import IC.Id.Fresh
+import IC.Id.Forms(mkSelfAuthenticatingId)
 import IC.Utils
 import IC.Management
 import IC.HashTree hiding (Blob)
@@ -195,6 +197,7 @@ data IC = IC
   , call_contexts :: CallId ↦ CallContext
   , rng :: StdGen
   , secretRootKey :: SecretKey
+  , rootSubnet :: Maybe EntityId
   , subnets :: [(EntityId, SubnetType, SecretKey, [(W.Word64, W.Word64)])]
   }
   deriving (Show)
@@ -202,10 +205,16 @@ data IC = IC
 -- The functions below want stateful access to a value of type 'IC'
 type ICM m = (MonadState IC m, HasCallStack, MonadIO m)
 
-initialIC :: IO IC
-initialIC = do
-    let sk = createSecretKeyBLS "ic-ref's very secure secret root key"
-    IC mempty mempty mempty mempty <$> newStdGen <*> pure sk <*> pure []
+initialIC :: [SubnetConfig] -> IO IC
+initialIC subnets = do
+    let root_subnet = find (\conf -> subnet_type conf == System) subnets
+    let sk = case root_subnet of Nothing -> createSecretKeyBLS "ic-ref's very secure secret root key"
+                                 Just conf -> key conf
+    IC mempty mempty mempty mempty <$> newStdGen <*> pure sk <*> pure (fmap (sub_id . key) root_subnet) <*> pure (map sub subnets)
+  where
+    sub conf = (sub_id (key conf), subnet_type conf, key conf, canister_ranges conf)
+    sub_id = EntityId . mkSelfAuthenticatingId . toPublicKey
+    key = createSecretKeyBLS . BLU.fromString . nonce
 
 -- Request handling
 
@@ -596,11 +605,12 @@ getSubnetFromCanisterId cid = do
 
 getPrunedCertificate :: (CanReject m, ICM m) => Timestamp -> CanisterId -> [Path] -> m Certificate
 getPrunedCertificate time ecid paths = do
+    root_subnet <- gets rootSubnet
+    sk1 <- gets secretRootKey
     (subnet_id, _, sk2, ranges) <- getSubnetFromCanisterId ecid
     full_tree <- gets (construct . stateTree time)
     let cert_tree = prune full_tree (["time"] : paths)
-    sk1 <- gets secretRootKey
-    return $ signCertificate time sk1 (Just (subnet_id, sk2, ranges)) cert_tree
+    return $ signCertificate time sk1 (if root_subnet == Just subnet_id then Nothing else Just (subnet_id, sk2, ranges)) cert_tree
 
 signCertificate :: Timestamp -> SecretKey -> Maybe (SubnetId, SecretKey, [(W.Word64, W.Word64)]) -> HashTree -> Certificate
 signCertificate time rootKey (Just (subnet_id, subnet_key, ranges)) cert_tree =

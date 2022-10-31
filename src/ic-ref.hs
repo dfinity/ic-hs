@@ -7,7 +7,9 @@ import Network.Wai.Middleware.Cors
 import Network.Wai.Middleware.RequestLogger
 import Network.Wai.Handler.Warp
 import qualified Data.Text as T
+import IC.Constants
 import IC.HTTP
+import IC.Types
 import IC.Version
 import qualified IC.Crypto.BLS as BLS
 
@@ -15,11 +17,12 @@ defaultPort :: Port
 defaultPort = 8001
 
 
-work :: Maybe Int -> Maybe FilePath -> Maybe FilePath -> Bool ->  IO ()
-work portToUse writePortTo backingFile log = do
+work :: [(SubnetType, String)] -> Maybe Int -> Maybe FilePath -> Maybe FilePath -> Bool ->  IO ()
+work subnets portToUse writePortTo backingFile log = do
+    let (subs, _) = foldl (\(subs, c) (t, n) -> (subs ++ [SubnetConfig t n [(c, c + canister_ids_per_subnet - 1)]], c + canister_ids_per_subnet)) ([], 0) subnets
     putStrLn "Starting ic-ref..."
     BLS.init
-    withApp backingFile $ \app -> do
+    withApp subs backingFile $ \app -> do
         let app' =  laxCorsSettings $ if log then logStdoutDev app else app
         case portToUse of
           Nothing ->
@@ -59,9 +62,20 @@ main = join . customExecParser (prefs showHelpOnError) $
     versions =
           infoOption (T.unpack implVersion) (long "version" <> help "show version number")
       <*> infoOption (T.unpack specVersion) (long "spec-version" <> help "show spec version number")
+    defaultSubnetConfig = [(System, "secret root subnet's key"), (Application, "secret application subnet's key")]
     parser :: Parser (IO ())
     parser = work
       <$>
+        (
+          (
+            option auto
+            (  long "subnet-config"
+            <> help ("choose subnet configurations, e.g., " ++ show defaultSubnetConfig)
+            )
+          )
+        <|> pure defaultSubnetConfig
+        )
+      <*>
         ( flag' Nothing
           (  long "pick-port"
           <> help ("pick a free port (instead of binding to 127.0.0.1:" ++ show defaultPort ++ ")")
