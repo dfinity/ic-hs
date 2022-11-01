@@ -50,7 +50,7 @@ handle store req respond = case (requestMethod req, pathInfo req) of
                             Left err ->
                                 lift $ invalidRequest err
                             Right () -> do
-                                submitRequest (requestId gr) cr
+                                submitRequest (requestId gr) cr (EntityId ecid)
                                 lift $ empty status202
                 "query" -> withSignedCBOR root_key $ \(gr, ev) -> case queryRequest gr of
                     Left err -> invalidRequest err

@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 import Options.Applicative
 import Data.Foldable
+import Data.Word as W
 import Control.Concurrent
 import Control.Monad (join, forever)
 import Network.Wai.Middleware.Cors
@@ -17,9 +18,9 @@ defaultPort :: Port
 defaultPort = 8001
 
 
-work :: [(SubnetType, String)] -> Maybe Int -> Maybe FilePath -> Maybe FilePath -> Bool ->  IO ()
+work :: [(SubnetType, String, [(W.Word64, W.Word64)])] -> Maybe Int -> Maybe FilePath -> Maybe FilePath -> Bool ->  IO ()
 work subnets portToUse writePortTo backingFile log = do
-    let (subs, _) = foldl (\(subs, c) (t, n) -> (subs ++ [SubnetConfig t n [(c, c + canister_ids_per_subnet - 1)]], c + canister_ids_per_subnet)) ([], 0) subnets
+    let subs = map (\(t, n, ranges) -> SubnetConfig t n ranges) subnets
     putStrLn "Starting ic-ref..."
     BLS.init
     withApp subs backingFile $ \app -> do
@@ -62,7 +63,8 @@ main = join . customExecParser (prefs showHelpOnError) $
     versions =
           infoOption (T.unpack implVersion) (long "version" <> help "show version number")
       <*> infoOption (T.unpack specVersion) (long "spec-version" <> help "show spec version number")
-    defaultSubnetConfig = [(System, "secret root subnet's key"), (Application, "secret application subnet's key")]
+    range n = (n * canister_ids_per_subnet, (n + 1) * canister_ids_per_subnet - 1)
+    defaultSubnetConfig = [(System, "sk1", [range 0]), (Application, "sk2", [range 1])]
     parser :: Parser (IO ())
     parser = work
       <$>

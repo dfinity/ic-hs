@@ -4,6 +4,8 @@ import Data.Proxy
 import Data.List
 import Test.Tasty.Options
 import Options.Applicative hiding (str)
+import IC.Id.Fresh(wordToId)
+import IC.Types
 
 -- Configuration: The URL of of the endpoint to test
 
@@ -17,6 +19,14 @@ instance IsOption Endpoint where
   optionName = return "endpoint"
   optionHelp = return "Internet Computer endpoint to connect to (default: http://0.0.0.0:8001)"
   optionCLParser = mkOptionCLParser (metavar "URL")
+
+newtype ECID = ECID CanisterId
+
+instance IsOption ECID where
+  defaultValue = ECID $ wordToId 0
+  parseValue = fmap ECID . parsePrettyID
+  optionName = return "ecid"
+  optionHelp = return "Effective canister id for canister creation user requests"
 
 newtype Httpbin = Httpbin String
 
@@ -37,6 +47,9 @@ instance IsOption PollTimeout where
 
 endpointOption :: OptionDescription
 endpointOption = Option (Proxy :: Proxy Endpoint)
+
+ecidOption :: OptionDescription
+ecidOption = Option (Proxy :: Proxy ECID)
 
 httpbinOption :: OptionDescription
 httpbinOption = Option (Proxy :: Proxy Httpbin)

@@ -12,7 +12,7 @@ type Blob = BS.ByteString
 
 mkOpaqueId :: Blob -> Blob
 mkOpaqueId b =
-    b <> BS.singleton 1
+    b <> BS.singleton 1 <> BS.singleton 1
 
 isOpaqueId :: Blob -> Bool
 isOpaqueId b = BS.drop (BS.length b - 1) b == BS.singleton 1

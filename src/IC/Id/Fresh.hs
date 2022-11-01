@@ -14,4 +14,4 @@ freshId ranges ids =
       (x:_) -> Just x
 
 wordToId :: Word64 -> EntityId
-wordToId = EntityId . mkOpaqueId . toLazyByteString . word64LE
+wordToId = EntityId . mkOpaqueId . toLazyByteString . word64BE

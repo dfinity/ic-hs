@@ -38,6 +38,7 @@ module IC.Test.Agent
       addExpiry,
       addNonce,
       addNonceExpiryEnv,
+      agentEcid,
       anonymousUser,
       as2Word64,
       asHex,
@@ -159,6 +160,7 @@ import qualified IC.Crypto.DER as DER
 import qualified IC.Crypto.DER_BLS as DER_BLS
 import IC.Id.Forms
 import IC.Test.Options
+import IC.Types(CanisterId, rawEntityId)
 import IC.HashTree hiding (Blob, Label)
 import IC.Certificate
 import IC.Certificate.Value
@@ -170,12 +172,13 @@ data AgentConfig = AgentConfig
     { tc_root_key :: Blob
     , tc_manager :: Manager
     , tc_endPoint :: String
+    , tc_ecid :: CanisterId
     , tc_httpbin :: String
     , tc_timeout :: Int
     }
 
-makeAgentConfig :: String -> String -> Int -> IO AgentConfig
-makeAgentConfig ep' httpbin' to = do
+makeAgentConfig :: String -> CanisterId -> String -> Int -> IO AgentConfig
+makeAgentConfig ep' ecid httpbin' to = do
     manager <- newTlsManagerWith $ tlsManagerSettings
       { managerResponseTimeout = responseTimeoutMicro 60_000_000 -- 60s
       }
@@ -191,6 +194,7 @@ makeAgentConfig ep' httpbin' to = do
         { tc_root_key = status_root_key s
         , tc_manager = manager
         , tc_endPoint = ep
+        , tc_ecid = ecid
         , tc_httpbin = httpbin
         , tc_timeout = to
         }
@@ -206,17 +210,18 @@ makeAgentConfig ep' httpbin' to = do
 preFlight :: OptionSet -> IO AgentConfig
 preFlight os = do
     let Endpoint ep = lookupOption os
+    let ECID ecid = lookupOption os
     let Httpbin httpbin = lookupOption os
     let PollTimeout to = lookupOption os
-    makeAgentConfig ep httpbin to
+    makeAgentConfig ep ecid httpbin to
 
 
 newtype ReplWrapper = R (forall a. (HasAgentConfig => a) -> a)
 
 -- |  This is for use from the Haskell REPL, see README.md
-connect :: String -> String -> Int -> IO ReplWrapper
-connect ep httpbin to = do
-    agentConfig <- makeAgentConfig ep httpbin to
+connect :: String -> CanisterId -> String -> Int -> IO ReplWrapper
+connect ep ecid httpbin to = do
+    agentConfig <- makeAgentConfig ep ecid httpbin to
     let ?agentConfig = agentConfig
     return (R $ \x -> x)
 
@@ -232,6 +237,9 @@ agentConfig = ?agentConfig
 
 endPoint :: HasAgentConfig => String
 endPoint = tc_endPoint agentConfig
+
+agentEcid :: HasAgentConfig => Blob
+agentEcid = rawEntityId $ tc_ecid agentConfig
 
 agentManager :: HasAgentConfig => Manager
 agentManager = tc_manager agentConfig

@@ -52,6 +52,8 @@ prettyID (EntityId blob) =
 
     base32 = filter (/='=') . T.unpack . T.toLower . encodeBase32 . BS.toStrict
 
+parsePrettyID :: String -> Maybe EntityId
+parsePrettyID _ = Nothing
 
 newtype NeedsToRespond = NeedsToRespond Bool
   deriving (Show, Eq)
@@ -101,12 +103,17 @@ data Response = Reply Blob | Reject (RejectCode, String)
 data SubnetType = Application | VerifiedApplication | System
   deriving Eq
 
+peelOffPrefix :: [(a, String)] -> String -> Maybe (a, String)
+peelOffPrefix xs y = foldl (\z (a, x) -> case z of Nothing -> aux a x
+                                                   Just _ -> z) Nothing xs
+  where
+    aux a x = if isPrefixOf x y then Just (a, drop (length x) y) else Nothing
+
 instance Read SubnetType where
   readsPrec _ x = do
-    if x == "application" then return (Application, "")
-    else if x == "verified_application" then return (VerifiedApplication, "")
-    else if x == "system" then return (System, "")
-    else fail "could not read SubnetType"
+    case peelOffPrefix [(Application, "application"), (VerifiedApplication, "verified_application"), (System, "system")] x of
+      Just (t, s) -> return (t, s)
+      Nothing -> fail "could not read SubnetType"
 
 instance Show SubnetType where
   show Application = "application"

@@ -171,7 +171,7 @@ data CallContext = CallContext
   deriving (Show)
 
 data CallOrigin
-  = FromUser RequestID
+  = FromUser RequestID CanisterId
   | FromCanister CallId Callback
   | FromHeartbeat
   deriving (Eq, Show)
@@ -192,7 +192,7 @@ data Message
 
 data IC = IC
   { canisters :: CanisterId ↦ CanState
-  , requests :: RequestID ↦ (CallRequest, RequestStatus)
+  , requests :: RequestID ↦ (CallRequest, (RequestStatus, CanisterId))
   , messages :: Seq Message
   , call_contexts :: CallId ↦ CallContext
   , rng :: StdGen
@@ -218,12 +218,12 @@ initialIC subnets = do
 
 -- Request handling
 
-findRequest :: RequestID -> IC -> Maybe (CallRequest, RequestStatus)
+findRequest :: RequestID -> IC -> Maybe (CallRequest, (RequestStatus, CanisterId))
 findRequest rid ic = M.lookup rid (requests ic)
 
 setReqStatus :: ICM m => RequestID -> RequestStatus -> m ()
 setReqStatus rid s = modify $ \ic ->
-  ic { requests = M.adjust (\(r,_) -> (r,s)) rid (requests ic) }
+  ic { requests = M.adjust (\(r,(_,ecid)) -> (r,(s,ecid))) rid (requests ic) }
 
 calleeOfCallRequest :: CallRequest -> EntityId
 calleeOfCallRequest = \case
@@ -547,7 +547,7 @@ stateTree (Timestamp t) ic = node
           , "reject_code" =: val (rejectCode c)
           , "reject_message" =: val (T.pack msg)
           ]
-    | (rid, (_, rs)) <- M.toList (requests ic)
+    | (rid, (_, (rs, _))) <- M.toList (requests ic)
     ]
   , "canister" =: node
     [ cid =: node (
@@ -643,21 +643,21 @@ getDataCertificate t cid = do
 
 -- | Submission simply enqueues requests
 
-submitRequest :: ICM m => RequestID -> CallRequest -> m ()
-submitRequest rid r = modify $ \ic ->
+submitRequest :: ICM m => RequestID -> CallRequest -> CanisterId -> m ()
+submitRequest rid r ecid = modify $ \ic ->
   if M.member rid (requests ic)
   then ic
-  else ic { requests = M.insert rid (r, Received) (requests ic) }
+  else ic { requests = M.insert rid (r, (Received, ecid)) (requests ic) }
 
 
 -- | Eventually, they are processed
 
-processRequest :: ICM m => (RequestID, CallRequest) -> m ()
-processRequest (rid, CallRequest canister_id _user_id method arg) =
+processRequest :: ICM m => (RequestID, CallRequest, CanisterId) -> m ()
+processRequest (rid, CallRequest canister_id _user_id method arg, ecid) =
   onReject (setReqStatus rid . CallResponse . canisterRejected) $ do
     ctxt_id <- newCallContext $ CallContext
       { canister = canister_id
-      , origin = FromUser rid
+      , origin = FromUser rid ecid
       , needs_to_respond = NeedsToRespond True
       , deleted = False
       , last_trap = Nothing
@@ -734,7 +734,7 @@ callerOfCallID :: ICM m => CallId -> m EntityId
 callerOfCallID ctxt_id = do
   ctxt <- getCallContext ctxt_id
   case origin ctxt of
-    FromUser rid -> callerOfRequest rid
+    FromUser rid _ -> callerOfRequest rid
     FromCanister other_ctxt_id _callback -> calleeOfCallID other_ctxt_id
     FromHeartbeat -> return $ canister ctxt
 
@@ -753,6 +753,14 @@ starveCallContext ctxt_id = do
   let (msg, err) | Just t <- last_trap ctxt = ("canister trapped: " ++ t, EC_CANISTER_TRAPPED)
                  | otherwise                = ("canister did not respond", EC_CANISTER_DID_NOT_REPLY)
   rejectCallContext ctxt_id (RC_CANISTER_ERROR, msg, Just err)
+
+ecidOfCallID :: ICM m => CallId -> m CanisterId
+ecidOfCallID ctxt_id = do
+  ctxt <- getCallContext ctxt_id
+  case origin ctxt of
+    FromUser _rid ecid -> return ecid
+    FromCanister other_ctxt_id _callback -> calleeOfCallID other_ctxt_id
+    FromHeartbeat -> return $ canister ctxt
 
 -- Message handling
 
@@ -795,7 +803,7 @@ processMessage m = case m of
     ctxt <- getCallContext ctxt_id
     case origin ctxt of
       FromHeartbeat -> error "Response from heartbeat"
-      FromUser rid -> setReqStatus rid $ CallResponse $
+      FromUser rid _ -> setReqStatus rid $ CallResponse $
         -- NB: Here cycles disappear
         case response of
           Reject (rc, msg) -> canisterRejected (rc, msg, Nothing)
@@ -867,7 +875,7 @@ invokeManagementCanister caller ctxt_id (Public method_name arg) =
       "canister_status" -> atomic $ onlyController caller icCanisterStatus
       "delete_canister" -> atomic $ onlyController caller icDeleteCanister
       "deposit_cycles" -> atomic $ icDepositCycles ctxt_id
-      "provisional_create_canister_with_cycles" -> atomic $ icCreateCanisterWithCycles caller
+      "provisional_create_canister_with_cycles" -> atomic $ icCreateCanisterWithCycles caller ctxt_id
       "provisional_top_up_canister" -> atomic icTopUpCanister
       "raw_rand" -> atomic icRawRand
       "http_request" -> atomic $ icHttpRequest caller
@@ -928,18 +936,11 @@ icCreateCanister caller ctxt_id r = do
     forM_ (r .! #settings) $ applySettings cid
     return (#canister_id .== entityIdToPrincipal cid)
 
-getFreeApplicationSubnet :: (CanReject m, ICM m) => [EntityId] -> m (EntityId, SubnetType, SecretKey, [(W.Word64, W.Word64)])
-getFreeApplicationSubnet taken = do
-    subnets <- gets subnets
-    case find (\(_, _, _, ranges) -> freshId ranges taken /= Nothing) subnets of
-      Nothing -> reject RC_SYS_FATAL "Canister id does not belong to any subnet." Nothing
-      Just x -> return x
-
-icCreateCanisterWithCycles :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "provisional_create_canister_with_cycles"
-icCreateCanisterWithCycles caller r = do
+icCreateCanisterWithCycles :: (ICM m, CanReject m) => EntityId -> CallId -> ICManagement m .! "provisional_create_canister_with_cycles"
+icCreateCanisterWithCycles caller ctxt_id r = do
     forM_ (r .! #settings) validateSettings
-    taken <- gets (M.keys . canisters)
-    (_, _, _, ranges) <- getFreeApplicationSubnet taken
+    ecid <- ecidOfCallID ctxt_id
+    (_, _, _, ranges) <- getSubnetFromCanisterId ecid
     cid <- icCreateCanisterCommon ranges caller (fromMaybe cDEFAULT_PROVISIONAL_CYCLES_BALANCE (r .! #amount))
     forM_ (r .! #settings) $ applySettings cid
     return (#canister_id .== entityIdToPrincipal cid)
@@ -1237,9 +1238,9 @@ newCall from_ctxt_id call = do
 -- Scheduling
 
 -- | Pick next request in state `received`
-nextReceived :: ICM m => m (Maybe (RequestID, CallRequest))
+nextReceived :: ICM m => m (Maybe (RequestID, CallRequest, CanisterId))
 nextReceived = gets $ \ic -> listToMaybe
-  [ (rid,r) | (rid, (r, Received)) <- M.toList (requests ic) ]
+  [ (rid,r,ecid) | (rid, (r, (Received, ecid))) <- M.toList (requests ic) ]
 
 -- A call context is still waiting for a response if…
 willReceiveResponse :: IC -> CallId -> Bool
