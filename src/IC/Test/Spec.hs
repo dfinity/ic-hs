@@ -2061,8 +2061,8 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
         cycles <- queryBalance128 cid
         step $ "Cycle balance now at " ++ show cycles
       , testCase "nonexisting canister" $ do
-        ic_top_up' ic00 doesn'tExist (fromIntegral def_cycles)
-          >>= isReject [3,5]
+        ic_top_up''' ic00' doesn'tExist (fromIntegral def_cycles)
+          >>= isErrOrReject []
       ]
     ]
 
@@ -2167,7 +2167,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
         -- sign request with delegations
         delegationEnv defaultSK dels req >>= postCallCBOR cid >>= code2xx
         -- wait for it
-        void $ awaitStatus (getRequestStatus defaultUser cid rid) >>= isReply
+        void $ awaitStatus (getRequestStatus' defaultUser cid rid) >>= isReply
         -- also read status with delegation
         sreq <- addExpiry $ rec
           [ "request_type" =: GText "read_state"
@@ -2187,7 +2187,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
         -- submit with plain signature
         envelope defaultSK req >>= postCallCBOR cid >>= code202
         -- wait for it
-        void $ awaitStatus (getRequestStatus defaultUser cid rid) >>= isReply
+        void $ awaitStatus (getRequestStatus' defaultUser cid rid) >>= isReply
         -- also read status with delegation
         sreq <- addExpiry $ rec
           [ "request_type" =: GText "read_state"
@@ -2282,7 +2282,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
       signed_req <- env req
       postCallCBOR cid signed_req >>= code2xx
 
-      awaitStatus (getRequestStatus user cid (requestId req)) >>= isReply >>= is ""
+      awaitStatus (getRequestStatus' user cid (requestId req)) >>= isReply >>= is ""
     ]
 
   , testGroup "signature checking" $

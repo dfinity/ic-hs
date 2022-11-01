@@ -25,8 +25,8 @@ newtype ECID = ECID CanisterId
 instance IsOption ECID where
   defaultValue = ECID $ wordToId 0
   parseValue = fmap ECID . parsePrettyID
+  optionHelp = return $ "Effective canister id for canister creation user requests (default: " ++ prettyID (wordToId 0) ++ ")"
   optionName = return "ecid"
-  optionHelp = return "Effective canister id for canister creation user requests"
 
 newtype Httpbin = Httpbin String
 

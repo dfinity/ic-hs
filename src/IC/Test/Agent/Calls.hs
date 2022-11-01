@@ -47,6 +47,7 @@ module IC.Test.Agent.Calls
       ic_start_canister,
       ic_stop_canister'',
       ic_stop_canister,
+      ic_top_up''',
       ic_top_up',
       ic_top_up,
       ic_uninstall'',
@@ -352,6 +353,12 @@ ic_sign_with_ecdsa'' user msg =
        .+ #curve .== enum #secp256k1
        .+ #name .== (T.pack "0")
     )
+
+ic_top_up''' :: HasAgentConfig => IC00' -> Blob -> Natural -> IO (HTTPErrOr ReqResponse)
+ic_top_up''' ic00' canister_id amount = do
+  callIC''' ic00' canister_id #provisional_top_up_canister $ empty
+    .+ #canister_id .== Principal canister_id
+    .+ #amount .== amount
 
 --------------------------------------------------------------------------------
 

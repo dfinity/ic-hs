@@ -122,7 +122,7 @@ awaitCallTwice cid req = do
   res <- envelopeFor (senderOf req) req >>= postCallCBOR cid
   code202 res
   assertBool "Response body not empty" (BS.null (responseBody res))
-  awaitStatus (getRequestStatus (senderOf req) cid (requestId req))
+  awaitStatus (getRequestStatus' (senderOf req) cid (requestId req))
 
 
 
