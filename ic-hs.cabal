@@ -380,6 +380,7 @@ executable ic-request-id
   build-depends: template-haskell
   build-depends: text
   build-depends: unordered-containers
+  build-depends: utf8-string
   build-depends: either
   other-modules: IC.CBOR.Utils
   other-modules: IC.Hash

@@ -58,7 +58,7 @@ parsePrettyID b = case raw of
     Left _ -> Nothing
     Right x -> validate x
   where
-    raw = decodeBase32 $ BSU.fromString $ filter (/='-') b
+    raw = decodeBase32Unpadded $ BSU.fromString $ filter (/='-') b
     validate x
       | a == BS.toLazyByteString (BS.word32BE checksum) = Just $ EntityId b
       | otherwise = Nothing

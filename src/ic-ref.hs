@@ -63,7 +63,9 @@ main = join . customExecParser (prefs showHelpOnError) $
     versions =
           infoOption (T.unpack implVersion) (long "version" <> help "show version number")
       <*> infoOption (T.unpack specVersion) (long "spec-version" <> help "show spec version number")
+    range :: W.Word64 -> (W.Word64, W.Word64)
     range n = (n * canister_ids_per_subnet, (n + 1) * canister_ids_per_subnet - 1)
+    defaultSubnetConfig :: [(SubnetType, String, [(W.Word64, W.Word64)])]
     defaultSubnetConfig = [(System, "sk1", [range 0]), (Application, "sk2", [range 1])]
     parser :: Parser (IO ())
     parser = work
