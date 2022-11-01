@@ -9,6 +9,7 @@ module IC.Types where
 
 import qualified Data.ByteString.Lazy.Char8 as BS
 import qualified Data.ByteString.Builder as BS
+import qualified Data.ByteString.UTF8 as BSU
 import qualified Data.Map as M
 import qualified Data.Text as T
 import qualified Data.Word as W
@@ -53,7 +54,19 @@ prettyID (EntityId blob) =
     base32 = filter (/='=') . T.unpack . T.toLower . encodeBase32 . BS.toStrict
 
 parsePrettyID :: String -> Maybe EntityId
-parsePrettyID _ = Nothing
+parsePrettyID b = case raw of
+    Left _ -> Nothing
+    Right x -> validate x
+  where
+    raw = decodeBase32 $ BSU.fromString $ filter (/='-') b
+    validate x
+      | a == BS.toLazyByteString (BS.word32BE checksum) = Just $ EntityId b
+      | otherwise = Nothing
+      where
+        CRC32 checksum = digest (BS.toStrict b)
+        y = BS.fromStrict x
+        a = BS.take 4 y
+        b = BS.drop 4 y
 
 newtype NeedsToRespond = NeedsToRespond Bool
   deriving (Show, Eq)

@@ -313,6 +313,7 @@ executable ic-ref-test
   build-depends: time
   build-depends: transformers
   build-depends: unordered-containers
+  build-depends: utf8-string
   build-depends: vector
   build-depends: wai
   build-depends: warp
