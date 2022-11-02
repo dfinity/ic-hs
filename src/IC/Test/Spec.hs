@@ -60,18 +60,30 @@ canister_http_calls base_fee per_byte_fee =
 
     , testCase "non-existent transform function" $ do
       cid <- install noop
-      ic_http_request' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "base64/SGVsbG8gd29ybGQh" cid (Just "nonExistent", cid) >>= isReject [3]
+      ic_http_request' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "base64/SGVsbG8gd29ybGQh" cid (Just ("nonExistent", ""), cid) >>= isReject [3]
 
     , testCase "reference to a transform function exposed by another canister" $ do
       cid <- install noop
       cid2 <- install (onTransform (callback (replyData (bytes (Candid.encode dummyResponse)))))
-      ic_http_request' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "base64/SGVsbG8gd29ybGQh" cid (Just "transform", cid2) >>= isReject [4]
+      ic_http_request' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "base64/SGVsbG8gd29ybGQh" cid (Just ("transform", ""), cid2) >>= isReject [4]
 
-    , testCase "simple call with transform" $ do
+    , testCase "simple call with dummy transform" $ do
       cid <- install (onTransform (callback (replyData (bytes (Candid.encode dummyResponse)))))
-      resp <- ic_http_request (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "base64/SGVsbG8gd29ybGQh" cid (Just "transform")
+      resp <- ic_http_request (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "base64/SGVsbG8gd29ybGQh" cid (Just ("transform", ""))
       (resp .! #status) @?= 202
       (resp .! #body) @?= "Dummy!"
+
+    , testCase "simple call with transform, reflect transform context" $ do
+      cid <- install (onTransform (callback (replyData (getHttpReplyWithTransformContext argData))))
+      resp <- ic_http_request (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "base64/SGVsbG8gd29ybGQh" cid (Just ("transform", "asdf"))
+      (resp .! #status) @?= 200
+      (resp .! #body) @?= "asdf"
+
+    , testCase "simple call with transform, check caller of transform" $ do
+      cid <- install (onTransform (callback (replyData getHttpReplyWithCaller)))
+      resp <- ic_http_request (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "base64/SGVsbG8gd29ybGQh" cid (Just ("transform", "caller"))
+      (resp .! #status) @?= 200
+      (resp .! #body) @?= "aaaaa-aa"
   ]
 
 -- * The test suite (see below for helper functions)

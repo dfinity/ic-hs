@@ -60,8 +60,9 @@ service ic : {
     method : variant { get; post; head };
     headers: vec http_header;
     body : opt blob;
-    transform : opt variant {
-      function: func (http_response) -> (http_response) query
+    transform : opt record {
+      function : func (record {response : http_response; context : blob}) -> (http_response) query;
+      context : blob
     };
   }) -> (http_response);
 
