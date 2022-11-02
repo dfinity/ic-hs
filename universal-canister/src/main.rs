@@ -1,6 +1,6 @@
 use std::convert::TryInto;
 
-use candid::{CandidType, Deserialize, Decode, Encode, Principal};
+use candid::{CandidType, Decode, Deserialize, Encode, Principal};
 use serde::Serialize;
 
 mod api;
