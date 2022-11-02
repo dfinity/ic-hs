@@ -54,6 +54,7 @@ module IC.Test.Agent.Calls
       ic_update_settings',
     ) where
 
+import qualified Data.ByteString.Lazy as BS
 import qualified Data.Vector as Vec
 import qualified Data.Text as T
 import Numeric.Natural
@@ -62,7 +63,6 @@ import Codec.Candid (Principal(..))
 import qualified Codec.Candid as Candid
 import Data.Row
 import qualified Data.Row.Records as R
-import qualified Data.Row.Variants as V
 import qualified Data.Row.Internal as R
 import qualified Data.Row.Dictionaries as R
 import qualified Data.Word as W
@@ -145,30 +145,25 @@ ic_raw_rand ic00 =
 max_inter_canister_payload_in_bytes :: W.Word64
 max_inter_canister_payload_in_bytes = 2 * 1024 * 1024 -- 2 MiB
 
-http_request_fee :: (Foldable t,
-                     (r1 .! "transform") ~ Maybe (Var r2),
-                     (r1 .! "headers") ~ Vec.Vector (Rec r3), (r3 .! "name") ~ T.Text,
-                     (r1 .! "max_response_bytes") ~ Maybe W.Word64,
-                     (r2 .! "function") ~ Candid.FuncRef r4, (r1 .! "url") ~ T.Text,
-                     (r3 .! "value") ~ T.Text, (r1 .! "body") ~ t a) =>
-                    Rec r1 -> W.Word64 -> W.Word64 -> W.Word64
+http_request_fee :: (a -> IO b) ~ (ICManagement IO .! "http_request") => a -> W.Word64 -> W.Word64 -> W.Word64
 http_request_fee r base per_byte = base + per_byte * total_bytes
   where
     response_size_fee Nothing = max_inter_canister_payload_in_bytes
     response_size_fee (Just max_response_size) = max_response_size
     transform_fee Nothing = 0
-    transform_fee (Just v) = dec_var (V.trial' v #function)
-    dec_var Nothing = error "transform variant in http_request must be #function"
-    dec_var (Just (Candid.FuncRef _ t)) = T.length t
-    total_bytes = response_size_fee (r .! #max_response_bytes)
+    transform_fee (Just v) = dec_var (v .! #function) + fromIntegral (BS.length (v .! #context))
+    dec_var (Candid.FuncRef _ t) = T.length t
+    body_fee Nothing = 0
+    body_fee (Just t) = BS.length t
+    total_bytes = response_size_fee (fmap fromIntegral $ r .! #max_response_bytes)
       + (fromIntegral $ T.length $ r .! #url)
       + (fromIntegral $ sum $ map (\h -> T.length (h .! #name) + T.length (h .! #value)) $ Vec.toList $ r .! #headers)
-      + (fromIntegral $ length $ r .! #body)
+      + (fromIntegral $ body_fee $ r .! #body)
       + (fromIntegral $ transform_fee $ r .! #transform)
 
 ic_http_request ::
     forall a b. (a -> IO b) ~ (ICManagement IO .! "http_request") =>
-    HasAgentConfig => ((W.Word64 -> W.Word64 -> W.Word64) -> IC00) -> String -> Blob -> Maybe String -> IO b
+    HasAgentConfig => ((W.Word64 -> W.Word64 -> W.Word64) -> IC00) -> String -> Blob -> Maybe (String, Blob) -> IO b
 ic_http_request ic00 path canister_id transform =
   callIC (ic00 $ http_request_fee request) "" #http_request request
   where
@@ -263,7 +258,7 @@ ic_ecdsa_public_key' ic00 canister_id path =
        .+ #name .== (T.pack "0")
     )
 
-ic_http_request' :: HasAgentConfig => ((W.Word64 -> W.Word64 -> W.Word64) -> IC00) -> String -> Blob -> (Maybe String, Blob) -> IO ReqResponse
+ic_http_request' :: HasAgentConfig => ((W.Word64 -> W.Word64 -> W.Word64) -> IC00) -> String -> Blob -> (Maybe (String, Blob), Blob) -> IO ReqResponse
 ic_http_request' ic00 path canister_id (transform, cid) =
   callIC' (ic00 $ http_request_fee request) canister_id #http_request request
   where
@@ -358,9 +353,8 @@ ic_sign_with_ecdsa'' user msg =
 httpbin :: HasAgentConfig => String
 httpbin = tc_httpbin agentConfig
 
-toTransformFn :: (AllUniqueLabels r1, (r1 .! "function") ~ Candid.FuncRef r2) => 
-                 Maybe String -> Blob -> Maybe (Var r1)
-toTransformFn name cid = fmap (\n -> V.IsJust #function (Candid.FuncRef (Principal cid) (T.pack n))) name
+toTransformFn :: Maybe (String, a) -> Blob -> Maybe (Rec ('R.R '[ "context" 'R.:-> a, "function" 'R.:-> Candid.FuncRef r]))
+toTransformFn arg cid = fmap (\(n, c) -> empty .+ #function .== (Candid.FuncRef (Principal cid) (T.pack n)) .+ #context .== c) arg
 
 -- The following line noise is me getting out of my way
 -- to be able to use `ic_create` etc. by passing a record that contains

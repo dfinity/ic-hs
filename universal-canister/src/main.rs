@@ -1,6 +1,48 @@
 use std::convert::TryInto;
 
+use candid::{CandidType, Deserialize, Decode, Encode, Principal};
+use serde::Serialize;
+
 mod api;
+
+// Canister http_request types
+
+#[derive(CandidType, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct HttpHeader {
+    pub name: String,
+    pub value: String,
+}
+
+#[derive(CandidType, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct HttpResponse {
+    pub status: u128,
+    pub headers: Vec<HttpHeader>,
+    pub body: Vec<u8>,
+}
+
+#[derive(CandidType, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct TransformArg {
+    pub response: HttpResponse,
+    pub context: Vec<u8>,
+}
+
+fn http_reply_with_transform_context(arg: &TransformArg) -> Vec<u8> {
+    Encode!(&HttpResponse {
+        status: 200 as u128,
+        headers: vec![],
+        body: arg.context.clone(),
+    })
+    .unwrap()
+}
+
+fn http_reply_with_caller(arg: &Vec<u8>) -> Vec<u8> {
+    Encode!(&HttpResponse {
+        status: 200 as u128,
+        headers: vec![],
+        body: Principal::from_slice(arg).to_string().into_bytes(),
+    })
+    .unwrap()
+}
 
 // A simple dynamically typed stack
 
@@ -304,8 +346,15 @@ fn eval(ops: Ops) {
                 api::call_cycles_add128(high, low)
             }
 
-            // canister heartbeat script
+            // canister http_request
             56 => set_transform(stack.pop_blob()),
+            57 => {
+                let arg: TransformArg = Decode!(stack.pop_blob().as_ref(), TransformArg).unwrap();
+                stack.push_blob(http_reply_with_transform_context(&arg));
+            }
+            58 => {
+                stack.push_blob(http_reply_with_caller(&api::caller()));
+            }
 
             _ => api::trap_with(&format!("unknown op {}", op)),
         }

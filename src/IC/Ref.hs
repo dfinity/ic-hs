@@ -880,10 +880,12 @@ icHttpRequest caller r = do
     resp <- liftIO $ sendHttpRequest (r .! #url)
     case (r .! #transform) of
       Nothing -> return resp
-      Just t -> case V.trial' t #function of
-        Nothing -> reject RC_CANISTER_REJECT "transform needs to be a function" (Just EC_CANISTER_REJECTED)
-        Just (FuncRef p m) -> do
+      Just t -> case t .! #function of
+        FuncRef p m -> do
             let cid = principalToEntityId p
+            let arg = R.empty
+                  .+ #response .== resp
+                  .+ #context .== t .! #context
             unless (cid == caller) $
               reject RC_CANISTER_REJECT "transform needs to be exported by a caller canister" (Just EC_CANISTER_REJECTED)
             can_mod <- getCanisterMod cid
@@ -891,7 +893,7 @@ icHttpRequest caller r = do
             env <- canisterEnv cid
             case M.lookup (T.unpack m) (query_methods can_mod) of
               Nothing -> reject RC_DESTINATION_INVALID "transform function with a given name does not exist" (Just EC_METHOD_NOT_FOUND)
-              Just f -> case f cid env (Codec.Candid.encode resp) wasm_state of
+              Just f -> case f managementCanisterId env (Codec.Candid.encode arg) wasm_state of
                 Return (Reply r) -> case Codec.Candid.decode @HttpResponse r of
                   Left _ -> reject RC_CANISTER_ERROR "could not decode the response" (Just EC_INVALID_ENCODING)
                   Right r -> return r
