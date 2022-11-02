@@ -245,6 +245,12 @@ callCyclesAdd128 = op 55
 onTransform :: Exp 'B -> Prog
 onTransform = op 56
 
+getHttpReplyWithTransformContext :: Exp 'B -> Exp 'B
+getHttpReplyWithTransformContext = op 57
+
+getHttpReplyWithCaller :: Exp 'B
+getHttpReplyWithCaller = op 58
+
 -- Some convenience combinators
 
 -- This allows us to write byte expressions as plain string literals
