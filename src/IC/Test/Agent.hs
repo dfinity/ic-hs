@@ -450,7 +450,7 @@ getStateCert'' :: (HasCallStack, HasAgentConfig) => Blob -> Blob -> [[Blob]] -> 
 getStateCert'' sender ecid paths = do
     response <- getStateCert' sender ecid paths
     let c = statusCode (responseStatus response)
-    if not (200 <= c && c < 300) then return $ Left (c, "")
+    if not (200 <= c && c < 300) then return $ Left (c, "Read_state request failed.")
     else do
       gr <- okCBOR response
       b <- asExceptT $ record (field blob "certificate") gr
@@ -806,7 +806,7 @@ callIC'' :: forall s a b.
   Blob -> Blob -> Label s -> a -> IO (HTTPErrOr ReqResponse)
 callIC'' user ecid l x = ic00as' user ecid (T.pack (symbolVal l)) (Candid.encode x)
 
--- Triple primed variants return the response (reply or reject) and allow HTTP errors at `submit` time already
+-- Triple primed variants return the response (reply or reject) and allow HTTP errors
 callIC''' :: forall s a b.
   HasAgentConfig =>
   KnownSymbol s =>

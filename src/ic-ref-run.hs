@@ -33,13 +33,11 @@ import qualified Data.Row.Variants as V
 import qualified Data.Word as W
 
 
-import IC.Constants
 import IC.Version
 import IC.Types
 import IC.Ref
 import IC.DRun.Parse (Ingress(..), parseFile)
 import IC.Management
-import IC.Id.Fresh
 
 
 type DRun = StateT IC IO
@@ -128,15 +126,14 @@ callManagement ecid user_id l x =
 work :: [(SubnetType, String, [(W.Word64, W.Word64)])] -> FilePath -> IO ()
 work subnets msg_file = do
   let subs = map (\(t, n, ranges) -> SubnetConfig t n ranges) subnets
-  let ecid = wordToId 0
   msgs <- parseFile msg_file
 
   let user_id = dummyUserId
   ic <- initialIC subs
   flip evalStateT ic $
     forM_ msgs $ \case
-      Create _ ->
-        callManagement ecid user_id #provisional_create_canister_with_cycles $ empty
+      Create ecid ->
+        callManagement (EntityId ecid) user_id #provisional_create_canister_with_cycles $ empty
           .+ #settings .== Nothing
           .+ #amount .== Nothing
       Install cid filename arg -> do
@@ -177,6 +174,8 @@ main = join . customExecParser (prefs showHelpOnError) $
     versions =
           infoOption (T.unpack implVersion) (long "version" <> help "show version number")
       <*> infoOption (T.unpack specVersion) (long "spec-version" <> help "show spec version number")
+    canister_ids_per_subnet :: W.Word64
+    canister_ids_per_subnet = 1_048_576
     range :: W.Word64 -> (W.Word64, W.Word64)
     range n = (n * canister_ids_per_subnet, (n + 1) * canister_ids_per_subnet - 1)
     defaultSubnetConfig :: [(SubnetType, String, [(W.Word64, W.Word64)])]
@@ -193,7 +192,7 @@ main = join . customExecParser (prefs showHelpOnError) $
             (
               option auto
               (  long "subnet-config"
-              <> help ("choose subnet configurations, e.g., " ++ show defaultSubnetConfig)
+              <> help ("choose subnet configurations (default: " ++ show defaultSubnetConfig ++ ")")
               )
             )
           <|> pure defaultSubnetConfig

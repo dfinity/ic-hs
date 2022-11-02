@@ -33,6 +33,12 @@ type PublicKey = Blob
 newtype EntityId = EntityId { rawEntityId :: Blob }
     deriving (Show, Eq, Ord)
 
+instance Read EntityId where
+  readsPrec _ x =
+    case parsePrettyID x of
+      Just t -> return (t, "")
+      Nothing -> fail "could not read EntityId"
+
 type CanisterId = EntityId
 type CanisterRange = (CanisterId, CanisterId)
 type SubnetId = EntityId
