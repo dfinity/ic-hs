@@ -76,7 +76,7 @@ main = join . customExecParser (prefs showHelpOnError) $
           (
             option auto
             (  long "subnet-config"
-            <> help ("choose subnet configurations, e.g., " ++ show defaultSubnetConfig)
+            <> help ("choose initial subnet configurations (default: " ++ show defaultSubnetConfig ++ ")")
             )
           )
         <|> pure defaultSubnetConfig
