@@ -759,8 +759,7 @@ ecidOfCallID ctxt_id = do
   ctxt <- getCallContext ctxt_id
   case origin ctxt of
     FromUser _rid ecid -> return ecid
-    FromCanister other_ctxt_id _callback -> calleeOfCallID other_ctxt_id
-    FromHeartbeat -> return $ canister ctxt
+    _ -> callerOfCallID ctxt_id
 
 -- Message handling
 
