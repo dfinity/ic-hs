@@ -599,9 +599,11 @@ delegationTree (Timestamp t) (EntityId subnet_id) subnet_pub_key ranges = node
 getSubnetFromCanisterId :: (CanReject m, ICM m) => CanisterId -> m (EntityId, SubnetType, SecretKey, [(W.Word64, W.Word64)])
 getSubnetFromCanisterId cid = do
     subnets <- gets subnets
-    case find (\(_, _, _, ranges) -> find (\(a, b) -> wordToId a <= cid && cid <= wordToId b) ranges /= Nothing) subnets of
+    case subnetOfCid cid subnets of
       Nothing -> reject RC_SYS_FATAL "Canister id does not belong to any subnet." Nothing
       Just x -> return x
+    where
+      subnetOfCid cid subnets = find (\(_, _, _, ranges) -> find (\(a, b) -> wordToId a <= cid && cid <= wordToId b) ranges /= Nothing) subnets
 
 getPrunedCertificate :: (CanReject m, ICM m) => Timestamp -> CanisterId -> [Path] -> m Certificate
 getPrunedCertificate time ecid paths = do
