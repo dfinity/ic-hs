@@ -25,9 +25,9 @@ import IC.Serialise ()
 import IC.StateFile
 import IC.Crypto
 
-withApp :: Maybe FilePath -> (Application -> IO a) -> IO a
-withApp backingFile action =
-    withStore initialIC backingFile (action . handle)
+withApp :: [SubnetConfig] -> Maybe FilePath -> (Application -> IO a) -> IO a
+withApp subnets backingFile action =
+    withStore (initialIC subnets) backingFile (action . handle)
 
 handle :: Store IC -> Application
 handle store req respond = case (requestMethod req, pathInfo req) of
@@ -50,7 +50,7 @@ handle store req respond = case (requestMethod req, pathInfo req) of
                             Left err ->
                                 lift $ invalidRequest err
                             Right () -> do
-                                submitRequest (requestId gr) cr
+                                submitRequest (requestId gr) cr (EntityId ecid)
                                 lift $ empty status202
                 "query" -> withSignedCBOR root_key $ \(gr, ev) -> case queryRequest gr of
                     Left err -> invalidRequest err
@@ -72,8 +72,10 @@ handle store req respond = case (requestMethod req, pathInfo req) of
                                 lift $ invalidRequest err
                             Right () -> do
                                 t <- lift getTimestamp
-                                r <- handleReadState t rsr
-                                lift $ cbor status200 (IC.HTTP.Request.response r)
+                                r <- handleReadState t (EntityId ecid) rsr
+                                case r of
+                                  Left err -> lift $ invalidRequest err
+                                  Right r -> lift $ cbor status200 (IC.HTTP.Request.response r)
                 _ -> notFound req
     _ -> notFound req
   where

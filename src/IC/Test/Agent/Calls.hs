@@ -47,6 +47,7 @@ module IC.Test.Agent.Calls
       ic_start_canister,
       ic_stop_canister'',
       ic_stop_canister,
+      ic_top_up''',
       ic_top_up',
       ic_top_up,
       ic_uninstall'',
@@ -73,7 +74,7 @@ import IC.Test.Agent
 
 ic_create :: (HasCallStack, HasAgentConfig, PartialSettings r) => IC00 -> Rec r -> IO Blob
 ic_create ic00 ps = do
-  r <- callIC ic00 "" #create_canister $ empty
+  r <- callIC ic00 agentEcid #create_canister $ empty
     .+ #settings .== Just (fromPartialSettings ps)
   return (rawPrincipal (r .! #canister_id))
 
@@ -81,7 +82,7 @@ ic_provisional_create ::
     (HasCallStack, HasAgentConfig, PartialSettings r) =>
     IC00 -> Maybe Natural -> Rec r -> IO Blob
 ic_provisional_create ic00 cycles ps = do
-  r <- callIC ic00 "" #provisional_create_canister_with_cycles $ empty
+  r <- callIC ic00 agentEcid #provisional_create_canister_with_cycles $ empty
     .+ #amount .== cycles
     .+ #settings .== Just (fromPartialSettings ps)
   return (rawPrincipal (r .! #canister_id))
@@ -140,7 +141,7 @@ ic_delete_canister ic00 canister_id = do
 
 ic_raw_rand :: HasAgentConfig => IC00 -> IO Blob
 ic_raw_rand ic00 =
-  callIC ic00 "" #raw_rand ()
+  callIC ic00 agentEcid #raw_rand ()
 
 max_inter_canister_payload_in_bytes :: W.Word64
 max_inter_canister_payload_in_bytes = 2 * 1024 * 1024 -- 2 MiB
@@ -179,7 +180,7 @@ ic_ecdsa_public_key ::
     forall a b. (a -> IO b) ~ (ICManagement IO .! "ecdsa_public_key") =>
     HasAgentConfig => IC00 -> Maybe Blob -> Vec.Vector Blob -> IO b
 ic_ecdsa_public_key ic00 canister_id path =
-  callIC ic00 "" #ecdsa_public_key $ empty
+  callIC ic00 agentEcid #ecdsa_public_key $ empty
     .+ #derivation_path .== path
     .+ #canister_id .== (fmap Principal canister_id)
     .+ #key_id .== (empty
@@ -191,7 +192,7 @@ ic_sign_with_ecdsa ::
     forall a b. (a -> IO b) ~ (ICManagement IO .! "sign_with_ecdsa") =>
     HasAgentConfig => IC00 -> Blob -> IO b
 ic_sign_with_ecdsa ic00 msg =
-  callIC ic00 "" #sign_with_ecdsa $ empty
+  callIC ic00 agentEcid #sign_with_ecdsa $ empty
     .+ #derivation_path .== Vec.empty
     .+ #message_hash .== msg
     .+ #key_id .== (empty
@@ -203,14 +204,14 @@ ic_create' ::
     (HasCallStack, HasAgentConfig, PartialSettings r) =>
     IC00 -> Rec r -> IO ReqResponse
 ic_create' ic00 ps = do
-  callIC' ic00 "" #create_canister $ empty
+  callIC' ic00 agentEcid #create_canister $ empty
     .+ #settings .== Just (fromPartialSettings ps)
 
 ic_provisional_create' ::
     (HasCallStack, HasAgentConfig, PartialSettings r) =>
     IC00 -> Maybe Natural -> Rec r -> IO ReqResponse
 ic_provisional_create' ic00 cycles ps = do
-  callIC' ic00 "" #provisional_create_canister_with_cycles $ empty
+  callIC' ic00 agentEcid #provisional_create_canister_with_cycles $ empty
     .+ #amount .== cycles
     .+ #settings .== Just (fromPartialSettings ps)
 
@@ -250,7 +251,7 @@ ic_top_up' ic00 canister_id amount = do
 
 ic_ecdsa_public_key' :: HasAgentConfig => IC00 -> Maybe Blob -> Vec.Vector Blob -> IO ReqResponse
 ic_ecdsa_public_key' ic00 canister_id path =
-  callIC' ic00 "" #ecdsa_public_key $ empty
+  callIC' ic00 agentEcid #ecdsa_public_key $ empty
     .+ #derivation_path .== path
     .+ #canister_id .== (Principal <$> canister_id)
     .+ #key_id .== (empty
@@ -316,11 +317,11 @@ ic_deposit_cycles'' user canister_id = do
 
 ic_raw_rand'' :: HasAgentConfig => Blob -> IO (HTTPErrOr ReqResponse)
 ic_raw_rand'' user = do
-  callIC'' user "" #raw_rand ()
+  callIC'' user agentEcid #raw_rand ()
 
 ic_http_request'' :: HasAgentConfig => Blob -> IO (HTTPErrOr ReqResponse)
 ic_http_request'' user =
-  callIC'' user "" #http_request $ empty
+  callIC'' user agentEcid #http_request $ empty
     .+ #url .== (T.pack $ httpbin)
     .+ #max_response_bytes .== Nothing
     .+ #method .== enum #get
@@ -330,7 +331,7 @@ ic_http_request'' user =
 
 ic_ecdsa_public_key'' :: HasAgentConfig => Blob -> IO (HTTPErrOr ReqResponse)
 ic_ecdsa_public_key'' user =
-  callIC'' user "" #ecdsa_public_key $ empty
+  callIC'' user agentEcid #ecdsa_public_key $ empty
     .+ #derivation_path .== Vec.empty
     .+ #canister_id .== Nothing
     .+ #key_id .== (empty
@@ -340,13 +341,19 @@ ic_ecdsa_public_key'' user =
 
 ic_sign_with_ecdsa'' :: HasAgentConfig => Blob -> Blob -> IO (HTTPErrOr ReqResponse)
 ic_sign_with_ecdsa'' user msg =
-  callIC'' user "" #sign_with_ecdsa $ empty
+  callIC'' user agentEcid #sign_with_ecdsa $ empty
     .+ #derivation_path .== Vec.empty
     .+ #message_hash .== msg
     .+ #key_id .== (empty
        .+ #curve .== enum #secp256k1
        .+ #name .== (T.pack "0")
     )
+
+ic_top_up''' :: HasAgentConfig => IC00' -> Blob -> Natural -> IO (HTTPErrOr ReqResponse)
+ic_top_up''' ic00' canister_id amount = do
+  callIC''' ic00' canister_id #provisional_top_up_canister $ empty
+    .+ #canister_id .== Principal canister_id
+    .+ #amount .== amount
 
 --------------------------------------------------------------------------------
 

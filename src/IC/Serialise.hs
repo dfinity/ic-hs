@@ -52,6 +52,9 @@ instance Serialise ErrorCode where
 deriving instance Generic Response
 instance Serialise Response where
 
+deriving instance Generic SubnetType
+instance Serialise SubnetType where
+
 deriving instance Generic WasmClosure
 instance Serialise WasmClosure where
 

@@ -30,6 +30,7 @@ import GHC.TypeLits (KnownSymbol, symbolVal)
 import Data.Row (empty, (.==), (.+), type (.!), Label)
 import qualified Codec.Candid as Candid
 import qualified Data.Row.Variants as V
+import qualified Data.Word as W
 
 
 import IC.Version
@@ -89,13 +90,13 @@ shorten n s = a ++ (if null b then "" else "...")
   where (a,b) = splitAt n s
 
 
-submitAndRun :: CallRequest -> DRun ()
-submitAndRun r = do
+submitAndRun :: CanisterId -> CallRequest -> DRun ()
+submitAndRun ecid r = do
     lift $ printCallRequest r
     rid <- lift mkRequestId
-    submitRequest rid r
+    submitRequest rid r ecid
     runToCompletion
-    r <- gets (snd . (M.! rid) . requests)
+    (r, _) <- gets (snd . (M.! rid) . requests)
     lift $ printReqStatus r
 
 submitQuery :: QueryRequest -> DRun ()
@@ -117,47 +118,49 @@ callManagement :: forall s a b.
   KnownSymbol s =>
   (a -> IO b) ~ (ICManagement IO .! s) =>
   Candid.CandidArg a =>
-  EntityId -> Label s -> a -> StateT IC IO ()
-callManagement user_id l x =
-  submitAndRun $
+  CanisterId -> EntityId -> Label s -> a -> StateT IC IO ()
+callManagement ecid user_id l x =
+  submitAndRun ecid $
     CallRequest (EntityId mempty) user_id (symbolVal l) (Candid.encode x)
 
-work :: FilePath -> IO ()
-work msg_file = do
+work :: [(SubnetType, String, [(W.Word64, W.Word64)])] -> FilePath -> IO ()
+work subnets msg_file = do
+  let subs = map (\(t, n, ranges) -> SubnetConfig t n ranges) subnets
   msgs <- parseFile msg_file
 
   let user_id = dummyUserId
-  ic <- initialIC
+  ic <- initialIC subs
   flip evalStateT ic $
     forM_ msgs $ \case
-      Create ->
-        callManagement user_id #create_canister $ empty
+      Create ecid ->
+        callManagement (EntityId ecid) user_id #provisional_create_canister_with_cycles $ empty
           .+ #settings .== Nothing
+          .+ #amount .== Nothing
       Install cid filename arg -> do
         wasm <- liftIO $ B.readFile filename
-        callManagement user_id #install_code $ empty
+        callManagement (EntityId cid) user_id #install_code $ empty
           .+ #mode .== V.IsJust #install ()
           .+ #canister_id .== Candid.Principal cid
           .+ #wasm_module .== wasm
           .+ #arg .== arg
       Reinstall cid filename arg -> do
         wasm <- liftIO $ B.readFile filename
-        callManagement user_id #install_code $ empty
+        callManagement (EntityId cid) user_id #install_code $ empty
           .+ #mode .== V.IsJust #reinstall ()
           .+ #canister_id .== Candid.Principal cid
           .+ #wasm_module .== wasm
           .+ #arg .== arg
       Upgrade cid filename arg -> do
         wasm <- liftIO $ B.readFile filename
-        callManagement user_id #install_code $ empty
+        callManagement (EntityId cid) user_id #install_code $ empty
           .+ #mode .== V.IsJust #upgrade ()
           .+ #canister_id .== Candid.Principal cid
           .+ #wasm_module .== wasm
           .+ #arg .== arg
       Query  cid method arg ->
-        submitQuery  (QueryRequest (EntityId cid) user_id method arg)
+        submitQuery (QueryRequest (EntityId cid) user_id method arg)
       Update cid method arg ->
-        submitAndRun (CallRequest (EntityId cid) user_id method arg)
+        submitAndRun (EntityId cid) (CallRequest (EntityId cid) user_id method arg)
 
 main :: IO ()
 main = join . customExecParser (prefs showHelpOnError) $
@@ -171,6 +174,12 @@ main = join . customExecParser (prefs showHelpOnError) $
     versions =
           infoOption (T.unpack implVersion) (long "version" <> help "show version number")
       <*> infoOption (T.unpack specVersion) (long "spec-version" <> help "show spec version number")
+    canister_ids_per_subnet :: W.Word64
+    canister_ids_per_subnet = 1_048_576
+    range :: W.Word64 -> (W.Word64, W.Word64)
+    range n = (n * canister_ids_per_subnet, (n + 1) * canister_ids_per_subnet - 1)
+    defaultSubnetConfig :: [(SubnetType, String, [(W.Word64, W.Word64)])]
+    defaultSubnetConfig = [(System, "sk1", [range 0]), (Application, "sk2", [range 1])]
     parser :: Parser (IO ())
     parser = work
       <$  strOption
@@ -178,6 +187,15 @@ main = join . customExecParser (prefs showHelpOnError) $
           <> short 'c'
           <> metavar "CONFIG"
           <> value ""
+          )
+      <*> (
+            (
+              option auto
+              (  long "subnet-config"
+              <> help ("choose initial subnet configurations (default: " ++ show defaultSubnetConfig ++ ")")
+              )
+            )
+          <|> pure defaultSubnetConfig
           )
       <*> strArgument
           (  metavar "script"

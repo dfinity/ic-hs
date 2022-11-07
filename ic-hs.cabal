@@ -313,6 +313,7 @@ executable ic-ref-test
   build-depends: time
   build-depends: transformers
   build-depends: unordered-containers
+  build-depends: utf8-string
   build-depends: vector
   build-depends: wai
   build-depends: warp
@@ -343,6 +344,7 @@ executable ic-ref-test
   other-modules: IC.HTTP.GenR
   other-modules: IC.HTTP.GenR.Parse
   other-modules: IC.HTTP.RequestId
+  other-modules: IC.Id.Fresh
   other-modules: IC.Id.Forms
   other-modules: IC.Management
   other-modules: IC.Ref.IO
@@ -378,6 +380,7 @@ executable ic-request-id
   build-depends: template-haskell
   build-depends: text
   build-depends: unordered-containers
+  build-depends: utf8-string
   build-depends: either
   other-modules: IC.CBOR.Utils
   other-modules: IC.Hash

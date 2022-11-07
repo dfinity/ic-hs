@@ -12,6 +12,7 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 
 import qualified IC.Crypto.BLS as BLS
+import IC.Id.Fresh(wordToId)
 import IC.Ref
 import IC.Types
 import IC.Serialise ()
@@ -29,6 +30,12 @@ main :: IO ()
 main = do
     BLS.init
     defaultMain tests
+
+defaultSubnetConfig :: [SubnetConfig]
+defaultSubnetConfig = [SubnetConfig Application "sk" [(0, 0)]]
+
+defaultEcid :: CanisterId
+defaultEcid = wordToId 0
 
 tests :: TestTree
 tests = testGroup "ic-ref unit tests"
@@ -54,19 +61,19 @@ tests = testGroup "ic-ref unit tests"
         removeFile fn
 
         -- Create the state
-        withStore initialIC (Just fn) $ \store -> do
-          modifyStore store $ submitRequest "dummyrequestid" $
-            CallRequest (EntityId mempty) (EntityId "yay") "create_canister" "DIDL\x01\x6c\0\1\0"
+        withStore (initialIC defaultSubnetConfig) (Just fn) $ \store -> do
+          modifyStore store $ submitRequest "dummyrequestid"
+            (CallRequest (EntityId mempty) (EntityId "yay") "provisional_create_canister_with_cycles" "DIDL\x01\x6c\0\1\0") defaultEcid
 
         -- now the file should exist
         doesFileExist fn  >>= assertBool "File exists"
 
-        withStore initialIC (Just fn) $ \store -> do
+        withStore (initialIC defaultSubnetConfig) (Just fn) $ \store -> do
           ic <- peekStore store
           assertBool "No canisters yet expected" (null (canisters ic))
           modifyStore store runToCompletion
 
-        withStore initialIC (Just fn) $ \store -> do
+        withStore (initialIC defaultSubnetConfig) (Just fn) $ \store -> do
           ic <- peekStore store
           case M.elems (canisters ic) of
             [] -> assertFailure "No canisters created"

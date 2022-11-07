@@ -57,9 +57,11 @@ import qualified Data.Map as M
 import qualified Data.Row as R
 import qualified Data.Row.Variants as V
 import qualified Data.ByteString.Lazy as BS
+import qualified Data.ByteString.Lazy.UTF8 as BLU
 import qualified Data.Text as T
 import qualified Data.Vector as Vec
 import qualified Data.Set as S
+import qualified Data.Word as W
 import Data.List
 import Data.Maybe
 import Numeric.Natural
@@ -78,6 +80,7 @@ import IC.Constants
 import IC.Canister
 import IC.CBOR.Utils
 import IC.Id.Fresh
+import IC.Id.Forms(mkSelfAuthenticatingId)
 import IC.Utils
 import IC.Management
 import IC.HashTree hiding (Blob)
@@ -168,7 +171,7 @@ data CallContext = CallContext
   deriving (Show)
 
 data CallOrigin
-  = FromUser RequestID
+  = FromUser RequestID CanisterId
   | FromCanister CallId Callback
   | FromHeartbeat
   deriving (Eq, Show)
@@ -189,32 +192,38 @@ data Message
 
 data IC = IC
   { canisters :: CanisterId ↦ CanState
-  , requests :: RequestID ↦ (CallRequest, RequestStatus)
+  , requests :: RequestID ↦ (CallRequest, (RequestStatus, CanisterId))
   , messages :: Seq Message
   , call_contexts :: CallId ↦ CallContext
   , rng :: StdGen
   , secretRootKey :: SecretKey
-  , secretSubnetKey :: SecretKey
+  , rootSubnet :: Maybe EntityId
+  , subnets :: [(EntityId, SubnetType, SecretKey, [(W.Word64, W.Word64)])]
   }
   deriving (Show)
 
 -- The functions below want stateful access to a value of type 'IC'
 type ICM m = (MonadState IC m, HasCallStack, MonadIO m)
 
-initialIC :: IO IC
-initialIC = do
-    let sk1 = createSecretKeyBLS "ic-ref's very secure secret key"
-    let sk2 = createSecretKeyBLS "ic-ref's very secure subnet key"
-    IC mempty mempty mempty mempty <$> newStdGen <*> pure sk1 <*> pure sk2
+initialIC :: [SubnetConfig] -> IO IC
+initialIC subnets = do
+    let root_subnet = find (\conf -> subnet_type conf == System) subnets
+    let sk = case root_subnet of Nothing -> createSecretKeyBLS "ic-ref's very secure secret root key"
+                                 Just conf -> key conf
+    IC mempty mempty mempty mempty <$> newStdGen <*> pure sk <*> pure (fmap (sub_id . key) root_subnet) <*> pure (map sub subnets)
+  where
+    sub conf = (sub_id (key conf), subnet_type conf, key conf, canister_ranges conf)
+    sub_id = EntityId . mkSelfAuthenticatingId . toPublicKey
+    key = createSecretKeyBLS . BLU.fromString . nonce
 
 -- Request handling
 
-findRequest :: RequestID -> IC -> Maybe (CallRequest, RequestStatus)
+findRequest :: RequestID -> IC -> Maybe (CallRequest, (RequestStatus, CanisterId))
 findRequest rid ic = M.lookup rid (requests ic)
 
 setReqStatus :: ICM m => RequestID -> RequestStatus -> m ()
 setReqStatus rid s = modify $ \ic ->
-  ic { requests = M.adjust (\(r,_) -> (r,s)) rid (requests ic) }
+  ic { requests = M.adjust (\(r,(_,ecid)) -> (r,(s,ecid))) rid (requests ic) }
 
 calleeOfCallRequest :: CallRequest -> EntityId
 calleeOfCallRequest = \case
@@ -457,11 +466,11 @@ handleQuery time (QueryRequest canister_id user_id method arg) =
       Return (Reject (rc, rm)) -> reject rc rm (Just EC_CANISTER_REJECTED)
       Return (Reply res) -> return $ Replied res
 
-handleReadState :: ICM m => Timestamp -> ReadStateRequest -> m ReqResponse
-handleReadState time (ReadStateRequest _sender paths) = do
+handleReadState :: ICM m => Timestamp -> CanisterId -> ReadStateRequest -> m (Either T.Text ReqResponse)
+handleReadState time ecid (ReadStateRequest _sender paths) = onReject (\(_, s, _) -> return $ Left $ T.pack s) $ do
     -- NB: Already authorized in authSyncRequest
-    cert <- getPrunedCertificate time (["time"] : paths)
-    return $ ReadStateResponse cert
+    cert <- getPrunedCertificate time ecid (["time"] : paths)
+    return $ Right $ ReadStateResponse cert
 
 checkEffectiveCanisterID :: RequestValidation m => CanisterId -> CanisterId -> MethodName -> Blob -> m ()
 checkEffectiveCanisterID ecid cid method arg
@@ -521,6 +530,7 @@ inspectIngress (CallRequest canister_id user_id method arg)
 stateTree :: Timestamp -> IC -> LabeledTree
 stateTree (Timestamp t) ic = node
   [ "time" =: val t
+  , "subnet" =: node (map subnet_tree (subnets ic))
   , "request_status" =: node
     [ rid =: case rs of
         Received -> node
@@ -537,7 +547,7 @@ stateTree (Timestamp t) ic = node
           , "reject_code" =: val (rejectCode c)
           , "reject_message" =: val (T.pack msg)
           ]
-    | (rid, (_, rs)) <- M.toList (requests ic)
+    | (rid, (_, (rs, _))) <- M.toList (requests ic)
     ]
   , "canister" =: node
     [ cid =: node (
@@ -563,14 +573,19 @@ stateTree (Timestamp t) ic = node
     val = Value . toCertVal
     str = val @T.Text
     (=:) = M.singleton
+    subnet_tree (EntityId subnet_id, _, _, ranges) = subnet_id =: node (
+        [ "public_key" =: val subnet_id
+        , "canister_ranges" =: val (encodeCanisterRangeList $ map (\(a, b) -> (wordToId a, wordToId b)) ranges)
+        ]
+      )
 
-delegationTree :: Timestamp -> SubnetId -> Blob -> LabeledTree
-delegationTree (Timestamp t) (EntityId subnet_id) subnet_pub_key = node
+delegationTree :: Timestamp -> SubnetId -> Blob -> [(W.Word64, W.Word64)] -> LabeledTree
+delegationTree (Timestamp t) (EntityId subnet_id) subnet_pub_key ranges = node
   [ "time" =: val t
   , "subnet" =: node
     [ subnet_id =: node (
           [ "public_key" =: val subnet_pub_key
-          , "canister_ranges" =: val (encodeCanisterRangeList [icCanisterIdRange])
+          , "canister_ranges" =: val (encodeCanisterRangeList $ map (\(a, b) -> (wordToId a, wordToId b)) ranges)
           ]
       )
     ]
@@ -581,18 +596,26 @@ delegationTree (Timestamp t) (EntityId subnet_id) subnet_pub_key = node
     val = Value . toCertVal
     (=:) = M.singleton
 
-getPrunedCertificate :: ICM m => Timestamp -> [Path] -> m Certificate
-getPrunedCertificate time paths = do
+getSubnetFromCanisterId :: (CanReject m, ICM m) => CanisterId -> m (EntityId, SubnetType, SecretKey, [(W.Word64, W.Word64)])
+getSubnetFromCanisterId cid = do
+    subnets <- gets subnets
+    case subnetOfCid cid subnets of
+      Nothing -> reject RC_SYS_FATAL "Canister id does not belong to any subnet." Nothing
+      Just x -> return x
+    where
+      subnetOfCid cid subnets = find (\(_, _, _, ranges) -> find (\(a, b) -> wordToId a <= cid && cid <= wordToId b) ranges /= Nothing) subnets
+
+getPrunedCertificate :: (CanReject m, ICM m) => Timestamp -> CanisterId -> [Path] -> m Certificate
+getPrunedCertificate time ecid paths = do
+    root_subnet <- gets rootSubnet
+    sk1 <- gets secretRootKey
+    (subnet_id, _, sk2, ranges) <- getSubnetFromCanisterId ecid
     full_tree <- gets (construct . stateTree time)
     let cert_tree = prune full_tree (["time"] : paths)
-    sk1 <- gets secretRootKey
-    sk2 <- gets secretSubnetKey
-    return $ signCertificate time sk1 (Just (fake_subnet_id, sk2)) cert_tree
-  where
-    fake_subnet_id = EntityId "\x01"
+    return $ signCertificate time sk1 (if root_subnet == Just subnet_id then Nothing else Just (subnet_id, sk2, ranges)) cert_tree
 
-signCertificate :: Timestamp -> SecretKey -> Maybe (SubnetId, SecretKey) -> HashTree -> Certificate
-signCertificate time rootKey (Just (subnet_id, subnet_key)) cert_tree =
+signCertificate :: Timestamp -> SecretKey -> Maybe (SubnetId, SecretKey, [(W.Word64, W.Word64)]) -> HashTree -> Certificate
+signCertificate time rootKey (Just (subnet_id, subnet_key, ranges)) cert_tree =
     Certificate { cert_tree, cert_sig, cert_delegation }
  where
     cert_sig = signPure "ic-state-root" subnet_key (reconstruct cert_tree)
@@ -602,7 +625,7 @@ signCertificate time rootKey (Just (subnet_id, subnet_key)) cert_tree =
       encodeCert $
       signCertificate time rootKey Nothing $
       construct $
-      delegationTree time subnet_id (toPublicKey subnet_key)
+      delegationTree time subnet_id (toPublicKey subnet_key) ranges
 
 signCertificate _time rootKey Nothing cert_tree =
     Certificate { cert_tree, cert_sig, cert_delegation = Nothing }
@@ -613,30 +636,30 @@ signCertificate _time rootKey Nothing cert_tree =
 -- Since ic-ref creates a fresh state tree everytime it is used, we _could_
 -- construct one with just the required data, e.g. only of the canister in
 -- question. That would not be secure, but `ic-ref` doesn’t have to be.
-getDataCertificate :: ICM m => Timestamp -> CanisterId -> m Blob
+getDataCertificate :: (CanReject m, ICM m) => Timestamp -> CanisterId -> m Blob
 getDataCertificate t cid = do
-    encodeCert <$> getPrunedCertificate t
+    encodeCert <$> getPrunedCertificate t cid
         [["time"], ["canister", rawEntityId cid, "certified_data"]]
 
 -- Asynchronous requests
 
 -- | Submission simply enqueues requests
 
-submitRequest :: ICM m => RequestID -> CallRequest -> m ()
-submitRequest rid r = modify $ \ic ->
+submitRequest :: ICM m => RequestID -> CallRequest -> CanisterId -> m ()
+submitRequest rid r ecid = modify $ \ic ->
   if M.member rid (requests ic)
   then ic
-  else ic { requests = M.insert rid (r, Received) (requests ic) }
+  else ic { requests = M.insert rid (r, (Received, ecid)) (requests ic) }
 
 
 -- | Eventually, they are processed
 
-processRequest :: ICM m => (RequestID, CallRequest) -> m ()
-processRequest (rid, CallRequest canister_id _user_id method arg) =
+processRequest :: ICM m => (RequestID, CallRequest, CanisterId) -> m ()
+processRequest (rid, CallRequest canister_id _user_id method arg, ecid) =
   onReject (setReqStatus rid . CallResponse . canisterRejected) $ do
     ctxt_id <- newCallContext $ CallContext
       { canister = canister_id
-      , origin = FromUser rid
+      , origin = FromUser rid ecid
       , needs_to_respond = NeedsToRespond True
       , deleted = False
       , last_trap = Nothing
@@ -713,7 +736,7 @@ callerOfCallID :: ICM m => CallId -> m EntityId
 callerOfCallID ctxt_id = do
   ctxt <- getCallContext ctxt_id
   case origin ctxt of
-    FromUser rid -> callerOfRequest rid
+    FromUser rid _ -> callerOfRequest rid
     FromCanister other_ctxt_id _callback -> calleeOfCallID other_ctxt_id
     FromHeartbeat -> return $ canister ctxt
 
@@ -732,6 +755,13 @@ starveCallContext ctxt_id = do
   let (msg, err) | Just t <- last_trap ctxt = ("canister trapped: " ++ t, EC_CANISTER_TRAPPED)
                  | otherwise                = ("canister did not respond", EC_CANISTER_DID_NOT_REPLY)
   rejectCallContext ctxt_id (RC_CANISTER_ERROR, msg, Just err)
+
+ecidOfCallID :: ICM m => CallId -> m CanisterId
+ecidOfCallID ctxt_id = do
+  ctxt <- getCallContext ctxt_id
+  case origin ctxt of
+    FromUser _rid ecid -> return ecid
+    _ -> callerOfCallID ctxt_id
 
 -- Message handling
 
@@ -774,7 +804,7 @@ processMessage m = case m of
     ctxt <- getCallContext ctxt_id
     case origin ctxt of
       FromHeartbeat -> error "Response from heartbeat"
-      FromUser rid -> setReqStatus rid $ CallResponse $
+      FromUser rid _ -> setReqStatus rid $ CallResponse $
         -- NB: Here cycles disappear
         case response of
           Reject (rc, msg) -> canisterRejected (rc, msg, Nothing)
@@ -846,7 +876,7 @@ invokeManagementCanister caller ctxt_id (Public method_name arg) =
       "canister_status" -> atomic $ onlyController caller icCanisterStatus
       "delete_canister" -> atomic $ onlyController caller icDeleteCanister
       "deposit_cycles" -> atomic $ icDepositCycles ctxt_id
-      "provisional_create_canister_with_cycles" -> atomic $ icCreateCanisterWithCycles caller
+      "provisional_create_canister_with_cycles" -> atomic $ icCreateCanisterWithCycles caller ctxt_id
       "provisional_top_up_canister" -> atomic icTopUpCanister
       "raw_rand" -> atomic icRawRand
       "http_request" -> atomic $ icHttpRequest caller
@@ -904,25 +934,31 @@ icCreateCanister caller ctxt_id r = do
     forM_ (r .! #settings) validateSettings
     available <- getCallContextCycles ctxt_id
     setCallContextCycles ctxt_id 0
-    cid <- icCreateCanisterCommon caller available
+    (_, _, _, ranges) <- getSubnetFromCanisterId caller
+    cid <- icCreateCanisterCommon ranges caller available
     forM_ (r .! #settings) $ applySettings cid
     return (#canister_id .== entityIdToPrincipal cid)
 
-icCreateCanisterWithCycles :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "provisional_create_canister_with_cycles"
-icCreateCanisterWithCycles caller r = do
+icCreateCanisterWithCycles :: (ICM m, CanReject m) => EntityId -> CallId -> ICManagement m .! "provisional_create_canister_with_cycles"
+icCreateCanisterWithCycles caller ctxt_id r = do
     forM_ (r .! #settings) validateSettings
-    cid <- icCreateCanisterCommon caller (fromMaybe cDEFAULT_PROVISIONAL_CYCLES_BALANCE (r .! #amount))
+    ecid <- ecidOfCallID ctxt_id
+    (_, _, _, ranges) <- getSubnetFromCanisterId ecid
+    cid <- icCreateCanisterCommon ranges caller (fromMaybe cDEFAULT_PROVISIONAL_CYCLES_BALANCE (r .! #amount))
     forM_ (r .! #settings) $ applySettings cid
     return (#canister_id .== entityIdToPrincipal cid)
 
-icCreateCanisterCommon :: (ICM m, CanReject m) => EntityId -> Natural -> m EntityId
-icCreateCanisterCommon controller amount = do
-    new_id <- gets (freshId . M.keys . canisters)
-    let currentTime = 0 -- ic-ref lives in the 70ies
-    createEmptyCanister new_id (S.singleton controller) currentTime
-    -- Here we fill up the canister with the cycles provided by the caller
-    setBalance new_id amount
-    return new_id
+icCreateCanisterCommon :: (ICM m, CanReject m) => [(W.Word64, W.Word64)] -> EntityId -> Natural -> m EntityId
+icCreateCanisterCommon ranges controller amount = do
+    taken <- gets (M.keys . canisters)
+    case freshId ranges taken of
+      Nothing -> reject RC_SYS_FATAL ("Could not create canister. Subnet has surpassed its canister ID allocation.") Nothing
+      Just new_id -> do
+        let currentTime = 0 -- ic-ref lives in the 70ies
+        createEmptyCanister new_id (S.singleton controller) currentTime
+        -- Here we fill up the canister with the cycles provided by the caller
+        setBalance new_id amount
+        return new_id
 
 validateSettings :: CanReject m => Settings -> m ()
 validateSettings r = do
@@ -1205,9 +1241,9 @@ newCall from_ctxt_id call = do
 -- Scheduling
 
 -- | Pick next request in state `received`
-nextReceived :: ICM m => m (Maybe (RequestID, CallRequest))
+nextReceived :: ICM m => m (Maybe (RequestID, CallRequest, CanisterId))
 nextReceived = gets $ \ic -> listToMaybe
-  [ (rid,r) | (rid, (r, Received)) <- M.toList (requests ic) ]
+  [ (rid,r,ecid) | (rid, (r, (Received, ecid))) <- M.toList (requests ic) ]
 
 -- A call context is still waiting for a response if…
 willReceiveResponse :: IC -> CallId -> Bool

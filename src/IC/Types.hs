@@ -9,8 +9,10 @@ module IC.Types where
 
 import qualified Data.ByteString.Lazy.Char8 as BS
 import qualified Data.ByteString.Builder as BS
+import qualified Data.ByteString.UTF8 as BSU
 import qualified Data.Map as M
 import qualified Data.Text as T
+import qualified Data.Word as W
 import qualified Text.Hex as T hiding (Text)
 import Data.Digest.CRC
 import Data.Digest.CRC32
@@ -30,6 +32,12 @@ type Blob = BS.ByteString
 type PublicKey = Blob
 newtype EntityId = EntityId { rawEntityId :: Blob }
     deriving (Show, Eq, Ord)
+
+instance Read EntityId where
+  readsPrec _ x =
+    case parsePrettyID x of
+      Just t -> return (t, "")
+      Nothing -> fail "could not read EntityId"
 
 type CanisterId = EntityId
 type CanisterRange = (CanisterId, CanisterId)
@@ -51,6 +59,20 @@ prettyID (EntityId blob) =
 
     base32 = filter (/='=') . T.unpack . T.toLower . encodeBase32 . BS.toStrict
 
+parsePrettyID :: String -> Maybe EntityId
+parsePrettyID b = case raw of
+    Left _ -> Nothing
+    Right x -> validate x
+  where
+    raw = decodeBase32Unpadded $ BSU.fromString $ filter (/='-') b
+    validate x
+      | a == BS.toLazyByteString (BS.word32BE checksum) = Just $ EntityId b
+      | otherwise = Nothing
+      where
+        CRC32 checksum = digest (BS.toStrict b)
+        y = BS.fromStrict x
+        a = BS.take 4 y
+        b = BS.drop 4 y
 
 newtype NeedsToRespond = NeedsToRespond Bool
   deriving (Show, Eq)
@@ -96,6 +118,32 @@ errorCode = printf "ICHS%04d" . fromEnum
 
 data Response = Reply Blob | Reject (RejectCode, String)
   deriving Show
+
+data SubnetType = Application | VerifiedApplication | System
+  deriving Eq
+
+peelOffPrefix :: [(a, String)] -> String -> Maybe (a, String)
+peelOffPrefix xs y = foldl (\z (a, x) -> case z of Nothing -> aux a x
+                                                   Just _ -> z) Nothing xs
+  where
+    aux a x = if isPrefixOf x y then Just (a, drop (length x) y) else Nothing
+
+instance Read SubnetType where
+  readsPrec _ x = do
+    case peelOffPrefix [(Application, "application"), (VerifiedApplication, "verified_application"), (System, "system")] x of
+      Just (t, s) -> return (t, s)
+      Nothing -> fail "could not read SubnetType"
+
+instance Show SubnetType where
+  show Application = "application"
+  show VerifiedApplication = "verified_application"
+  show System = "system"
+
+data SubnetConfig = SubnetConfig
+    { subnet_type :: SubnetType
+    , nonce :: String
+    , canister_ranges :: [(W.Word64, W.Word64)]
+    }
 
 -- Abstract canisters
 
