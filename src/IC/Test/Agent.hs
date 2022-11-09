@@ -626,7 +626,7 @@ codePred expt pred response = assertBool
     (pred c)
   where
     c = statusCode (responseStatus response)
-    msg = T.unpack (T.decodeUtf8With T.lenientDecode (BS.toStrict (BS.take 200 (responseBody response))))
+    msg = T.unpack (T.decodeUtf8With T.lenientDecode (BS.toStrict (BS.take 1000 (responseBody response))))
 
 code2xx, code202, code4xx, code202_or_4xx  :: HasCallStack => Response BS.ByteString -> IO ()
 code2xx = codePred "2xx" $ \c -> 200 <= c && c < 300
