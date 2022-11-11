@@ -1,3 +1,5 @@
+use candid::{CandidType, Decode, Deserialize, Encode, Principal};
+use serde::Serialize;
 use std::convert::TryInto;
 
 /// Operands used in encoding UC payloads.
@@ -95,11 +97,44 @@ try_from_u8!(
         GetGlobalCounter = 65,
         GetPerformanceCounter = 66,
         MsgMethodName = 67,
-        SetTransform = 68,
+        ParsePrincipal = 68,
+        SetTransform = 69,
+        GetHttpReplyWithBody = 70,
+        GetHttpTransformContext = 71,
     }
 );
 
 mod api;
+
+// Canister http_request types
+
+#[derive(CandidType, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct HttpHeader {
+    pub name: String,
+    pub value: String,
+}
+
+#[derive(CandidType, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct HttpResponse {
+    pub status: u128,
+    pub headers: Vec<HttpHeader>,
+    pub body: Vec<u8>,
+}
+
+#[derive(CandidType, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct TransformArg {
+    pub response: HttpResponse,
+    pub context: Vec<u8>,
+}
+
+fn http_reply_with_body(body: &Vec<u8>) -> Vec<u8> {
+    Encode!(&HttpResponse {
+        status: 200 as u128,
+        headers: vec![],
+        body: body.clone(),
+    })
+    .unwrap()
+}
 
 // A simple dynamically typed stack
 
@@ -378,7 +413,19 @@ fn eval(ops_bytes: OpsBytes) {
                 stack.push_int64(api::performance_counter(_type))
             }
             Ops::MsgMethodName => stack.push_blob(api::method_name()),
+            Ops::ParsePrincipal => {
+                let arg = stack.pop_blob();
+                stack.push_blob(Principal::from_slice(&arg).to_string().as_bytes().to_vec())
+            }
             Ops::SetTransform => set_transform(stack.pop_blob()),
+            Ops::GetHttpReplyWithBody => {
+                let body = stack.pop_blob();
+                stack.push_blob(http_reply_with_body(&body));
+            },
+            Ops::GetHttpTransformContext => {
+                let arg = Decode!(stack.pop_blob().as_ref(), TransformArg).unwrap();
+                stack.push_blob(arg.context);
+            },
         }
     }
 }

@@ -245,14 +245,17 @@ performanceCounter = op 66
 methodName :: Exp 'B
 methodName = op 67
 
+parsePrincipal :: Exp 'B -> Exp 'B
+parsePrincipal = op 68
+
 onTransform :: Exp 'B -> Prog
-onTransform = op 68
+onTransform = op 69
 
 getHttpReplyWithBody :: Exp 'B -> Exp 'B
-getHttpReplyWithBody = op 69
+getHttpReplyWithBody = op 70
 
-getHttpTransformContext :: Exp 'B
-getHttpTransformContext = op 70
+getHttpTransformContext :: Exp 'B -> Exp 'B
+getHttpTransformContext = op 71
 
 -- Some convenience combinators
 

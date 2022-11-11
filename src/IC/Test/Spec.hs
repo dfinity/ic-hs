@@ -74,13 +74,13 @@ canister_http_calls base_fee per_byte_fee =
       (resp .! #body) @?= "Dummy!"
 
     , testCase "simple call with transform, reflect transform context" $ do
-      cid <- install (onTransform (callback (replyData (getHttpReplyWithTransformContext argData))))
+      cid <- install (onTransform (callback (replyData (getHttpReplyWithBody (getHttpTransformContext argData)))))
       resp <- ic_http_request (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "base64/SGVsbG8gd29ybGQh" cid (Just ("transform", "asdf"))
       (resp .! #status) @?= 200
       (resp .! #body) @?= "asdf"
 
     , testCase "simple call with transform, check caller of transform" $ do
-      cid <- install (onTransform (callback (replyData getHttpReplyWithCaller)))
+      cid <- install (onTransform (callback (replyData (getHttpReplyWithBody (parsePrincipal caller)))))
       resp <- ic_http_request (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "base64/SGVsbG8gd29ybGQh" cid (Just ("transform", "caller"))
       (resp .! #status) @?= 200
       (resp .! #body) @?= "aaaaa-aa"
