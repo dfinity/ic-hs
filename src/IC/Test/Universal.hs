@@ -224,11 +224,11 @@ stable64Write = op 49
 i64tob :: Exp 'I64 -> Exp 'B
 i64tob = op 50
 
-getBalance128 :: Exp 'B
-getBalance128 = op 51
-
 getAvailableCycles128 :: Exp 'B
-getAvailableCycles128 = op 52
+getAvailableCycles128 = op 51
+
+getBalance128 :: Exp 'B
+getBalance128 = op 52
 
 getRefund128 :: Exp 'B
 getRefund128 = op 53

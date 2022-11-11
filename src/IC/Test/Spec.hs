@@ -409,7 +409,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     ic_install (ic00via cid) (enum #reinstall) can_id2 trivialWasmModule ""
 
   , simpleTestCase "aaaaa-aa (inter-canister, large)" $ \cid -> do
-    universal_wasm <- getTestWasm "universal_canister"
+    universal_wasm <- getTestWasm "universal-canister"
     can_id <- ic_provisional_create (ic00via cid) Nothing empty
     ic_install (ic00via cid) (enum #install) can_id universal_wasm ""
     do call can_id $ replyData "Hi"
@@ -1341,14 +1341,14 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     , testCase "uninstall and reinstall wipes state" $ do
       cid <- install (setGlobal "FOO")
       ic_uninstall ic00 cid
-      universal_wasm <- getTestWasm "universal_canister"
+      universal_wasm <- getTestWasm "universal-canister"
       ic_install ic00 (enum #install) cid universal_wasm (run (setGlobal "BAR"))
       query cid (replyData getGlobal) >>= is "BAR"
 
     , testCase "uninstall and reinstall wipes stable memory" $ do
       cid <- install (ignore (stableGrow (int 1)) >>> stableWrite (int 0) "FOO")
       ic_uninstall ic00 cid
-      universal_wasm <- getTestWasm "universal_canister"
+      universal_wasm <- getTestWasm "universal-canister"
       ic_install ic00 (enum #install) cid universal_wasm (run (setGlobal "BAR"))
       query cid (replyData (i2b stableSize)) >>= asWord32 >>= is 0
       do query cid $
@@ -1364,7 +1364,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
       cid <- install $ setCertifiedData "FOO"
       query cid (replyData getCertificate) >>= extractCertData cid >>= is "FOO"
       ic_uninstall ic00 cid
-      universal_wasm <- getTestWasm "universal_canister"
+      universal_wasm <- getTestWasm "universal-canister"
       ic_install ic00 (enum #install) cid universal_wasm (run noop)
       query cid (replyData getCertificate) >>= extractCertData cid >>= is ""
 
@@ -1456,7 +1456,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
       awaitStatus grs1 >>= isReject [4]
 
       step "Reinstall"
-      universal_wasm <- getTestWasm "universal_canister"
+      universal_wasm <- getTestWasm "universal-canister"
       ic_install ic00 (enum #install) cid universal_wasm (run (setGlobal "BAR"))
 
       step "Create second long-running call"
@@ -1608,7 +1608,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
 
     , testCase "module_hash of universal canister" $ do
         cid <- install noop
-        universal_wasm <- getTestWasm "universal_canister"
+        universal_wasm <- getTestWasm "universal-canister"
         cert <- getStateCert anonymousUser cid [["canister", cid, "module_hash"]]
         certValue @Blob cert ["canister", cid, "module_hash"] >>= is (sha256 universal_wasm)
 
@@ -1809,7 +1809,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
           return cid
         create_via cid initial_cycles = do
           cid2 <- ic_create (ic00viaWithCycles cid initial_cycles) empty
-          universal_wasm <- getTestWasm "universal_canister"
+          universal_wasm <- getTestWasm "universal-canister"
           ic_install (ic00via cid) (enum #install) cid2 universal_wasm (run noop)
           return cid2
     in
