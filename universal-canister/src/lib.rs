@@ -101,6 +101,6 @@ try_from_u8!(
         SetTransform = 69,
         GetHttpReplyWithBody = 70,
         GetHttpTransformContext = 71,
+        StableWrite64Uniform = 72,
     }
 );
-

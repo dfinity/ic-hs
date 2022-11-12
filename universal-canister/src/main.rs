@@ -1,5 +1,4 @@
 use candid::{CandidType, Decode, Deserialize, Encode, Principal};
-use serde::Serialize;
 use std::convert::TryInto;
 use universal_canister::Ops;
 
@@ -7,20 +6,20 @@ mod api;
 
 // Canister http_request types
 
-#[derive(CandidType, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(CandidType, Deserialize)]
 pub struct HttpHeader {
     pub name: String,
     pub value: String,
 }
 
-#[derive(CandidType, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(CandidType, Deserialize)]
 pub struct HttpResponse {
     pub status: u128,
     pub headers: Vec<HttpHeader>,
     pub body: Vec<u8>,
 }
 
-#[derive(CandidType, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(CandidType, Deserialize)]
 pub struct TransformArg {
     pub response: HttpResponse,
     pub context: Vec<u8>,
@@ -322,6 +321,15 @@ fn eval(ops_bytes: OpsBytes) {
             Ops::GetHttpTransformContext => {
                 let arg = Decode!(stack.pop_blob().as_ref(), TransformArg).unwrap();
                 stack.push_blob(arg.context);
+            }
+            Ops::StableWrite64Uniform => {
+                let length = stack.pop_int64();
+                let byte = stack.pop_int64();
+                let offset = stack.pop_int64();
+
+                let data = vec![byte as u8; length as usize];
+
+                api::stable64_write(offset, &data);
             }
         }
     }
