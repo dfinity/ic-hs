@@ -318,11 +318,11 @@ fn eval(ops_bytes: OpsBytes) {
             Ops::GetHttpReplyWithBody => {
                 let body = stack.pop_blob();
                 stack.push_blob(http_reply_with_body(&body));
-            },
+            }
             Ops::GetHttpTransformContext => {
                 let arg = Decode!(stack.pop_blob().as_ref(), TransformArg).unwrap();
                 stack.push_blob(arg.context);
-            },
+            }
         }
     }
 }
