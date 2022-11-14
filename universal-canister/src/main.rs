@@ -322,7 +322,7 @@ fn eval(ops_bytes: OpsBytes) {
                 let arg = Decode!(stack.pop_blob().as_ref(), TransformArg).unwrap();
                 stack.push_blob(arg.context);
             }
-            Ops::StableWrite64Uniform => {
+            Ops::StableFill64 => {
                 let length = stack.pop_int64();
                 let byte = stack.pop_int64();
                 let offset = stack.pop_int64();
