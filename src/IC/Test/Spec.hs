@@ -1184,7 +1184,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     [ simpleTestCase "in query" $ \cid ->
       query cid (replyData getTimeTwice) >>= as2Word64 >>= bothSame
     , simpleTestCase "in update" $ \cid ->
-      query cid (replyData getTimeTwice) >>= as2Word64 >>= bothSame
+      call cid (replyData getTimeTwice) >>= as2Word64 >>= bothSame
     , testCase "in install" $ do
       cid <- install $ setGlobal getTimeTwice
       query cid (replyData getGlobal) >>= as2Word64 >>= bothSame
@@ -1197,6 +1197,37 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     , simpleTestCase "in post_upgrade" $ \cid -> do
       upgrade cid $ setGlobal getTimeTwice
       query cid (replyData getGlobal) >>= as2Word64 >>= bothSame
+    ]
+
+  , testGroup "canister state counter" $
+    let canister_state_counter = i64tob canisterStateCounter in
+    [ simpleTestCase "in query" $ \cid -> do
+      ctr <- query cid (replyData canister_state_counter) >>= asWord64
+      ctr @?= 0
+    , simpleTestCase "in update" $ \cid -> do
+      ctr <- call cid (replyData canister_state_counter) >>= asWord64
+      ctr @?= 0
+    , testCase "in install" $ do
+      cid <- install $ setGlobal canister_state_counter
+      ctr <- query cid (replyData getGlobal) >>= asWord64
+      ctr @?= 0
+    , testCase "in pre_upgrade" $ do
+      cid <- install $
+        ignore (stableGrow (int 1)) >>>
+        onPreUpgrade (callback $ stableWrite (int 0) canister_state_counter)
+      upgrade cid noop
+      ctr <- query cid (replyData (stableRead (int 0) (int 8))) >>= asWord64
+      ctr @?= 0
+    , simpleTestCase "in post_upgrade" $ \cid -> do
+      upgrade cid $ setGlobal canister_state_counter
+      ctr <- query cid (replyData getGlobal) >>= asWord64
+      ctr @?= 0
+    , simpleTestCase "after setting controllers" $ \cid -> do
+      ctr1 <- query cid (replyData canister_state_counter) >>= asWord64
+      ic_set_controllers ic00 cid [otherUser]
+      ctr2 <- query cid (replyData canister_state_counter) >>= asWord64
+      ctr1 @?= 0
+      ctr2 @?= 0
     ]
 
   , testGroup "upgrades" $
