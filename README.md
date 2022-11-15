@@ -232,7 +232,7 @@ which will run `ic-ref` and restart upon file changes.  Similarly
 
 For `ic-ref-test`, before running it, you make sure you have built the universal canister.
 
-The symbolic link in `test-data/universal_canister.wasm` points to the
+The symbolic link in `test-data/universal-canister.wasm` points to the
 build output produced by
 
     cd universal-canister
