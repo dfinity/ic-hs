@@ -1213,6 +1213,15 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
       ctr2 <- query cid (replyData canister_state_counter) >>= asWord64
       ctr1 @?= 1
       ctr2 @?= 1
+    , testCase "in reinstall" $ do
+      cid <- install noop
+      ctr1 <- query cid (replyData canister_state_counter) >>= asWord64
+      _ <- reinstall cid $ setGlobal canister_state_counter
+      ctr2 <- query cid (replyData getGlobal) >>= asWord64
+      ctr3 <- query cid (replyData canister_state_counter) >>= asWord64
+      ctr1 @?= 1
+      ctr2 @?= 2
+      ctr3 @?= 2
     , testCase "in pre_upgrade" $ do
       cid <- install $
         ignore (stableGrow (int 1)) >>>
@@ -1251,6 +1260,36 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
       ctr2 <- query cid (replyData canister_state_counter) >>= asWord64
       ctr1 @?= 1
       ctr2 @?= 2
+    , testCase "after failed install" $ do
+      cid <- create
+      _ <- ic_install' ic00 (enum #install) cid "" ""
+      cid <- install noop
+      ctr1 <- query cid (replyData canister_state_counter) >>= asWord64
+      ctr1 @?= 1
+    , simpleTestCase "after failed reinstall" $ \cid -> do
+      ctr1 <- query cid (replyData canister_state_counter) >>= asWord64
+      _ <- ic_install' ic00 (enum #reinstall) cid "" ""
+      ctr2 <- query cid (replyData canister_state_counter) >>= asWord64
+      ctr1 @?= 1
+      ctr2 @?= 1
+    , simpleTestCase "after failed upgrade" $ \cid -> do
+      ctr1 <- query cid (replyData canister_state_counter) >>= asWord64
+      _ <- ic_install' ic00 (enum #upgrade) cid "" ""
+      ctr2 <- query cid (replyData canister_state_counter) >>= asWord64
+      ctr1 @?= 1
+      ctr2 @?= 1
+    , simpleTestCase "after failed uninstall" $ \cid -> do
+      ctr1 <- query cid (replyData canister_state_counter) >>= asWord64
+      _ <- ic_uninstall'' otherUser cid
+      ctr2 <- query cid (replyData canister_state_counter) >>= asWord64
+      ctr1 @?= 1
+      ctr2 @?= 1
+    , simpleTestCase "after failed change of settings" $ \cid -> do
+      ctr1 <- query cid (replyData canister_state_counter) >>= asWord64
+      _ <- ic_update_settings' ic00 cid (#freezing_threshold .== 2^(70::Int))
+      ctr2 <- query cid (replyData canister_state_counter) >>= asWord64
+      ctr1 @?= 1
+      ctr2 @?= 1
     ]
 
   , testGroup "upgrades" $
