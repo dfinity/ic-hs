@@ -68,6 +68,7 @@ mod ic0 {
         /*
         pub fn global_timer_set(timestamp: u64) -> u64;
         */
+        pub fn canister_state_counter() -> u64;
     }
 }
 
@@ -353,6 +354,10 @@ pub fn global_timer_set(timestamp: u64) -> u64 {
     unsafe { ic0::global_timer_set(timestamp) }
 }
 */
+
+pub fn canister_state_counter() -> u64 {
+    unsafe { ic0::canister_state_counter() }
+}
 
 /// Prints the given message.
 pub fn print(data: &[u8]) {
