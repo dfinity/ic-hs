@@ -257,6 +257,9 @@ getHttpReplyWithBody = op 70
 getHttpTransformContext :: Exp 'B -> Exp 'B
 getHttpTransformContext = op 71
 
+canisterStateCounter :: Exp 'I64
+canisterStateCounter = op 73
+
 -- Some convenience combinators
 
 -- This allows us to write byte expressions as plain string literals
