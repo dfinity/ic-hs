@@ -1203,31 +1203,54 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     let canister_state_counter = i64tob canisterStateCounter in
     [ simpleTestCase "in query" $ \cid -> do
       ctr <- query cid (replyData canister_state_counter) >>= asWord64
-      ctr @?= 0
+      ctr @?= 1
     , simpleTestCase "in update" $ \cid -> do
       ctr <- call cid (replyData canister_state_counter) >>= asWord64
-      ctr @?= 0
+      ctr @?= 1
     , testCase "in install" $ do
       cid <- install $ setGlobal canister_state_counter
-      ctr <- query cid (replyData getGlobal) >>= asWord64
-      ctr @?= 0
+      ctr1 <- query cid (replyData getGlobal) >>= asWord64
+      ctr2 <- query cid (replyData canister_state_counter) >>= asWord64
+      ctr1 @?= 1
+      ctr2 @?= 1
     , testCase "in pre_upgrade" $ do
       cid <- install $
         ignore (stableGrow (int 1)) >>>
         onPreUpgrade (callback $ stableWrite (int 0) canister_state_counter)
+      ctr1 <- query cid (replyData canister_state_counter) >>= asWord64
       upgrade cid noop
-      ctr <- query cid (replyData (stableRead (int 0) (int 8))) >>= asWord64
-      ctr @?= 0
+      ctr2 <- query cid (replyData (stableRead (int 0) (int 8))) >>= asWord64
+      ctr3 <- query cid (replyData canister_state_counter) >>= asWord64
+      ctr1 @?= 1
+      ctr2 @?= 1
+      ctr3 @?= 2
     , simpleTestCase "in post_upgrade" $ \cid -> do
+      ctr1 <- query cid (replyData canister_state_counter) >>= asWord64
       upgrade cid $ setGlobal canister_state_counter
-      ctr <- query cid (replyData getGlobal) >>= asWord64
-      ctr @?= 0
+      ctr2 <- query cid (replyData getGlobal) >>= asWord64
+      ctr3 <- query cid (replyData canister_state_counter) >>= asWord64
+      ctr1 @?= 1
+      ctr2 @?= 2
+      ctr3 @?= 2
+    , simpleTestCase "after uninstalling canister" $ \cid -> do
+      ctr1 <- query cid (replyData canister_state_counter) >>= asWord64
+      ic_uninstall ic00 cid
+      installAt cid noop
+      ctr2 <- query cid (replyData canister_state_counter) >>= asWord64
+      ctr1 @?= 1
+      ctr2 @?= 3
     , simpleTestCase "after setting controllers" $ \cid -> do
       ctr1 <- query cid (replyData canister_state_counter) >>= asWord64
       ic_set_controllers ic00 cid [otherUser]
       ctr2 <- query cid (replyData canister_state_counter) >>= asWord64
-      ctr1 @?= 0
-      ctr2 @?= 0
+      ctr1 @?= 1
+      ctr2 @?= 2
+    , simpleTestCase "after setting freezing threshold" $ \cid -> do
+      ctr1 <- query cid (replyData canister_state_counter) >>= asWord64
+      ic_update_settings ic00 cid (#freezing_threshold .== 2^(20::Int))
+      ctr2 <- query cid (replyData canister_state_counter) >>= asWord64
+      ctr1 @?= 1
+      ctr2 @?= 2
     ]
 
   , testGroup "upgrades" $
