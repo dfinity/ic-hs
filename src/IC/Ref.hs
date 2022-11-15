@@ -140,6 +140,7 @@ data CanState = CanState
   , time :: Timestamp
   , cycle_balance :: Natural
   , certified_data :: Blob
+  , canister_state_counter :: Natural
   -- |Not part of the spec, but in this implementation we schedule
   -- heartbeats only for canisters who have not been idle since the
   -- last heartbeat, so we remember the last action.
@@ -246,6 +247,7 @@ createEmptyCanister cid controllers time = modify $ \ic ->
       , time = time
       , cycle_balance = 0
       , certified_data = ""
+      , canister_state_counter = 0
       , last_action = Nothing
       }
 
@@ -348,6 +350,13 @@ getCanisterMod cid = can_mod . fromJust . content <$> getCanister cid
 getCanisterTime :: ICM m => CanisterId -> m Timestamp
 getCanisterTime cid = time <$> getCanister cid
 
+getCanisterStateCounter :: ICM m => CanisterId -> m Natural
+getCanisterStateCounter cid = canister_state_counter <$> getCanister cid
+
+bumpCanisterStateCounter :: ICM m => CanisterId -> m ()
+bumpCanisterStateCounter cid = modCanister cid $
+    \cs -> cs { canister_state_counter = canister_state_counter cs + 1 }
+
 module_hash :: CanState -> Maybe Blob
 module_hash = fmap (raw_wasm_hash . can_mod) . content
 
@@ -425,12 +434,14 @@ canisterEnv canister_id = do
       IsStopping _pending -> Stopping
       IsStopped -> Stopped
       IsDeleted -> error "deleted canister encountered"
+  env_canister_state_counter <- getCanisterStateCounter canister_id
   return $ Env
     { env_self = canister_id
     , env_time
     , env_balance
     , env_status
     , env_certificate = Nothing
+    , env_canister_state_counter
     }
 
 -- Synchronous requests
@@ -967,17 +978,19 @@ icInstallCode caller r = do
     new_can_mod <- return (parseCanister (r .! #wasm_module))
       `onErr` (\err -> reject RC_SYS_FATAL ("Parsing failed: " ++ err) (Just EC_INVALID_MODULE))
     was_empty <- isCanisterEmpty canister_id
-    env <- canisterEnv canister_id
 
     let
       reinstall = do
-        (wasm_state, ca) <- return (init_method new_can_mod caller env arg)
+        env <- canisterEnv canister_id
+        let env1 = env { env_canister_state_counter = env_canister_state_counter env + 1 }
+        (wasm_state, ca) <- return (init_method new_can_mod caller env1 arg)
           `onTrap` (\msg -> reject RC_CANISTER_ERROR ("Initialization trapped: " ++ msg) (Just EC_CANISTER_TRAPPED))
         setCanisterContent canister_id $ CanisterContent
             { can_mod = new_can_mod
             , wasm_state = wasm_state
             }
         performCanisterActions canister_id ca
+        bumpCanisterStateCounter canister_id
 
       install = do
         unless was_empty $
@@ -989,11 +1002,13 @@ icInstallCode caller r = do
           reject RC_DESTINATION_INVALID "canister is empty during upgrade" (Just EC_CANISTER_EMPTY)
         old_wasm_state <- getCanisterState canister_id
         old_can_mod <- getCanisterMod canister_id
-        (ca1, mem) <- return (pre_upgrade_method old_can_mod old_wasm_state caller env)
+        env <- canisterEnv canister_id
+        let env1 = env
+        (ca1, mem) <- return (pre_upgrade_method old_can_mod old_wasm_state caller env1)
           `onTrap` (\msg -> reject RC_CANISTER_ERROR ("Pre-upgrade trapped: " ++ msg) (Just EC_CANISTER_TRAPPED))
         -- TODO: update balance in env based on ca1 here, once canister actions
         -- can change balances
-        let env2 = env
+        let env2 = env { env_canister_state_counter = env_canister_state_counter env + 1 }
         (new_wasm_state, ca2) <- return (post_upgrade_method new_can_mod caller env2 mem arg)
           `onTrap` (\msg -> reject RC_CANISTER_ERROR ("Post-upgrade trapped: " ++ msg) (Just EC_CANISTER_TRAPPED))
 
@@ -1002,6 +1017,7 @@ icInstallCode caller r = do
             , wasm_state = new_wasm_state
             }
         performCanisterActions canister_id (ca1 <> ca2)
+        bumpCanisterStateCounter canister_id
 
     R.switch (r .! #mode) $ R.empty
       .+ #install .== (\() -> install)
@@ -1015,6 +1031,7 @@ icUninstallCode r = do
     modCanister canister_id $ \can_state -> can_state
       { content = Nothing
       , certified_data = ""
+      , canister_state_counter = canister_state_counter can_state + 1
       }
     -- reject all call open contexts of this canister
     gets (M.toList . call_contexts) >>= mapM_ (\(ctxt_id, ctxt) ->
@@ -1028,6 +1045,7 @@ icUpdateCanisterSettings r = do
     let canister_id = principalToEntityId (r .! #canister_id)
     validateSettings (r .! #settings)
     applySettings canister_id (r .! #settings)
+    bumpCanisterStateCounter canister_id
 
 icStartCanister :: (ICM m, CanReject m) => ICManagement m .! "start_canister"
 icStartCanister r = do

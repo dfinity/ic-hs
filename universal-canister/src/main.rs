@@ -331,6 +331,9 @@ fn eval(ops_bytes: OpsBytes) {
 
                 api::stable64_write(offset, &data);
             }
+            Ops::CanisterStateCounter => {
+                stack.push_int64(api::canister_state_counter());
+            }
         }
     }
 }

@@ -51,6 +51,7 @@ module IC.Test.Agent.Calls
       ic_top_up,
       ic_uninstall'',
       ic_uninstall,
+      ic_update_settings,
       ic_update_settings',
     ) where
 
@@ -98,6 +99,12 @@ ic_uninstall :: (HasCallStack, HasAgentConfig) => IC00 -> Blob -> IO ()
 ic_uninstall ic00 canister_id = do
   callIC ic00 canister_id #uninstall_code $ empty
     .+ #canister_id .== Principal canister_id
+
+ic_update_settings :: (HasAgentConfig, PartialSettings r) => IC00 -> Blob -> Rec r -> IO ()
+ic_update_settings ic00 canister_id r = do
+  callIC ic00 canister_id #update_settings $ empty
+    .+ #canister_id .== Principal canister_id
+    .+ #settings .== fromPartialSettings r
 
 ic_set_controllers :: HasAgentConfig => IC00 -> Blob -> [Blob] -> IO ()
 ic_set_controllers ic00 canister_id new_controllers = do

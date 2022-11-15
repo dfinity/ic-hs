@@ -239,6 +239,7 @@ systemAPI esref =
   , toImport "ic0" "accept_message" accept_message
   , toImport "ic0" "time" get_time
   , toImport "ic0" "performance_counter" performance_counter
+  , toImport "ic0" "canister_state_counter" get_canister_state_counter
 
   , toImport "ic0" "debug_print" debug_print
   , toImport "ic0" "trap" explicit_trap
@@ -578,6 +579,11 @@ systemAPI esref =
     -- TODO: implement once semantics of performance_counter is known.
     performance_counter :: Int32 -> HostM s Word64
     performance_counter _ = return 0
+
+    get_canister_state_counter :: () -> HostM s Word64
+    get_canister_state_counter () = do
+        ns <- gets (env_canister_state_counter . env)
+        return (fromIntegral ns)
 
     debug_print :: (Int32, Int32) -> HostM s ()
     debug_print (src, size) = do
