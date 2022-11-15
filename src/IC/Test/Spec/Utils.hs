@@ -176,12 +176,12 @@ ic00viaWithCycles cid cycles _ecid method_name arg =
 
 install' :: (HasCallStack, HasAgentConfig) => Blob -> Prog -> IO ReqResponse
 install' cid prog = do
-  universal_wasm <- getTestWasm "universal_canister"
+  universal_wasm <- getTestWasm "universal-canister"
   ic_install' ic00 (enum #install) cid universal_wasm (run prog)
 
 installAt :: (HasCallStack, HasAgentConfig) => Blob -> Prog -> IO ()
 installAt cid prog = do
-  universal_wasm <- getTestWasm "universal_canister"
+  universal_wasm <- getTestWasm "universal-canister"
   ic_install ic00 (enum #install) cid universal_wasm (run prog)
 
 -- Also calls create, used default 'ic00'
@@ -196,22 +196,22 @@ create = ic_provisional_create ic00 (Just (2^(60::Int))) empty
 
 upgrade' :: (HasCallStack, HasAgentConfig) => Blob -> Prog -> IO ReqResponse
 upgrade' cid prog = do
-  universal_wasm <- getTestWasm "universal_canister"
+  universal_wasm <- getTestWasm "universal-canister"
   ic_install' ic00 (enum #upgrade) cid universal_wasm (run prog)
 
 upgrade :: (HasCallStack, HasAgentConfig) => Blob -> Prog -> IO ()
 upgrade cid prog = do
-  universal_wasm <- getTestWasm "universal_canister"
+  universal_wasm <- getTestWasm "universal-canister"
   ic_install ic00 (enum #upgrade) cid universal_wasm (run prog)
 
 reinstall' :: (HasCallStack, HasAgentConfig) => Blob -> Prog -> IO ReqResponse
 reinstall' cid prog = do
-  universal_wasm <- getTestWasm "universal_canister"
+  universal_wasm <- getTestWasm "universal-canister"
   ic_install' ic00 (enum #reinstall) cid universal_wasm (run prog)
 
 reinstall :: (HasCallStack, HasAgentConfig) => Blob -> Prog -> IO ()
 reinstall cid prog = do
-  universal_wasm <- getTestWasm "universal_canister"
+  universal_wasm <- getTestWasm "universal-canister"
   ic_install ic00 (enum #reinstall) cid universal_wasm (run prog)
 
 callRequestAs :: (HasCallStack, HasAgentConfig) => Blob -> Blob -> Prog -> GenR

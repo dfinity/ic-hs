@@ -18,7 +18,7 @@ let universal-canister = (naersk.buildPackage rec {
     release = true;
 }).overrideAttrs (old: {
     postFixup = (old.postFixup or "") + ''
-      mv $out/bin/universal_canister.wasm $out/universal_canister.wasm
+      mv $out/bin/universal-canister.wasm $out/universal-canister.wasm
       rmdir $out/bin
     '';
 }); in
@@ -43,7 +43,7 @@ let
     haskellPackages.ic-hs.overrideAttrs (old: {
       installPhase = (old.installPhase or "") + ''
         mkdir $out/test-data
-        cp ${universal-canister}/universal_canister.wasm $out/test-data
+        cp ${universal-canister}/universal-canister.wasm $out/test-data
       '';
       # variant of justStaticExecutables that retains propagatedBuildInputs
       postFixup = "rm -rf $out/lib $out/share/doc";
