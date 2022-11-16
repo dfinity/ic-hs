@@ -19,6 +19,7 @@ import qualified Data.HashMap.Lazy as HM
 import qualified Data.Map.Lazy as M
 import qualified Data.Set as S
 import qualified Data.Vector as Vec
+import Data.ByteString.Builder
 import Numeric.Natural
 import Data.List
 import Test.Tasty
@@ -28,6 +29,7 @@ import Control.Monad
 import Data.Word
 import Data.Functor
 import Data.Row as R
+import Data.Time.Clock
 import Data.Time.Clock.POSIX
 import Codec.Candid (Principal(..))
 import qualified Codec.Candid as Candid
@@ -48,6 +50,18 @@ import IC.Test.Agent
 import IC.Test.Agent.Calls
 import IC.Test.Spec.Utils
 import qualified IC.Test.Spec.TECDSA
+
+-- * Helpers
+
+loop :: HasAgentConfig => IO (Maybe a) -> IO a
+loop act = getCurrentTime >>= go
+  where
+    go init = act >>= \case
+      Just x -> return x
+      Nothing -> do
+        now <- getCurrentTime
+        if diffUTCTime now init > fromIntegral (tc_timeout agentConfig) then assertFailure "Polling timed out"
+        else go init
 
 -- * Canister http calls
 
@@ -1197,6 +1211,40 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     , simpleTestCase "in post_upgrade" $ \cid -> do
       upgrade cid $ setGlobal getTimeTwice
       query cid (replyData getGlobal) >>= as2Word64 >>= bothSame
+    ]
+
+  , testGroup "canister global timer" $
+    let install_canister_with_global_timer n = install $ onGlobalTimer $ callback (setGlobal $ i64tob $ int64 $ fromIntegral n) in
+    let reset_global cid = call cid ((setGlobal $ i64tob $ int64 0) >>> replyData "") in
+    let get_global cid = call cid (replyData $ getGlobal) in
+    let get_current_time = floor . (* 1e9) <$> getPOSIXTime in
+    let get_far_future_time = floor . (* 1e9) <$> (+) 100000 <$> getPOSIXTime in
+    let set_timer cid time = call cid (replyData $ i64tob $ apiGlobalTimerSet $ int64 time) in
+    let blob = toLazyByteString . word64LE . fromIntegral in
+    let wait_for_timer cid n = loop $ do
+          ctr <- get_global cid
+          return $ if ctr == blob n then Just () else Nothing
+        in
+    [ testCase "in update" $ do
+      cid <- install_canister_with_global_timer (1::Int)
+      _ <- reset_global cid
+      far_future_time <- get_far_future_time
+      timer1 <- set_timer cid far_future_time
+      current_time <- get_current_time
+      timer2 <- set_timer cid current_time
+      wait_for_timer cid 1
+      timer3 <- set_timer cid far_future_time
+      _ <- ic_stop_canister ic00 cid
+      _ <- ic_start_canister ic00 cid
+      timer4 <- set_timer cid far_future_time
+      universal_wasm <- getTestWasm "universal-canister"
+      _ <- ic_install ic00 (enum #upgrade) cid universal_wasm (run $ onGlobalTimer $ callback (setGlobal $ i64tob $ int64 $ fromIntegral (1::Int)))
+      timer5 <- set_timer cid far_future_time
+      timer1 @?= blob 0
+      timer2 @?= blob far_future_time
+      timer3 @?= blob 0
+      timer4 @?= blob far_future_time
+      timer5 @?= blob 0
     ]
 
   , testGroup "canister state counter" $

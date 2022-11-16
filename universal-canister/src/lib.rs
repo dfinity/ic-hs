@@ -89,10 +89,8 @@ try_from_u8!(
         MsgCallerCopy = 59,
         MsgRejectMsgSize = 60,
         MsgRejectMsgCopy = 61,
-        /*
         SetGlobalTimerMethod = 62,
         ApiGlobalTimerSet = 63,
-        */
         IncGlobalCounter = 64,
         GetGlobalCounter = 65,
         GetPerformanceCounter = 66,
