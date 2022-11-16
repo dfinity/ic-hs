@@ -1219,7 +1219,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     let reset_global cid = call cid ((setGlobal $ i64tob $ int64 0) >>> replyData "") in
     let get_global cid = call cid (replyData $ getGlobal) in
     let get_current_time = floor . (* 1e9) <$> getPOSIXTime in
-    let get_far_past_time = floor . (* 1e9) <$> (-) 100000 <$> getPOSIXTime in
+    let get_far_past_time = floor . (* 1e9) <$> (+) (-100000) <$> getPOSIXTime in
     let get_far_future_time = floor . (* 1e9) <$> (+) 100000 <$> getPOSIXTime in
     let set_timer cid time = call cid (replyData $ i64tob $ apiGlobalTimerSet $ int64 time) in
     let blob = toLazyByteString . word64LE . fromIntegral in
@@ -1249,7 +1249,6 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
       timer2 @?= blob far_future_time
       timer3 @?= blob 0
       ctr @?= blob 0
-    {-
     , testCase "set far in the past" $ do
       cid <- install_canister_with_global_timer (1::Int)
       _ <- reset_global cid
@@ -1260,7 +1259,6 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
       timer2 <- set_timer cid future_time
       timer1 @?= blob 0
       timer2 @?= blob 0
-    -}
     , testCase "set at current time" $ do
       cid <- install_canister_with_global_timer (1::Int)
       _ <- reset_global cid
