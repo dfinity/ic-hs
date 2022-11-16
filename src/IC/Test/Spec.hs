@@ -832,6 +832,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     , t "accept_message"               never             acceptMessage -- due to double accept
     , t "time"                         star            $ ignore getTime
     , t "performance_counter"          star            $ ignore $ performanceCounter (int 0)
+    , t "global_timer_set"             "I U Ry Rt C H" $ ignore $ apiGlobalTimerSet (int64 0)
     , t "debug_print"                  star            $ debugPrint "hello"
     , t "trap"                         never           $ trap "this better traps"
     ]
@@ -1218,6 +1219,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     let reset_global cid = call cid ((setGlobal $ i64tob $ int64 0) >>> replyData "") in
     let get_global cid = call cid (replyData $ getGlobal) in
     let get_current_time = floor . (* 1e9) <$> getPOSIXTime in
+    let get_far_past_time = floor . (* 1e9) <$> (-) 100000 <$> getPOSIXTime in
     let get_far_future_time = floor . (* 1e9) <$> (+) 100000 <$> getPOSIXTime in
     let set_timer cid time = call cid (replyData $ i64tob $ apiGlobalTimerSet $ int64 time) in
     let blob = toLazyByteString . word64LE . fromIntegral in
@@ -1225,26 +1227,107 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
           ctr <- get_global cid
           return $ if ctr == blob n then Just () else Nothing
         in
-    [ testCase "in update" $ do
+    [ testCase "set far in the future" $ do
       cid <- install_canister_with_global_timer (1::Int)
       _ <- reset_global cid
       far_future_time <- get_far_future_time
       timer1 <- set_timer cid far_future_time
-      current_time <- get_current_time
-      timer2 <- set_timer cid current_time
-      wait_for_timer cid 1
+      timer2 <- set_timer cid far_future_time
+      ctr <- get_global cid
+      timer1 @?= blob 0
+      timer2 @?= blob far_future_time
+      ctr @?= blob 0
+    , testCase "deactivate timer" $ do
+      cid <- install_canister_with_global_timer (1::Int)
+      _ <- reset_global cid
+      far_future_time <- get_far_future_time
+      timer1 <- set_timer cid far_future_time
+      timer2 <- set_timer cid 0
       timer3 <- set_timer cid far_future_time
-      _ <- ic_stop_canister ic00 cid
-      _ <- ic_start_canister ic00 cid
-      timer4 <- set_timer cid far_future_time
-      universal_wasm <- getTestWasm "universal-canister"
-      _ <- ic_install ic00 (enum #upgrade) cid universal_wasm (run $ onGlobalTimer $ callback (setGlobal $ i64tob $ int64 $ fromIntegral (1::Int)))
-      timer5 <- set_timer cid far_future_time
+      ctr <- get_global cid
       timer1 @?= blob 0
       timer2 @?= blob far_future_time
       timer3 @?= blob 0
-      timer4 @?= blob far_future_time
-      timer5 @?= blob 0
+      ctr @?= blob 0
+    {-
+    , testCase "set far in the past" $ do
+      cid <- install_canister_with_global_timer (1::Int)
+      _ <- reset_global cid
+      past_time <- get_far_past_time
+      timer1 <- set_timer cid past_time
+      wait_for_timer cid 1
+      future_time <- get_far_future_time
+      timer2 <- set_timer cid future_time
+      timer1 @?= blob 0
+      timer2 @?= blob 0
+    -}
+    , testCase "set at current time" $ do
+      cid <- install_canister_with_global_timer (1::Int)
+      _ <- reset_global cid
+      current_time <- get_current_time
+      timer1 <- set_timer cid current_time
+      wait_for_timer cid 1
+      future_time <- get_far_future_time
+      timer2 <- set_timer cid future_time
+      timer1 @?= blob 0
+      timer2 @?= blob 0
+    , testCase "stop and start canister" $ do
+      cid <- install_canister_with_global_timer (1::Int)
+      _ <- reset_global cid
+      far_future_time <- get_far_future_time
+      timer1 <- set_timer cid far_future_time
+      timer2 <- set_timer cid far_future_time
+      _ <- ic_stop_canister ic00 cid
+      _ <- ic_start_canister ic00 cid
+      timer3 <- set_timer cid far_future_time
+      ctr <- get_global cid
+      timer1 @?= blob 0
+      timer2 @?= blob far_future_time
+      timer3 @?= blob far_future_time
+      ctr @?= blob 0
+    , testCase "uninstall and install canister" $ do
+      cid <- install_canister_with_global_timer (1::Int)
+      _ <- reset_global cid
+      far_future_time <- get_far_future_time
+      timer1 <- set_timer cid far_future_time
+      timer2 <- set_timer cid far_future_time
+      universal_wasm <- getTestWasm "universal-canister"
+      _ <- ic_uninstall ic00 cid
+      _ <- ic_install ic00 (enum #install) cid universal_wasm (run $ onGlobalTimer $ callback (setGlobal $ i64tob $ int64 $ fromIntegral (1::Int)))
+      timer3 <- set_timer cid far_future_time
+      ctr <- get_global cid
+      timer1 @?= blob 0
+      timer2 @?= blob far_future_time
+      timer3 @?= blob 0
+      ctr @?= blob 0
+    , testCase "upgrade canister" $ do
+      cid <- install_canister_with_global_timer (1::Int)
+      _ <- reset_global cid
+      far_future_time <- get_far_future_time
+      timer1 <- set_timer cid far_future_time
+      timer2 <- set_timer cid far_future_time
+      universal_wasm <- getTestWasm "universal-canister"
+      _ <- ic_install ic00 (enum #upgrade) cid universal_wasm (run $ onGlobalTimer $ callback (setGlobal $ i64tob $ int64 $ fromIntegral (1::Int)))
+      timer3 <- set_timer cid far_future_time
+      ctr <- get_global cid
+      timer1 @?= blob 0
+      timer2 @?= blob far_future_time
+      timer3 @?= blob 0
+      ctr @?= blob 0
+    , testCase "reinstall canister" $ do
+      cid <- install_canister_with_global_timer (1::Int)
+      _ <- reset_global cid
+      far_future_time <- get_far_future_time
+      timer1 <- set_timer cid far_future_time
+      timer2 <- set_timer cid far_future_time
+      universal_wasm <- getTestWasm "universal-canister"
+      _ <- ic_install ic00 (enum #reinstall) cid universal_wasm (run $ onGlobalTimer $ callback (setGlobal $ i64tob $ int64 $ fromIntegral (1::Int)))
+      timer3 <- set_timer cid far_future_time
+      ctr <- get_global cid
+      timer1 @?= blob 0
+      timer2 @?= blob far_future_time
+      timer3 @?= blob 0
+      ctr @?= blob 0
     ]
 
   , testGroup "canister state counter" $
