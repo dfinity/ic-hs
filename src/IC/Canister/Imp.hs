@@ -79,12 +79,13 @@ data ExecutionState s = ExecutionState
   , calls :: [MethodCall]
   , new_certified_data :: Maybe Blob
   , new_global_timer :: Maybe Word64
+  , context :: String
   , accepted :: Bool -- for canister_inspect_message
   }
 
 
-initialExecutionState :: Instance s -> Memory s -> Env -> NeedsToRespond -> ExecutionState s
-initialExecutionState inst stableMem env needs_to_respond = ExecutionState
+initialExecutionState :: Instance s -> Memory s -> Env -> NeedsToRespond -> String -> ExecutionState s
+initialExecutionState inst stableMem env needs_to_respond ctxt = ExecutionState
   { inst
   , stableMem
   , params = Params Nothing Nothing Nothing Nothing Nothing
@@ -100,6 +101,7 @@ initialExecutionState inst stableMem env needs_to_respond = ExecutionState
   , calls = mempty
   , new_certified_data = Nothing
   , new_global_timer = Nothing
+  , context = ctxt
   , accepted = False
   }
 
@@ -188,70 +190,88 @@ subtractAvailable esref f = do
 
 systemAPI :: forall s. ESRef s -> Imports s
 systemAPI esref =
-  [ toImport "ic0" "msg_arg_data_size" msg_arg_data_size
-  , toImport "ic0" "msg_arg_data_copy" msg_arg_data_copy
-  , toImport "ic0" "msg_caller_size" msg_caller_size
-  , toImport "ic0" "msg_caller_copy" msg_caller_copy
-  , toImport "ic0" "msg_reject_code" msg_reject_code
-  , toImport "ic0" "msg_reject_msg_size" msg_reject_msg_size
-  , toImport "ic0" "msg_reject_msg_copy" msg_reject_msg_copy
+  [ toImport' "ic0" "msg_arg_data_size" "I U Q Ry F" msg_arg_data_size
+  , toImport' "ic0" "msg_arg_data_copy" "I U Q Ry F" msg_arg_data_copy
+  , toImport' "ic0" "msg_caller_size" "I G U Q F" msg_caller_size
+  , toImport' "ic0" "msg_caller_copy" "I G U Q F" msg_caller_copy
+  , toImport' "ic0" "msg_reject_code" "Ry Rt" msg_reject_code
+  , toImport' "ic0" "msg_reject_msg_size" "Rt" msg_reject_msg_size
+  , toImport' "ic0" "msg_reject_msg_copy" "Rt" msg_reject_msg_copy
 
-  , toImport "ic0" "msg_reply_data_append" msg_reply_data_append
-  , toImport "ic0" "msg_reply" msg_reply
-  , toImport "ic0" "msg_reject" msg_reject
+  , toImport' "ic0" "msg_reply_data_append" "U Q Ry Rt" msg_reply_data_append
+  , toImport' "ic0" "msg_reply" "U Q Ry Rt" msg_reply
+  , toImport' "ic0" "msg_reject" "U Q Ry Rt" msg_reject
 
-  , toImport "ic0" "canister_self_copy" canister_self_copy
-  , toImport "ic0" "canister_self_size" canister_self_size
-  , toImport "ic0" "canister_status" canister_status
+  , toImport' "ic0" "canister_self_copy" star canister_self_copy
+  , toImport' "ic0" "canister_self_size" star canister_self_size
+  , toImport' "ic0" "canister_status" star canister_status
 
-  , toImport "ic0" "msg_cycles_available" msg_cycles_available
-  , toImport "ic0" "msg_cycles_refunded" msg_cycles_refunded
-  , toImport "ic0" "msg_cycles_accept" msg_cycles_accept
-  , toImport "ic0" "canister_cycle_balance" canister_cycle_balance
+  , toImport' "ic0" "msg_cycles_available" "U Rt Ry" msg_cycles_available
+  , toImport' "ic0" "msg_cycles_refunded" "Rt Ry" msg_cycles_refunded
+  , toImport' "ic0" "msg_cycles_accept" "U Rt Ry" msg_cycles_accept
+  , toImport' "ic0" "canister_cycle_balance" star canister_cycle_balance
 
-  , toImport "ic0" "msg_cycles_available128" msg_cycles_available128
-  , toImport "ic0" "msg_cycles_refunded128" msg_cycles_refunded128
-  , toImport "ic0" "msg_cycles_accept128" msg_cycles_accept128
-  , toImport "ic0" "canister_cycle_balance128" canister_cycle_balance128
+  , toImport' "ic0" "msg_cycles_available128" "U Rt Ry" msg_cycles_available128
+  , toImport' "ic0" "msg_cycles_refunded128" "Rt Ry" msg_cycles_refunded128
+  , toImport' "ic0" "msg_cycles_accept128" "U Rt Ry" msg_cycles_accept128
+  , toImport' "ic0" "canister_cycle_balance128" star canister_cycle_balance128
 
-  , toImport "ic0" "call_new" call_new
-  , toImport "ic0" "call_on_cleanup" call_on_cleanup
-  , toImport "ic0" "call_data_append" call_data_append
-  , toImport "ic0" "call_cycles_add" call_cycles_add
-  , toImport "ic0" "call_cycles_add128" call_cycles_add128
-  , toImport "ic0" "call_perform" call_perform
+  , toImport' "ic0" "call_new" "U Ry Rt H" call_new
+  , toImport' "ic0" "call_on_cleanup" "U Ry Rt H" call_on_cleanup
+  , toImport' "ic0" "call_data_append" "U Ry Rt H" call_data_append
+  , toImport' "ic0" "call_cycles_add" "U Ry Rt H" call_cycles_add
+  , toImport' "ic0" "call_cycles_add128" "U Ry Rt H" call_cycles_add128
+  , toImport' "ic0" "call_perform" "U Ry Rt H" call_perform
 
-  , toImport "ic0" "stable_size" stable_size
-  , toImport "ic0" "stable_grow" stable_grow
-  , toImport "ic0" "stable_write" stable_write
-  , toImport "ic0" "stable_read" stable_read
+  , toImport' "ic0" "stable_size" star stable_size
+  , toImport' "ic0" "stable_grow" star stable_grow
+  , toImport' "ic0" "stable_write" star stable_write
+  , toImport' "ic0" "stable_read" star stable_read
 
-  , toImport "ic0" "stable64_size" stable64_size
-  , toImport "ic0" "stable64_grow" stable64_grow
-  , toImport "ic0" "stable64_write" stable64_write
-  , toImport "ic0" "stable64_read" stable64_read
+  , toImport' "ic0" "stable64_size" star stable64_size
+  , toImport' "ic0" "stable64_grow" star stable64_grow
+  , toImport' "ic0" "stable64_write" star stable64_write
+  , toImport' "ic0" "stable64_read" star stable64_read
 
-  , toImport "ic0" "certified_data_set" certified_data_set
-  , toImport "ic0" "data_certificate_present" data_certificate_present
-  , toImport "ic0" "data_certificate_size" data_certificate_size
-  , toImport "ic0" "data_certificate_copy" data_certificate_copy
+  , toImport' "ic0" "certified_data_set" "I G U Ry Rt H" certified_data_set
+  , toImport' "ic0" "data_certificate_present" star data_certificate_present
+  , toImport' "ic0" "data_certificate_size" star data_certificate_size
+  , toImport' "ic0" "data_certificate_copy" star data_certificate_copy
 
-  , toImport "ic0" "msg_method_name_size" msg_method_name_size
-  , toImport "ic0" "msg_method_name_copy" msg_method_name_copy
+  , toImport' "ic0" "msg_method_name_size" "F" msg_method_name_size
+  , toImport' "ic0" "msg_method_name_copy" "F" msg_method_name_copy
 
-  , toImport "ic0" "accept_message" accept_message
-  , toImport "ic0" "time" get_time
-  , toImport "ic0" "performance_counter" performance_counter
-  , toImport "ic0" "global_timer_set" global_timer_set
-  , toImport "ic0" "canister_state_counter" get_canister_state_counter
+  , toImport' "ic0" "accept_message" "F" accept_message
+  , toImport' "ic0" "time" star get_time
+  , toImport' "ic0" "performance_counter" star performance_counter
+  , toImport' "ic0" "global_timer_set" "I U Ry Rt C H" global_timer_set
+  , toImport' "ic0" "canister_state_counter" star get_canister_state_counter
 
-  , toImport "ic0" "debug_print" debug_print
-  , toImport "ic0" "trap" explicit_trap
+  , toImport' "ic0" "debug_print" star debug_print
+  , toImport' "ic0" "trap" star explicit_trap
   ]
   where
     -- Utilities
     gets :: (ExecutionState s -> b) -> HostM s b
     gets = getsES esref
+
+    assert_context :: String -> String -> HostM s ()
+    assert_context method ctxts = do
+      let cs = words ctxts
+      c <- gets context
+      if c `elem` cs then return ()
+      else throwError $ method ++ " cannot be called in context " ++ c
+
+    toImport' ::
+        forall a b.
+        (WasmArgs a, WasmArgs b) =>
+        String -> String -> String -> (a -> HostM s b) -> Import s
+    toImport' mod_name fun_name ctxts f =
+      toImport mod_name fun_name $ \a -> do
+        assert_context fun_name ctxts
+        f a
+
+    star = "I G U Q Ry Rt C F H"
 
     puts :: (ExecutionState s -> ExecutionState s) -> HostM s ()
     puts = modES esref
@@ -657,7 +677,7 @@ type CanisterEntryPoint r = forall s. (ImpState s -> ST s r)
 rawInitialize :: EntityId -> Env -> Blob -> ImpState s -> ST s (TrapOr CanisterActions)
 rawInitialize caller env dat (ImpState esref inst sm wasm_mod) = do
   result <- runExceptT $ do
-    let es = (initialExecutionState inst sm env cantRespond)
+    let es = (initialExecutionState inst sm env cantRespond "I")
               { params = Params
                   { param_dat    = Just dat
                   , param_caller = Just caller
@@ -674,15 +694,12 @@ rawInitialize caller env dat (ImpState esref inst sm wasm_mod) = do
 
   case result of
     Left  err -> return $ Trap err
-    Right (_, es')
-        | accepted es' -> return $ Trap "cannot accept_message here"
-        | not (null (calls es')) -> return $ Trap "cannot call from init"
-        | otherwise        -> return $ Return $ canisterActions es'
+    Right (_, es') -> return $ Return $ canisterActions es'
 
 rawHeartbeat :: Env -> ImpState s -> ST s (TrapOr ([MethodCall], CanisterActions))
 rawHeartbeat env (ImpState esref inst sm wasm_mod) = do
   result <- runExceptT $ do
-    let es = (initialExecutionState inst sm env cantRespond)
+    let es = (initialExecutionState inst sm env cantRespond "H")
 
     if "canister_heartbeat" `elem` exportedFunctions wasm_mod
     then withES esref es $ void $ invokeExport inst "canister_heartbeat" []
@@ -690,10 +707,7 @@ rawHeartbeat env (ImpState esref inst sm wasm_mod) = do
 
   case result of
     Left  err -> return $ Trap err
-    Right (_, es')
-      | accepted es'          -> return $ Trap "cannot accept_message here"
-      | isJust (response es') -> return $ Trap "cannot respond from heartbeat"
-      | otherwise             -> return $ Return $
+    Right (_, es') -> return $ Return $
         ( calls es'
         , canisterActions es'
         )
@@ -701,7 +715,7 @@ rawHeartbeat env (ImpState esref inst sm wasm_mod) = do
 rawGlobalTimer :: Env -> ImpState s -> ST s (TrapOr ([MethodCall], CanisterActions))
 rawGlobalTimer env (ImpState esref inst sm wasm_mod) = do
   result <- runExceptT $ do
-    let es = (initialExecutionState inst sm env cantRespond)
+    let es = (initialExecutionState inst sm env cantRespond "H")
 
     if "canister_global_timer" `elem` exportedFunctions wasm_mod
     then withES esref es $ void $ invokeExport inst "canister_global_timer" []
@@ -709,10 +723,7 @@ rawGlobalTimer env (ImpState esref inst sm wasm_mod) = do
 
   case result of
     Left  err -> return $ Trap err
-    Right (_, es')
-      | accepted es'          -> return $ Trap "cannot accept_message here"
-      | isJust (response es') -> return $ Trap "cannot respond from global timer"
-      | otherwise             -> return $ Return $
+    Right (_, es') -> return $ Return $
         ( calls es'
         , canisterActions es'
         )
@@ -720,7 +731,7 @@ rawGlobalTimer env (ImpState esref inst sm wasm_mod) = do
 rawPreUpgrade :: EntityId -> Env -> ImpState s -> ST s (TrapOr (CanisterActions, Blob))
 rawPreUpgrade caller env (ImpState esref inst sm wasm_mod) = do
   result <- runExceptT $ do
-    let es = (initialExecutionState inst sm env cantRespond)
+    let es = (initialExecutionState inst sm env cantRespond "G")
               { params = Params
                   { param_dat    = Nothing
                   , param_caller = Just caller
@@ -736,19 +747,14 @@ rawPreUpgrade caller env (ImpState esref inst sm wasm_mod) = do
 
   case result of
     Left  err -> return $ Trap err
-    Right (_, es')
-        | Just _ <- new_global_timer es'
-          -> return $ Trap "Cannot set global timer from inspect_message"
-        | accepted es' -> return $ Trap "cannot accept_message here"
-        | not (null (calls es')) -> return $ Trap "cannot call from pre_upgrade"
-        | otherwise -> do
-            stable_mem <- Mem.serialize <$> Mem.export (stableMem es')
-            return $ Return (canisterActions es', stable_mem)
+    Right (_, es') -> do
+        stable_mem <- Mem.serialize <$> Mem.export (stableMem es')
+        return $ Return (canisterActions es', stable_mem)
 
 rawPostUpgrade :: EntityId -> Env -> Blob -> Blob -> ImpState s -> ST s (TrapOr CanisterActions)
 rawPostUpgrade caller env mem dat (ImpState esref inst sm wasm_mod) = do
   result <- runExceptT $ do
-    let es = (initialExecutionState inst sm env cantRespond)
+    let es = (initialExecutionState inst sm env cantRespond "I")
               { params = Params
                   { param_dat    = Just dat
                   , param_caller = Just caller
@@ -765,14 +771,11 @@ rawPostUpgrade caller env mem dat (ImpState esref inst sm wasm_mod) = do
 
   case result of
     Left  err -> return $ Trap err
-    Right (_, es')
-        | accepted es' -> return $ Trap "cannot accept_message here"
-        | not (null (calls es')) -> return $ Trap "cannot call from post_upgrade"
-        | otherwise -> return $ Return (canisterActions es')
+    Right (_, es') -> return $ Return (canisterActions es')
 
 rawQuery :: MethodName -> EntityId -> Env -> Blob -> ImpState s -> ST s (TrapOr Response)
 rawQuery method caller env dat (ImpState esref inst sm _) = do
-  let es = (initialExecutionState inst sm env canRespond)
+  let es = (initialExecutionState inst sm env canRespond "Q")
             { params = Params
                 { param_dat    = Just dat
                 , param_caller = Just caller
@@ -787,18 +790,12 @@ rawQuery method caller env dat (ImpState esref inst sm _) = do
   case result of
     Left err -> return $ Trap err
     Right (_, es')
-      | Just _ <- new_certified_data es'
-        -> return $ Trap "Cannot set certified data from a query method"
-      | Just _ <- new_global_timer es'
-        -> return $ Trap "Cannot set global timer from inspect_message"
-      | not (null (calls es')) -> return $ Trap "cannot call from query"
-      | accepted es' -> return $ Trap "cannot accept_message here"
       | Just r <- response es' -> return $ Return r
       | otherwise -> return $ Trap "No response"
 
 rawUpdate :: MethodName -> EntityId -> Env -> NeedsToRespond -> Cycles -> Blob -> ImpState s -> ST s (TrapOr UpdateResult)
 rawUpdate method caller env needs_to_respond cycles_available dat (ImpState esref inst sm _) = do
-  let es = (initialExecutionState inst sm env needs_to_respond)
+  let es = (initialExecutionState inst sm env needs_to_respond "U")
             { params = Params
                 { param_dat    = Just dat
                 , param_caller = Just caller
@@ -813,9 +810,7 @@ rawUpdate method caller env needs_to_respond cycles_available dat (ImpState esre
     invokeExport inst ("canister_update " ++ method) []
   case result of
     Left  err -> return $ Trap err
-    Right (_, es')
-      | accepted es' -> return $ Trap "cannot accept_message here"
-      | otherwise    -> return $ Return
+    Right (_, es') -> return $ Return
         ( CallActions (calls es') (cycles_accepted es') (response es')
         , canisterActions es'
         )
@@ -827,7 +822,10 @@ rawCallback callback env needs_to_respond cycles_available res refund (ImpState 
           Params { param_dat = Just dat, param_caller = Nothing, reject_code = Just 0, reject_message = Nothing, cycles_refunded = Just refund }
         Reject (rc, reject_message) ->
           Params { param_dat = Nothing, param_caller = Nothing, reject_code = Just (rejectCode rc), reject_message = Just reject_message, cycles_refunded = Just refund }
-  let es = (initialExecutionState inst sm env needs_to_respond)
+  let ctxt = case res of
+        Reply _ -> "Ry"
+        Reject _ -> "Rt"
+  let es = (initialExecutionState inst sm env needs_to_respond ctxt)
             { params
             , cycles_available = Just cycles_available
             }
@@ -840,9 +838,7 @@ rawCallback callback env needs_to_respond cycles_available res refund (ImpState 
     invokeTable inst fun_idx [I32 env]
   case result of
     Left  err -> return $ Trap err
-    Right (_, es')
-      | accepted es' -> return $ Trap "cannot accept_message here"
-      | otherwise    -> return $ Return
+    Right (_, es') -> return $ Return
         ( CallActions (calls es') (cycles_accepted es') (response es')
         , canisterActions es'
         )
@@ -850,24 +846,18 @@ rawCallback callback env needs_to_respond cycles_available res refund (ImpState 
 -- Needs to be separate from rawCallback, as it is its own transaction
 rawCleanup :: WasmClosure -> Env -> ImpState s -> ST s (TrapOr ())
 rawCleanup (WasmClosure fun_idx cb_env) env (ImpState esref inst sm _) = do
-  let es = initialExecutionState inst sm env cantRespond
+  let es = initialExecutionState inst sm env cantRespond "C"
 
   result <- runExceptT $ withES esref es $
     invokeTable inst fun_idx [I32 cb_env]
   case result of
     Left  err -> return $ Trap err
-    Right (_, es')
-      | Just _ <- new_certified_data es'
-        -> return $ Trap "Cannot set certified data from inspect_message"
-      | not (null (calls es'))  -> return $ Trap "cannot call from inspect_message"
-      | isJust (response es')   -> return $ Trap "cannot respond from inspect_message"
-      | accepted es' -> return $ Trap "cannot accept_message here"
-      | otherwise    -> return $ Return ()
+    Right _ -> return $ Return ()
 
 rawInspectMessage :: MethodName -> EntityId -> Env -> Blob -> ImpState s -> ST s (TrapOr ())
 rawInspectMessage method caller env dat (ImpState esref inst sm wasm_mod) = do
   result <- runExceptT $ do
-    let es = (initialExecutionState inst sm env cantRespond)
+    let es = (initialExecutionState inst sm env cantRespond "F")
               { params = Params
                   { param_dat    = Just dat
                   , param_caller = Just caller
@@ -885,11 +875,5 @@ rawInspectMessage method caller env dat (ImpState esref inst sm wasm_mod) = do
   case result of
     Left err -> return $ Trap err
     Right (_, es')
-      | Just _ <- new_certified_data es'
-        -> return $ Trap "Cannot set certified data from inspect_message"
-      | Just _ <- new_global_timer es'
-        -> return $ Trap "Cannot set global timer from inspect_message"
-      | not (null (calls es'))  -> return $ Trap "cannot call from inspect_message"
-      | isJust (response es')   -> return $ Trap "cannot respond from inspect_message"
       | not (accepted es')      -> return $ Trap "message not accepted by inspect_message"
       | otherwise -> return $ Return ()
