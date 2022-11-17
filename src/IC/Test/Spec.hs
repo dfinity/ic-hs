@@ -1997,6 +1997,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
   , testGroup "cycles" $
     let replyBalance = replyData (i64tob getBalance)
         replyBalance128 = replyData getBalance128
+        replyBalanceBalance128 = replyDataAppend (i64tob getBalance) >>> replyDataAppend getBalance128 >>> reply
         rememberBalance =
           ignore (stableGrow (int 1)) >>>
           stableWrite (int 0) (i64tob getBalance)
@@ -2004,6 +2005,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
         acceptAll = ignore (acceptCycles getAvailableCycles)
         queryBalance cid = query cid replyBalance >>= asWord64
         queryBalance128 cid = query cid replyBalance128 >>= asWord128
+        queryBalanceBalance128 cid = query cid replyBalanceBalance128 >>= asWord64Word128
 
         -- At the time of writing, creating a canister needs at least 1T
         -- and the freezing limit is 5T
@@ -2020,7 +2022,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
         -- some more.
         eps = 3_000_000_000_000 :: Integer
 
-        isRoughly :: (HasCallStack, Show a, Num a, Integral a) => a -> a -> Assertion
+        isRoughly :: (HasCallStack, Show a, Num a, Integral a, Show b, Num b, Integral b) => a -> b -> Assertion
         isRoughly exp act = assertBool
            (show act ++ " not near " ++ show exp)
            (abs (fromIntegral exp - fromIntegral act) < eps)
@@ -2037,8 +2039,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     in
     [ testGroup "cycles API - backward compatibility" $
         [ simpleTestCase "canister_cycle_balance = canister_cycle_balance128 for numbers fitting in 64 bits" $ \cid -> do
-          a <- queryBalance cid
-          b <- queryBalance128 cid
+          (a, b) <- queryBalanceBalance128 cid
           bothSame (a, fromIntegral b)
         , testCase "legacy API traps when a result is too big" $ do
           cid <- create noop
@@ -2098,7 +2099,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     , testCase "cycles in canister_status" $ do
         cid <- create noop
         cs <- ic_canister_status ic00 cid
-        isRoughly (fromIntegral def_cycles) (cs .! #cycles)
+        isRoughly def_cycles (cs .! #cycles)
 
     , testGroup "cycle balance"
       [ testCase "install" $ do
@@ -2175,7 +2176,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
           , on_reply = replyData (i64tob getRefund)
           , on_reject = trap "unexpected reject"
           }
-        >>= asWord64 >>= isRoughly 0
+        >>= asWord64 >>= isRoughly (0::Word64)
       queryBalance cid1 >>= isRoughly (def_cycles `div` 2)
       queryBalance cid2 >>= isRoughly (def_cycles `div` 4)
       queryBalance cid3 >>= isRoughly (2*def_cycles + def_cycles `div` 4)
