@@ -832,6 +832,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     , t "accept_message"               never             acceptMessage -- due to double accept
     , t "time"                         star            $ ignore getTime
     , t "performance_counter"          star            $ ignore $ performanceCounter (int 0)
+    , t "canister_state_counter"       star            $ ignore canisterStateCounter
     , t "global_timer_set"             "I U Ry Rt C H" $ ignore $ apiGlobalTimerSet (int64 0)
     , t "debug_print"                  star            $ debugPrint "hello"
     , t "trap"                         never           $ trap "this better traps"
