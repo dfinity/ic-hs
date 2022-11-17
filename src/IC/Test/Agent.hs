@@ -42,6 +42,7 @@ module IC.Test.Agent
       agentEcid,
       anonymousUser,
       as2Word64,
+      asWord64Word128,
       asHex,
       asRight,
       asWord128,
@@ -689,6 +690,13 @@ asWord64 = runGet Get.getWord64le
 
 as2Word64 :: HasCallStack => Blob -> IO (Word64, Word64)
 as2Word64 = runGet $ (,) <$> Get.getWord64le <*> Get.getWord64le
+
+asWord64Word128 :: HasCallStack => Blob -> IO (Word64, Natural)
+asWord64Word128 = runGet $ do
+    word64 <- Get.getWord64le
+    low <- Get.getWord64le
+    high <- Get.getWord64le
+    return (word64, fromIntegral high `shiftL` 64 .|. fromIntegral low)
 
 asWord128 :: HasCallStack => Blob -> IO Natural
 asWord128 = runGet $ do
