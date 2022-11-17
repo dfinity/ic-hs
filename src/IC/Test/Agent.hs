@@ -138,6 +138,7 @@ import Control.Concurrent
 import Control.Exception (catch)
 import Data.Traversable
 import Data.Word
+import Data.WideWord.Word128
 import GHC.TypeLits
 import System.Random
 import System.Exit
@@ -147,7 +148,6 @@ import Codec.Candid (Principal(..), prettyPrincipal)
 import qualified Data.Binary as Get
 import qualified Data.Binary.Get as Get
 import qualified Codec.Candid as Candid
-import Data.Bits
 import Data.Row
 import qualified Data.Row.Variants as V
 import qualified Haskoin.Crypto.Signature as Haskoin
@@ -691,18 +691,18 @@ asWord64 = runGet Get.getWord64le
 as2Word64 :: HasCallStack => Blob -> IO (Word64, Word64)
 as2Word64 = runGet $ (,) <$> Get.getWord64le <*> Get.getWord64le
 
-asWord64Word128 :: HasCallStack => Blob -> IO (Word64, Natural)
+asWord64Word128 :: HasCallStack => Blob -> IO (Word64, Word128)
 asWord64Word128 = runGet $ do
     word64 <- Get.getWord64le
     low <- Get.getWord64le
     high <- Get.getWord64le
-    return (word64, fromIntegral high `shiftL` 64 .|. fromIntegral low)
+    return (word64, Word128 high low)
 
-asWord128 :: HasCallStack => Blob -> IO Natural
+asWord128 :: HasCallStack => Blob -> IO Word128
 asWord128 = runGet $ do
     low <- Get.getWord64le
     high <- Get.getWord64le
-    return $ fromIntegral high `shiftL` 64 .|. fromIntegral low
+    return $ Word128 high low
 
 bothSame :: (Eq a, Show a) => (a, a) -> Assertion
 bothSame (x,y) = x @?= y

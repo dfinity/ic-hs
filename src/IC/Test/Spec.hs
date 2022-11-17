@@ -1893,7 +1893,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
         -- some more.
         eps = 3_000_000_000_000 :: Integer
 
-        isRoughly :: (HasCallStack, Show a, Num a, Integral a) => a -> a -> Assertion
+        isRoughly :: (HasCallStack, Show a, Num a, Integral a, Show b, Num b, Integral b) => a -> b -> Assertion
         isRoughly exp act = assertBool
            (show act ++ " not near " ++ show exp)
            (abs (fromIntegral exp - fromIntegral act) < eps)
@@ -1970,7 +1970,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     , testCase "cycles in canister_status" $ do
         cid <- create noop
         cs <- ic_canister_status ic00 cid
-        isRoughly (fromIntegral def_cycles) (cs .! #cycles)
+        isRoughly def_cycles (cs .! #cycles)
 
     , testGroup "cycle balance"
       [ testCase "install" $ do
@@ -2047,7 +2047,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
           , on_reply = replyData (i64tob getRefund)
           , on_reject = trap "unexpected reject"
           }
-        >>= asWord64 >>= isRoughly 0
+        >>= asWord64 >>= isRoughly (0::Word64)
       queryBalance cid1 >>= isRoughly (def_cycles `div` 2)
       queryBalance cid2 >>= isRoughly (def_cycles `div` 4)
       queryBalance cid3 >>= isRoughly (2*def_cycles + def_cycles `div` 4)
