@@ -449,7 +449,6 @@ test-suite unit-test
   build-depends: unordered-containers
   build-depends: utf8-string
   build-depends: vector
-  build-depends: wide-word
   build-depends: winter
   build-depends: uglymemo
   build-depends: zlib
