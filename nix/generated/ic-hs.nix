@@ -65,6 +65,7 @@
 , wai-cors
 , wai-extra
 , warp
+, wide-word
 , winter
 , zlib
 }:
@@ -137,6 +138,7 @@ mkDerivation {
     wai-cors
     wai-extra
     warp
+    wide-word
     winter
     zlib
   ];
@@ -199,6 +201,7 @@ mkDerivation {
     wai-cors
     wai-extra
     warp
+    wide-word
     winter
     zlib
   ];

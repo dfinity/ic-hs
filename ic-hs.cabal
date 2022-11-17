@@ -316,6 +316,7 @@ executable ic-ref-test
   build-depends: vector
   build-depends: wai
   build-depends: warp
+  build-depends: wide-word
   build-depends: zlib
   build-depends: either
   other-modules: IC.CBOR.Parser
@@ -567,6 +568,7 @@ library
   build-depends: wai-cors
   build-depends: wai-extra
   build-depends: warp
+  build-depends: wide-word
   build-depends: winter
   build-depends: uglymemo
   build-depends: zlib
