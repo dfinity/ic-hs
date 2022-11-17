@@ -81,10 +81,10 @@ handle store req respond = case (requestMethod req, pathInfo req) of
   where
     runIC :: StateT IC IO a -> IO a
     runIC a = do
-      modifyStore store processHeartbeats
       x <- modifyStore store $ do
         -- Here we make IC.Ref use “real time”
         lift getTimestamp >>= setAllTimesTo
+        processSystemTasks
         a
       -- begin processing in the background (it is important that
       -- this thread returns, else warp is blocked somehow)

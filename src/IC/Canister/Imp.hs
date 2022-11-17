@@ -14,6 +14,7 @@ module IC.Canister.Imp
  ( CanisterEntryPoint
  , ImpState(..)
  , rawHeartbeat
+ , rawGlobalTimer
  , rawInstantiate
  , rawInitialize
  , rawQuery
@@ -77,6 +78,7 @@ data ExecutionState s = ExecutionState
   , pending_call :: Maybe MethodCall
   , calls :: [MethodCall]
   , new_certified_data :: Maybe Blob
+  , new_global_timer :: Maybe Word64
   , accepted :: Bool -- for canister_inspect_message
   }
 
@@ -97,6 +99,7 @@ initialExecutionState inst stableMem env needs_to_respond = ExecutionState
   , pending_call = Nothing
   , calls = mempty
   , new_certified_data = Nothing
+  , new_global_timer = Nothing
   , accepted = False
   }
 
@@ -239,6 +242,7 @@ systemAPI esref =
   , toImport "ic0" "accept_message" accept_message
   , toImport "ic0" "time" get_time
   , toImport "ic0" "performance_counter" performance_counter
+  , toImport "ic0" "global_timer_set" global_timer_set
   , toImport "ic0" "canister_state_counter" get_canister_state_counter
 
   , toImport "ic0" "debug_print" debug_print
@@ -248,6 +252,9 @@ systemAPI esref =
     -- Utilities
     gets :: (ExecutionState s -> b) -> HostM s b
     gets = getsES esref
+
+    puts :: (ExecutionState s -> ExecutionState s) -> HostM s ()
+    puts = modES esref
 
     copy_to_canister :: Int32 -> Int32 -> Int32 -> Blob -> HostM s ()
     copy_to_canister dst offset size blob = do
@@ -585,6 +592,18 @@ systemAPI esref =
         ns <- gets (env_canister_state_counter . env)
         return (fromIntegral ns)
 
+    global_timer_set :: Word64 -> HostM s Word64
+    global_timer_set ts = do
+        old_timer <- gets new_global_timer
+        case old_timer of
+          Nothing -> do
+            old_timer <- gets (env_global_timer . env)
+            puts (\es -> es {new_global_timer = Just ts})
+            return $ fromIntegral old_timer
+          Just old_timer -> do
+            puts (\es -> es {new_global_timer = Just ts})
+            return old_timer
+
     debug_print :: (Int32, Int32) -> HostM s ()
     debug_print (src, size) = do
       -- TODO: This should be a non-trapping copy
@@ -630,6 +649,7 @@ canRespond = NeedsToRespond True
 canisterActions :: ExecutionState s -> CanisterActions
 canisterActions es = CanisterActions
     { set_certified_data = new_certified_data es
+    , set_global_timer = fromIntegral <$> new_global_timer es
     }
 
 type CanisterEntryPoint r = forall s. (ImpState s -> ST s r)
@@ -678,6 +698,25 @@ rawHeartbeat env (ImpState esref inst sm wasm_mod) = do
         , canisterActions es'
         )
 
+rawGlobalTimer :: Env -> ImpState s -> ST s (TrapOr ([MethodCall], CanisterActions))
+rawGlobalTimer env (ImpState esref inst sm wasm_mod) = do
+  result <- runExceptT $ do
+    let es = (initialExecutionState inst sm env cantRespond)
+
+    if "canister_global_timer" `elem` exportedFunctions wasm_mod
+    then withES esref es $ void $ invokeExport inst "canister_global_timer" []
+    else return ((), es)
+
+  case result of
+    Left  err -> return $ Trap err
+    Right (_, es')
+      | accepted es'          -> return $ Trap "cannot accept_message here"
+      | isJust (response es') -> return $ Trap "cannot respond from global timer"
+      | otherwise             -> return $ Return $
+        ( calls es'
+        , canisterActions es'
+        )
+
 rawPreUpgrade :: EntityId -> Env -> ImpState s -> ST s (TrapOr (CanisterActions, Blob))
 rawPreUpgrade caller env (ImpState esref inst sm wasm_mod) = do
   result <- runExceptT $ do
@@ -698,6 +737,8 @@ rawPreUpgrade caller env (ImpState esref inst sm wasm_mod) = do
   case result of
     Left  err -> return $ Trap err
     Right (_, es')
+        | Just _ <- new_global_timer es'
+          -> return $ Trap "Cannot set global timer from inspect_message"
         | accepted es' -> return $ Trap "cannot accept_message here"
         | not (null (calls es')) -> return $ Trap "cannot call from pre_upgrade"
         | otherwise -> do
@@ -748,6 +789,8 @@ rawQuery method caller env dat (ImpState esref inst sm _) = do
     Right (_, es')
       | Just _ <- new_certified_data es'
         -> return $ Trap "Cannot set certified data from a query method"
+      | Just _ <- new_global_timer es'
+        -> return $ Trap "Cannot set global timer from inspect_message"
       | not (null (calls es')) -> return $ Trap "cannot call from query"
       | accepted es' -> return $ Trap "cannot accept_message here"
       | Just r <- response es' -> return $ Return r
@@ -844,6 +887,8 @@ rawInspectMessage method caller env dat (ImpState esref inst sm wasm_mod) = do
     Right (_, es')
       | Just _ <- new_certified_data es'
         -> return $ Trap "Cannot set certified data from inspect_message"
+      | Just _ <- new_global_timer es'
+        -> return $ Trap "Cannot set global timer from inspect_message"
       | not (null (calls es'))  -> return $ Trap "cannot call from inspect_message"
       | isJust (response es')   -> return $ Trap "cannot respond from inspect_message"
       | not (accepted es')      -> return $ Trap "message not accepted by inspect_message"

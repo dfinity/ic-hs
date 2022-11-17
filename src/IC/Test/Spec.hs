@@ -1293,11 +1293,9 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
       _ <- ic_uninstall ic00 cid
       _ <- ic_install ic00 (enum #install) cid universal_wasm (run $ onGlobalTimer $ callback (setGlobal $ i64tob $ int64 $ fromIntegral (1::Int)))
       timer3 <- set_timer cid far_future_time
-      ctr <- get_global cid
       timer1 @?= blob 0
       timer2 @?= blob far_future_time
       timer3 @?= blob 0
-      ctr @?= blob 0
     , testCase "upgrade canister" $ do
       cid <- install_canister_with_global_timer (1::Int)
       _ <- reset_global cid
@@ -1307,11 +1305,9 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
       universal_wasm <- getTestWasm "universal-canister"
       _ <- ic_install ic00 (enum #upgrade) cid universal_wasm (run $ onGlobalTimer $ callback (setGlobal $ i64tob $ int64 $ fromIntegral (1::Int)))
       timer3 <- set_timer cid far_future_time
-      ctr <- get_global cid
       timer1 @?= blob 0
       timer2 @?= blob far_future_time
       timer3 @?= blob 0
-      ctr @?= blob 0
     , testCase "reinstall canister" $ do
       cid <- install_canister_with_global_timer (1::Int)
       _ <- reset_global cid
@@ -1321,11 +1317,9 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
       universal_wasm <- getTestWasm "universal-canister"
       _ <- ic_install ic00 (enum #reinstall) cid universal_wasm (run $ onGlobalTimer $ callback (setGlobal $ i64tob $ int64 $ fromIntegral (1::Int)))
       timer3 <- set_timer cid far_future_time
-      ctr <- get_global cid
       timer1 @?= blob 0
       timer2 @?= blob far_future_time
       timer3 @?= blob 0
-      ctr @?= blob 0
     ]
 
   , testGroup "canister state counter" $
