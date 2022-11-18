@@ -102,6 +102,6 @@ try_from_u8!(
         GetHttpReplyWithBody = 70,
         GetHttpTransformContext = 71,
         StableFill64 = 72,
-        CanisterStateCounter = 73,
+        CanisterVersion = 73,
     }
 );

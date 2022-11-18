@@ -257,8 +257,8 @@ getHttpReplyWithBody = op 70
 getHttpTransformContext :: Exp 'B -> Exp 'B
 getHttpTransformContext = op 71
 
-canisterStateCounter :: Exp 'I64
-canisterStateCounter = op 73
+canisterVersion :: Exp 'I64
+canisterVersion = op 73
 
 -- Some convenience combinators
 
