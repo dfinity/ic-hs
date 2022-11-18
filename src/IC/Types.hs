@@ -108,7 +108,7 @@ data Env = Env
     , env_balance :: Cycles
     , env_status :: Status
     , env_certificate :: Maybe Blob
-    , env_canister_state_counter :: Natural
+    , env_canister_version :: Natural
     }
 
 data TrapOr a = Trap String | Return a deriving Functor
