@@ -615,14 +615,10 @@ systemAPI esref =
     global_timer_set :: Word64 -> HostM s Word64
     global_timer_set ts = do
         old_timer <- gets new_global_timer
+        puts $ \es -> es {new_global_timer = Just ts}
         case old_timer of
-          Nothing -> do
-            old_timer <- gets (env_global_timer . env)
-            puts (\es -> es {new_global_timer = Just ts})
-            return $ fromIntegral old_timer
-          Just old_timer -> do
-            puts (\es -> es {new_global_timer = Just ts})
-            return old_timer
+          Nothing -> gets $ fromIntegral . env_global_timer . env
+          Just old_timer -> return old_timer
 
     debug_print :: (Int32, Int32) -> HostM s ()
     debug_print (src, size) = do
