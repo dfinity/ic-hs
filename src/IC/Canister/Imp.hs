@@ -259,8 +259,8 @@ systemAPI esref =
     assert_context method ctxts = do
       let cs = words ctxts
       c <- gets context
-      if c `elem` cs then return ()
-      else throwError $ method ++ " cannot be called in context " ++ c
+      unless (c `elem` cs) $
+        throwError $ method ++ " cannot be called in context " ++ c
 
     toImport' ::
         forall a b.
