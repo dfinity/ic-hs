@@ -1347,7 +1347,7 @@ runHeartbeat cid = do
   can <- getCanister cid
   is_empty   <- isCanisterEmpty cid
   is_running <- isCanisterRunning cid
-  unless (idleSinceLastHeartbeat (last_action can) || is_empty || not is_running) $ do
+  when (not (idleSinceLastHeartbeat $ last_action can) && not is_empty && is_running) $ do
     new_ctxt_id <- newCallContext $ CallContext
       { canister = cid
       , origin = FromSystemTask
