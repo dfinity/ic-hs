@@ -83,7 +83,7 @@ ic0.msg_method_name_size : () -> i32;                                       // F
 ic0.msg_method_name_copy : (dst : i32, offset : i32, size : i32) -> ();     // F
 ic0.accept_message : () -> ();                                              // F
 
-ic0.call_new :                                                              // U Ry Rt H
+ic0.call_new :                                                              // U Ry Rt T
   ( callee_src  : i32,
     callee_size : i32,
     name_src : i32,
@@ -93,11 +93,11 @@ ic0.call_new :                                                              // U
     reject_fun : i32,
     reject_env : i32
   ) -> ();
-ic0.call_on_cleanup : (fun : i32, env : i32) -> ();                         // U Ry Rt H
-ic0.call_data_append : (src : i32, size : i32) -> ();                       // U Ry Rt H
-ic0.call_cycles_add : (amount : i64) -> ();                                 // U Ry Rt H
-ic0.call_cycles_add128 : (amount_high : i64, amount_low: i64) -> ();        // U Ry Rt H
-ic0.call_perform : () -> ( err_code : i32 );                                // U Ry Rt H
+ic0.call_on_cleanup : (fun : i32, env : i32) -> ();                         // U Ry Rt T
+ic0.call_data_append : (src : i32, size : i32) -> ();                       // U Ry Rt T
+ic0.call_cycles_add : (amount : i64) -> ();                                 // U Ry Rt T
+ic0.call_cycles_add128 : (amount_high : i64, amount_low: i64) -> ();        // U Ry Rt T
+ic0.call_perform : () -> ( err_code : i32 );                                // U Ry Rt T
 
 ic0.stable_size : () -> (page_count : i32);                                 // *
 ic0.stable_grow : (new_pages : i32) -> (old_page_count : i32);              // *
@@ -108,13 +108,13 @@ ic0.stable64_grow : (new_pages : i64) -> (old_page_count : i64);            // *
 ic0.stable64_write : (offset : i64, src : i64, size : i64) -> ();           // *
 ic0.stable64_read : (dst : i64, offset : i64, size : i64) -> ();            // *
 
-ic0.certified_data_set : (src: i32, size: i32) -> ();                       // I G U Ry Rt H
+ic0.certified_data_set : (src: i32, size: i32) -> ();                       // I G U Ry Rt T
 ic0.data_certificate_present : () -> i32;                                   // *
 ic0.data_certificate_size : () -> i32;                                      // *
 ic0.data_certificate_copy : (dst: i32, offset: i32, size: i32) -> ();       // *
 
 ic0.time : () -> (timestamp : i64);                                         // *
-ic0.global_timer_set : (timestamp : i64) -> i64;                            // I U Ry Rt C H
+ic0.global_timer_set : (timestamp : i64) -> i64;                            // I U Ry Rt C T
 ic0.performance_counter : (counter_type : i32) -> (counter : i64);          // * s
 
 ic0.debug_print : (src : i32, size : i32) -> ();                            // * s
@@ -131,16 +131,16 @@ Rt: from a reject callback
 C: from a cleanup callback
 s: the (start) module initialization function
 F: from canister_inspect_message
-H: from canister_heartbeat
+T: from _system task_ (`canister_heartbeat` or `canister_global_timer`)
 
-* = I G U Q Ry Rt C F H (NB: Not (start))
+* = I G U Q Ry Rt C F T (NB: Not (start))
 
 If the canister invokes a system call from somewhere else, it will trap.
 
 Note. We do not (yet) implement system call availability checks for the (start) module initialization function in ic-hs.
 -}
 
-data ExecutionContext = EXC_I | EXC_G | EXC_U | EXC_Q | EXC_Ry | EXC_Rt | EXC_C | EXC_F | EXC_H
+data ExecutionContext = EXC_I | EXC_G | EXC_U | EXC_Q | EXC_Ry | EXC_Rt | EXC_C | EXC_F | EXC_T
   deriving Eq
 
 instance Show ExecutionContext where
@@ -152,7 +152,7 @@ instance Show ExecutionContext where
     show EXC_Rt = "Rt"
     show EXC_C = "C"
     show EXC_F = "F"
-    show EXC_H = "H"
+    show EXC_T = "T"
 
 -- Parameters are the data that come from the caller
 
@@ -321,12 +321,12 @@ systemAPI esref =
   , toImport' "ic0" "msg_cycles_accept128" [EXC_U, EXC_Rt, EXC_Ry] msg_cycles_accept128
   , toImport' "ic0" "canister_cycle_balance128" star canister_cycle_balance128
 
-  , toImport' "ic0" "call_new" [EXC_U, EXC_Ry, EXC_Rt, EXC_H] call_new
-  , toImport' "ic0" "call_on_cleanup" [EXC_U, EXC_Ry, EXC_Rt, EXC_H] call_on_cleanup
-  , toImport' "ic0" "call_data_append" [EXC_U, EXC_Ry, EXC_Rt, EXC_H] call_data_append
-  , toImport' "ic0" "call_cycles_add" [EXC_U, EXC_Ry, EXC_Rt, EXC_H] call_cycles_add
-  , toImport' "ic0" "call_cycles_add128" [EXC_U, EXC_Ry, EXC_Rt, EXC_H] call_cycles_add128
-  , toImport' "ic0" "call_perform" [EXC_U, EXC_Ry, EXC_Rt, EXC_H] call_perform
+  , toImport' "ic0" "call_new" [EXC_U, EXC_Ry, EXC_Rt, EXC_T] call_new
+  , toImport' "ic0" "call_on_cleanup" [EXC_U, EXC_Ry, EXC_Rt, EXC_T] call_on_cleanup
+  , toImport' "ic0" "call_data_append" [EXC_U, EXC_Ry, EXC_Rt, EXC_T] call_data_append
+  , toImport' "ic0" "call_cycles_add" [EXC_U, EXC_Ry, EXC_Rt, EXC_T] call_cycles_add
+  , toImport' "ic0" "call_cycles_add128" [EXC_U, EXC_Ry, EXC_Rt, EXC_T] call_cycles_add128
+  , toImport' "ic0" "call_perform" [EXC_U, EXC_Ry, EXC_Rt, EXC_T] call_perform
 
   , toImport' "ic0" "stable_size" star stable_size
   , toImport' "ic0" "stable_grow" star stable_grow
@@ -338,7 +338,7 @@ systemAPI esref =
   , toImport' "ic0" "stable64_write" star stable64_write
   , toImport' "ic0" "stable64_read" star stable64_read
 
-  , toImport' "ic0" "certified_data_set" [EXC_I, EXC_G, EXC_U, EXC_Ry, EXC_Rt, EXC_H] certified_data_set
+  , toImport' "ic0" "certified_data_set" [EXC_I, EXC_G, EXC_U, EXC_Ry, EXC_Rt, EXC_T] certified_data_set
   , toImport' "ic0" "data_certificate_present" star data_certificate_present
   , toImport' "ic0" "data_certificate_size" star data_certificate_size
   , toImport' "ic0" "data_certificate_copy" star data_certificate_copy
@@ -349,7 +349,7 @@ systemAPI esref =
   , toImport' "ic0" "accept_message" [EXC_F] accept_message
   , toImport' "ic0" "time" star get_time
   , toImport' "ic0" "performance_counter" star performance_counter
-  , toImport' "ic0" "global_timer_set" [EXC_I, EXC_U, EXC_Ry, EXC_Rt, EXC_C, EXC_H] global_timer_set
+  , toImport' "ic0" "global_timer_set" [EXC_I, EXC_U, EXC_Ry, EXC_Rt, EXC_C, EXC_T] global_timer_set
   , toImport' "ic0" "canister_state_counter" star get_canister_state_counter
 
   , toImport' "ic0" "debug_print" star debug_print
@@ -376,7 +376,7 @@ systemAPI esref =
         f a
 
     star :: [ExecutionContext]
-    star = [EXC_I, EXC_G, EXC_U, EXC_Q, EXC_Ry, EXC_Rt, EXC_C, EXC_F, EXC_H]
+    star = [EXC_I, EXC_G, EXC_U, EXC_Q, EXC_Ry, EXC_Rt, EXC_C, EXC_F, EXC_T]
 
     puts :: (ExecutionState s -> ExecutionState s) -> HostM s ()
     puts = modES esref
@@ -800,7 +800,7 @@ rawInitialize caller env dat (ImpState esref inst sm wasm_mod) = do
 rawHeartbeat :: Env -> ImpState s -> ST s (TrapOr ([MethodCall], CanisterActions))
 rawHeartbeat env (ImpState esref inst sm wasm_mod) = do
   result <- runExceptT $ do
-    let es = (initialExecutionState inst sm env cantRespond EXC_H)
+    let es = (initialExecutionState inst sm env cantRespond EXC_T)
 
     if "canister_heartbeat" `elem` exportedFunctions wasm_mod
     then withES esref es $ void $ invokeExport inst "canister_heartbeat" []
@@ -816,7 +816,7 @@ rawHeartbeat env (ImpState esref inst sm wasm_mod) = do
 rawGlobalTimer :: Env -> ImpState s -> ST s (TrapOr ([MethodCall], CanisterActions))
 rawGlobalTimer env (ImpState esref inst sm wasm_mod) = do
   result <- runExceptT $ do
-    let es = (initialExecutionState inst sm env cantRespond EXC_H)
+    let es = (initialExecutionState inst sm env cantRespond EXC_T)
 
     if "canister_global_timer" `elem` exportedFunctions wasm_mod
     then withES esref es $ void $ invokeExport inst "canister_global_timer" []
