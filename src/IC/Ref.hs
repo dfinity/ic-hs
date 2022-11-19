@@ -1368,7 +1368,7 @@ runGlobalTimer cid = do
   Timestamp current_time <- getCanisterTime cid
   global_timer <- getCanisterGlobalTimer cid
   let should_fire = global_timer /= 0 && current_time >= global_timer
-  unless (is_empty || not is_running || not should_fire) $ do
+  when (should_fire && is_running && not is_empty) $ do
     setCanisterGlobalTimer cid 0
     new_ctxt_id <- newCallContext $ CallContext
       { canister = cid
