@@ -29,11 +29,12 @@ import Control.Monad
 import Data.Word
 import Data.Functor
 import Data.Row as R
-import Data.Time.Clock
 import Data.Time.Clock.POSIX
 import Codec.Candid (Principal(..))
 import qualified Codec.Candid as Candid
 import Data.Serialize.LEB128 (toLEB128)
+import Control.Concurrent
+import System.Timeout
 
 import IC.Types (EntityId(..))
 import IC.HTTP.GenR
@@ -53,15 +54,14 @@ import qualified IC.Test.Spec.TECDSA
 
 -- * Helpers
 
-loop :: HasAgentConfig => IO (Maybe a) -> IO a
-loop act = getCurrentTime >>= go
+waitFor :: HasAgentConfig => IO Bool -> IO ()
+waitFor act = do
+    result <- timeout (tc_timeout agentConfig * (10::Int) ^ (6::Int)) doActUntil
+    when (result == Nothing) $ assertFailure "Polling timed out"
   where
-    go init = act >>= \case
-      Just x -> return x
-      Nothing -> do
-        now <- getCurrentTime
-        if diffUTCTime now init > fromIntegral (tc_timeout agentConfig) then assertFailure "Polling timed out"
-        else go init
+    doActUntil = do
+      stop <- act
+      unless stop (threadDelay 1000 *> doActUntil)
 
 -- * Canister http calls
 
@@ -1224,9 +1224,9 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     let get_far_future_time = floor . (* 1e9) <$> (+) 100000 <$> getPOSIXTime in
     let set_timer cid time = call cid (replyData $ i64tob $ apiGlobalTimerSet $ int64 time) in
     let blob = toLazyByteString . word64LE . fromIntegral in
-    let wait_for_timer cid n = loop $ do
+    let wait_for_timer cid n = waitFor $ do
           ctr <- get_global cid
-          return $ if ctr == blob n then Just () else Nothing
+          return $ ctr == blob n
         in
     [ testCase "set far in the future" $ do
       cid <- install_canister_with_global_timer (1::Int)
