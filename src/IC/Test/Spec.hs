@@ -1224,10 +1224,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     let get_far_future_time = floor . (* 1e9) <$> (+) 100000 <$> getPOSIXTime in
     let set_timer cid time = call cid (replyData $ i64tob $ apiGlobalTimerSet $ int64 time) in
     let blob = toLazyByteString . word64LE . fromIntegral in
-    let wait_for_timer cid n = waitFor $ do
-          ctr <- get_global cid
-          return $ ctr == blob n
-        in
+    let wait_for_timer cid n = waitFor $ (blob n ==) <$> get_global cid in
     [ testCase "set far in the future" $ do
       cid <- install_canister_with_global_timer (1::Int)
       _ <- reset_global cid
