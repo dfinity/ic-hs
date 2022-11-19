@@ -1041,7 +1041,7 @@ icInstallCode caller r = do
             }
         performCanisterActions canister_id ca
         bumpCanisterStateCounter canister_id
-        if set_global_timer ca == Nothing then setCanisterGlobalTimer canister_id 0 else return ()
+        when (set_global_timer ca == Nothing) $ setCanisterGlobalTimer canister_id 0
 
       install = do
         unless was_empty $
