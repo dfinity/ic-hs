@@ -115,6 +115,7 @@ ic0.data_certificate_copy : (dst: i32, offset: i32, size: i32) -> ();       // *
 
 ic0.time : () -> (timestamp : i64);                                         // *
 ic0.global_timer_set : (timestamp : i64) -> i64;                            // I U Ry Rt C T
+ic0.canister_version : () -> (canister_version : i64);                      // *
 ic0.performance_counter : (counter_type : i32) -> (counter : i64);          // * s
 
 ic0.debug_print : (src : i32, size : i32) -> ();                            // * s
@@ -350,7 +351,7 @@ systemAPI esref =
   , toImport' "ic0" "time" star get_time
   , toImport' "ic0" "performance_counter" star performance_counter
   , toImport' "ic0" "global_timer_set" [EXC_I, EXC_U, EXC_Ry, EXC_Rt, EXC_C, EXC_T] global_timer_set
-  , toImport' "ic0" "canister_state_counter" star get_canister_state_counter
+  , toImport' "ic0" "canister_version" star get_canister_version
 
   , toImport' "ic0" "debug_print" star debug_print
   , toImport' "ic0" "trap" star explicit_trap
@@ -712,9 +713,9 @@ systemAPI esref =
     performance_counter :: Int32 -> HostM s Word64
     performance_counter _ = return 0
 
-    get_canister_state_counter :: () -> HostM s Word64
-    get_canister_state_counter () = do
-        ns <- gets (env_canister_state_counter . env)
+    get_canister_version :: () -> HostM s Word64
+    get_canister_version () = do
+        ns <- gets (env_canister_version . env)
         return (fromIntegral ns)
 
     global_timer_set :: Word64 -> HostM s Word64
