@@ -137,7 +137,7 @@ T: from _system task_ (`canister_heartbeat` or `canister_global_timer`)
 
 If the canister invokes a system call from somewhere else, it will trap.
 
-Note. We do not (yet) implement system call availability checks for the (start) module initialization function in ic-hs.
+Note. ic0.debug_print and ic0.trap are not (yet) available in the (start) module initialization function in ic-hs.
 -}
 
 data ExecutionContext = EXC_I | EXC_G | EXC_U | EXC_Q | EXC_Ry | EXC_Rt | EXC_C | EXC_F | EXC_T
