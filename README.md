@@ -238,8 +238,6 @@ build output produced by
     cd universal-canister
     nix-shell --command 'cargo build --target wasm32-unknown-unknown --release'
 
-Make sure to optimize the Wasm binary size, e.g., by running `ic-cdk-optimizer`.
-
 You can now run the test suite from the top-level directory with
 
     cabal run ic-ref-test
