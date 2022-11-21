@@ -66,7 +66,7 @@ let
         cp ${ic-ref}/bin/ic-ref $out/bin
         cp ${ic-ref}/bin/ic-ref-test $out/bin
         mkdir -p $out/test-data
-        cp ${ic-hs}/test-data/universal-canister.wasm $out/test-data/universal-canister.wasm
+        cp ${ic-ref}/test-data/universal-canister.wasm $out/test-data/universal-canister.wasm
         chmod u+w $out/bin/ic-ref
         chmod u+w $out/bin/ic-ref-test
         dylibbundler \
