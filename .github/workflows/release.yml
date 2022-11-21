@@ -53,7 +53,9 @@ jobs:
       run: |
         out_path="$(nix-build -A ic-ref-dist)"
         echo "::set-output name=out::$out_path"
-        tar -C "$out_path/bin" -czvf ic-ref.tar.gz .
+        tar -C "$out_path/bin" -czvf ic-ref-$SYSTEM.tar.gz .
+      env:
+        SYSTEM: ${{ matrix.nix-system }}
     - name: Upload artifact
       uses: actions/upload-artifact@v3
       with:
