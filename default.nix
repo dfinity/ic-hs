@@ -106,6 +106,8 @@ let
         mkdir -p $out/bin
         cp ${ic-hs-static}/bin/ic-ref $out/bin
         cp ${ic-hs-static}/bin/ic-ref-test $out/bin
+        mkdir -p $out/test-data
+        cp ${ic-hs}/test-data/universal-canister.wasm $out/test-data/universal-canister.wasm
 
         # The Paths_warp module in warp contains references to warp's /nix/store path like:
         #
