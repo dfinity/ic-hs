@@ -64,10 +64,15 @@ let
       } ''
         mkdir -p $out/bin
         cp ${ic-ref}/bin/ic-ref $out/bin
+        cp ${ic-ref}/bin/ic-ref-test $out/bin
+        mkdir -p $out/test-data
+        cp ${ic-ref}/test-data/universal-canister.wasm $out/test-data/universal-canister.wasm
         chmod u+w $out/bin/ic-ref
+        chmod u+w $out/bin/ic-ref-test
         dylibbundler \
           -b \
           -x $out/bin/ic-ref \
+          -x $out/bin/ic-ref-test \
           -d $out/bin \
           -p '@executable_path' \
           -i /usr/lib/system \
@@ -80,6 +85,7 @@ let
           -t ${nixpkgs.darwin.Libsystem} \
           -t ${nixpkgs.darwin.CF} \
           -t ${nixpkgs.libiconv} \
+          -t ${staticHaskellPackages.tasty-html.data} \
           $out/bin/*
 
         # sanity check
@@ -101,6 +107,9 @@ let
       } ''
         mkdir -p $out/bin
         cp ${ic-hs-static}/bin/ic-ref $out/bin
+        cp ${ic-hs-static}/bin/ic-ref-test $out/bin
+        mkdir -p $out/test-data
+        cp ${ic-hs}/test-data/universal-canister.wasm $out/test-data/universal-canister.wasm
 
         # The Paths_warp module in warp contains references to warp's /nix/store path like:
         #
@@ -126,6 +135,10 @@ let
         #
         # So we can safely remove the references to warp:
         remove-references-to -t ${staticHaskellPackages.warp} $out/bin/ic-ref
+        remove-references-to \
+          -t ${staticHaskellPackages.tasty-html} \
+          -t ${staticHaskellPackages.tasty-html.data} \
+          $out/bin/ic-ref-test
       '';
 
 
