@@ -83,6 +83,7 @@ let
           -t ${nixpkgs.darwin.Libsystem} \
           -t ${nixpkgs.darwin.CF} \
           -t ${nixpkgs.libiconv} \
+          -t ${staticHaskellPackages.tasty-html.data} \
           $out/bin/*
 
         # sanity check
