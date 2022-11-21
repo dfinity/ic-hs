@@ -135,8 +135,10 @@ let
         #
         # So we can safely remove the references to warp:
         remove-references-to -t ${staticHaskellPackages.warp} $out/bin/ic-ref
-        remove-references-to -t ${staticHaskellPackages.tasty-html} $out/bin/ic-ref-test
-        remove-references-to -t ${staticHaskellPackages.tasty-html.data} $out/bin/ic-ref-test
+        remove-references-to \
+          -t ${staticHaskellPackages.tasty-html} \
+          -t ${staticHaskellPackages.tasty-html.data} \
+          $out/bin/ic-ref-test
       '';
 
 
