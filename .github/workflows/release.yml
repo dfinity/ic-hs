@@ -53,17 +53,12 @@ jobs:
       run: |
         out_path="$(nix-build -A ic-ref-dist)"
         echo "::set-output name=out::$out_path"
-        tar -C "$out_path/bin" -czvf ic-ref-$SYSTEM.tar.gz .
-      env:
-        SYSTEM: ${{ matrix.nix-system }}
+        tar -C "$out_path/bin" -czvf ic-ref-${{ matrix.os }}.tar.gz .
     - name: Upload artifact
       uses: actions/upload-artifact@v3
       with:
         name: assetstorage
-        path: ${{ github.workspace }}/ic-ref-$SYSTEM.tar.gz
-      env:
-        SYSTEM: ${{ matrix.nix-system }}
-
+        path: ${{ github.workspace }}/ic-ref-${{ matrix.os }}.tar.gz
 
   release:
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
