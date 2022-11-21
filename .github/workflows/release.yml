@@ -48,19 +48,6 @@ jobs:
     - run: nix-build-uncached -A check-cabal-freeze
     # now the rest
     - run: nix-build-uncached
-    - name: Prepare artifact
-      id: buildit
-      run: |
-        out_path="$(nix-build -A ic-ref-dist)"
-        cp "$out_path/bin/ic-ref" ic-ref-${{ matrix.os }}
-        cp "$out_path/bin/ic-ref-test" ic-ref-test-${{ matrix.os }}
-    - name: Upload artifact
-      uses: actions/upload-artifact@v3
-      with:
-        name: assetstorage
-        path: |
-          ${{ github.workspace }}/ic-ref-${{ matrix.os }}
-          ${{ github.workspace }}/ic-ref-test-${{ matrix.os }}
 
   release:
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
@@ -91,3 +78,26 @@ jobs:
       with:
         name: ic-hs-test
         authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+    - run: nix-env -f 'channel:nixos-21.05' -iA awscli
+
+    - id: get_version
+      run: |
+        ver="$(grep '^version' ic-hs.cabal | tr -s ' ' | cut -d' ' -f2)"
+        echo "::set-output name=version::$ver"
+
+    - id: buildit
+      run: |
+        out_path="$(nix-build -A ic-ref-dist)"
+        echo "::set-output name=out::$out_path"
+
+    - run: |
+        tar -C "${{ steps.buildit.outputs.out }}/bin" -czvf ic-ref.tar.gz .
+
+        ref_short="$(echo "$GITHUB_SHA" | cut -c1-8)"
+        version="${{ steps.get_version.outputs.version }}-$ref_short"
+
+        aws s3 cp ic-ref.tar.gz "s3://dfinity-download/ic-ref/ic-ref-$version-$SYSTEM.tar.gz"
+      env:
+        SYSTEM: ${{ matrix.nix-system }}
+        AWS_ACCESS_KEY_ID: '${{ secrets.AWS_ACCESS_KEY }}'
+        AWS_SECRET_ACCESS_KEY: '${{ secrets.AWS_SECRET_KEY }}'
