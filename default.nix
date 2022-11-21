@@ -64,10 +64,13 @@ let
       } ''
         mkdir -p $out/bin
         cp ${ic-ref}/bin/ic-ref $out/bin
+        cp ${ic-ref}/bin/ic-ref-test $out/bin
         chmod u+w $out/bin/ic-ref
+        chmod u+w $out/bin/ic-ref-test
         dylibbundler \
           -b \
           -x $out/bin/ic-ref \
+          -x $out/bin/ic-ref-test \
           -d $out/bin \
           -p '@executable_path' \
           -i /usr/lib/system \
@@ -101,6 +104,7 @@ let
       } ''
         mkdir -p $out/bin
         cp ${ic-hs-static}/bin/ic-ref $out/bin
+        cp ${ic-hs-static}/bin/ic-ref-test $out/bin
 
         # The Paths_warp module in warp contains references to warp's /nix/store path like:
         #
@@ -126,6 +130,7 @@ let
         #
         # So we can safely remove the references to warp:
         remove-references-to -t ${staticHaskellPackages.warp} $out/bin/ic-ref
+        remove-references-to -t ${staticHaskellPackages.warp} $out/bin/ic-ref-test
       '';
 
 
