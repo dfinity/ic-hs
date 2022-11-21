@@ -48,6 +48,16 @@ jobs:
     - run: nix-build-uncached -A check-cabal-freeze
     # now the rest
     - run: nix-build-uncached
+    - id: buildit
+      run: |
+        out_path="$(nix-build -A ic-ref-dist)"
+        echo "::set-output name=out::$out_path"
+        tar -C "$out_path/bin" -czvf ic-ref.tar.gz .
+    - name: Artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: assetstorage
+        path: ${{ github.workspace }}/ic-ref.tar.gz
 
   release:
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
@@ -84,11 +94,6 @@ jobs:
       run: |
         ver="$(grep '^version' ic-hs.cabal | tr -s ' ' | cut -d' ' -f2)"
         echo "::set-output name=version::$ver"
-
-    - id: buildit
-      run: |
-        out_path="$(nix-build -A ic-ref-dist)"
-        echo "::set-output name=out::$out_path"
 
     - run: |
         tar -C "${{ steps.buildit.outputs.out }}/bin" -czvf ic-ref.tar.gz .
