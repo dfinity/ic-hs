@@ -52,12 +52,15 @@ jobs:
       id: buildit
       run: |
         out_path="$(nix-build -A ic-ref-dist)"
-        tar -C "$out_path/bin" -czvf ic-ref-${{ matrix.os }}.tar.gz .
+        cp "$out_path/bin/ic-ref" ic-ref-${{ matrix.os }}
+        cp "$out_path/bin/ic-ref-test" ic-ref-test-${{ matrix.os }}
     - name: Upload artifact
       uses: actions/upload-artifact@v3
       with:
         name: assetstorage
-        path: ${{ github.workspace }}/ic-ref-${{ matrix.os }}.tar.gz
+        path: |
+          ${{ github.workspace }}/ic-ref-${{ matrix.os }}
+          ${{ github.workspace }}/ic-ref-test-${{ matrix.os }}
 
   release:
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
