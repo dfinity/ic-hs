@@ -239,6 +239,12 @@ acceptCycles128 = op 54
 callCyclesAdd128 :: Exp 'I64 -> Exp 'I64 -> Prog
 callCyclesAdd128 = op 55
 
+onGlobalTimer :: Exp 'B -> Prog
+onGlobalTimer = op 62
+
+apiGlobalTimerSet :: Exp 'I64 -> Exp 'I64
+apiGlobalTimerSet = op 63
+
 performanceCounter :: Exp 'I -> Exp 'I64
 performanceCounter = op 66
 

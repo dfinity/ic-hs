@@ -157,6 +157,7 @@ data Env = Env
     , env_status :: Status
     , env_certificate :: Maybe Blob
     , env_canister_version :: Natural
+    , env_global_timer :: Natural
     }
 
 data TrapOr a = Trap String | Return a deriving Functor
@@ -186,18 +187,19 @@ data MethodCall = MethodCall
 type ExistingCanisters = [CanisterId]
 
 -- Canister actions (independent of calls)
-newtype CanisterActions = CanisterActions
+data CanisterActions = CanisterActions
   { set_certified_data :: Maybe Blob
+  , set_global_timer :: Maybe Natural
   }
 
 instance Semigroup CanisterActions where
-    ca1 <> ca2 = CanisterActions (set_certified_data ca1 `setter` set_certified_data ca2)
+    ca1 <> ca2 = CanisterActions (set_certified_data ca1 `setter` set_certified_data ca2) (set_global_timer ca1 `setter` set_global_timer ca2)
       where
         setter _ (Just x) = Just x
         setter x Nothing = x
 
 noCanisterActions :: CanisterActions
-noCanisterActions = CanisterActions Nothing
+noCanisterActions = CanisterActions Nothing Nothing
 
 -- Actions relative to a call context
 data CallActions = CallActions
