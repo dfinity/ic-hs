@@ -2169,7 +2169,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
         step $ "Cycle balance now at " ++ show cycles
       , testCase "nonexisting canister" $ do
         ic_top_up''' ic00' doesn'tExist (fromIntegral def_cycles)
-          >>= isErrOrReject []
+          >>= isErrOrReject [3,5]
       ]
     ]
 
