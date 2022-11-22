@@ -38,7 +38,7 @@ module IC.Ref
   , handleReadState
   , runStep
   , runToCompletion
-  , processHeartbeats
+  , processSystemTasks
   -- $ Exported for use as a library, e.g. in testing
   , setAllTimesTo
   , createEmptyCanister
@@ -144,6 +144,7 @@ data CanState = CanState
   , cycle_balance :: Natural
   , certified_data :: Blob
   , canister_version :: Natural
+  , global_timer :: Natural
   -- |Not part of the spec, but in this implementation we schedule
   -- heartbeats only for canisters who have not been idle since the
   -- last heartbeat, so we remember the last action.
@@ -157,6 +158,7 @@ data EntryPoint
   = Public MethodName Blob
   | Closure Callback Response Cycles
   | Heartbeat
+  | GlobalTimer
   deriving (Show)
 
 type CallId = Int
@@ -174,7 +176,7 @@ data CallContext = CallContext
 data CallOrigin
   = FromUser RequestID CanisterId
   | FromCanister CallId Callback
-  | FromHeartbeat
+  | FromSystemTask
   deriving (Eq, Show)
 
 data Message
@@ -257,6 +259,7 @@ createEmptyCanister cid controllers time = modify $ \ic ->
       , cycle_balance = 0
       , certified_data = ""
       , canister_version = 0
+      , global_timer = 0
       , last_action = Nothing
       }
 
@@ -366,6 +369,13 @@ bumpCanisterVersion :: ICM m => CanisterId -> m ()
 bumpCanisterVersion cid = modCanister cid $
     \cs -> cs { canister_version = canister_version cs + 1 }
 
+getCanisterGlobalTimer :: ICM m => CanisterId -> m Natural
+getCanisterGlobalTimer cid = global_timer <$> getCanister cid
+
+setCanisterGlobalTimer :: ICM m => CanisterId -> Natural -> m ()
+setCanisterGlobalTimer cid ts = modCanister cid $
+    \cs -> cs { global_timer = ts }
+
 module_hash :: CanState -> Maybe Blob
 module_hash = fmap (raw_wasm_hash . can_mod) . content
 
@@ -444,6 +454,7 @@ canisterEnv canister_id = do
       IsStopped -> Stopped
       IsDeleted -> error "deleted canister encountered"
   env_canister_version <- getCanisterVersion canister_id
+  env_global_timer <- getCanisterGlobalTimer canister_id
   return $ Env
     { env_self = canister_id
     , env_time
@@ -451,6 +462,7 @@ canisterEnv canister_id = do
     , env_status
     , env_certificate = Nothing
     , env_canister_version
+    , env_global_timer
     }
 
 -- Synchronous requests
@@ -708,8 +720,8 @@ respondCallContext ctxt_id response = do
   ctxt <- getCallContext ctxt_id
   when (deleted ctxt) $
     error "Internal error: response to deleted call context"
-  when (origin ctxt == FromHeartbeat) $
-    error "Internal error: Heartbeats cannot be responded to"
+  when (origin ctxt == FromSystemTask) $
+    error "Internal error: System tasks cannot be responded to"
   when (needs_to_respond ctxt == NeedsToRespond False) $
     error $ "Internal error: Double response when responding with " <> show response
   modifyCallContext ctxt_id $ \ctxt -> ctxt
@@ -749,7 +761,7 @@ callerOfCallID ctxt_id = do
   case origin ctxt of
     FromUser rid _ -> callerOfRequest rid
     FromCanister other_ctxt_id _callback -> calleeOfCallID other_ctxt_id
-    FromHeartbeat -> return $ canister ctxt
+    FromSystemTask -> return $ canister ctxt
 
 calleeOfCallID :: ICM m => CallId -> m EntityId
 calleeOfCallID ctxt_id = canister <$> getCallContext ctxt_id
@@ -814,7 +826,7 @@ processMessage m = case m of
   ResponseMessage ctxt_id response refunded_cycles -> do
     ctxt <- getCallContext ctxt_id
     case origin ctxt of
-      FromHeartbeat -> error "Response from heartbeat"
+      FromSystemTask -> error "Response from system task"
       FromUser rid _ -> setReqStatus rid $ CallResponse $
         -- NB: Here cycles disappear
         case response of
@@ -844,6 +856,7 @@ performCallActions ctxt_id ca = do
 performCanisterActions :: ICM m => CanisterId -> CanisterActions -> m ()
 performCanisterActions cid ca = do
   mapM_ (setCertifiedData cid) (set_certified_data ca)
+  mapM_ (setCanisterGlobalTimer cid) (set_global_timer ca)
 
 updateBalances :: ICM m => CallId -> [MethodCall] -> Cycles -> m ()
 updateBalances ctxt_id new_calls accepted = do
@@ -915,6 +928,7 @@ invokeManagementCanister caller ctxt_id (Public method_name arg) =
 
 invokeManagementCanister _ _ Closure{} = error "closure invoked on management canister"
 invokeManagementCanister _ _ Heartbeat = error "heartbeat invoked on management canister"
+invokeManagementCanister _ _ GlobalTimer = error "global timer invoked on management canister"
 
 icHttpRequest :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "http_request"
 icHttpRequest caller r = do
@@ -1018,7 +1032,7 @@ icInstallCode caller r = do
     let
       reinstall = do
         env <- canisterEnv canister_id
-        let env1 = env { env_canister_version = env_canister_version env + 1 }
+        let env1 = env { env_canister_version = env_canister_version env + 1, env_global_timer = 0 }
         (wasm_state, ca) <- return (init_method new_can_mod caller env1 arg)
           `onTrap` (\msg -> reject RC_CANISTER_ERROR ("Initialization trapped: " ++ msg) (Just EC_CANISTER_TRAPPED))
         setCanisterContent canister_id $ CanisterContent
@@ -1027,6 +1041,7 @@ icInstallCode caller r = do
             }
         performCanisterActions canister_id ca
         bumpCanisterVersion canister_id
+        when (set_global_timer ca == Nothing) $ setCanisterGlobalTimer canister_id 0
 
       install = do
         unless was_empty $
@@ -1044,7 +1059,7 @@ icInstallCode caller r = do
           `onTrap` (\msg -> reject RC_CANISTER_ERROR ("Pre-upgrade trapped: " ++ msg) (Just EC_CANISTER_TRAPPED))
         -- TODO: update balance in env based on ca1 here, once canister actions
         -- can change balances
-        let env2 = env { env_canister_version = env_canister_version env + 1 }
+        let env2 = env { env_canister_version = env_canister_version env + 1, env_global_timer = 0 }
         (new_wasm_state, ca2) <- return (post_upgrade_method new_can_mod caller env2 mem arg)
           `onTrap` (\msg -> reject RC_CANISTER_ERROR ("Post-upgrade trapped: " ++ msg) (Just EC_CANISTER_TRAPPED))
 
@@ -1052,8 +1067,9 @@ icInstallCode caller r = do
             { can_mod = new_can_mod
             , wasm_state = new_wasm_state
             }
-        performCanisterActions canister_id (ca1 <> ca2)
+        performCanisterActions canister_id (ca1 { set_global_timer = Nothing } <> ca2)
         bumpCanisterVersion canister_id
+        when (set_global_timer ca2 == Nothing) $ setCanisterGlobalTimer canister_id 0
 
     R.switch (r .! #mode) $ R.empty
       .+ #install .== (\() -> install)
@@ -1068,6 +1084,7 @@ icUninstallCode r = do
       { content = Nothing
       , certified_data = ""
       , canister_version = canister_version can_state + 1
+      , global_timer = 0
       }
     -- reject all call open contexts of this canister
     gets (M.toList . call_contexts) >>= mapM_ (\(ctxt_id, ctxt) ->
@@ -1235,6 +1252,11 @@ invokeEntry ctxt_id wasm_state can_mod env entry = do
             Trap _ -> Return (wasm_state, (noCallActions, noCanisterActions))
             Return (wasm_state, (calls, actions)) ->
                 Return (wasm_state, (noCallActions { ca_new_calls = calls }, actions))
+      GlobalTimer -> return $ do
+        case canister_global_timer can_mod env wasm_state of
+            Trap _ -> Return (wasm_state, (noCallActions, noCanisterActions))
+            Return (wasm_state, (calls, actions)) ->
+                Return (wasm_state, (noCallActions { ca_new_calls = calls }, actions))
   where
     lookupUpdate method can_mod
         | Just f <- M.lookup method (update_methods can_mod) = Just f
@@ -1325,10 +1347,10 @@ runHeartbeat cid = do
   can <- getCanister cid
   is_empty   <- isCanisterEmpty cid
   is_running <- isCanisterRunning cid
-  unless (idleSinceLastHeartbeat (last_action can) || is_empty || not is_running) $ do
+  when (not (idleSinceLastHeartbeat $ last_action can) && not is_empty && is_running) $ do
     new_ctxt_id <- newCallContext $ CallContext
       { canister = cid
-      , origin = FromHeartbeat
+      , origin = FromSystemTask
       , needs_to_respond = NeedsToRespond False
       , deleted = False
       , last_trap = Nothing
@@ -1339,10 +1361,33 @@ runHeartbeat cid = do
       , entry = Heartbeat
       }
 
-processHeartbeats :: ICM m => m ()
-processHeartbeats = do
+runGlobalTimer :: ICM m => CanisterId -> m ()
+runGlobalTimer cid = do
+  is_empty   <- isCanisterEmpty cid
+  is_running <- isCanisterRunning cid
+  Timestamp current_time <- getCanisterTime cid
+  global_timer <- getCanisterGlobalTimer cid
+  let should_fire = global_timer /= 0 && current_time >= global_timer
+  when (should_fire && is_running && not is_empty) $ do
+    setCanisterGlobalTimer cid 0
+    new_ctxt_id <- newCallContext $ CallContext
+      { canister = cid
+      , origin = FromSystemTask
+      , needs_to_respond = NeedsToRespond False
+      , deleted = False
+      , last_trap = Nothing
+      , available_cycles = 0
+      }
+    processMessage $ CallMessage
+      { call_context = new_ctxt_id
+      , entry = GlobalTimer
+      }
+
+processSystemTasks :: ICM m => m ()
+processSystemTasks = do
   cs <- gets (M.keys . canisters)
   forM_ cs runHeartbeat
+  forM_ cs runGlobalTimer
 
 idleSinceLastHeartbeat :: Maybe EntryPoint -> Bool
 idleSinceLastHeartbeat (Just Heartbeat) = True

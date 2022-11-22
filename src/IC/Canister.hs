@@ -56,6 +56,7 @@ data CanisterModule = CanisterModule
   , post_upgrade_method :: EntityId -> Env -> Blob -> Blob -> TrapOr (WasmState, CanisterActions)
   , inspect_message :: MethodName -> EntityId -> Env -> Blob -> WasmState -> TrapOr ()
   , heartbeat :: Env -> WasmState -> TrapOr (WasmState, ([MethodCall], CanisterActions))
+  , canister_global_timer :: Env -> WasmState -> TrapOr (WasmState, ([MethodCall], CanisterActions))
   , metadata :: T.Text ↦ (IsPublic, Blob)
   }
 
@@ -124,6 +125,7 @@ parseCanister bytes = do
     , inspect_message = \method_name caller env arg wasm_state ->
           snd <$> invoke wasm_state (rawInspectMessage method_name caller env arg)
     , heartbeat = \env wasm_state -> invoke wasm_state (rawHeartbeat env)
+    , canister_global_timer = \env wasm_state -> invoke wasm_state (rawGlobalTimer env)
     , metadata = M.fromList metadata
     }
 

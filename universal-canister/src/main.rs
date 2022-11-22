@@ -292,13 +292,11 @@ fn eval(ops_bytes: OpsBytes) {
                 let offset = stack.pop_int();
                 stack.push_blob(api::msg_reject_msg_copy(offset, size));
             }
-            /*
             Ops::SetGlobalTimerMethod => set_global_timer_method(stack.pop_blob()),
             Ops::ApiGlobalTimerSet => {
                 let timestamp = stack.pop_int64();
                 stack.push_int64(api::global_timer_set(timestamp))
             }
-            */
             Ops::IncGlobalCounter => {
                 let c = *GLOBAL_COUNTER.lock().unwrap() + 1;
                 *GLOBAL_COUNTER.lock().unwrap() = c;
@@ -373,13 +371,11 @@ fn heartbeat() {
     eval(&get_heartbeat());
 }
 
-/*
 #[export_name = "canister_global_timer"]
 fn global_timer() {
     setup();
     eval(&get_global_timer_method());
 }
-*/
 
 #[export_name = "canister_inspect_message"]
 fn inspect_message() {
@@ -432,7 +428,6 @@ fn get_heartbeat() -> Vec<u8> {
 }
 
 /* A variable to store what to execute in canister_global_timer */
-/*
 lazy_static! {
     static ref GLOBAL_TIMER_METHOD: Mutex<Vec<u8>> = Mutex::new(Vec::new());
 }
@@ -442,7 +437,6 @@ fn set_global_timer_method(data: Vec<u8>) {
 fn get_global_timer_method() -> Vec<u8> {
     GLOBAL_TIMER_METHOD.lock().unwrap().clone()
 }
-*/
 
 lazy_static! {
     static ref TRANSFORM: Mutex<Vec<u8>> = Mutex::new(Vec::new());
