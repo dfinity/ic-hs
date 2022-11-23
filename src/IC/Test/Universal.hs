@@ -266,6 +266,9 @@ getHttpTransformContext = op 71
 canisterVersion :: Exp 'I64
 canisterVersion = op 73
 
+trapIfNeq :: Exp 'B -> Exp 'B -> Exp 'B -> Prog
+trapIfNeq = op 74
+
 -- Some convenience combinators
 
 -- This allows us to write byte expressions as plain string literals
@@ -324,15 +327,34 @@ defaultOtherSide =
     replyDataAppend self  >>>
     reply
 
+relayReplyImpl :: Prog
+relayReplyImpl =
+    replyDataAppend (i2b (int 0)) >>>
+    replyDataAppend argData
+
 relayReply :: Prog
 relayReply =
-    replyDataAppend (i2b (int 0)) >>>
-    replyDataAppend argData >>>
+    relayReplyImpl >>>
     reply
+
+relayReplyNoRefund :: Prog
+relayReplyNoRefund =
+    relayReplyImpl >>>
+    trapIfNeq (i64tob (getRefund)) (i64tob $ int64 0) (bytes "The call should not refund any cycles.") >>>
+    reply
+
+relayRejectImpl :: Prog
+relayRejectImpl =
+    replyDataAppend (i2b reject_code) >>>
+    replyDataAppend reject_msg
 
 relayReject :: Prog
 relayReject =
-    replyDataAppend (i2b reject_code) >>>
-    replyDataAppend reject_msg >>>
+    relayRejectImpl >>>
     reply
 
+relayRejectNoRefund :: Prog
+relayRejectNoRefund =
+    relayRejectImpl >>>
+    trapIfNeq (i64tob (getRefund)) (i64tob $ int64 0) (bytes "The call should not refund any cycles.") >>>
+    reply

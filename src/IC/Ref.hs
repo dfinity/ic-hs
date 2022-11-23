@@ -934,25 +934,33 @@ invokeManagementCanister _ _ GlobalTimer = error "global timer invoked on manage
 
 icHttpRequest :: (ICM m, CanReject m) => EntityId -> CallId -> ICManagement m .! "http_request"
 icHttpRequest caller ctxt_id r =
-    let max_resp_size = max_response_size r in
-    let url = T.unpack $ r .! #url in
-    if parseURI url == Nothing then
-      reject RC_SYS_FATAL "url must be valid according to RFC-3986" (Just EC_INVALID_ARGUMENT)
-    else if not (isPrefixOf "https://" url) then
-      reject RC_SYS_FATAL "url must start with https://" (Just EC_INVALID_ARGUMENT)
-    else if utf8_length (r .! #url) > max_http_request_url_length then
-      reject RC_SYS_FATAL "Failed to parse URL: uri too long" (Just EC_INVALID_ARGUMENT)
-    else if max_resp_size > max_inter_canister_payload_in_bytes then
-      reject RC_CANISTER_REJECT ("max_response_bytes cannot exceed " ++ show max_inter_canister_payload_in_bytes) (Just EC_CANISTER_REJECTED)
+  let max_resp_size = max_response_size r in
+  let transform_principal_check =
+        case (r .! #transform) of
+          Nothing -> True
+          Just t -> case t .! #function of
+            FuncRef p _ -> principalToEntityId p == caller in
+  if max_resp_size > max_inter_canister_payload_in_bytes then
+    reject RC_CANISTER_REJECT ("max_response_bytes cannot exceed " ++ show max_inter_canister_payload_in_bytes) (Just EC_CANISTER_REJECTED)
+  else if not transform_principal_check then
+    reject RC_CANISTER_REJECT "transform needs to be exported by the caller canister" (Just EC_CANISTER_REJECTED)
+  else do
+    available <- getCallContextCycles ctxt_id
+    (_, subnet, _, _) <- getSubnetFromCanisterId caller
+    let base = getHttpRequestBaseFee subnet
+    let per_byte = getHttpRequestPerByteFee subnet
+    let fee = fromIntegral $ http_request_fee r base per_byte
+    let url = T.unpack $ r .! #url
+    if available < fee then reject RC_CANISTER_REJECT ("http_request request sent with " ++ show available ++ " cycles, but " ++ show fee ++ " cycles are required.") (Just EC_CANISTER_REJECTED)
     else do
-      available <- getCallContextCycles ctxt_id
-      (_, subnet, _, _) <- getSubnetFromCanisterId caller
-      let base = getHttpRequestBaseFee subnet
-      let per_byte = getHttpRequestPerByteFee subnet
-      let fee = fromIntegral $ http_request_fee r base per_byte
-      if available < fee then reject RC_CANISTER_REJECT ("http_request request sent with " ++ show available ++ " cycles, but " ++ show fee ++ " cycles are required.") (Just EC_CANISTER_REJECTED)
+      setCallContextCycles ctxt_id (available - fee)
+      if parseURI url == Nothing then
+        reject RC_SYS_FATAL "url must be valid according to RFC-3986" (Just EC_INVALID_ARGUMENT)
+      else if not (isPrefixOf "https://" url) then
+        reject RC_SYS_FATAL "url must start with https://" (Just EC_INVALID_ARGUMENT)
+      else if utf8_length (r .! #url) > max_http_request_url_length then
+        reject RC_SYS_FATAL "Failed to parse URL: uri too long" (Just EC_INVALID_ARGUMENT)
       else do
-        setCallContextCycles ctxt_id (available - fee)
         method <- if (r .! #method) == V.IsJust #get () then return $ T.encodeUtf8 "GET"
                   else if (r .! #method) == V.IsJust #post () then return $ T.encodeUtf8 "POST"
                   else if (r .! #method) == V.IsJust #head () then return $ T.encodeUtf8 "HEAD"
@@ -972,8 +980,6 @@ icHttpRequest caller ctxt_id r =
                   let arg = R.empty
                         .+ #response .== resp
                         .+ #context .== t .! #context
-                  unless (cid == caller) $
-                    reject RC_CANISTER_REJECT "transform needs to be exported by a caller canister" (Just EC_CANISTER_REJECTED)
                   can_mod <- getCanisterMod cid
                   wasm_state <- getCanisterState cid
                   env <- canisterEnv cid

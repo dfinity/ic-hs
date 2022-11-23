@@ -332,6 +332,14 @@ fn eval(ops_bytes: OpsBytes) {
             Ops::CanisterVersion => {
                 stack.push_int64(api::canister_version());
             }
+            Ops::TrapIfNeq => {
+                let c = stack.pop_blob();
+                let b = stack.pop_blob();
+                let a = stack.pop_blob();
+                if a != b {
+                    api::trap_with_blob(&c)
+                }
+            }
         }
     }
 }

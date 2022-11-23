@@ -157,8 +157,8 @@ cborToBlobPair r = assertFailure $ "Expected list of pairs, got: " <> show r
 ic00via :: HasAgentConfig => Blob -> IC00
 ic00via cid = ic00viaWithCycles cid 0
 
-ic00viaWithCycles :: HasAgentConfig => Blob -> Word64 -> IC00
-ic00viaWithCycles cid cycles _ecid method_name arg =
+ic00viaWithCyclesImpl :: HasAgentConfig => Prog -> Prog -> Blob -> Word64 -> IC00
+ic00viaWithCyclesImpl relayReply relayReject cid cycles _ecid method_name arg =
   do call' cid $
       callNew
         (bytes "") (bytes (BS.fromStrict (T.encodeUtf8 method_name))) -- aaaaa-aa
@@ -167,6 +167,12 @@ ic00viaWithCycles cid cycles _ecid method_name arg =
       callCyclesAdd (int64 cycles) >>>
       callPerform
    >>= isReply >>= isRelay
+
+ic00viaWithCycles :: HasAgentConfig => Blob -> Word64 -> IC00
+ic00viaWithCycles = ic00viaWithCyclesImpl relayReply relayReject
+
+ic00viaWithCyclesNoRefund :: HasAgentConfig => Blob -> Word64 -> IC00
+ic00viaWithCyclesNoRefund = ic00viaWithCyclesImpl relayReplyNoRefund relayRejectNoRefund
 
 -- * Interacting with the universal canister
 
@@ -291,7 +297,7 @@ query_ cid prog = query cid prog >>= is ""
 isRelay :: HasCallStack => Blob -> IO ReqResponse
 isRelay = runGet $ Get.getWord32le >>= \case
     0 -> Reply <$> Get.getRemainingLazyByteString
-    0x4c444944 -> fail "Encountered Candid when expectin relayed data. Did you forget to use isRelay?"
+    0x4c444944 -> fail "Encountered Candid when expecting relayed data. Did you forget to use isRelay?"
     c -> do
       msg <- Get.getRemainingLazyByteString
       return $ Reject (fromIntegral c) (T.decodeUtf8With T.lenientDecode (BS.toStrict msg)) Nothing
