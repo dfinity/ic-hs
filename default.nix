@@ -18,7 +18,7 @@ let universal-canister = (naersk.buildPackage rec {
     release = true;
 }).overrideAttrs (old: {
     postFixup = (old.postFixup or "") + ''
-      mv $out/bin/universal_canister.wasm $out/universal_canister.wasm
+      mv $out/bin/universal-canister.wasm $out/universal-canister.wasm
       rmdir $out/bin
     '';
 }); in
@@ -43,7 +43,7 @@ let
     haskellPackages.ic-hs.overrideAttrs (old: {
       installPhase = (old.installPhase or "") + ''
         mkdir $out/test-data
-        cp ${universal-canister}/universal_canister.wasm $out/test-data
+        cp ${universal-canister}/universal-canister.wasm $out/test-data
       '';
       # variant of justStaticExecutables that retains propagatedBuildInputs
       postFixup = "rm -rf $out/lib $out/share/doc";
@@ -64,10 +64,15 @@ let
       } ''
         mkdir -p $out/bin
         cp ${ic-ref}/bin/ic-ref $out/bin
+        cp ${ic-ref}/bin/ic-ref-test $out/bin
+        mkdir -p $out/test-data
+        cp ${ic-ref}/test-data/universal-canister.wasm $out/test-data/universal-canister.wasm
         chmod u+w $out/bin/ic-ref
+        chmod u+w $out/bin/ic-ref-test
         dylibbundler \
           -b \
           -x $out/bin/ic-ref \
+          -x $out/bin/ic-ref-test \
           -d $out/bin \
           -p '@executable_path' \
           -i /usr/lib/system \
@@ -80,6 +85,7 @@ let
           -t ${nixpkgs.darwin.Libsystem} \
           -t ${nixpkgs.darwin.CF} \
           -t ${nixpkgs.libiconv} \
+          -t ${staticHaskellPackages.tasty-html.data} \
           $out/bin/*
 
         # sanity check
@@ -101,6 +107,9 @@ let
       } ''
         mkdir -p $out/bin
         cp ${ic-hs-static}/bin/ic-ref $out/bin
+        cp ${ic-hs-static}/bin/ic-ref-test $out/bin
+        mkdir -p $out/test-data
+        cp ${ic-hs}/test-data/universal-canister.wasm $out/test-data/universal-canister.wasm
 
         # The Paths_warp module in warp contains references to warp's /nix/store path like:
         #
@@ -126,6 +135,10 @@ let
         #
         # So we can safely remove the references to warp:
         remove-references-to -t ${staticHaskellPackages.warp} $out/bin/ic-ref
+        remove-references-to \
+          -t ${staticHaskellPackages.tasty-html} \
+          -t ${staticHaskellPackages.tasty-html.data} \
+          $out/bin/ic-ref-test
       '';
 
 
@@ -161,14 +174,15 @@ rec {
         pids="$(jobs -p)"
         kill $pids
       }
-      ic-ref --pick-port --write-port-to port --disable-tls-cert-validation &
+      ${httpbin} &
+      sleep 1
+      ic-ref --pick-port --write-port-to port --cert-path "cert.pem" &
       trap kill_jobs EXIT PIPE
       sleep 1
       test -e port
       mkdir -p $out
-      ${httpbin} &
       sleep 1
-      LANG=C.UTF8 ic-ref-test --endpoint "http://127.0.0.1:$(cat port)/" --httpbin "127.0.0.1:8003" --html $out/report.html
+      LANG=C.UTF8 ic-ref-test --ecid 5v3p4-iyaaa-aaaaa-qaaaa-cai --endpoint "http://127.0.0.1:$(cat port)/" --httpbin "127.0.0.1:8003" --html $out/report.html
       pids="$(jobs -p)"
       kill -INT $pids
       trap - EXIT PIPE
@@ -186,13 +200,14 @@ rec {
         pids="$(jobs -p)"
         kill $pids
       }
-      ic-ref --pick-port --write-port-to port --disable-tls-cert-validation &
+      ${httpbin} &
+      sleep 1
+      ic-ref --pick-port --write-port-to port --cert-path "cert.pem" &
       trap kill_jobs EXIT PIPE
       sleep 1
       test -e port
-      ${httpbin} &
       sleep 1
-      LANG=C.UTF8 ic-ref-test --endpoint "http://127.0.0.1:$(cat port)/" --httpbin "127.0.0.1:8003"
+      LANG=C.UTF8 ic-ref-test --ecid 5v3p4-iyaaa-aaaaa-qaaaa-cai --endpoint "http://127.0.0.1:$(cat port)/" --httpbin "127.0.0.1:8003"
       pids="$(jobs -p)"
       kill -INT $pids
       trap - EXIT PIPE

@@ -12,7 +12,7 @@ type Payload = B.ByteString
 type Id = B.ByteString
 
 data Ingress
-    = Create
+    = Create Id
     | Install Id FilePath Payload
     | Reinstall Id FilePath Payload
     | Upgrade Id FilePath Payload
@@ -31,7 +31,7 @@ parse = map parseLine . lines
 
 parseLine :: String -> Ingress
 parseLine l = case words l of
-    ["create"] -> Create
+    ["create", i] -> Create (parseId i)
     ["install", i, f, a] -> Install (parseId i) f (parseArg a)
     ["reinstall", i, f, a] -> Reinstall (parseId i) f (parseArg a)
     ["upgrade", i, f, a] -> Upgrade (parseId i) f (parseArg a)

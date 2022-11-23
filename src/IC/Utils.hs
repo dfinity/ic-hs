@@ -14,6 +14,7 @@ import qualified Data.ByteString.Lazy as BS
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.Word as W
+import qualified Data.X509 as C
 
 freshKey :: M.Map Int a -> Int
 freshKey m | M.null m = 0
@@ -49,13 +50,13 @@ utf8_length = fromIntegral . BS.length . toUtf8
 
 -- ic-ref config
 data RefConfig = RefConfig
-    { tc_noTls :: Bool
+    { tc_root_certs :: [C.SignedCertificate]
     }
 
-makeRefConfig :: Bool -> IO RefConfig
-makeRefConfig noTls = do
+makeRefConfig :: [C.SignedCertificate] -> IO RefConfig
+makeRefConfig root_certs = do
     return RefConfig
-        { tc_noTls = noTls
+        { tc_root_certs = root_certs
         }
 
 type HasRefConfig = (?refConfig :: RefConfig)
@@ -66,5 +67,5 @@ withRefConfig tc act = let ?refConfig = tc in act
 refConfig :: HasRefConfig => RefConfig
 refConfig = ?refConfig
 
-getNoTls :: HasRefConfig => Bool
-getNoTls = tc_noTls refConfig
+getRootCerts :: HasRefConfig => [C.SignedCertificate]
+getRootCerts = tc_root_certs refConfig

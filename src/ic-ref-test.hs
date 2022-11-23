@@ -23,13 +23,14 @@ main = do
     BLS.init
     os <- parseOptions ingredients (testGroup "dummy" [])
     ac <- preFlight os
-    let subnet = lookupOption os
+    let TestSubnetType subnet = lookupOption os
     defaultMainWithIngredients ingredients (icTests subnet ac)
   where
     ingredients =
       [ rerunningTests
         [ listingTests
         , includingOptions [endpointOption]
+        , includingOptions [ecidOption]
         , includingOptions [httpbinOption]
         , includingOptions [polltimeoutOption]
         , includingOptions [subnettypeOption]

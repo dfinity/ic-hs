@@ -9,7 +9,6 @@ module IC.Constants where
 import qualified Data.ByteString.Lazy as BS
 import qualified Codec.Candid as Candid
 import qualified Data.Row as R
-import qualified Data.Row.Variants as V
 import qualified Data.Vector as Vec
 import qualified Data.Word as W
 import Data.Row ((.!), type (.!))
@@ -45,9 +44,8 @@ http_request_fee r base per_byte = base + per_byte * total_bytes
     response_size_fee Nothing = max_inter_canister_payload_in_bytes
     response_size_fee (Just max_response_size) = max_response_size
     transform_fee Nothing = 0
-    transform_fee (Just v) = dec_var (V.trial' v #function)
-    dec_var Nothing = error "transform variant in http_request must be #function"
-    dec_var (Just (Candid.FuncRef _ t)) = utf8_length t
+    transform_fee (Just t) = dec_var (t .! #function)
+    dec_var (Candid.FuncRef _ t) = utf8_length t
     body_fee Nothing = 0
     body_fee (Just t) = BS.length t
     total_bytes = response_size_fee (fmap fromIntegral $ r .! #max_response_bytes)

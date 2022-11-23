@@ -4,6 +4,8 @@ import Data.Proxy
 import Data.List
 import Test.Tasty.Options
 import Options.Applicative hiding (str)
+import IC.Id.Fresh(wordToId)
+import IC.Types
 
 -- Configuration: The URL of the endpoint to test
 
@@ -20,6 +22,19 @@ instance IsOption Endpoint where
 
 endpointOption :: OptionDescription
 endpointOption = Option (Proxy :: Proxy Endpoint)
+
+-- Configuration: Effective canister id for user requests to selected methods of the management canister
+
+newtype ECID = ECID CanisterId
+
+instance IsOption ECID where
+  defaultValue = ECID $ wordToId 0
+  parseValue = fmap ECID . parsePrettyID
+  optionHelp = return $ "Effective canister id for user requests to selected methods of the management canister (default: " ++ prettyID (wordToId 0) ++ ")"
+  optionName = return "ecid"
+
+ecidOption :: OptionDescription
+ecidOption = Option (Proxy :: Proxy ECID)
 
 -- Configuration: The URL of the httpbin endpoint for http_request tests
 
@@ -50,29 +65,29 @@ polltimeoutOption = Option (Proxy :: Proxy PollTimeout)
 
 -- Configuration: Subnet type
 
-data SubnetType = Application | VerifiedApplication | System
+newtype TestSubnetType = TestSubnetType SubnetType
 
-instance Read SubnetType where
+instance Read TestSubnetType where
   readsPrec _ x = do
-    if x == "application" then return (Application, "")
-    else if x == "verified_application" then return (VerifiedApplication, "")
-    else if x == "system" then return (System, "")
+    if x == "application" then return (TestSubnetType Application, "")
+    else if x == "verified_application" then return (TestSubnetType VerifiedApplication, "")
+    else if x == "system" then return (TestSubnetType System, "")
     else fail "could not read SubnetType"
 
-instance Show SubnetType where
-  show Application = "application"
-  show VerifiedApplication = "verified_application"
-  show System = "system"
+instance Show TestSubnetType where
+  show (TestSubnetType Application) = "application"
+  show (TestSubnetType VerifiedApplication) = "verified_application"
+  show (TestSubnetType System) = "system"
 
-instance IsOption SubnetType where
-  defaultValue = Application
+instance IsOption TestSubnetType where
+  defaultValue = TestSubnetType Application
   parseValue p
-    | p == "application" = Just Application
-    | p == "verified_application" = Just VerifiedApplication
-    | p == "system" = Just System
+    | p == "application" = Just $ TestSubnetType Application
+    | p == "verified_application" = Just $ TestSubnetType VerifiedApplication
+    | p == "system" = Just $ TestSubnetType System
     | otherwise = Nothing
   optionName = return "subnet-type"
   optionHelp = return "Subnet type [possible values: application, verified_application, system] (default: application)"
 
 subnettypeOption :: OptionDescription
-subnettypeOption = Option (Proxy :: Proxy SubnetType)
+subnettypeOption = Option (Proxy :: Proxy TestSubnetType)

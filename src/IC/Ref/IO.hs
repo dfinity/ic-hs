@@ -10,22 +10,30 @@ import qualified Data.Row as R
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.Vector as Vec
+import qualified Data.X509 as C
+import qualified Data.X509.CertificateStore as C
+import qualified Data.X509.Validation as C
+import qualified Network.Connection as C
+import qualified Network.TLS as C
+import qualified Network.TLS.Extra.Cipher as C
 import qualified Network.HTTP.Client as C
 import qualified Network.HTTP.Client.TLS as C
 import Network.HTTP.Types.Status (statusCode)
-import Network.Connection (TLSSettings(..))
 import Data.CaseInsensitive (original)
+import Data.Default.Class (def)
 import Data.Row ((.==), (.+))
 
 import IC.Management (HttpResponse)
 
-sendHttpRequest :: Bool -> T.Text -> BS.ByteString -> [(CI.CI BS.ByteString, BS.ByteString)] -> LBS.ByteString -> IO HttpResponse
-sendHttpRequest noTls url method headers body = do
-    let noTlsSettings = TLSSettingsSimple { settingDisableCertificateValidation = True
-      , settingDisableSession = False
-      , settingUseServerName = False
-      }
-    m <- C.newManager $ if noTls then C.mkManagerSettings noTlsSettings Nothing else C.tlsManagerSettings
+sendHttpRequest :: [C.SignedCertificate] -> T.Text -> BS.ByteString -> [(CI.CI BS.ByteString, BS.ByteString)] -> LBS.ByteString -> IO HttpResponse
+sendHttpRequest certs url method headers body = do
+    let validate = \ca_store -> C.validateDefault (C.makeCertificateStore $ certs ++ (C.listCertificates ca_store))
+    let client_params = (C.defaultParamsClient "" BS.empty) {
+          C.clientHooks = def {C.onServerCertificate = validate}
+        , C.clientSupported = def { C.supportedCiphers = C.ciphersuite_default }
+        }
+    let manager_settings = C.mkManagerSettings (C.TLSSettings client_params) Nothing
+    m <- C.newTlsManagerWith manager_settings
     initReq <- C.parseRequest (T.unpack url)
     let req = initReq {
       C.method = method,

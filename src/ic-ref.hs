@@ -1,6 +1,10 @@
+{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings #-}
 import Options.Applicative
 import Data.Foldable
+import Data.Maybe(fromJust)
+import Data.Word as W
+import qualified Data.X509.CertificateStore as C
 import Control.Concurrent
 import Control.Monad (join, forever)
 import Network.Wai.Middleware.Cors
@@ -8,21 +12,24 @@ import Network.Wai.Middleware.RequestLogger
 import Network.Wai.Handler.Warp
 import qualified Data.Text as T
 import IC.HTTP
+import IC.Types
+import IC.Utils
 import IC.Version
 import qualified IC.Crypto.BLS as BLS
-import IC.Types(SubnetType(..))
-import IC.Utils
 
 defaultPort :: Port
 defaultPort = 8001
 
 
-work :: SubnetType -> Bool -> Maybe Int -> Maybe FilePath -> Maybe FilePath -> Bool ->  IO ()
-work subnet noTls portToUse writePortTo backingFile log = do
+work :: [(SubnetType, String, [(W.Word64, W.Word64)])] -> Maybe String -> Maybe Int -> Maybe FilePath -> Maybe FilePath -> Bool ->  IO ()
+work subnets maybe_cert_path portToUse writePortTo backingFile log = do
+    let subs = map (\(t, n, ranges) -> SubnetConfig t n ranges) subnets
     putStrLn "Starting ic-ref..."
     BLS.init
-    conf <- makeRefConfig noTls
-    withRefConfig conf $ withApp subnet backingFile $ \app -> do
+    certs <- case maybe_cert_path of Nothing -> return []
+                                     Just ps -> C.listCertificates <$> fromJust <$> C.readCertificateStore ps
+    conf <- makeRefConfig certs
+    withRefConfig conf $ withApp subs backingFile $ \app -> do
         let app' =  laxCorsSettings $ if log then logStdoutDev app else app
         case portToUse of
           Nothing ->
@@ -62,21 +69,28 @@ main = join . customExecParser (prefs showHelpOnError) $
     versions =
           infoOption (T.unpack implVersion) (long "version" <> help "show version number")
       <*> infoOption (T.unpack specVersion) (long "spec-version" <> help "show spec version number")
+    canister_ids_per_subnet :: W.Word64
+    canister_ids_per_subnet = 1_048_576
+    range :: W.Word64 -> (W.Word64, W.Word64)
+    range n = (n * canister_ids_per_subnet, (n + 1) * canister_ids_per_subnet - 1)
+    defaultSubnetConfig :: [(SubnetType, String, [(W.Word64, W.Word64)])]
+    defaultSubnetConfig = [(System, "sk1", [range 0]), (Application, "sk2", [range 1])]
     parser :: Parser (IO ())
     parser = work
       <$>
         (
           (
             option auto
-            (  long "subnet-type"
-            <> help "choose a subnet type [possible values: application, verified_application, system] (default: application)"
+            (  long "subnet-config"
+            <> help ("choose initial subnet configurations (default: " ++ show defaultSubnetConfig ++ ")")
             )
           )
-        <|> pure Application
+        <|> pure defaultSubnetConfig
         )
-      <*> switch
-          (  long "disable-tls-cert-validation"
-          <> help "disable TLS certificate validation"
+      <*> optional (strOption
+            (  long "cert-path"
+            <> help "path to certificate file or directory"
+            )
           )
       <*>
         ( flag' Nothing

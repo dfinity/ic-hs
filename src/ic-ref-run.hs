@@ -30,6 +30,7 @@ import GHC.TypeLits (KnownSymbol, symbolVal)
 import Data.Row (empty, (.==), (.+), type (.!), Label)
 import qualified Codec.Candid as Candid
 import qualified Data.Row.Variants as V
+import qualified Data.Word as W
 
 
 import IC.Version
@@ -90,13 +91,13 @@ shorten n s = a ++ (if null b then "" else "...")
   where (a,b) = splitAt n s
 
 
-submitAndRun :: HasRefConfig => CallRequest -> DRun ()
-submitAndRun r = do
+submitAndRun :: HasRefConfig => CanisterId -> CallRequest -> DRun ()
+submitAndRun ecid r = do
     lift $ printCallRequest r
     rid <- lift mkRequestId
-    submitRequest rid r
+    submitRequest rid r ecid
     runToCompletion
-    r <- gets (snd . (M.! rid) . requests)
+    (r, _) <- gets (snd . (M.! rid) . requests)
     lift $ printReqStatus r
 
 submitQuery :: HasRefConfig => QueryRequest -> DRun ()
@@ -115,44 +116,45 @@ mkRequestId :: IO RequestID
 mkRequestId = B.toLazyByteString . B.word64BE <$> randomIO
 
 callManagement :: forall s a b.
-  HasRefConfig =>
-  KnownSymbol s =>
+  HasRefConfig => KnownSymbol s =>
   (a -> IO b) ~ (ICManagement IO .! s) =>
   Candid.CandidArg a =>
-  EntityId -> Label s -> a -> StateT IC IO ()
-callManagement user_id l x =
-  submitAndRun $
+  CanisterId -> EntityId -> Label s -> a -> StateT IC IO ()
+callManagement ecid user_id l x =
+  submitAndRun ecid $
     CallRequest (EntityId mempty) user_id (symbolVal l) (Candid.encode x)
 
-work :: SubnetType -> Bool -> FilePath -> IO ()
-work subnet noTls msg_file = do
+work :: [(SubnetType, String, [(W.Word64, W.Word64)])] -> FilePath -> IO ()
+work subnets msg_file = do
+  let subs = map (\(t, n, ranges) -> SubnetConfig t n ranges) subnets
   msgs <- parseFile msg_file
 
   let user_id = dummyUserId
-  ic <- initialIC subnet
-  conf <- makeRefConfig noTls
+  ic <- initialIC subs
+  conf <- makeRefConfig []
   flip evalStateT ic $
     forM_ msgs $ \case
-      Create ->
-        withRefConfig conf $ callManagement user_id #create_canister $ empty
+      Create ecid ->
+        withRefConfig conf $ callManagement (EntityId ecid) user_id #provisional_create_canister_with_cycles $ empty
           .+ #settings .== Nothing
+          .+ #amount .== Nothing
       Install cid filename arg -> do
         wasm <- liftIO $ B.readFile filename
-        withRefConfig conf $ callManagement user_id #install_code $ empty
+        withRefConfig conf $ callManagement (EntityId cid) user_id #install_code $ empty
           .+ #mode .== V.IsJust #install ()
           .+ #canister_id .== Candid.Principal cid
           .+ #wasm_module .== wasm
           .+ #arg .== arg
       Reinstall cid filename arg -> do
         wasm <- liftIO $ B.readFile filename
-        withRefConfig conf $ callManagement user_id #install_code $ empty
+        withRefConfig conf $ callManagement (EntityId cid) user_id #install_code $ empty
           .+ #mode .== V.IsJust #reinstall ()
           .+ #canister_id .== Candid.Principal cid
           .+ #wasm_module .== wasm
           .+ #arg .== arg
       Upgrade cid filename arg -> do
         wasm <- liftIO $ B.readFile filename
-        withRefConfig conf $ callManagement user_id #install_code $ empty
+        withRefConfig conf $ callManagement (EntityId cid) user_id #install_code $ empty
           .+ #mode .== V.IsJust #upgrade ()
           .+ #canister_id .== Candid.Principal cid
           .+ #wasm_module .== wasm
@@ -160,7 +162,7 @@ work subnet noTls msg_file = do
       Query  cid method arg ->
         withRefConfig conf $ submitQuery (QueryRequest (EntityId cid) user_id method arg)
       Update cid method arg ->
-        withRefConfig conf $ submitAndRun (CallRequest (EntityId cid) user_id method arg)
+        withRefConfig conf $ submitAndRun (EntityId cid) (CallRequest (EntityId cid) user_id method arg)
 
 main :: IO ()
 main = join . customExecParser (prefs showHelpOnError) $
@@ -174,6 +176,12 @@ main = join . customExecParser (prefs showHelpOnError) $
     versions =
           infoOption (T.unpack implVersion) (long "version" <> help "show version number")
       <*> infoOption (T.unpack specVersion) (long "spec-version" <> help "show spec version number")
+    canister_ids_per_subnet :: W.Word64
+    canister_ids_per_subnet = 1_048_576
+    range :: W.Word64 -> (W.Word64, W.Word64)
+    range n = (n * canister_ids_per_subnet, (n + 1) * canister_ids_per_subnet - 1)
+    defaultSubnetConfig :: [(SubnetType, String, [(W.Word64, W.Word64)])]
+    defaultSubnetConfig = [(System, "sk1", [range 0]), (Application, "sk2", [range 1])]
     parser :: Parser (IO ())
     parser = work
       <$  strOption
@@ -182,19 +190,14 @@ main = join . customExecParser (prefs showHelpOnError) $
           <> metavar "CONFIG"
           <> value ""
           )
-      <*>
-        (
-          (
-            option auto
-            (  long "subnet-type"
-            <> help "choose a subnet type [possible values: application, verified_application, system] (default: application)"
+      <*> (
+            (
+              option auto
+              (  long "subnet-config"
+              <> help ("choose initial subnet configurations (default: " ++ show defaultSubnetConfig ++ ")")
+              )
             )
-          )
-          <|> pure Application
-        )
-      <*> switch
-          (  long "disable-tls-cert-validation"
-          <> help "disable TLS certificate validation"
+          <|> pure defaultSubnetConfig
           )
       <*> strArgument
           (  metavar "script"

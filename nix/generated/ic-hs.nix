@@ -59,6 +59,7 @@
 , temporary
 , text
 , time
+, tls
 , transformers
 , uglymemo
 , unordered-containers
@@ -68,8 +69,12 @@
 , wai-cors
 , wai-extra
 , warp
+, wide-word
 , winter
 , word8
+, x509
+, x509-store
+, x509-validation
 , zlib
 }:
 mkDerivation {
@@ -135,6 +140,7 @@ mkDerivation {
     temporary
     text
     time
+    tls
     transformers
     uglymemo
     unordered-containers
@@ -144,8 +150,12 @@ mkDerivation {
     wai-cors
     wai-extra
     warp
+    wide-word
     winter
     word8
+    x509
+    x509-store
+    x509-validation
     zlib
   ];
   executableHaskellDepends = [
@@ -201,6 +211,7 @@ mkDerivation {
     template-haskell
     text
     time
+    tls
     transformers
     uglymemo
     unordered-containers
@@ -210,8 +221,12 @@ mkDerivation {
     wai-cors
     wai-extra
     warp
+    wide-word
     winter
     word8
+    x509
+    x509-store
+    x509-validation
     zlib
   ];
   testHaskellDepends = [
@@ -263,6 +278,7 @@ mkDerivation {
     temporary
     text
     time
+    tls
     transformers
     uglymemo
     unordered-containers
@@ -270,6 +286,9 @@ mkDerivation {
     vector
     winter
     word8
+    x509
+    x509-store
+    x509-validation
     zlib
   ];
   doCheck = false;
