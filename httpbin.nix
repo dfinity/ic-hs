@@ -22,8 +22,8 @@ buildPythonPackage rec {
     name = "httpbin";
     owner = "mraszyk";
     repo = "httpbin";
-    rev = "7659f1bdac89f3b9409be7f792d39886ead4e743";
-    sha256 = "sha256-ocHBMX0RBmmQCdjZ6okmR8ozTem/Vwv8BM0VmujwbWI=";
+    rev = "59068357d5558bff61bc3470faeef66a22feca36";
+    sha256 = "sha256-Jj8BAwNZbqxdoUdhZkc5aKXcjivzcsi1SXdF49/882w=";
   };
 
   patches = [

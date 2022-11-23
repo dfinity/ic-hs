@@ -157,7 +157,17 @@ let
       ]);
       openssl = nixpkgs.openssl;
     in "${openssl}/bin/openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -sha256 -nodes -subj '/C=CH/ST=Zurich/L=Zurich/O=DFINITY/CN=127.0.0.1';
-        ${python-with-my-packages}/bin/gunicorn -b 127.0.0.1:8003 --limit-request-line 0 --certfile cert.pem --keyfile key.pem httpbin:app -k gevent";
+        echo \"import gunicorn.http.wsgi
+from six import wraps
+
+def wrap_default_headers(func):
+    @wraps(func)
+    def default_headers(*args, **kwargs):
+        return [header for header in func(*args, **kwargs) if not header.startswith('Server: ') and not header.startswith('Date: ')]
+    return default_headers
+
+gunicorn.http.wsgi.Response.default_headers = wrap_default_headers(gunicorn.http.wsgi.Response.default_headers)\" > conf.py;
+        ${python-with-my-packages}/bin/gunicorn -b 127.0.0.1:8003 --limit-request-line 0 --certfile cert.pem --keyfile key.pem httpbin:app -k gevent -c conf.py";
 in
 
 rec {
