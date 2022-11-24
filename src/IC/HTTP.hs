@@ -30,7 +30,7 @@ withApp subnets backingFile action =
     withStore (initialIC subnets) backingFile $ \store -> forkIO (loopIC store) >> (action $ handle store)
   where
     loopIC :: Store IC -> IO ()
-    loopIC store = modifyStore store aux >> threadDelay 1000 >> loopIC store
+    loopIC store = modifyStore store aux >> threadDelay 1000000 >> loopIC store
       where
         aux = do
           lift getTimestamp >>= setAllTimesTo
