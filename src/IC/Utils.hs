@@ -111,6 +111,9 @@ http_response_size r = header_size + body_size
     header_size = fromIntegral $ sum $ map (\h -> utf8_length (h .! #name) + utf8_length (h .! #value)) $ Vec.toList $ r .! #headers
     body_size = fromIntegral (BS.length (r .! #body))
 
+http_response_headers :: (a -> IO b) ~ (ICManagement IO .! "http_request") => b -> [(T.Text, T.Text)]
+http_response_headers r = map (\h -> (h .! #name, h .! #value)) $ Vec.toList $ r .! #headers
+
 check_http_request_headers_number :: (a -> IO b) ~ (ICManagement IO .! "http_request") => a -> Bool
 check_http_request_headers_number r = length (Vec.toList $ r .! #headers) <= http_headers_max_number
 

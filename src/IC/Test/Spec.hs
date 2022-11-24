@@ -131,11 +131,15 @@ instance FromJSON HttpRequestBody where
 list_subset :: Eq a => [a] -> [a] -> Bool
 list_subset xs ys = all (\x -> elem x ys) xs
 
+headers_match :: [(T.Text, T.Text)] -> [(T.Text, T.Text)] -> Bool
+headers_match xs ys = all (\x -> elem x ys) xs && all (\(n, v) -> elem (n, v) xs || n == "host" || n == "content-length" || n == "accept-encoding") ys
+
 check_http_json :: String -> [(T.Text, T.Text)] -> BS.ByteString -> Maybe HttpRequest -> Assertion
 check_http_json _ _ _ Nothing = assertFailure "Could not parse the original HttpRequest from the response"
 check_http_json m hs b (Just req) = do
+  let map_to_lower = map (\(n, v) -> (T.toLower n, v))
   assertBool "Wrong HTTP method" $ T.pack m == method req
-  assertBool "Headers were not properly included in the HTTP request" $ list_subset hs (case headers req of HttpRequestHeaders hs -> hs)
+  assertBool "Headers were not properly included in the HTTP request" $ headers_match (map_to_lower hs) (case headers req of HttpRequestHeaders hs -> map_to_lower hs)
   assertBool "Body was not properly included in the HTTP request" $ HttpRequestBody b == body req
 
 check_http_body :: BS.ByteString -> Bool
@@ -300,7 +304,8 @@ canister_http_calls base_fee per_byte_fee =
       cid <- install (onTransform (callback (ignore (stableGrow new_pages) >>> stableFill (int 0) (int 120) max_size >>> replyData (getHttpReplyWithBody (stableRead (int 0) max_size)))))
       ic_http_get_request' (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) "https://" ("equal_bytes/" ++ show (max_response_bytes_limit - header_size)) Nothing (Just ("transform", "")) cid >>= isReject [1]
 
-    , simpleTestCase "simple call, no transform, maximum number of headers" $ \cid -> do
+
+    , simpleTestCase "simple call, no transform, maximum number of request headers" $ \cid -> do
       let b = toUtf8 $ T.pack $ "Hello, world!"
       let hs = [(T.pack ("Name" ++ show i), T.pack ("value" ++ show i)) | i <- [0..http_headers_max_number - 1]]
       resp <- ic_http_post_request (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) Nothing (Just b) (vec_header_from_list_text hs) Nothing cid
@@ -308,10 +313,107 @@ canister_http_calls base_fee per_byte_fee =
       check_http_response resp
       check_http_json "POST" hs b $ (decode (resp .! #body) :: Maybe HttpRequest)
 
-    , simpleTestCase "simple call, no transform, maximum number of headers exceeded" $ \cid -> do
+    , simpleTestCase "simple call, no transform, maximum number of request headers exceeded" $ \cid -> do
       let b = toUtf8 $ T.pack $ "Hello, world!"
       let hs = [(T.pack ("Name" ++ show i), T.pack ("value" ++ show i)) | i <- [0..http_headers_max_number]]
       ic_http_post_request' (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) Nothing (Just b) (vec_header_from_list_text hs) Nothing cid >>= isReject [1]
+
+    , simpleTestCase "simple call, no transform, maximum number of response headers" $ \cid -> do
+      {- These 5 response headers are always included:
+          Connection: keep-alive
+          Content-Type: text/html; charset=utf-8
+          Content-Length: 0
+          Access-Control-Allow-Origin: *
+          Access-Control-Allow-Credentials: true
+      -}
+      let n = http_headers_max_number - 5
+      let hs = [(T.pack ("Name" ++ show i), T.pack ("value" ++ show i)) | i <- [0..n - 1]]
+      resp <- ic_http_get_request (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) ("many_response_headers/" ++ show n) Nothing Nothing cid
+      (resp .! #status) @?= 200
+      assertBool "Response HTTP headers have not been received properly." $ list_subset hs (http_response_headers resp)
+      check_http_response resp
+
+    , simpleTestCase "simple call, no transform, maximum number of response headers exceeded" $ \cid -> do
+      {- These 5 response headers are always included:
+          Connection: keep-alive
+          Content-Type: text/html; charset=utf-8
+          Content-Length: 0
+          Access-Control-Allow-Origin: *
+          Access-Control-Allow-Credentials: true
+      -}
+      let n = http_headers_max_number - 5 + 1
+      ic_http_get_request' (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) "https://" ("many_response_headers/" ++ show n) Nothing Nothing cid >>= isReject [1]
+
+
+    , simpleTestCase "simple call, no transform, maximum request header name length" $ \cid -> do
+      let b = toUtf8 $ T.pack $ "Hello, world!"
+      let hs = [(T.pack (replicate (fromIntegral http_headers_max_name_length) 'x'), T.pack ("value"))]
+      resp <- ic_http_post_request (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) Nothing (Just b) (vec_header_from_list_text hs) Nothing cid
+      (resp .! #status) @?= 200
+      check_http_response resp
+      check_http_json "POST" hs b $ (decode (resp .! #body) :: Maybe HttpRequest)
+
+    , simpleTestCase "simple call, no transform, maximum request header name length exceeded" $ \cid -> do
+      let b = toUtf8 $ T.pack $ "Hello, world!"
+      let hs = [(T.pack (replicate (fromIntegral $ http_headers_max_name_length + 1) 'x'), T.pack ("value"))]
+      ic_http_post_request' (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) Nothing (Just b) (vec_header_from_list_text hs) Nothing cid >>= isReject [1]
+
+    , simpleTestCase "simple call, no transform, maximum response header name length" $ \cid -> do
+      let n = http_headers_max_name_length
+      let hs = [(T.pack $ replicate (fromIntegral n) 'x', T.pack "value")]
+      resp <- ic_http_get_request (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) ("long_response_header_name/" ++ show n) Nothing Nothing cid
+      (resp .! #status) @?= 200
+      assertBool "Response HTTP headers have not been received properly." $ list_subset hs (http_response_headers resp)
+      check_http_response resp
+
+    , simpleTestCase "simple call, no transform, maximum response header name length exceeded" $ \cid -> do
+      let n = http_headers_max_name_length + 1
+      ic_http_get_request' (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) "https://" ("long_response_header_name/" ++ show n) Nothing Nothing cid >>= isReject [1]
+
+
+    , simpleTestCase "simple call, no transform, maximum request header value length" $ \cid -> do
+      let n = "name"
+      let b = toUtf8 $ T.pack $ "Hello, world!"
+      let hs = [(T.pack n, T.pack (replicate (fromIntegral http_headers_max_total_size - length n) 'x'))]
+      resp <- ic_http_post_request (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) Nothing (Just b) (vec_header_from_list_text hs) Nothing cid
+      (resp .! #status) @?= 200
+      check_http_response resp
+      check_http_json "POST" hs b $ (decode (resp .! #body) :: Maybe HttpRequest)
+
+    , simpleTestCase "simple call, no transform, maximum request header value length exceeded" $ \cid -> do
+      let name = "name"
+      let b = toUtf8 $ T.pack $ "Hello, world!"
+      let hs = [(T.pack name, T.pack (replicate (fromIntegral http_headers_max_total_size - length name + 1) 'x'))]
+      ic_http_post_request' (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) Nothing (Just b) (vec_header_from_list_text hs) Nothing cid >>= isReject [1]
+
+    , simpleTestCase "simple call, no transform, maximum response header value length" $ \cid -> do
+      {- These response headers of total length 135 are always included:
+          Connection: keep-alive
+          Content-Type: text/html; charset=utf-8
+          Content-Length: 0
+          Access-Control-Allow-Origin: *
+          Access-Control-Allow-Credentials: true
+      -}
+      let name = "name" :: String
+      let n = http_headers_max_total_size - fromIntegral (length name) - 135
+      let hs = [(T.pack name, T.pack $ replicate (fromIntegral n) 'x')]
+      resp <- ic_http_get_request (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) ("long_response_header_value/" ++ show n) Nothing Nothing cid
+      (resp .! #status) @?= 200
+      assertBool "Response HTTP headers have not been received properly." $ list_subset hs (http_response_headers resp)
+      check_http_response resp
+
+    , simpleTestCase "simple call, no transform, maximum response header value length exceeded" $ \cid -> do
+      {- These response headers of total length 135 are always included:
+          Connection: keep-alive
+          Content-Type: text/html; charset=utf-8
+          Content-Length: 0
+          Access-Control-Allow-Origin: *
+          Access-Control-Allow-Credentials: true
+      -}
+      let name = "name" :: String
+      let n = http_headers_max_total_size - fromIntegral (length name) - 135 + 1
+      ic_http_get_request' (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) "https://" ("long_response_header_value/" ++ show n) Nothing Nothing cid >>= isReject [1]
+
 
     , testCase "non-existent transform function" $ do
       let enc = T.unpack $ encodeBase64 $ T.pack "Hello world!"

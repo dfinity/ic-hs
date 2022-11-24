@@ -389,6 +389,7 @@ executable ic-request-id
   build-depends: base32
   build-depends: base >=4.12 && <5
   build-depends: bytestring
+  build-depends: candid
   build-depends: cborg
   build-depends: containers
   build-depends: crc
@@ -399,22 +400,26 @@ executable ic-request-id
   build-depends: mtl
   build-depends: optparse-applicative
   build-depends: process
+  build-depends: row-types
   build-depends: split
   build-depends: template-haskell
   build-depends: text
   build-depends: unordered-containers
   build-depends: utf8-string
+  build-depends: vector
   build-depends: x509
   build-depends: x509-store
   build-depends: x509-validation
   build-depends: either
   other-modules: IC.CBOR.Utils
+  other-modules: IC.Constants
   other-modules: IC.Hash
   other-modules: IC.HTTP.CBOR
   other-modules: IC.HTTP.GenR
   other-modules: IC.HTTP.GenR.Parse
   other-modules: IC.HTTP.RequestId
   other-modules: IC.Id.Forms
+  other-modules: IC.Management
   other-modules: IC.Types
   other-modules: IC.Version
   other-modules: IC.Utils
