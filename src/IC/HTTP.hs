@@ -4,6 +4,7 @@ module IC.HTTP where
 
 import Network.Wai
 import Control.Concurrent (forkIO, threadDelay)
+import Control.Concurrent.Async (withAsync)
 import Network.HTTP.Types
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
@@ -25,16 +26,16 @@ import IC.Serialise ()
 import IC.StateFile
 import IC.Crypto
 
-withApp :: [SubnetConfig] -> Maybe FilePath -> (Application -> IO a) -> IO a
-withApp subnets backingFile action =
+withApp :: [SubnetConfig] -> Int -> Maybe FilePath -> (Application -> IO a) -> IO a
+withApp subnets systemTaskPeriod backingFile action =
     withStore (initialIC subnets) backingFile $ \store -> 
       withAsync (loopIC store) $ \_async -> 
         action $ handle store
   where
     loopIC :: Store IC -> IO ()
     loopIC store = forever $ do
+        threadDelay systemTaskPeriod
         modifyStore store aux
-        threadDelay 1000000
       where
         aux = do
           lift getTimestamp >>= setAllTimesTo

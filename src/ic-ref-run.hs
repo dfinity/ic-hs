@@ -12,6 +12,8 @@
 module Main where
 
 import Options.Applicative hiding (empty)
+import Control.Concurrent (threadDelay)
+import Control.Concurrent.Async (withAsync)
 import Control.Monad
 import qualified Data.Map as M
 import qualified Data.ByteString.Lazy as B
@@ -33,17 +35,17 @@ import qualified Data.Row.Variants as V
 import qualified Data.Word as W
 
 
+import IC.HTTP.Request
 import IC.Version
 import IC.Types
 import IC.Ref
 import IC.DRun.Parse (Ingress(..), parseFile)
 import IC.Management
 
+import IC.StateFile
+import IC.Serialise ()
 
 type DRun = StateT IC IO
-
-dummyUserId :: CanisterId
-dummyUserId = EntityId $ B.pack [0xCA, 0xFF, 0xEE]
 
 -- Pretty printing
 
@@ -123,44 +125,55 @@ callManagement ecid user_id l x =
   submitAndRun ecid $
     CallRequest (EntityId mempty) user_id (symbolVal l) (Candid.encode x)
 
-work :: [(SubnetType, String, [(W.Word64, W.Word64)])] -> FilePath -> IO ()
-work subnets msg_file = do
+work :: [(SubnetType, String, [(W.Word64, W.Word64)])] -> Int -> FilePath -> IO ()
+work subnets systemTaskPeriod msg_file = do
   let subs = map (\(t, n, ranges) -> SubnetConfig t n ranges) subnets
   msgs <- parseFile msg_file
 
   let user_id = dummyUserId
-  ic <- initialIC subs
-  flip evalStateT ic $
-    forM_ msgs $ \case
-      Create ecid ->
-        callManagement (EntityId ecid) user_id #provisional_create_canister_with_cycles $ empty
-          .+ #settings .== Nothing
-          .+ #amount .== Nothing
-      Install cid filename arg -> do
-        wasm <- liftIO $ B.readFile filename
-        callManagement (EntityId cid) user_id #install_code $ empty
-          .+ #mode .== V.IsJust #install ()
-          .+ #canister_id .== Candid.Principal cid
-          .+ #wasm_module .== wasm
-          .+ #arg .== arg
-      Reinstall cid filename arg -> do
-        wasm <- liftIO $ B.readFile filename
-        callManagement (EntityId cid) user_id #install_code $ empty
-          .+ #mode .== V.IsJust #reinstall ()
-          .+ #canister_id .== Candid.Principal cid
-          .+ #wasm_module .== wasm
-          .+ #arg .== arg
-      Upgrade cid filename arg -> do
-        wasm <- liftIO $ B.readFile filename
-        callManagement (EntityId cid) user_id #install_code $ empty
-          .+ #mode .== V.IsJust #upgrade ()
-          .+ #canister_id .== Candid.Principal cid
-          .+ #wasm_module .== wasm
-          .+ #arg .== arg
-      Query  cid method arg ->
-        submitQuery (QueryRequest (EntityId cid) user_id method arg)
-      Update cid method arg ->
-        submitAndRun (EntityId cid) (CallRequest (EntityId cid) user_id method arg)
+  withStore (initialIC subs) Nothing $ \store ->
+      withAsync (loopIC store) $ \_async ->
+        --flip evalStateT ic $
+          forM_ msgs $ \msg -> modifyStore store $
+           case msg of
+            Create ecid ->
+              callManagement (EntityId ecid) user_id #provisional_create_canister_with_cycles $ empty
+                .+ #settings .== Nothing
+                .+ #amount .== Nothing
+            Install cid filename arg -> do
+              wasm <- liftIO $ B.readFile filename
+              callManagement (EntityId cid) user_id #install_code $ empty
+                .+ #mode .== V.IsJust #install ()
+                .+ #canister_id .== Candid.Principal cid
+                .+ #wasm_module .== wasm
+                .+ #arg .== arg
+            Reinstall cid filename arg -> do
+              wasm <- liftIO $ B.readFile filename
+              callManagement (EntityId cid) user_id #install_code $ empty
+                .+ #mode .== V.IsJust #reinstall ()
+                .+ #canister_id .== Candid.Principal cid
+                .+ #wasm_module .== wasm
+                .+ #arg .== arg
+            Upgrade cid filename arg -> do
+              wasm <- liftIO $ B.readFile filename
+              callManagement (EntityId cid) user_id #install_code $ empty
+                .+ #mode .== V.IsJust #upgrade ()
+                .+ #canister_id .== Candid.Principal cid
+                .+ #wasm_module .== wasm
+                .+ #arg .== arg
+            Query  cid method arg ->
+              submitQuery (QueryRequest (EntityId cid) user_id method arg)
+            Update cid method arg ->
+              submitAndRun (EntityId cid) (CallRequest (EntityId cid) user_id method arg)
+  where
+    loopIC :: Store IC -> IO ()
+    loopIC store = forever $ do
+        threadDelay systemTaskPeriod
+        modifyStore store aux
+      where
+        aux = do
+          lift getTimestamp >>= setAllTimesTo
+          processSystemTasks
 
 main :: IO ()
 main = join . customExecParser (prefs showHelpOnError) $
@@ -180,6 +193,8 @@ main = join . customExecParser (prefs showHelpOnError) $
     range n = (n * canister_ids_per_subnet, (n + 1) * canister_ids_per_subnet - 1)
     defaultSubnetConfig :: [(SubnetType, String, [(W.Word64, W.Word64)])]
     defaultSubnetConfig = [(System, "sk1", [range 0]), (Application, "sk2", [range 1])]
+    defaultSystemTaskPeriod :: Int
+    defaultSystemTaskPeriod = 1
     parser :: Parser (IO ())
     parser = work
       <$  strOption
@@ -197,6 +212,16 @@ main = join . customExecParser (prefs showHelpOnError) $
             )
           <|> pure defaultSubnetConfig
           )
+      <*>
+        (
+          (
+            option auto
+            (  long "system-task-period"
+            <> help ("choose execution period (in integer seconds) for system tasks, i.e., heartbeats and global timers (default: " ++ show defaultSystemTaskPeriod ++ ")")
+            )
+          )
+        <|> pure defaultSystemTaskPeriod
+        )
       <*> strArgument
           (  metavar "script"
           <> help "messages to execute"

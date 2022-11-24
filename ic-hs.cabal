@@ -68,6 +68,7 @@ executable ic-ref
   build-depends: aeson >=1.4.7
   build-depends: asn1-encoding
   build-depends: asn1-types
+  build-depends: async
   build-depends: atomic-write
   build-depends: base32
   build-depends: base >=4.12 && <5
@@ -178,6 +179,8 @@ executable ic-ref-run
   build-depends: aeson >=1.4.7
   build-depends: asn1-encoding
   build-depends: asn1-types
+  build-depends: async
+  build-depends: atomic-write
   build-depends: base32
   build-depends: base >=4.12 && <5
   build-depends: base64-bytestring >= 1.1
@@ -191,6 +194,7 @@ executable ic-ref-run
   build-depends: crc
   build-depends: cryptonite
   build-depends: data-default-class
+  build-depends: directory
   build-depends: ed25519
   build-depends: filepath
   build-depends: hashable
@@ -208,8 +212,11 @@ executable ic-ref-run
   build-depends: prettyprinter
   build-depends: primitive
   build-depends: process
+  build-depends: random
   build-depends: row-types
+  build-depends: serialise
   build-depends: split
+  build-depends: splitmix
   build-depends: template-haskell
   build-depends: text
   build-depends: time
@@ -251,6 +258,7 @@ executable ic-ref-run
   other-modules: IC.HTTP.CBOR
   other-modules: IC.HTTP.GenR
   other-modules: IC.HTTP.GenR.Parse
+  other-modules: IC.HTTP.Request
   other-modules: IC.HTTP.RequestId
   other-modules: IC.Id.Forms
   other-modules: IC.Id.Fresh
@@ -258,6 +266,8 @@ executable ic-ref-run
   other-modules: IC.Purify
   other-modules: IC.Ref
   other-modules: IC.Ref.IO
+  other-modules: IC.Serialise
+  other-modules: IC.StateFile
   other-modules: IC.Types
   other-modules: IC.Utils
   other-modules: IC.Version
