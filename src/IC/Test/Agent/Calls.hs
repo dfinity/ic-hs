@@ -75,10 +75,10 @@ import qualified Data.Row.Internal as R
 import qualified Data.Row.Dictionaries as R
 import qualified Data.Word as W
 
-import IC.Constants
 import IC.Management
 import IC.Id.Forms
 import IC.Test.Agent
+import IC.Utils
 
 ic_create :: (HasCallStack, HasAgentConfig, PartialSettings r) => IC00 -> Rec r -> IO Blob
 ic_create ic00 ps = do

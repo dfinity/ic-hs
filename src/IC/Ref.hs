@@ -940,8 +940,8 @@ icHttpRequest caller ctxt_id r =
           Nothing -> True
           Just t -> case t .! #function of
             FuncRef p _ -> principalToEntityId p == caller in
-  if max_resp_size > max_inter_canister_payload_in_bytes then
-    reject RC_CANISTER_REJECT ("max_response_bytes cannot exceed " ++ show max_inter_canister_payload_in_bytes) (Just EC_CANISTER_REJECTED)
+  if max_resp_size > max_response_bytes_limit then
+    reject RC_CANISTER_REJECT ("max_response_bytes cannot exceed " ++ show max_response_bytes_limit) (Just EC_CANISTER_REJECTED)
   else if not transform_principal_check then
     reject RC_CANISTER_REJECT "transform needs to be exported by the caller canister" (Just EC_CANISTER_REJECTED)
   else do
@@ -969,7 +969,7 @@ icHttpRequest caller ctxt_id r =
         let body = case r .! #body of Nothing -> ""
                                       Just b -> b
         resp <- liftIO $ sendHttpRequest getRootCerts (r .! #url) method headers body
-        if fromIntegral (BS.length (resp .! #body)) > max_resp_size then
+        if http_response_size resp > max_resp_size then
           reject RC_SYS_FATAL ("response body size cannot exceed " ++ show max_resp_size ++ " bytes") (Just EC_CANISTER_REJECTED)
         else do
           case (r .! #transform) of
@@ -990,7 +990,7 @@ icHttpRequest caller ctxt_id r =
                         Left _ -> reject RC_CANISTER_ERROR "could not decode the response" (Just EC_INVALID_ENCODING)
                         Right resp ->
                           if fromIntegral (BS.length r) > canister_http_response_limit then
-                            reject RC_SYS_FATAL ("transformed response body size cannot exceed " ++ show max_inter_canister_payload_in_bytes ++ " bytes") (Just EC_CANISTER_REJECTED)
+                            reject RC_SYS_FATAL ("transformed response body size cannot exceed " ++ show canister_http_response_limit ++ " bytes") (Just EC_CANISTER_REJECTED)
                           else
                             return resp
                       _ -> reject RC_CANISTER_ERROR "canister did not return a response properly" (Just EC_CANISTER_DID_NOT_REPLY)

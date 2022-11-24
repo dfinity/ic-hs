@@ -166,30 +166,46 @@ canister_http_calls base_fee per_byte_fee =
     , simpleTestCase "simple call, no transform, maximum possible url size exceeded" $ \cid -> do
       ic_long_url_http_request' (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) "https://" (max_http_request_url_length + 1) Nothing cid >>= isReject [1]
 
-    , simpleTestCase "simple call, no transform, maximum possible response body size" $ \cid -> do
+    , simpleTestCase "simple call, no transform, maximum possible response size" $ \cid -> do
       let s = "Hello world!"
       let enc = T.unpack $ encodeBase64 $ T.pack s
-      resp <- ic_http_get_request (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) ("base64/" ++ enc) (Just $ fromIntegral $ length s) Nothing cid
+      {- Response headers (size: 136)
+          Connection: keep-alive
+          Content-Type: text/html; charset=utf-8
+          Content-Length: 12
+          Access-Control-Allow-Origin: *
+          Access-Control-Allow-Credentials: true
+      -}
+      let header_size = 136
+      resp <- ic_http_get_request (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) ("base64/" ++ enc) (Just $ fromIntegral $ length s + header_size) Nothing cid
       (resp .! #status) @?= 200
       (resp .! #body) @?= BLU.fromString s
       check_http_response resp
 
-    , simpleTestCase "simple call, no transform, maximum possible response body size exceeded" $ \cid -> do
+    , simpleTestCase "simple call, no transform, maximum possible response size exceeded" $ \cid -> do
       let s = "Hello world!"
       let enc = T.unpack $ encodeBase64 $ T.pack s
-      ic_http_get_request' (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) "https://" ("base64/" ++ enc) (Just $ fromIntegral $ length s - 1) Nothing cid >>= isReject [1]
+      {- Response headers (size: 136)
+          Connection: keep-alive
+          Content-Type: text/html; charset=utf-8
+          Content-Length: 12
+          Access-Control-Allow-Origin: *
+          Access-Control-Allow-Credentials: true
+      -}
+      let header_size = 136
+      ic_http_get_request' (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) "https://" ("base64/" ++ enc) (Just $ fromIntegral $ length s + header_size - 1) Nothing cid >>= isReject [1]
 
     , simpleTestCase "simple call, no transform, maximum possible value of max_response_bytes" $ \cid -> do
       let s = "Hello world!"
       let enc = T.unpack $ encodeBase64 $ T.pack s
-      resp <- ic_http_get_request (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) ("base64/" ++ enc) (Just max_inter_canister_payload_in_bytes) Nothing cid
+      resp <- ic_http_get_request (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) ("base64/" ++ enc) (Just max_response_bytes_limit) Nothing cid
       (resp .! #status) @?= 200
       (resp .! #body) @?= BLU.fromString s
       check_http_response resp
 
     , simpleTestCase "simple call, no transform, maximum possible value of max_response_bytes exceeded" $ \cid -> do
       let enc = T.unpack $ encodeBase64 $ T.pack "Hello world!"
-      ic_http_get_request' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "https://" ("base64/" ++ enc) (Just $ max_inter_canister_payload_in_bytes + 1) Nothing cid >>= isReject [4]
+      ic_http_get_request' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "https://" ("base64/" ++ enc) (Just $ max_response_bytes_limit + 1) Nothing cid >>= isReject [4]
 
     , simpleTestCase "complex call, no transform" $ \cid -> do
       let b = toUtf8 $ T.pack $ "Hello, world!"
@@ -224,33 +240,65 @@ canister_http_calls base_fee per_byte_fee =
       (resp .! #body) @?= "Dummy!"
       check_http_response resp
 
-    , testCase "simple call with transform, maximum possible response body size" $ do
+    , testCase "simple call with transform, maximum possible response size" $ do
+      {- Response headers (size: 141)
+          Connection: keep-alive
+          Content-Type: application/octet-stream
+          Content-Length: 1999809
+          Access-Control-Allow-Origin: *
+          Access-Control-Allow-Credentials: true
+      -}
+      let header_size = 141
       cid <- install (onTransform (callback (replyData (bytes (Candid.encode dummyResponse)))))
-      resp <- ic_http_get_request (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) ("equal_bytes/" ++ show max_inter_canister_payload_in_bytes) Nothing (Just ("transform", "")) cid
+      resp <- ic_http_get_request (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) ("equal_bytes/" ++ show (max_response_bytes_limit - header_size)) Nothing (Just ("transform", "")) cid
       (resp .! #status) @?= 202
       (resp .! #body) @?= "Dummy!"
       check_http_response resp
 
-    , testCase "simple call with transform, maximum possible response body size exceeded" $ do
+    , testCase "simple call with transform, maximum possible response size exceeded" $ do
+      {- Response headers (size: 141)
+          Connection: keep-alive
+          Content-Type: application/octet-stream
+          Content-Length: 1999809
+          Access-Control-Allow-Origin: *
+          Access-Control-Allow-Credentials: true
+      -}
+      let header_size = 141
       cid <- install (onTransform (callback (replyData (bytes (Candid.encode dummyResponse)))))
-      ic_http_get_request' (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) "https://" ("equal_bytes/" ++ show (max_inter_canister_payload_in_bytes + 1)) Nothing (Just ("transform", "")) cid >>= isReject [1]
+      ic_http_get_request' (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) "https://" ("equal_bytes/" ++ show (max_response_bytes_limit - header_size + 1)) Nothing (Just ("transform", "")) cid >>= isReject [1]
 
     , testCase "simple call with transform, maximum possible canister response size" $ do
+      {- Response headers (size: 141)
+          Connection: keep-alive
+          Content-Type: application/octet-stream
+          Content-Length: 1999809
+          Access-Control-Allow-Origin: *
+          Access-Control-Allow-Credentials: true
+      -}
+      let header_size = 141
       let size = maximumSizeResponseBodySize
       let new_pages = int $ size `div` (64 * 1024) + 1
       let max_size = int $ size
       cid <- install (onTransform (callback (ignore (stableGrow new_pages) >>> stableFill (int 0) (int 120) max_size >>> replyData (getHttpReplyWithBody (stableRead (int 0) max_size)))))
-      resp <- ic_http_get_request (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) ("equal_bytes/" ++ show max_inter_canister_payload_in_bytes) Nothing (Just ("transform", "")) cid
+      resp <- ic_http_get_request (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) ("equal_bytes/" ++ show (max_response_bytes_limit - header_size)) Nothing (Just ("transform", "")) cid
       (resp .! #status) @?= 200
       (resp .! #body) @?= bodyOfSize maximumSizeResponseBodySize
       check_http_response resp
 
     , testCase "simple call with transform, maximum possible canister response size exceeded" $ do
+      {- Response headers (size: 141)
+          Connection: keep-alive
+          Content-Type: application/octet-stream
+          Content-Length: 1999809
+          Access-Control-Allow-Origin: *
+          Access-Control-Allow-Credentials: true
+      -}
+      let header_size = 141
       let size = maximumSizeResponseBodySize + 1
       let new_pages = int $ size `div` (64 * 1024) + 1
       let max_size = int $ size
       cid <- install (onTransform (callback (ignore (stableGrow new_pages) >>> stableFill (int 0) (int 120) max_size >>> replyData (getHttpReplyWithBody (stableRead (int 0) max_size)))))
-      ic_http_get_request' (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) "https://" ("equal_bytes/" ++ show max_inter_canister_payload_in_bytes) Nothing (Just ("transform", "")) cid >>= isReject [1]
+      ic_http_get_request' (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) "https://" ("equal_bytes/" ++ show (max_response_bytes_limit - header_size)) Nothing (Just ("transform", "")) cid >>= isReject [1]
 
     , testCase "non-existent transform function" $ do
       let enc = T.unpack $ encodeBase64 $ T.pack "Hello world!"

@@ -415,4 +415,4 @@ bodyOfSize n = toUtf8 $ T.pack $ take (fromIntegral n) $ repeat 'x'
 
 -- maximum body size of HTTP response with status 200 and no headers such that the length of its Candid encoding does not exceed canister_http_response_limit
 maximumSizeResponseBodySize :: W.Word32
-maximumSizeResponseBodySize = 2045902
+maximumSizeResponseBodySize = 1999950
