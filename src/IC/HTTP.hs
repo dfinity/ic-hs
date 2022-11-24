@@ -27,10 +27,14 @@ import IC.Crypto
 
 withApp :: [SubnetConfig] -> Maybe FilePath -> (Application -> IO a) -> IO a
 withApp subnets backingFile action =
-    withStore (initialIC subnets) backingFile $ \store -> forkIO (loopIC store) >> (action $ handle store)
+    withStore (initialIC subnets) backingFile $ \store -> 
+      withAsync (loopIC store) $ \_async -> 
+        action $ handle store
   where
     loopIC :: Store IC -> IO ()
-    loopIC store = modifyStore store aux >> threadDelay 1000000 >> loopIC store
+    loopIC store = forever $ do
+        modifyStore store aux
+        threadDelay 1000000
       where
         aux = do
           lift getTimestamp >>= setAllTimesTo
