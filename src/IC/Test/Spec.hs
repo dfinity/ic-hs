@@ -300,6 +300,19 @@ canister_http_calls base_fee per_byte_fee =
       cid <- install (onTransform (callback (ignore (stableGrow new_pages) >>> stableFill (int 0) (int 120) max_size >>> replyData (getHttpReplyWithBody (stableRead (int 0) max_size)))))
       ic_http_get_request' (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) "https://" ("equal_bytes/" ++ show (max_response_bytes_limit - header_size)) Nothing (Just ("transform", "")) cid >>= isReject [1]
 
+    , simpleTestCase "simple call, no transform, maximum number of headers" $ \cid -> do
+      let b = toUtf8 $ T.pack $ "Hello, world!"
+      let hs = [(T.pack ("Name" ++ show i), T.pack ("value" ++ show i)) | i <- [0..http_headers_max_number - 1]]
+      resp <- ic_http_post_request (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) Nothing (Just b) (vec_header_from_list_text hs) Nothing cid
+      (resp .! #status) @?= 200
+      check_http_response resp
+      check_http_json "POST" hs b $ (decode (resp .! #body) :: Maybe HttpRequest)
+
+    , simpleTestCase "simple call, no transform, maximum number of headers exceeded" $ \cid -> do
+      let b = toUtf8 $ T.pack $ "Hello, world!"
+      let hs = [(T.pack ("Name" ++ show i), T.pack ("value" ++ show i)) | i <- [0..http_headers_max_number]]
+      ic_http_post_request' (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) Nothing (Just b) (vec_header_from_list_text hs) Nothing cid >>= isReject [1]
+
     , testCase "non-existent transform function" $ do
       let enc = T.unpack $ encodeBase64 $ T.pack "Hello world!"
       cid <- install noop

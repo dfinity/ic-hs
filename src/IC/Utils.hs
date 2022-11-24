@@ -110,3 +110,25 @@ http_response_size r = header_size + body_size
   where
     header_size = fromIntegral $ sum $ map (\h -> utf8_length (h .! #name) + utf8_length (h .! #value)) $ Vec.toList $ r .! #headers
     body_size = fromIntegral (BS.length (r .! #body))
+
+check_http_request_headers_number :: (a -> IO b) ~ (ICManagement IO .! "http_request") => a -> Bool
+check_http_request_headers_number r = length (Vec.toList $ r .! #headers) <= http_headers_max_number
+
+check_http_request_headers_name_length :: (a -> IO b) ~ (ICManagement IO .! "http_request") => a -> Bool
+check_http_request_headers_name_length r = all (\h -> utf8_length (h .! #name) <= http_headers_max_name_length) (Vec.toList $ r .! #headers)
+
+check_http_request_headers_total_size :: (a -> IO b) ~ (ICManagement IO .! "http_request") => a -> Bool
+check_http_request_headers_total_size r = header_size <= http_headers_max_total_size
+  where
+    header_size = fromIntegral $ sum $ map (\h -> utf8_length (h .! #name) + utf8_length (h .! #value)) $ Vec.toList $ r .! #headers
+
+check_http_response_headers_number :: (a -> IO b) ~ (ICManagement IO .! "http_request") => b -> Bool
+check_http_response_headers_number r = length (Vec.toList $ r .! #headers) <= http_headers_max_number
+
+check_http_response_headers_name_length :: (a -> IO b) ~ (ICManagement IO .! "http_request") => b -> Bool
+check_http_response_headers_name_length r = all (\h -> utf8_length (h .! #name) <= http_headers_max_name_length) (Vec.toList $ r .! #headers)
+
+check_http_response_headers_total_size :: (a -> IO b) ~ (ICManagement IO .! "http_request") => b -> Bool
+check_http_response_headers_total_size r = header_size <= http_headers_max_total_size
+  where
+    header_size = fromIntegral $ sum $ map (\h -> utf8_length (h .! #name) + utf8_length (h .! #value)) $ Vec.toList $ r .! #headers

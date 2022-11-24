@@ -960,6 +960,12 @@ icHttpRequest caller ctxt_id r =
         reject RC_SYS_FATAL "url must start with https://" (Just EC_INVALID_ARGUMENT)
       else if utf8_length (r .! #url) > max_http_request_url_length then
         reject RC_SYS_FATAL "Failed to parse URL: uri too long" (Just EC_INVALID_ARGUMENT)
+      else if not (check_http_request_headers_number r) then
+        reject RC_SYS_FATAL ("number of request http headers exceeds the limit of " ++ show http_headers_max_number) (Just EC_CANISTER_REJECTED)
+      else if not (check_http_request_headers_name_length r) then
+        reject RC_SYS_FATAL ("number of bytes to represent some request http header name exceeds the limit of " ++ show http_headers_max_name_length) (Just EC_CANISTER_REJECTED)
+      else if not (check_http_request_headers_total_size r) then
+        reject RC_SYS_FATAL ("total number of bytes to represent request http headers exceeds the limit of " ++ show http_headers_max_total_size) (Just EC_CANISTER_REJECTED)
       else do
         method <- if (r .! #method) == V.IsJust #get () then return $ T.encodeUtf8 "GET"
                   else if (r .! #method) == V.IsJust #post () then return $ T.encodeUtf8 "POST"
@@ -971,6 +977,12 @@ icHttpRequest caller ctxt_id r =
         resp <- liftIO $ sendHttpRequest getRootCerts (r .! #url) method headers body
         if http_response_size resp > max_resp_size then
           reject RC_SYS_FATAL ("response body size cannot exceed " ++ show max_resp_size ++ " bytes") (Just EC_CANISTER_REJECTED)
+        else if not (check_http_response_headers_number resp) then
+          reject RC_SYS_FATAL ("number of response http headers exceeds the limit of " ++ show http_headers_max_number) (Just EC_CANISTER_REJECTED)
+        else if not (check_http_response_headers_name_length resp) then
+          reject RC_SYS_FATAL ("number of bytes to represent some response http header name exceeds the limit of " ++ show http_headers_max_name_length) (Just EC_CANISTER_REJECTED)
+        else if not (check_http_response_headers_total_size resp) then
+          reject RC_SYS_FATAL ("total number of bytes to represent response http headers exceeds the limit of " ++ show http_headers_max_total_size) (Just EC_CANISTER_REJECTED)
         else do
           case (r .! #transform) of
             Nothing -> return resp
