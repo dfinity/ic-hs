@@ -3,7 +3,7 @@
 module IC.HTTP where
 
 import Network.Wai
-import Control.Concurrent (forkIO)
+import Control.Concurrent (forkIO, threadDelay)
 import Network.HTTP.Types
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
@@ -27,7 +27,14 @@ import IC.Crypto
 
 withApp :: [SubnetConfig] -> Maybe FilePath -> (Application -> IO a) -> IO a
 withApp subnets backingFile action =
-    withStore (initialIC subnets) backingFile (action . handle)
+    withStore (initialIC subnets) backingFile $ \store -> forkIO (loopIC store) >> (action $ handle store)
+  where
+    loopIC :: Store IC -> IO ()
+    loopIC store = modifyStore store aux >> threadDelay 1000 >> loopIC store
+      where
+        aux = do
+          lift getTimestamp >>= setAllTimesTo
+          processSystemTasks
 
 handle :: Store IC -> Application
 handle store req respond = case (requestMethod req, pathInfo req) of
@@ -81,11 +88,7 @@ handle store req respond = case (requestMethod req, pathInfo req) of
   where
     runIC :: StateT IC IO a -> IO a
     runIC a = do
-      x <- modifyStore store $ do
-        -- Here we make IC.Ref use “real time”
-        lift getTimestamp >>= setAllTimesTo
-        processSystemTasks
-        a
+      x <- modifyStore store a
       -- begin processing in the background (it is important that
       -- this thread returns, else warp is blocked somehow)
       void $ forkIO loopIC
