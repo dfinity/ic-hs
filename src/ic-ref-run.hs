@@ -92,21 +92,27 @@ shorten n s = a ++ (if null b then "" else "...")
   where (a,b) = splitAt n s
 
 
-submitAndRun :: CanisterId -> CallRequest -> DRun ()
-submitAndRun ecid r = do
-    lift $ printCallRequest r
-    rid <- lift mkRequestId
-    submitRequest rid r ecid
-    runToCompletion
-    (r, _) <- gets (snd . (M.! rid) . requests)
-    lift $ printReqStatus r
+submitAndRun :: Store IC -> CanisterId -> CallRequest -> IO ()
+submitAndRun store ecid r = do
+    printCallRequest r
+    rid <- mkRequestId
+    modifyStore store $ submitRequest rid r ecid
+    loopIC
+    (r, _) <- peekStore store >>= evalStateT (gets (snd . (M.! rid) . requests))
+    printReqStatus r
+    where
+      loopIC :: IO ()
+      loopIC = modifyStore store runStep >>= \case
+        True -> loopIC
+        False -> return ()
 
-submitQuery :: QueryRequest -> DRun ()
-submitQuery r = do
-    lift $ printQueryRequest r
-    t <- lift getTimestamp
-    r <- handleQuery t r
-    lift $ printReqResponse r
+
+submitQuery :: Store IC -> QueryRequest -> IO ()
+submitQuery store r = do
+    printQueryRequest r
+    t <- getTimestamp
+    r <- peekStore store >>= evalStateT (handleQuery t r)
+    printReqResponse r
   where
     getTimestamp :: IO Timestamp
     getTimestamp = do
@@ -120,9 +126,9 @@ callManagement :: forall s a b.
   KnownSymbol s =>
   (a -> IO b) ~ (ICManagement IO .! s) =>
   Candid.CandidArg a =>
-  CanisterId -> EntityId -> Label s -> a -> StateT IC IO ()
-callManagement ecid user_id l x =
-  submitAndRun ecid $
+  Store IC -> CanisterId -> EntityId -> Label s -> a -> IO ()
+callManagement store ecid user_id l x =
+  submitAndRun store ecid $
     CallRequest (EntityId mempty) user_id (symbolVal l) (Candid.encode x)
 
 work :: [(SubnetType, String, [(W.Word64, W.Word64)])] -> Int -> FilePath -> IO ()
@@ -133,38 +139,36 @@ work subnets systemTaskPeriod msg_file = do
   let user_id = dummyUserId
   withStore (initialIC subs) Nothing $ \store ->
       withAsync (loopIC store) $ \_async ->
-        --flip evalStateT ic $
-          forM_ msgs $ \msg -> modifyStore store $
-           case msg of
+          forM_ msgs $ \case
             Create ecid ->
-              callManagement (EntityId ecid) user_id #provisional_create_canister_with_cycles $ empty
+              callManagement store (EntityId ecid) user_id #provisional_create_canister_with_cycles $ empty
                 .+ #settings .== Nothing
                 .+ #amount .== Nothing
             Install cid filename arg -> do
               wasm <- liftIO $ B.readFile filename
-              callManagement (EntityId cid) user_id #install_code $ empty
+              callManagement store (EntityId cid) user_id #install_code $ empty
                 .+ #mode .== V.IsJust #install ()
                 .+ #canister_id .== Candid.Principal cid
                 .+ #wasm_module .== wasm
                 .+ #arg .== arg
             Reinstall cid filename arg -> do
               wasm <- liftIO $ B.readFile filename
-              callManagement (EntityId cid) user_id #install_code $ empty
+              callManagement store (EntityId cid) user_id #install_code $ empty
                 .+ #mode .== V.IsJust #reinstall ()
                 .+ #canister_id .== Candid.Principal cid
                 .+ #wasm_module .== wasm
                 .+ #arg .== arg
             Upgrade cid filename arg -> do
               wasm <- liftIO $ B.readFile filename
-              callManagement (EntityId cid) user_id #install_code $ empty
+              callManagement store (EntityId cid) user_id #install_code $ empty
                 .+ #mode .== V.IsJust #upgrade ()
                 .+ #canister_id .== Candid.Principal cid
                 .+ #wasm_module .== wasm
                 .+ #arg .== arg
             Query  cid method arg ->
-              submitQuery (QueryRequest (EntityId cid) user_id method arg)
+              submitQuery store (QueryRequest (EntityId cid) user_id method arg)
             Update cid method arg ->
-              submitAndRun (EntityId cid) (CallRequest (EntityId cid) user_id method arg)
+              submitAndRun store (EntityId cid) (CallRequest (EntityId cid) user_id method arg)
   where
     loopIC :: Store IC -> IO ()
     loopIC store = forever $ do

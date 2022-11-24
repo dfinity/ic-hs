@@ -522,6 +522,7 @@ library
   build-depends: aeson >=1.4.7
   build-depends: asn1-encoding
   build-depends: asn1-types
+  build-depends: async
   build-depends: atomic-write
   build-depends: base32
   build-depends: base >=4.12 && <5
