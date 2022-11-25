@@ -156,7 +156,7 @@ canister_http_calls base_fee per_byte_fee =
     simpleTestCase "GET call" $ \cid -> do
       let s = "Hello world!"
       let enc = T.unpack $ encodeBase64 $ T.pack s
-      resp <- ic_http_get_request (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) ("base64/" ++ enc) Nothing Nothing cid
+      resp <- ic_http_get_request (\fee -> ic00viaWithCyclesRefund 0 cid (fee base_fee per_byte_fee)) ("base64/" ++ enc) Nothing Nothing cid
       (resp .! #status) @?= 200
       (resp .! #body) @?= BLU.fromString s
       check_http_response resp
@@ -164,7 +164,7 @@ canister_http_calls base_fee per_byte_fee =
     , simpleTestCase "POST call" $ \cid -> do
       let b = toUtf8 $ T.pack $ "Hello, world!"
       let hs = [(T.pack "Name1", T.pack "value1"), (T.pack "Name2", T.pack "value2")]
-      resp <- ic_http_post_request (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) (Just 666) (Just b) (vec_header_from_list_text hs) Nothing cid
+      resp <- ic_http_post_request (\fee -> ic00viaWithCyclesRefund 0 cid (fee base_fee per_byte_fee)) (Just 666) (Just b) (vec_header_from_list_text hs) Nothing cid
       (resp .! #status) @?= 200
       check_http_response resp
       check_http_json "POST" hs b $ (decode (resp .! #body) :: Maybe HttpRequest)
@@ -172,7 +172,7 @@ canister_http_calls base_fee per_byte_fee =
     , simpleTestCase "HEAD call" $ \cid -> do
       let b = toUtf8 $ T.pack $ "Hello, world!"
       let hs = [(T.pack "Name1", T.pack "value1"), (T.pack "Name2", T.pack "value2")]
-      resp <- ic_http_head_request (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) (Just 666) (Just b) (vec_header_from_list_text hs) Nothing cid
+      resp <- ic_http_head_request (\fee -> ic00viaWithCyclesRefund 0 cid (fee base_fee per_byte_fee)) (Just 666) (Just b) (vec_header_from_list_text hs) Nothing cid
       (resp .! #status) @?= 200
       (resp .! #body) @?= (toUtf8 $ T.pack "")
 
@@ -181,7 +181,7 @@ canister_http_calls base_fee per_byte_fee =
     , testCase "url must start with https://" $ do
       let enc = T.unpack $ encodeBase64 $ T.pack "Hello world!"
       cid <- install noop
-      ic_http_get_request' (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) "http://" ("base64/" ++ enc) Nothing Nothing cid >>= isReject [1]
+      ic_http_get_request' (\fee -> ic00viaWithCyclesRefund 0 cid (fee base_fee per_byte_fee)) "http://" ("base64/" ++ enc) Nothing Nothing cid >>= isReject [1]
 
     -- "The size of an HTTP response from the remote server is the total number of bytes representing the names and values of HTTP headers and the HTTP body. Each request can specify a maximal size for the response from the remote HTTP server."
 
@@ -196,7 +196,7 @@ canister_http_calls base_fee per_byte_fee =
           Access-Control-Allow-Credentials: true
       -}
       let header_size = 136
-      resp <- ic_http_get_request (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) ("base64/" ++ enc) (Just $ fromIntegral $ length s + header_size) Nothing cid
+      resp <- ic_http_get_request (\fee -> ic00viaWithCyclesRefund 0 cid (fee base_fee per_byte_fee)) ("base64/" ++ enc) (Just $ fromIntegral $ length s + header_size) Nothing cid
       (resp .! #status) @?= 200
       (resp .! #body) @?= BLU.fromString s
       check_http_response resp
@@ -212,7 +212,32 @@ canister_http_calls base_fee per_byte_fee =
           Access-Control-Allow-Credentials: true
       -}
       let header_size = 136
-      ic_http_get_request' (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) "https://" ("base64/" ++ enc) (Just $ fromIntegral $ length s + header_size - 1) Nothing cid >>= isReject [1]
+      ic_http_get_request' (\fee -> ic00viaWithCyclesRefund 0 cid (fee base_fee per_byte_fee)) "https://" ("base64/" ++ enc) (Just $ fromIntegral $ length s + header_size - 1) Nothing cid >>= isReject [1]
+
+    , simpleTestCase "small maximum possible response size (only headers)" $ \cid -> do
+      {- Response headers (size: 136)
+          Connection: keep-alive
+          Content-Type: application/octet-stream
+          Content-Length: 0
+          Access-Control-Allow-Origin: *
+          Access-Control-Allow-Credentials: true
+      -}
+      let header_size = 135
+      resp <- ic_http_get_request (\fee -> ic00viaWithCyclesRefund 0 cid (fee base_fee per_byte_fee)) ("equal_bytes/0") (Just header_size) Nothing cid
+      (resp .! #status) @?= 200
+      (resp .! #body) @?= BS.empty
+      check_http_response resp
+
+    , simpleTestCase "small maximum possible response size (only headers) exceeded" $ \cid -> do
+      {- Response headers (size: 136)
+          Connection: keep-alive
+          Content-Type: application/octet-stream
+          Content-Length: 0
+          Access-Control-Allow-Origin: *
+          Access-Control-Allow-Credentials: true
+      -}
+      let header_size = 135
+      ic_http_get_request' (\fee -> ic00viaWithCyclesRefund 0 cid (fee base_fee per_byte_fee)) "https://" ("equal_bytes/0") (Just $ header_size - 1) Nothing cid >>= isReject [1]
 
     -- "The upper limit on the maximal size for the response is 2MB (2,000,000B) and this value also applies if no maximal size value is specified."
 
@@ -226,7 +251,7 @@ canister_http_calls base_fee per_byte_fee =
       -}
       let header_size = 141
       cid <- install (onTransform (callback (replyData (bytes (Candid.encode dummyResponse)))))
-      resp <- ic_http_get_request (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) ("equal_bytes/" ++ show (max_response_bytes_limit - header_size)) Nothing (Just ("transform", "")) cid
+      resp <- ic_http_get_request (\fee -> ic00viaWithCyclesRefund 0 cid (fee base_fee per_byte_fee)) ("equal_bytes/" ++ show (max_response_bytes_limit - header_size)) Nothing (Just ("transform", "")) cid
       (resp .! #status) @?= 202
       (resp .! #body) @?= "Dummy!"
       check_http_response resp
@@ -241,35 +266,35 @@ canister_http_calls base_fee per_byte_fee =
       -}
       let header_size = 141
       cid <- install (onTransform (callback (replyData (bytes (Candid.encode dummyResponse)))))
-      ic_http_get_request' (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) "https://" ("equal_bytes/" ++ show (max_response_bytes_limit - header_size + 1)) Nothing (Just ("transform", "")) cid >>= isReject [1]
+      ic_http_get_request' (\fee -> ic00viaWithCyclesRefund 0 cid (fee base_fee per_byte_fee)) "https://" ("equal_bytes/" ++ show (max_response_bytes_limit - header_size + 1)) Nothing (Just ("transform", "")) cid >>= isReject [1]
 
     -- "The URL must be valid according to RFC-3986 and its length must not exceed 8192."
 
     , simpleTestCase "non-ascii URL" $ \cid -> do
-      ic_http_get_request' (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) "https://" "ascii/안녕하세요" Nothing Nothing cid >>= isReject [1]
+      ic_http_get_request' (\fee -> ic00viaWithCyclesRefund 0 cid (fee base_fee per_byte_fee)) "https://" "ascii/안녕하세요" Nothing Nothing cid >>= isReject [1]
 
     , simpleTestCase "maximum possible url size" $ \cid -> do
-      resp <- ic_long_url_http_request (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) "https://" max_http_request_url_length Nothing cid
+      resp <- ic_long_url_http_request (\fee -> ic00viaWithCyclesRefund 0 cid (fee base_fee per_byte_fee)) "https://" max_http_request_url_length Nothing cid
       (resp .! #status) @?= 200
       assertBool "HTTP response body is malformed" $ check_http_body $ resp .! #body
       check_http_response resp
 
     , simpleTestCase "maximum possible url size exceeded" $ \cid -> do
-      ic_long_url_http_request' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "https://" (max_http_request_url_length + 1) Nothing cid >>= isReject [4]
+      ic_long_url_http_request' (\fee -> let f = fee base_fee per_byte_fee in ic00viaWithCyclesRefund f cid f) "https://" (max_http_request_url_length + 1) Nothing cid >>= isReject [4]
 
     -- "max_response_bytes - If provided, the value must not exceed 2MB (2,000,000B)."
 
     , simpleTestCase "maximum possible value of max_response_bytes" $ \cid -> do
       let s = "Hello world!"
       let enc = T.unpack $ encodeBase64 $ T.pack s
-      resp <- ic_http_get_request (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) ("base64/" ++ enc) (Just max_response_bytes_limit) Nothing cid
+      resp <- ic_http_get_request (\fee -> ic00viaWithCyclesRefund 0 cid (fee base_fee per_byte_fee)) ("base64/" ++ enc) (Just max_response_bytes_limit) Nothing cid
       (resp .! #status) @?= 200
       (resp .! #body) @?= BLU.fromString s
       check_http_response resp
 
     , simpleTestCase "maximum possible value of max_response_bytes exceeded" $ \cid -> do
       let enc = T.unpack $ encodeBase64 $ T.pack "Hello world!"
-      ic_http_get_request' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "https://" ("base64/" ++ enc) (Just $ max_response_bytes_limit + 1) Nothing cid >>= isReject [4]
+      ic_http_get_request' (\fee -> let f = fee base_fee per_byte_fee in ic00viaWithCyclesRefund f cid f) "https://" ("base64/" ++ enc) (Just $ max_response_bytes_limit + 1) Nothing cid >>= isReject [4]
 
     -- "transform - an optional record that includes a function that transforms raw responses to sanitized responses, and a byte-encoded context that is provided to the function upon invocation, along with the response to be sanitized."
 
@@ -277,7 +302,7 @@ canister_http_calls base_fee per_byte_fee =
       let b = toUtf8 $ T.pack $ "Hello, world!"
       let hs = vec_header_from_list_text [(T.pack "Name1", T.pack "value1"), (T.pack "Name2", T.pack "value2")]
       cid <- install (onTransform (callback (replyData (bytes (Candid.encode dummyResponse)))))
-      resp <- ic_http_post_request (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) (Just 666) (Just b) hs (Just ("transform", "")) cid
+      resp <- ic_http_post_request (\fee -> ic00viaWithCyclesRefund 0 cid (fee base_fee per_byte_fee)) (Just 666) (Just b) hs (Just ("transform", "")) cid
       (resp .! #status) @?= 202
       (resp .! #body) @?= "Dummy!"
       check_http_response resp
@@ -285,7 +310,7 @@ canister_http_calls base_fee per_byte_fee =
     , testCase "reflect transform context" $ do
       let enc = T.unpack $ encodeBase64 $ T.pack "Hello world!"
       cid <- install (onTransform (callback (replyData (getHttpReplyWithBody (getHttpTransformContext argData)))))
-      resp <- ic_http_get_request (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) ("base64/" ++ enc) Nothing (Just ("transform", "asdf")) cid
+      resp <- ic_http_get_request (\fee -> ic00viaWithCyclesRefund 0 cid (fee base_fee per_byte_fee)) ("base64/" ++ enc) Nothing (Just ("transform", "asdf")) cid
       (resp .! #status) @?= 200
       (resp .! #body) @?= "asdf"
 
@@ -294,13 +319,13 @@ canister_http_calls base_fee per_byte_fee =
     , testCase "non-existent transform function" $ do
       let enc = T.unpack $ encodeBase64 $ T.pack "Hello world!"
       cid <- install noop
-      ic_http_get_request' (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) "https://" ("base64/" ++ enc) Nothing (Just ("nonExistent", "")) cid >>= isReject [3]
+      ic_http_get_request' (\fee -> ic00viaWithCyclesRefund 0 cid (fee base_fee per_byte_fee)) "https://" ("base64/" ++ enc) Nothing (Just ("nonExistent", "")) cid >>= isReject [3]
 
     , testCase "reference to a transform function exposed by another canister" $ do
       let enc = T.unpack $ encodeBase64 $ T.pack "Hello world!"
       cid <- install noop
       cid2 <- install (onTransform (callback (replyData (bytes (Candid.encode dummyResponse)))))
-      ic_http_get_request' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "https://" ("base64/" ++ enc) Nothing (Just ("transform", "")) cid2 >>= isReject [4]
+      ic_http_get_request' (\fee -> let f = fee base_fee per_byte_fee in ic00viaWithCyclesRefund f cid f) "https://" ("base64/" ++ enc) Nothing (Just ("transform", "")) cid2 >>= isReject [4]
 
     -- "The maximal number of bytes representing the response produced by the transform function is 2MB (2,000,000B)."
 
@@ -317,7 +342,7 @@ canister_http_calls base_fee per_byte_fee =
       let new_pages = int $ size `div` (64 * 1024) + 1
       let max_size = int $ size
       cid <- install (onTransform (callback (ignore (stableGrow new_pages) >>> stableFill (int 0) (int 120) max_size >>> replyData (getHttpReplyWithBody (stableRead (int 0) max_size)))))
-      resp <- ic_http_get_request (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) ("equal_bytes/" ++ show (max_response_bytes_limit - header_size)) Nothing (Just ("transform", "")) cid
+      resp <- ic_http_get_request (\fee -> ic00viaWithCyclesRefund 0 cid (fee base_fee per_byte_fee)) ("equal_bytes/" ++ show (max_response_bytes_limit - header_size)) Nothing (Just ("transform", "")) cid
       (resp .! #status) @?= 200
       (resp .! #body) @?= bodyOfSize maximumSizeResponseBodySize
       check_http_response resp
@@ -335,14 +360,14 @@ canister_http_calls base_fee per_byte_fee =
       let new_pages = int $ size `div` (64 * 1024) + 1
       let max_size = int $ size
       cid <- install (onTransform (callback (ignore (stableGrow new_pages) >>> stableFill (int 0) (int 120) max_size >>> replyData (getHttpReplyWithBody (stableRead (int 0) max_size)))))
-      ic_http_get_request' (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) "https://" ("equal_bytes/" ++ show (max_response_bytes_limit - header_size)) Nothing (Just ("transform", "")) cid >>= isReject [1]
+      ic_http_get_request' (\fee -> ic00viaWithCyclesRefund 0 cid (fee base_fee per_byte_fee)) "https://" ("equal_bytes/" ++ show (max_response_bytes_limit - header_size)) Nothing (Just ("transform", "")) cid >>= isReject [1]
 
     -- "When the transform function is invoked by the system due to a canister HTTP request, the caller's identity is the principal of the management canister."
 
     , testCase "check caller of transform" $ do
       let enc = T.unpack $ encodeBase64 $ T.pack "Hello world!"
       cid <- install (onTransform (callback (replyData (getHttpReplyWithBody (parsePrincipal caller)))))
-      resp <- ic_http_get_request (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) ("base64/" ++ enc) Nothing (Just ("transform", "caller")) cid
+      resp <- ic_http_get_request (\fee -> ic00viaWithCyclesRefund 0 cid (fee base_fee per_byte_fee)) ("base64/" ++ enc) Nothing (Just ("transform", "caller")) cid
       (resp .! #status) @?= 200
       (resp .! #body) @?= "aaaaa-aa"
 
@@ -351,7 +376,7 @@ canister_http_calls base_fee per_byte_fee =
     , simpleTestCase "maximum number of request headers" $ \cid -> do
       let b = toUtf8 $ T.pack $ "Hello, world!"
       let hs = [(T.pack ("Name" ++ show i), T.pack ("value" ++ show i)) | i <- [0..http_headers_max_number - 1]]
-      resp <- ic_http_post_request (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) Nothing (Just b) (vec_header_from_list_text hs) Nothing cid
+      resp <- ic_http_post_request (\fee -> ic00viaWithCyclesRefund 0 cid (fee base_fee per_byte_fee)) Nothing (Just b) (vec_header_from_list_text hs) Nothing cid
       (resp .! #status) @?= 200
       check_http_response resp
       check_http_json "POST" hs b $ (decode (resp .! #body) :: Maybe HttpRequest)
@@ -359,7 +384,7 @@ canister_http_calls base_fee per_byte_fee =
     , simpleTestCase "maximum number of request headers exceeded" $ \cid -> do
       let b = toUtf8 $ T.pack $ "Hello, world!"
       let hs = [(T.pack ("Name" ++ show i), T.pack ("value" ++ show i)) | i <- [0..http_headers_max_number]]
-      ic_http_post_request' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) Nothing (Just b) (vec_header_from_list_text hs) Nothing cid >>= isReject [4]
+      ic_http_post_request' (\fee -> let f = fee base_fee per_byte_fee in ic00viaWithCyclesRefund f cid f) Nothing (Just b) (vec_header_from_list_text hs) Nothing cid >>= isReject [4]
 
     , simpleTestCase "maximum number of response headers" $ \cid -> do
       {- These 5 response headers are always included:
@@ -371,9 +396,10 @@ canister_http_calls base_fee per_byte_fee =
       -}
       let n = http_headers_max_number - 5
       let hs = [(T.pack ("Name" ++ show i), T.pack ("value" ++ show i)) | i <- [0..n - 1]]
-      resp <- ic_http_get_request (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) ("many_response_headers/" ++ show n) Nothing Nothing cid
+      resp <- ic_http_get_request (\fee -> ic00viaWithCyclesRefund 0 cid (fee base_fee per_byte_fee)) ("many_response_headers/" ++ show n) Nothing Nothing cid
       (resp .! #status) @?= 200
-      assertBool "Response HTTP headers have not been received properly." $ list_subset hs (http_response_headers resp)
+      let map_to_lower = map (\(n, v) -> (T.toLower n, v))
+      assertBool "Response HTTP headers have not been received properly." $ list_subset (map_to_lower hs) (map_to_lower $ http_response_headers resp)
       check_http_response resp
 
     , simpleTestCase "maximum number of response headers exceeded" $ \cid -> do
@@ -385,14 +411,14 @@ canister_http_calls base_fee per_byte_fee =
           Access-Control-Allow-Credentials: true
       -}
       let n = http_headers_max_number - 5 + 1
-      ic_http_get_request' (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) "https://" ("many_response_headers/" ++ show n) Nothing Nothing cid >>= isReject [1]
+      ic_http_get_request' (\fee -> ic00viaWithCyclesRefund 0 cid (fee base_fee per_byte_fee)) "https://" ("many_response_headers/" ++ show n) Nothing Nothing cid >>= isReject [1]
 
     -- "The following additional limits apply to HTTP requests and HTTP responses from the remote sever: the number of bytes representing a header name must not exceed 32KiB."
 
     , simpleTestCase "maximum request header name length" $ \cid -> do
       let b = toUtf8 $ T.pack $ "Hello, world!"
       let hs = [(T.pack (replicate (fromIntegral http_headers_max_name_length) 'x'), T.pack ("value"))]
-      resp <- ic_http_post_request (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) Nothing (Just b) (vec_header_from_list_text hs) Nothing cid
+      resp <- ic_http_post_request (\fee -> ic00viaWithCyclesRefund 0 cid (fee base_fee per_byte_fee)) Nothing (Just b) (vec_header_from_list_text hs) Nothing cid
       (resp .! #status) @?= 200
       check_http_response resp
       check_http_json "POST" hs b $ (decode (resp .! #body) :: Maybe HttpRequest)
@@ -400,19 +426,20 @@ canister_http_calls base_fee per_byte_fee =
     , simpleTestCase "maximum request header name length exceeded" $ \cid -> do
       let b = toUtf8 $ T.pack $ "Hello, world!"
       let hs = [(T.pack (replicate (fromIntegral $ http_headers_max_name_length + 1) 'x'), T.pack ("value"))]
-      ic_http_post_request' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) Nothing (Just b) (vec_header_from_list_text hs) Nothing cid >>= isReject [4]
+      ic_http_post_request' (\fee -> let f = fee base_fee per_byte_fee in ic00viaWithCyclesRefund f cid f) Nothing (Just b) (vec_header_from_list_text hs) Nothing cid >>= isReject [4]
 
     , simpleTestCase "maximum response header name length" $ \cid -> do
       let n = http_headers_max_name_length
       let hs = [(T.pack $ replicate (fromIntegral n) 'x', T.pack "value")]
-      resp <- ic_http_get_request (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) ("long_response_header_name/" ++ show n) Nothing Nothing cid
+      resp <- ic_http_get_request (\fee -> ic00viaWithCyclesRefund 0 cid (fee base_fee per_byte_fee)) ("long_response_header_name/" ++ show n) Nothing Nothing cid
       (resp .! #status) @?= 200
-      assertBool "Response HTTP headers have not been received properly." $ list_subset hs (http_response_headers resp)
+      let map_to_lower = map (\(n, v) -> (T.toLower n, v))
+      assertBool "Response HTTP headers have not been received properly." $ list_subset (map_to_lower hs) (map_to_lower $ http_response_headers resp)
       check_http_response resp
 
     , simpleTestCase "maximum response header name length exceeded" $ \cid -> do
       let n = http_headers_max_name_length + 1
-      ic_http_get_request' (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) "https://" ("long_response_header_name/" ++ show n) Nothing Nothing cid >>= isReject [1]
+      ic_http_get_request' (\fee -> ic00viaWithCyclesRefund 0 cid (fee base_fee per_byte_fee)) "https://" ("long_response_header_name/" ++ show n) Nothing Nothing cid >>= isReject [1]
 
     -- "The following additional limits apply to HTTP requests and HTTP responses from the remote sever: the total number of bytes representing the header names and values must not exceed 48KiB."
 
@@ -420,7 +447,7 @@ canister_http_calls base_fee per_byte_fee =
       let name = "name"
       let b = toUtf8 $ T.pack $ "Hello, world!"
       let hs = [(T.pack name, T.pack (replicate (fromIntegral http_headers_max_total_size - length name) 'x'))]
-      resp <- ic_http_post_request (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) Nothing (Just b) (vec_header_from_list_text hs) Nothing cid
+      resp <- ic_http_post_request (\fee -> ic00viaWithCyclesRefund 0 cid (fee base_fee per_byte_fee)) Nothing (Just b) (vec_header_from_list_text hs) Nothing cid
       (resp .! #status) @?= 200
       check_http_response resp
       check_http_json "POST" hs b $ (decode (resp .! #body) :: Maybe HttpRequest)
@@ -429,7 +456,7 @@ canister_http_calls base_fee per_byte_fee =
       let name = "name"
       let b = toUtf8 $ T.pack $ "Hello, world!"
       let hs = [(T.pack name, T.pack (replicate (fromIntegral http_headers_max_total_size - length name + 1) 'x'))]
-      ic_http_post_request' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) Nothing (Just b) (vec_header_from_list_text hs) Nothing cid >>= isReject [4]
+      ic_http_post_request' (\fee -> let f = fee base_fee per_byte_fee in ic00viaWithCyclesRefund f cid f) Nothing (Just b) (vec_header_from_list_text hs) Nothing cid >>= isReject [4]
 
     , simpleTestCase "maximum response header value length" $ \cid -> do
       {- These response headers of total length 135 are always included:
@@ -442,9 +469,10 @@ canister_http_calls base_fee per_byte_fee =
       let name = "name" :: String
       let n = http_headers_max_total_size - fromIntegral (length name) - 135
       let hs = [(T.pack name, T.pack $ replicate (fromIntegral n) 'x')]
-      resp <- ic_http_get_request (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) ("long_response_header_value/" ++ show n) Nothing Nothing cid
+      resp <- ic_http_get_request (\fee -> ic00viaWithCyclesRefund 0 cid (fee base_fee per_byte_fee)) ("long_response_header_value/" ++ show n) Nothing Nothing cid
       (resp .! #status) @?= 200
-      assertBool "Response HTTP headers have not been received properly." $ list_subset hs (http_response_headers resp)
+      let map_to_lower = map (\(n, v) -> (T.toLower n, v))
+      assertBool "Response HTTP headers have not been received properly." $ list_subset (map_to_lower hs) (map_to_lower $ http_response_headers resp)
       check_http_response resp
 
     , simpleTestCase "maximum response header value length exceeded" $ \cid -> do
@@ -457,7 +485,7 @@ canister_http_calls base_fee per_byte_fee =
       -}
       let name = "name" :: String
       let n = http_headers_max_total_size - fromIntegral (length name) - 135 + 1
-      ic_http_get_request' (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) "https://" ("long_response_header_value/" ++ show n) Nothing Nothing cid >>= isReject [1]
+      ic_http_get_request' (\fee -> ic00viaWithCyclesRefund 0 cid (fee base_fee per_byte_fee)) "https://" ("long_response_header_value/" ++ show n) Nothing Nothing cid >>= isReject [1]
   ]
 
 -- * The test suite (see below for helper functions)

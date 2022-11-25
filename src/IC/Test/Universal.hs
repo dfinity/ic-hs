@@ -337,10 +337,10 @@ relayReply =
     relayReplyImpl >>>
     reply
 
-relayReplyNoRefund :: Prog
-relayReplyNoRefund =
+relayReplyRefund :: Word64 -> Prog
+relayReplyRefund amount =
     relayReplyImpl >>>
-    trapIfNeq (i64tob (getRefund)) (i64tob $ int64 0) (bytes "The call should not refund any cycles.") >>>
+    trapIfNeq (i64tob getRefund) (i64tob $ int64 amount) (bytes "The call should not refund any cycles.") >>>
     reply
 
 relayRejectImpl :: Prog
@@ -353,8 +353,8 @@ relayReject =
     relayRejectImpl >>>
     reply
 
-relayRejectNoRefund :: Prog
-relayRejectNoRefund =
+relayRejectRefund :: Word64 -> Prog
+relayRejectRefund amount =
     relayRejectImpl >>>
-    trapIfNeq (i64tob (getRefund)) (i64tob $ int64 0) (bytes "The call should not refund any cycles.") >>>
+    trapIfNeq (i64tob getRefund) (i64tob $ int64 amount) (bytes "The call should not refund any cycles.") >>>
     reply

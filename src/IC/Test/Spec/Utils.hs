@@ -171,8 +171,8 @@ ic00viaWithCyclesImpl relayReply relayReject cid cycles _ecid method_name arg =
 ic00viaWithCycles :: HasAgentConfig => Blob -> Word64 -> IC00
 ic00viaWithCycles = ic00viaWithCyclesImpl relayReply relayReject
 
-ic00viaWithCyclesNoRefund :: HasAgentConfig => Blob -> Word64 -> IC00
-ic00viaWithCyclesNoRefund = ic00viaWithCyclesImpl relayReplyNoRefund relayRejectNoRefund
+ic00viaWithCyclesRefund :: HasAgentConfig => Word64 -> Blob -> Word64 -> IC00
+ic00viaWithCyclesRefund amount = ic00viaWithCyclesImpl (relayReplyRefund amount) (relayRejectRefund amount)
 
 -- * Interacting with the universal canister
 
@@ -413,6 +413,6 @@ dummyResponse = R.empty
 bodyOfSize :: W.Word32 -> BS.ByteString
 bodyOfSize n = toUtf8 $ T.pack $ take (fromIntegral n) $ repeat 'x'
 
--- maximum body size of HTTP response with status 200 and no headers such that the length of its Candid encoding does not exceed canister_http_response_limit
+-- maximum body size of HTTP response with status 200 and no headers such that the length of its Candid encoding does not exceed max_response_bytes_limit
 maximumSizeResponseBodySize :: W.Word32
 maximumSizeResponseBodySize = 1999950
