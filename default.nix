@@ -167,7 +167,7 @@ def wrap_default_headers(func):
     return default_headers
 
 gunicorn.http.wsgi.Response.default_headers = wrap_default_headers(gunicorn.http.wsgi.Response.default_headers)\" > conf.py;
-        ${python-with-my-packages}/bin/gunicorn -b 127.0.0.1:8003 --limit-request-line 0 --certfile cert.pem --keyfile key.pem httpbin:app -k gevent -c conf.py";
+        ${python-with-my-packages}/bin/gunicorn -b 127.0.0.1:8003 --limit-request-line 0 --limit-request-field_size 0 --certfile cert.pem --keyfile key.pem httpbin:app -k gevent -c conf.py";
 in
 
 rec {
