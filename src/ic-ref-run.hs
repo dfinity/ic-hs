@@ -172,7 +172,7 @@ work subnets systemTaskPeriod msg_file = do
   where
     loopIC :: Store IC -> IO ()
     loopIC store = forever $ do
-        threadDelay systemTaskPeriod
+        threadDelay (systemTaskPeriod * 1000000)
         modifyStore store aux
       where
         aux = do
