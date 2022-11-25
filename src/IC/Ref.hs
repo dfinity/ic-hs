@@ -940,10 +940,18 @@ icHttpRequest caller ctxt_id r =
           Nothing -> True
           Just t -> case t .! #function of
             FuncRef p _ -> principalToEntityId p == caller in
-  if max_resp_size > max_response_bytes_limit then
-    reject RC_CANISTER_REJECT ("max_response_bytes cannot exceed " ++ show max_response_bytes_limit) (Just EC_CANISTER_REJECTED)
-  else if not transform_principal_check then
+  if not transform_principal_check then
     reject RC_CANISTER_REJECT "transform needs to be exported by the caller canister" (Just EC_CANISTER_REJECTED)
+  else if max_resp_size > max_response_bytes_limit then
+    reject RC_CANISTER_REJECT ("max_response_bytes cannot exceed " ++ show max_response_bytes_limit) (Just EC_CANISTER_REJECTED)
+  else if utf8_length (r .! #url) > max_http_request_url_length then
+    reject RC_CANISTER_REJECT "Failed to parse URL: uri too long" (Just EC_INVALID_ARGUMENT)
+  else if not (check_http_request_headers_number r) then
+    reject RC_CANISTER_REJECT ("number of request http headers exceeds the limit of " ++ show http_headers_max_number) (Just EC_CANISTER_REJECTED)
+  else if not (check_http_request_headers_name_length r) then
+    reject RC_CANISTER_REJECT ("number of bytes to represent some request http header name exceeds the limit of " ++ show http_headers_max_name_length) (Just EC_CANISTER_REJECTED)
+  else if not (check_http_request_headers_total_size r) then
+    reject RC_CANISTER_REJECT ("total number of bytes to represent request http headers exceeds the limit of " ++ show http_headers_max_total_size) (Just EC_CANISTER_REJECTED)
   else do
     available <- getCallContextCycles ctxt_id
     (_, subnet, _, _) <- getSubnetFromCanisterId caller
@@ -958,14 +966,6 @@ icHttpRequest caller ctxt_id r =
         reject RC_SYS_FATAL "url must be valid according to RFC-3986" (Just EC_INVALID_ARGUMENT)
       else if not (isPrefixOf "https://" url) then
         reject RC_SYS_FATAL "url must start with https://" (Just EC_INVALID_ARGUMENT)
-      else if utf8_length (r .! #url) > max_http_request_url_length then
-        reject RC_SYS_FATAL "Failed to parse URL: uri too long" (Just EC_INVALID_ARGUMENT)
-      else if not (check_http_request_headers_number r) then
-        reject RC_SYS_FATAL ("number of request http headers exceeds the limit of " ++ show http_headers_max_number) (Just EC_CANISTER_REJECTED)
-      else if not (check_http_request_headers_name_length r) then
-        reject RC_SYS_FATAL ("number of bytes to represent some request http header name exceeds the limit of " ++ show http_headers_max_name_length) (Just EC_CANISTER_REJECTED)
-      else if not (check_http_request_headers_total_size r) then
-        reject RC_SYS_FATAL ("total number of bytes to represent request http headers exceeds the limit of " ++ show http_headers_max_total_size) (Just EC_CANISTER_REJECTED)
       else do
         method <- if (r .! #method) == V.IsJust #get () then return $ T.encodeUtf8 "GET"
                   else if (r .! #method) == V.IsJust #post () then return $ T.encodeUtf8 "POST"

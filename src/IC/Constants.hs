@@ -24,9 +24,6 @@ http_headers_max_name_length = 32 * 1024 -- 32 KiB
 http_headers_max_total_size :: W.Word64
 http_headers_max_total_size = 48 * 1024 -- 48 KiB
 
-max_inter_canister_payload_in_bytes :: W.Word64
-max_inter_canister_payload_in_bytes = 2 * 1024 * 1024
-
 max_response_bytes_limit :: W.Word64
 max_response_bytes_limit = 2000000
 

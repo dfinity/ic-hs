@@ -92,7 +92,7 @@ max_response_size r = aux $ fmap fromIntegral $ r .! #max_response_bytes
 http_request_fee :: (a -> IO b) ~ (ICManagement IO .! "http_request") => a -> W.Word64 -> W.Word64 -> W.Word64
 http_request_fee r base per_byte = base + per_byte * total_bytes
   where
-    response_size_fee Nothing = max_inter_canister_payload_in_bytes
+    response_size_fee Nothing = max_response_bytes_limit
     response_size_fee (Just max_response_size) = max_response_size
     transform_fee Nothing = 0
     transform_fee (Just t) = dec_var (t .! #function) + (fromIntegral $ BS.length (t .! #context))

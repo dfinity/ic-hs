@@ -243,7 +243,6 @@ canister_http_calls base_fee per_byte_fee =
       cid <- install (onTransform (callback (replyData (bytes (Candid.encode dummyResponse)))))
       ic_http_get_request' (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) "https://" ("equal_bytes/" ++ show (max_response_bytes_limit - header_size + 1)) Nothing (Just ("transform", "")) cid >>= isReject [1]
 
-
     -- "The URL must be valid according to RFC-3986 and its length must not exceed 8192."
 
     , simpleTestCase "non-ascii URL" $ \cid -> do
@@ -256,7 +255,7 @@ canister_http_calls base_fee per_byte_fee =
       check_http_response resp
 
     , simpleTestCase "maximum possible url size exceeded" $ \cid -> do
-      ic_long_url_http_request' (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) "https://" (max_http_request_url_length + 1) Nothing cid >>= isReject [1]
+      ic_long_url_http_request' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "https://" (max_http_request_url_length + 1) Nothing cid >>= isReject [4]
 
     -- "max_response_bytes - If provided, the value must not exceed 2MB (2,000,000B)."
 
@@ -360,7 +359,7 @@ canister_http_calls base_fee per_byte_fee =
     , simpleTestCase "maximum number of request headers exceeded" $ \cid -> do
       let b = toUtf8 $ T.pack $ "Hello, world!"
       let hs = [(T.pack ("Name" ++ show i), T.pack ("value" ++ show i)) | i <- [0..http_headers_max_number]]
-      ic_http_post_request' (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) Nothing (Just b) (vec_header_from_list_text hs) Nothing cid >>= isReject [1]
+      ic_http_post_request' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) Nothing (Just b) (vec_header_from_list_text hs) Nothing cid >>= isReject [4]
 
     , simpleTestCase "maximum number of response headers" $ \cid -> do
       {- These 5 response headers are always included:
@@ -401,7 +400,7 @@ canister_http_calls base_fee per_byte_fee =
     , simpleTestCase "maximum request header name length exceeded" $ \cid -> do
       let b = toUtf8 $ T.pack $ "Hello, world!"
       let hs = [(T.pack (replicate (fromIntegral $ http_headers_max_name_length + 1) 'x'), T.pack ("value"))]
-      ic_http_post_request' (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) Nothing (Just b) (vec_header_from_list_text hs) Nothing cid >>= isReject [1]
+      ic_http_post_request' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) Nothing (Just b) (vec_header_from_list_text hs) Nothing cid >>= isReject [4]
 
     , simpleTestCase "maximum response header name length" $ \cid -> do
       let n = http_headers_max_name_length
@@ -430,7 +429,7 @@ canister_http_calls base_fee per_byte_fee =
       let name = "name"
       let b = toUtf8 $ T.pack $ "Hello, world!"
       let hs = [(T.pack name, T.pack (replicate (fromIntegral http_headers_max_total_size - length name + 1) 'x'))]
-      ic_http_post_request' (\fee -> ic00viaWithCyclesNoRefund cid (fee base_fee per_byte_fee)) Nothing (Just b) (vec_header_from_list_text hs) Nothing cid >>= isReject [1]
+      ic_http_post_request' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) Nothing (Just b) (vec_header_from_list_text hs) Nothing cid >>= isReject [4]
 
     , simpleTestCase "maximum response header value length" $ \cid -> do
       {- These response headers of total length 135 are always included:
