@@ -6,6 +6,7 @@
 , aeson
 , asn1-encoding
 , asn1-types
+, async
 , atomic-write
 , base
 , base32
@@ -80,6 +81,7 @@ mkDerivation {
     aeson
     asn1-encoding
     asn1-types
+    async
     atomic-write
     base
     base32
@@ -146,6 +148,7 @@ mkDerivation {
     aeson
     asn1-encoding
     asn1-types
+    async
     atomic-write
     base
     base32
