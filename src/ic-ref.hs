@@ -21,15 +21,15 @@ defaultPort :: Port
 defaultPort = 8001
 
 
-work :: [(SubnetType, String, [(W.Word64, W.Word64)])] -> Maybe String -> Maybe Int -> Maybe FilePath -> Maybe FilePath -> Bool ->  IO ()
-work subnets maybe_cert_path portToUse writePortTo backingFile log = do
+work :: [(SubnetType, String, [(W.Word64, W.Word64)])] -> Maybe String -> Int -> Maybe Int -> Maybe FilePath -> Maybe FilePath -> Bool ->  IO ()
+work subnets maybe_cert_path systemTaskPeriod portToUse writePortTo backingFile log = do
     let subs = map (\(t, n, ranges) -> SubnetConfig t n ranges) subnets
     putStrLn "Starting ic-ref..."
     BLS.init
     certs <- case maybe_cert_path of Nothing -> return []
                                      Just ps -> C.listCertificates <$> fromJust <$> C.readCertificateStore ps
     conf <- makeRefConfig certs
-    withRefConfig conf $ withApp subs backingFile $ \app -> do
+    withRefConfig conf $ withApp subs (systemTaskPeriod * 1000000) backingFile $ \app -> do
         let app' =  laxCorsSettings $ if log then logStdoutDev app else app
         case portToUse of
           Nothing ->
@@ -75,6 +75,8 @@ main = join . customExecParser (prefs showHelpOnError) $
     range n = (n * canister_ids_per_subnet, (n + 1) * canister_ids_per_subnet - 1)
     defaultSubnetConfig :: [(SubnetType, String, [(W.Word64, W.Word64)])]
     defaultSubnetConfig = [(System, "sk1", [range 0]), (Application, "sk2", [range 1])]
+    defaultSystemTaskPeriod :: Int
+    defaultSystemTaskPeriod = 1
     parser :: Parser (IO ())
     parser = work
       <$>
@@ -92,6 +94,16 @@ main = join . customExecParser (prefs showHelpOnError) $
             <> help "path to certificate file or directory"
             )
           )
+      <*>
+        (
+          (
+            option auto
+            (  long "system-task-period"
+            <> help ("choose execution period (in integer seconds) for system tasks, i.e., heartbeats and global timers (default: " ++ show defaultSystemTaskPeriod ++ ")")
+            )
+          )
+        <|> pure defaultSystemTaskPeriod
+        )
       <*>
         ( flag' Nothing
           (  long "pick-port"
