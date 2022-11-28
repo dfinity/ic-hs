@@ -40,6 +40,7 @@ import Control.Concurrent
 import System.Timeout
 
 import Data.Aeson
+import Data.Char
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
 
@@ -73,6 +74,9 @@ waitFor act = do
     doActUntil = do
       stop <- act
       unless stop (threadDelay 1000 *> doActUntil)
+
+charFromInt :: Int -> Char
+charFromInt n = chr $ n + ord 'a'
 
 -- * Canister http calls
 
@@ -408,11 +412,11 @@ canister_http_calls sub =
       let n = http_headers_max_number - 5 + 1
       ic_http_get_request' (ic00viaWithCyclesRefund 0 cid) sub "https://" ("many_response_headers/" ++ show n) Nothing Nothing cid >>= isReject [1]
 
-    -- "The following additional limits apply to HTTP requests and HTTP responses from the remote sever: the number of bytes representing a header name must not exceed 32KiB."
+    -- "The following additional limits apply to HTTP requests and HTTP responses from the remote sever: the number of bytes representing a header name must not exceed 8KiB."
 
     , simpleTestCase "maximum request header name length" $ \cid -> do
       let b = toUtf8 $ T.pack $ "Hello, world!"
-      let hs = [(T.pack (replicate (fromIntegral http_headers_max_name_length) 'x'), T.pack ("value"))]
+      let hs = [(T.pack (replicate (fromIntegral http_headers_max_name_value_length) 'x'), T.pack ("value"))]
       resp <- ic_http_post_request (ic00viaWithCyclesRefund 0 cid) sub Nothing (Just b) (vec_header_from_list_text hs) Nothing cid
       (resp .! #status) @?= 200
       check_http_response resp
@@ -420,11 +424,11 @@ canister_http_calls sub =
 
     , simpleTestCase "maximum request header name length exceeded" $ \cid -> do
       let b = toUtf8 $ T.pack $ "Hello, world!"
-      let hs = [(T.pack (replicate (fromIntegral $ http_headers_max_name_length + 1) 'x'), T.pack ("value"))]
+      let hs = [(T.pack (replicate (fromIntegral $ http_headers_max_name_value_length + 1) 'x'), T.pack ("value"))]
       ic_http_post_request' (\fee -> ic00viaWithCyclesRefund fee cid fee) sub Nothing (Just b) (vec_header_from_list_text hs) Nothing cid >>= isReject [4]
 
     , simpleTestCase "maximum response header name length" $ \cid -> do
-      let n = http_headers_max_name_length
+      let n = http_headers_max_name_value_length
       let hs = [(T.pack $ replicate (fromIntegral n) 'x', T.pack "value")]
       resp <- ic_http_get_request (ic00viaWithCyclesRefund 0 cid) sub ("long_response_header_name/" ++ show n) Nothing Nothing cid
       (resp .! #status) @?= 200
@@ -433,37 +437,27 @@ canister_http_calls sub =
       check_http_response resp
 
     , simpleTestCase "maximum response header name length exceeded" $ \cid -> do
-      let n = http_headers_max_name_length + 1
+      let n = http_headers_max_name_value_length + 1
       ic_http_get_request' (ic00viaWithCyclesRefund 0 cid) sub "https://" ("long_response_header_name/" ++ show n) Nothing Nothing cid >>= isReject [1]
 
-    -- "The following additional limits apply to HTTP requests and HTTP responses from the remote sever: the total number of bytes representing the header names and values must not exceed 48KiB."
+    -- "The following additional limits apply to HTTP requests and HTTP responses from the remote sever: the number of bytes representing a header value must not exceed 8KiB."
 
     , simpleTestCase "maximum request header value length" $ \cid -> do
-      let name = "name"
       let b = toUtf8 $ T.pack $ "Hello, world!"
-      let hs = [(T.pack name, T.pack (replicate (fromIntegral http_headers_max_total_size - length name) 'x'))]
+      let hs = [(T.pack "name", T.pack (replicate (fromIntegral http_headers_max_name_value_length) 'x'))]
       resp <- ic_http_post_request (ic00viaWithCyclesRefund 0 cid) sub Nothing (Just b) (vec_header_from_list_text hs) Nothing cid
       (resp .! #status) @?= 200
       check_http_response resp
       check_http_json "POST" hs b $ (decode (resp .! #body) :: Maybe HttpRequest)
 
     , simpleTestCase "maximum request header value length exceeded" $ \cid -> do
-      let name = "name"
       let b = toUtf8 $ T.pack $ "Hello, world!"
-      let hs = [(T.pack name, T.pack (replicate (fromIntegral http_headers_max_total_size - length name + 1) 'x'))]
+      let hs = [(T.pack "name", T.pack (replicate (fromIntegral $ http_headers_max_name_value_length + 1) 'x'))]
       ic_http_post_request' (\fee -> ic00viaWithCyclesRefund fee cid fee) sub Nothing (Just b) (vec_header_from_list_text hs) Nothing cid >>= isReject [4]
 
     , simpleTestCase "maximum response header value length" $ \cid -> do
-      {- These response headers of total length 135 are always included:
-          Connection: keep-alive
-          Content-Type: text/html; charset=utf-8
-          Content-Length: 0
-          Access-Control-Allow-Origin: *
-          Access-Control-Allow-Credentials: true
-      -}
-      let name = "name" :: String
-      let n = http_headers_max_total_size - fromIntegral (length name) - 135
-      let hs = [(T.pack name, T.pack $ replicate (fromIntegral n) 'x')]
+      let n = http_headers_max_name_value_length
+      let hs = [(T.pack "name", T.pack $ replicate (fromIntegral n) 'x')]
       resp <- ic_http_get_request (ic00viaWithCyclesRefund 0 cid) sub ("long_response_header_value/" ++ show n) Nothing Nothing cid
       (resp .! #status) @?= 200
       let map_to_lower = map (\(n, v) -> (T.toLower n, v))
@@ -471,16 +465,42 @@ canister_http_calls sub =
       check_http_response resp
 
     , simpleTestCase "maximum response header value length exceeded" $ \cid -> do
-      {- These response headers of total length 135 are always included:
-          Connection: keep-alive
-          Content-Type: text/html; charset=utf-8
-          Content-Length: 0
-          Access-Control-Allow-Origin: *
-          Access-Control-Allow-Credentials: true
-      -}
-      let name = "name" :: String
-      let n = http_headers_max_total_size - fromIntegral (length name) - 135 + 1
+      let n = http_headers_max_name_value_length + 1
       ic_http_get_request' (ic00viaWithCyclesRefund 0 cid) sub "https://" ("long_response_header_value/" ++ show n) Nothing Nothing cid >>= isReject [1]
+
+    -- "The following additional limits apply to HTTP requests and HTTP responses from the remote sever: the total number of bytes representing the header names and values must not exceed 48KiB."
+
+    , simpleTestCase "maximum request total header size" $ \cid -> do
+      let chunk = http_headers_max_name_value_length
+      assertBool ("Maximum number of bytes to represent all request header names and value is not divisible by " ++ show (2 * chunk)) (http_headers_max_total_size `mod` (2 * chunk) == 0)
+      assertBool ("Maximum number of bytes to represent all request header names and value exceeds " ++ show (2 * chunk * 26)) (http_headers_max_total_size `div` (2 * chunk) <= fromIntegral (min 26 http_headers_max_number))
+      let n = http_headers_max_total_size `div` (2 * chunk)
+      let b = toUtf8 $ T.pack $ "Hello, world!"
+      let hs = [(T.pack $ [charFromInt i] ++ replicate (fromIntegral chunk - 1) 'x', T.pack $ replicate (fromIntegral chunk) 'x') | i <- [0..fromIntegral n - 1]]
+      resp <- ic_http_post_request (ic00viaWithCyclesRefund 0 cid) sub Nothing (Just b) (vec_header_from_list_text hs) Nothing cid
+      (resp .! #status) @?= 200
+      check_http_response resp
+      check_http_json "POST" hs b $ (decode (resp .! #body) :: Maybe HttpRequest)
+
+    , simpleTestCase "maximum request total header size exceeded" $ \cid -> do
+      let chunk = http_headers_max_name_value_length
+      assertBool ("Maximum number of bytes to represent all request header names and value is not divisible by " ++ show (2 * chunk)) (http_headers_max_total_size `mod` (2 * chunk) == 0)
+      assertBool ("Maximum number of bytes to represent all request header names and value exceeds " ++ show (2 * chunk * 26)) (http_headers_max_total_size `div` (2 * chunk) <= fromIntegral (min 26 http_headers_max_number))
+      let n = http_headers_max_total_size `div` (2 * chunk)
+      let b = toUtf8 $ T.pack $ "Hello, world!"
+      let hs = (T.pack "x", T.empty) : [(T.pack $ [charFromInt i] ++ replicate (fromIntegral chunk - 1) 'x', T.pack $ replicate (fromIntegral chunk) 'x') | i <- [0..fromIntegral n - 1]]
+      ic_http_post_request' (\fee -> ic00viaWithCyclesRefund fee cid fee) sub Nothing (Just b) (vec_header_from_list_text hs) Nothing cid >>= isReject [4]
+
+    , simpleTestCase "maximum response total header size" $ \cid -> do
+      let n = http_headers_max_total_size
+      resp <- ic_http_get_request (ic00viaWithCyclesRefund 0 cid) sub ("large_response_total_header_size/" ++ show http_headers_max_name_value_length ++ "/" ++ show n) Nothing Nothing cid
+      (resp .! #status) @?= 200
+      assertBool ("Total header size is not equal to " ++ show n) $ http_response_headers_total_size resp == n
+      check_http_response resp
+
+    , simpleTestCase "maximum response total header size exceeded" $ \cid -> do
+      let n = http_headers_max_total_size + 1
+      ic_http_get_request' (ic00viaWithCyclesRefund 0 cid) sub "https://" ("large_response_total_header_size/" ++ show http_headers_max_name_value_length ++ "/" ++ show n) Nothing Nothing cid >>= isReject [1]
   ]
 
 -- * The test suite (see below for helper functions)

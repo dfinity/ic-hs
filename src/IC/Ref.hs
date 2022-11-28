@@ -952,10 +952,14 @@ icHttpRequest caller ctxt_id r = do
       reject RC_CANISTER_REJECT ("max_response_bytes cannot exceed " ++ show max_response_bytes_limit) (Just EC_CANISTER_REJECTED)
     | utf8_length (r .! #url) > max_http_request_url_length ->
       reject RC_CANISTER_REJECT "Failed to parse URL: uri too long" (Just EC_INVALID_ARGUMENT)
+    | http_request_size r > max_request_bytes_limit ->
+      reject RC_CANISTER_REJECT ("number of bytes to represent all request header names and values and request body exceeds the limit of " ++ show max_request_bytes_limit) (Just EC_CANISTER_REJECTED)
     | not (check_http_request_headers_number r) ->
       reject RC_CANISTER_REJECT ("number of request http headers exceeds the limit of " ++ show http_headers_max_number) (Just EC_CANISTER_REJECTED)
     | not (check_http_request_headers_name_length r) ->
-      reject RC_CANISTER_REJECT ("number of bytes to represent some request http header name exceeds the limit of " ++ show http_headers_max_name_length) (Just EC_CANISTER_REJECTED)
+      reject RC_CANISTER_REJECT ("number of bytes to represent some request http header name exceeds the limit of " ++ show http_headers_max_name_value_length) (Just EC_CANISTER_REJECTED)
+    | not (check_http_request_headers_value_length r) ->
+      reject RC_CANISTER_REJECT ("number of bytes to represent some request http header value exceeds the limit of " ++ show http_headers_max_name_value_length) (Just EC_CANISTER_REJECTED)
     | not (check_http_request_headers_total_size r) ->
       reject RC_CANISTER_REJECT ("total number of bytes to represent request http headers exceeds the limit of " ++ show http_headers_max_total_size) (Just EC_CANISTER_REJECTED)
     | available < fee ->
@@ -983,7 +987,9 @@ icHttpRequest caller ctxt_id r = do
             | not (check_http_response_headers_number resp) ->
               reject RC_SYS_FATAL ("number of response http headers exceeds the limit of " ++ show http_headers_max_number) (Just EC_CANISTER_REJECTED)
             | not (check_http_response_headers_name_length resp) ->
-              reject RC_SYS_FATAL ("number of bytes to represent some response http header name exceeds the limit of " ++ show http_headers_max_name_length) (Just EC_CANISTER_REJECTED)
+              reject RC_SYS_FATAL ("number of bytes to represent some response http header name exceeds the limit of " ++ show http_headers_max_name_value_length) (Just EC_CANISTER_REJECTED)
+            | not (check_http_response_headers_value_length resp) ->
+              reject RC_SYS_FATAL ("number of bytes to represent some response http header value exceeds the limit of " ++ show http_headers_max_name_value_length) (Just EC_CANISTER_REJECTED)
             | not (check_http_response_headers_total_size resp) ->
               reject RC_SYS_FATAL ("total number of bytes to represent response http headers exceeds the limit of " ++ show http_headers_max_total_size) (Just EC_CANISTER_REJECTED)
             | otherwise -> do
