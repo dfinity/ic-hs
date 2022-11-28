@@ -174,12 +174,12 @@ ic_http_get_request ic00 sub path max_response_bytes transform canister_id =
 
 ic_http_post_request :: HasAgentConfig =>
     (a -> IO b) ~ (ICManagement IO .! "http_request") =>
-    IC00WithCycles -> SubnetType -> Maybe W.Word64 -> Maybe BS.ByteString -> Vec.Vector HttpHeader -> Maybe (String, Blob) -> Blob -> IO b
-ic_http_post_request ic00 sub max_response_bytes body headers transform canister_id =
+    IC00WithCycles -> SubnetType -> String -> Maybe W.Word64 -> Maybe BS.ByteString -> Vec.Vector HttpHeader -> Maybe (String, Blob) -> Blob -> IO b
+ic_http_post_request ic00 sub path max_response_bytes body headers transform canister_id =
   callIC (ic00 $ http_request_fee request sub) "" #http_request request
   where
     request = empty
-      .+ #url .== (T.pack $ "https://" ++ httpbin ++ "/anything")
+      .+ #url .== (T.pack $ "https://" ++ httpbin ++ "/" ++ path)
       .+ #max_response_bytes .== max_response_bytes
       .+ #method .== enum #post
       .+ #headers .== headers
@@ -188,12 +188,12 @@ ic_http_post_request ic00 sub max_response_bytes body headers transform canister
 
 ic_http_head_request :: HasAgentConfig =>
     (a -> IO b) ~ (ICManagement IO .! "http_request") =>
-    IC00WithCycles -> SubnetType -> Maybe W.Word64 -> Maybe BS.ByteString -> Vec.Vector HttpHeader -> Maybe (String, Blob) -> Blob -> IO b
-ic_http_head_request ic00 sub max_response_bytes body headers transform canister_id =
+    IC00WithCycles -> SubnetType -> String -> Maybe W.Word64 -> Maybe BS.ByteString -> Vec.Vector HttpHeader -> Maybe (String, Blob) -> Blob -> IO b
+ic_http_head_request ic00 sub path max_response_bytes body headers transform canister_id =
   callIC (ic00 $ http_request_fee request sub) "" #http_request request
   where
     request = empty
-      .+ #url .== (T.pack $ "https://" ++ httpbin ++ "/anything")
+      .+ #url .== (T.pack $ "https://" ++ httpbin ++ "/" ++ path)
       .+ #max_response_bytes .== max_response_bytes
       .+ #method .== enum #head
       .+ #headers .== headers
@@ -311,24 +311,24 @@ ic_http_get_request' ic00 sub proto path max_response_bytes transform canister_i
       .+ #body .== Nothing
       .+ #transform .== (toTransformFn transform canister_id)
 
-ic_http_post_request' :: HasAgentConfig => IC00WithCycles -> SubnetType -> Maybe W.Word64 -> Maybe BS.ByteString -> Vec.Vector HttpHeader -> Maybe (String, Blob) -> Blob -> IO ReqResponse
-ic_http_post_request' ic00 sub max_response_bytes body headers transform canister_id =
+ic_http_post_request' :: HasAgentConfig => IC00WithCycles -> SubnetType -> String -> Maybe W.Word64 -> Maybe BS.ByteString -> Vec.Vector HttpHeader -> Maybe (String, Blob) -> Blob -> IO ReqResponse
+ic_http_post_request' ic00 sub path max_response_bytes body headers transform canister_id =
   callIC' (ic00 $ http_request_fee request sub) "" #http_request request
   where
     request = empty
-      .+ #url .== (T.pack $ "https://" ++ httpbin ++ "/anything")
+      .+ #url .== (T.pack $ "https://" ++ httpbin ++ "/" ++ path)
       .+ #max_response_bytes .== max_response_bytes
       .+ #method .== enum #post
       .+ #headers .== headers
       .+ #body .== body
       .+ #transform .== (toTransformFn transform canister_id)
 
-ic_http_head_request' :: HasAgentConfig => IC00WithCycles -> SubnetType -> Maybe W.Word64 -> Maybe BS.ByteString -> Vec.Vector HttpHeader -> Maybe (String, Blob) -> Blob -> IO ReqResponse
-ic_http_head_request' ic00 sub max_response_bytes body headers transform canister_id =
+ic_http_head_request' :: HasAgentConfig => IC00WithCycles -> SubnetType -> String -> Maybe W.Word64 -> Maybe BS.ByteString -> Vec.Vector HttpHeader -> Maybe (String, Blob) -> Blob -> IO ReqResponse
+ic_http_head_request' ic00 sub path max_response_bytes body headers transform canister_id =
   callIC' (ic00 $ http_request_fee request sub) "" #http_request request
   where
     request = empty
-      .+ #url .== (T.pack $ "https://" ++ httpbin ++ "/anything")
+      .+ #url .== (T.pack $ "https://" ++ httpbin ++ "/" ++ path)
       .+ #max_response_bytes .== max_response_bytes
       .+ #method .== enum #head
       .+ #headers .== headers

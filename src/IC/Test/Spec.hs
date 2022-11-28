@@ -41,6 +41,7 @@ import System.Timeout
 
 import Data.Aeson
 import Data.Char
+import Data.Maybe
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
 
@@ -82,16 +83,19 @@ charFromInt n = chr $ n + ord 'a'
 
 check_distinct_headers :: Vec.Vector HttpHeader -> Bool
 check_distinct_headers v = length xs == length (nub xs)
-  where xs = map (\r -> r .! #name) $ Vec.toList v
+  where xs = map (\r -> T.toLower $ r .! #name) $ Vec.toList v
 
 http_headers_to_map :: Vec.Vector HttpHeader -> T.Text -> Maybe T.Text
-http_headers_to_map v n = lookup n $ map (\r -> (r .! #name, r .! #value)) $ Vec.toList v
+http_headers_to_map v n = lookup n $ map_to_lower $ map (\r -> (r .! #name, r .! #value)) $ Vec.toList v
+
+map_to_lower :: [(T.Text, T.Text)] -> [(T.Text, T.Text)]
+map_to_lower = map (\(n, v) -> (T.toLower n, v))
 
 check_http_response :: HttpResponse -> IO ()
 check_http_response resp = do
   assertBool "HTTP response header names must be distinct" $ check_distinct_headers (resp .! #headers)
-  assertBool "HTTP header \"Content-Length\" must contain the length of the body (if present)" $
-    case h (T.pack "Content-Length") of Nothing -> True
+  assertBool "HTTP header \"Content-Length\" must contain the length of the body" $
+    case h (T.pack "content-length") of Nothing -> False
                                         Just l  -> l == (T.pack $ show $ BS.length $ resp .! #body)
   where
     h = http_headers_to_map $ resp .! #headers
@@ -136,7 +140,6 @@ headers_match xs ys = all (\x -> elem x ys) xs && all (\(n, v) -> elem (n, v) xs
 check_http_json :: String -> [(T.Text, T.Text)] -> BS.ByteString -> Maybe HttpRequest -> Assertion
 check_http_json _ _ _ Nothing = assertFailure "Could not parse the original HttpRequest from the response"
 check_http_json m hs b (Just req) = do
-  let map_to_lower = map (\(n, v) -> (T.toLower n, v))
   assertBool "Wrong HTTP method" $ T.pack m == method req
   assertBool "Headers were not properly included in the HTTP request" $ headers_match (map_to_lower hs) (case headers req of HttpRequestHeaders hs -> map_to_lower hs)
   assertBool "Body was not properly included in the HTTP request" $ HttpRequestBody b == body req
@@ -155,7 +158,7 @@ canister_http_calls sub =
     simpleTestCase "GET call" $ \cid -> do
       let s = "Hello world!"
       let enc = T.unpack $ encodeBase64 $ T.pack s
-      resp <- ic_http_get_request (ic00viaWithCyclesRefund 0 cid) sub ("base64/" ++ enc) Nothing Nothing cid
+      resp <- ic_http_get_request (ic00viaWithCyclesRefund 0 cid) sub ("base64/" ++ enc) (Just 666) Nothing cid
       (resp .! #status) @?= 200
       (resp .! #body) @?= BLU.fromString s
       check_http_response resp
@@ -163,17 +166,23 @@ canister_http_calls sub =
     , simpleTestCase "POST call" $ \cid -> do
       let b = toUtf8 $ T.pack $ "Hello, world!"
       let hs = [(T.pack "Name1", T.pack "value1"), (T.pack "Name2", T.pack "value2")]
-      resp <- ic_http_post_request (ic00viaWithCyclesRefund 0 cid) sub (Just 666) (Just b) (vec_header_from_list_text hs) Nothing cid
+      resp <- ic_http_post_request (ic00viaWithCyclesRefund 0 cid) sub "anything" (Just 666) (Just b) (vec_header_from_list_text hs) Nothing cid
       (resp .! #status) @?= 200
       check_http_response resp
       check_http_json "POST" hs b $ (decode (resp .! #body) :: Maybe HttpRequest)
 
     , simpleTestCase "HEAD call" $ \cid -> do
-      let b = toUtf8 $ T.pack $ "Hello, world!"
+      let n = 6666
+      let b = toUtf8 $ T.pack $ replicate n 'x'
       let hs = [(T.pack "Name1", T.pack "value1"), (T.pack "Name2", T.pack "value2")]
-      resp <- ic_http_head_request (ic00viaWithCyclesRefund 0 cid) sub (Just 666) (Just b) (vec_header_from_list_text hs) Nothing cid
+      resp <- ic_http_head_request (ic00viaWithCyclesRefund 0 cid) sub "anything" (Just 666) (Just b) (vec_header_from_list_text hs) Nothing cid
       (resp .! #status) @?= 200
       (resp .! #body) @?= (toUtf8 $ T.pack "")
+      assertBool "HTTP response header names must be distinct" $ check_distinct_headers (resp .! #headers)
+      let h = http_headers_to_map (resp .! #headers) "content-length"
+      assertBool ("Content-Length must be present and at least " ++ show n) $
+        case h of Nothing -> False
+                  Just l -> (read (T.unpack l) :: Int) >= n
 
     -- "For security reasons, only HTTPS connections are allowed (URLs must start with https://)."
 
@@ -185,17 +194,20 @@ canister_http_calls sub =
     -- "The size of an HTTP request from the canister is the total number of bytes representing the names and values of HTTP headers and the HTTP body. The maximal size for the request from the canister is 2MB (2,000,000B)."
 
     , simpleTestCase "maximum possible request size" $ \cid -> do
-      let hs = [(T.pack "Name1", T.pack "value1"), (T.pack "Name2", T.pack "value2")]
+      let hs = [(T.pack "Name1", T.pack "value1"), (T.pack "Name2", T.pack "value2"), (T.pack "Content-Type", T.pack "text/html; charset=utf-8")]
       let len_hs = sum $ map (\(n, v) -> utf8_length n + utf8_length v) hs
       let b = toUtf8 $ T.pack $ replicate (fromIntegral $ max_request_bytes_limit - len_hs) 'x'
-      resp <- ic_http_head_request (ic00viaWithCyclesRefund 0 cid) sub Nothing (Just b) (vec_header_from_list_text hs) Nothing cid
+      resp <- ic_http_post_request (ic00viaWithCyclesRefund 0 cid) sub "request_size" Nothing (Just b) (vec_header_from_list_text hs) Nothing cid
       (resp .! #status) @?= 200
+      check_http_response resp
+      let n = read (T.unpack $ fromJust $ fromUtf8 (resp .! #body)) :: Word64
+      assertBool ("Request size must be at least (the HTTP client can add more headers) " ++ show max_request_bytes_limit) $ n >= len_hs + fromIntegral (BS.length b)
 
     , simpleTestCase "maximum possible request size exceeded" $ \cid -> do
-      let hs = [(T.pack "Name1", T.pack "value1"), (T.pack "Name2", T.pack "value2")]
+      let hs = [(T.pack "Name1", T.pack "value1"), (T.pack "Name2", T.pack "value2"), (T.pack "Content-Type", T.pack "text/html; charset=utf-8")]
       let len_hs = sum $ map (\(n, v) -> utf8_length n + utf8_length v) hs
       let b = toUtf8 $ T.pack $ replicate (fromIntegral $ max_request_bytes_limit - len_hs + 1) 'x'
-      ic_http_head_request' (\fee -> ic00viaWithCyclesRefund fee cid fee) sub Nothing (Just b) (vec_header_from_list_text hs) Nothing cid >>= isReject [4]
+      ic_http_post_request' (\fee -> ic00viaWithCyclesRefund fee cid fee) sub "request_size" Nothing (Just b) (vec_header_from_list_text hs) Nothing cid >>= isReject [4]
 
     -- "The size of an HTTP response from the remote server is the total number of bytes representing the names and values of HTTP headers and the HTTP body. Each request can specify a maximal size for the response from the remote HTTP server."
 
@@ -316,7 +328,7 @@ canister_http_calls sub =
       let b = toUtf8 $ T.pack $ "Hello, world!"
       let hs = vec_header_from_list_text [(T.pack "Name1", T.pack "value1"), (T.pack "Name2", T.pack "value2")]
       cid <- install (onTransform (callback (replyData (bytes (Candid.encode dummyResponse)))))
-      resp <- ic_http_post_request (ic00viaWithCyclesRefund 0 cid) sub (Just 666) (Just b) hs (Just ("transform", "")) cid
+      resp <- ic_http_post_request (ic00viaWithCyclesRefund 0 cid) sub "anything" (Just 666) (Just b) hs (Just ("transform", "")) cid
       (resp .! #status) @?= 202
       (resp .! #body) @?= "Dummy!"
       check_http_response resp
@@ -359,7 +371,6 @@ canister_http_calls sub =
       resp <- ic_http_get_request (ic00viaWithCyclesRefund 0 cid) sub ("equal_bytes/" ++ show (max_response_bytes_limit - header_size)) Nothing (Just ("transform", "")) cid
       (resp .! #status) @?= 200
       (resp .! #body) @?= bodyOfSize maximumSizeResponseBodySize
-      check_http_response resp
 
     , testCase "maximum possible canister response size exceeded" $ do
       {- Response headers (size: 141)
@@ -390,7 +401,7 @@ canister_http_calls sub =
     , simpleTestCase "maximum number of request headers" $ \cid -> do
       let b = toUtf8 $ T.pack $ "Hello, world!"
       let hs = [(T.pack ("Name" ++ show i), T.pack ("value" ++ show i)) | i <- [0..http_headers_max_number - 1]]
-      resp <- ic_http_post_request (ic00viaWithCyclesRefund 0 cid) sub Nothing (Just b) (vec_header_from_list_text hs) Nothing cid
+      resp <- ic_http_post_request (ic00viaWithCyclesRefund 0 cid) sub "anything" Nothing (Just b) (vec_header_from_list_text hs) Nothing cid
       (resp .! #status) @?= 200
       check_http_response resp
       check_http_json "POST" hs b $ (decode (resp .! #body) :: Maybe HttpRequest)
@@ -398,7 +409,7 @@ canister_http_calls sub =
     , simpleTestCase "maximum number of request headers exceeded" $ \cid -> do
       let b = toUtf8 $ T.pack $ "Hello, world!"
       let hs = [(T.pack ("Name" ++ show i), T.pack ("value" ++ show i)) | i <- [0..http_headers_max_number]]
-      ic_http_post_request' (\fee -> ic00viaWithCyclesRefund fee cid fee) sub Nothing (Just b) (vec_header_from_list_text hs) Nothing cid >>= isReject [4]
+      ic_http_post_request' (\fee -> ic00viaWithCyclesRefund fee cid fee) sub "anything" Nothing (Just b) (vec_header_from_list_text hs) Nothing cid >>= isReject [4]
 
     , simpleTestCase "maximum number of response headers" $ \cid -> do
       {- These 5 response headers are always included:
@@ -412,7 +423,6 @@ canister_http_calls sub =
       let hs = [(T.pack ("Name" ++ show i), T.pack ("value" ++ show i)) | i <- [0..n - 1]]
       resp <- ic_http_get_request (ic00viaWithCyclesRefund 0 cid) sub ("many_response_headers/" ++ show n) Nothing Nothing cid
       (resp .! #status) @?= 200
-      let map_to_lower = map (\(n, v) -> (T.toLower n, v))
       assertBool "Response HTTP headers have not been received properly." $ list_subset (map_to_lower hs) (map_to_lower $ http_response_headers resp)
       check_http_response resp
 
@@ -432,7 +442,7 @@ canister_http_calls sub =
     , simpleTestCase "maximum request header name length" $ \cid -> do
       let b = toUtf8 $ T.pack $ "Hello, world!"
       let hs = [(T.pack (replicate (fromIntegral http_headers_max_name_value_length) 'x'), T.pack ("value"))]
-      resp <- ic_http_post_request (ic00viaWithCyclesRefund 0 cid) sub Nothing (Just b) (vec_header_from_list_text hs) Nothing cid
+      resp <- ic_http_post_request (ic00viaWithCyclesRefund 0 cid) sub "anything" Nothing (Just b) (vec_header_from_list_text hs) Nothing cid
       (resp .! #status) @?= 200
       check_http_response resp
       check_http_json "POST" hs b $ (decode (resp .! #body) :: Maybe HttpRequest)
@@ -440,14 +450,13 @@ canister_http_calls sub =
     , simpleTestCase "maximum request header name length exceeded" $ \cid -> do
       let b = toUtf8 $ T.pack $ "Hello, world!"
       let hs = [(T.pack (replicate (fromIntegral $ http_headers_max_name_value_length + 1) 'x'), T.pack ("value"))]
-      ic_http_post_request' (\fee -> ic00viaWithCyclesRefund fee cid fee) sub Nothing (Just b) (vec_header_from_list_text hs) Nothing cid >>= isReject [4]
+      ic_http_post_request' (\fee -> ic00viaWithCyclesRefund fee cid fee) sub "anything" Nothing (Just b) (vec_header_from_list_text hs) Nothing cid >>= isReject [4]
 
     , simpleTestCase "maximum response header name length" $ \cid -> do
       let n = http_headers_max_name_value_length
       let hs = [(T.pack $ replicate (fromIntegral n) 'x', T.pack "value")]
       resp <- ic_http_get_request (ic00viaWithCyclesRefund 0 cid) sub ("long_response_header_name/" ++ show n) Nothing Nothing cid
       (resp .! #status) @?= 200
-      let map_to_lower = map (\(n, v) -> (T.toLower n, v))
       assertBool "Response HTTP headers have not been received properly." $ list_subset (map_to_lower hs) (map_to_lower $ http_response_headers resp)
       check_http_response resp
 
@@ -460,7 +469,7 @@ canister_http_calls sub =
     , simpleTestCase "maximum request header value length" $ \cid -> do
       let b = toUtf8 $ T.pack $ "Hello, world!"
       let hs = [(T.pack "name", T.pack (replicate (fromIntegral http_headers_max_name_value_length) 'x'))]
-      resp <- ic_http_post_request (ic00viaWithCyclesRefund 0 cid) sub Nothing (Just b) (vec_header_from_list_text hs) Nothing cid
+      resp <- ic_http_post_request (ic00viaWithCyclesRefund 0 cid) sub "anything" Nothing (Just b) (vec_header_from_list_text hs) Nothing cid
       (resp .! #status) @?= 200
       check_http_response resp
       check_http_json "POST" hs b $ (decode (resp .! #body) :: Maybe HttpRequest)
@@ -468,14 +477,13 @@ canister_http_calls sub =
     , simpleTestCase "maximum request header value length exceeded" $ \cid -> do
       let b = toUtf8 $ T.pack $ "Hello, world!"
       let hs = [(T.pack "name", T.pack (replicate (fromIntegral $ http_headers_max_name_value_length + 1) 'x'))]
-      ic_http_post_request' (\fee -> ic00viaWithCyclesRefund fee cid fee) sub Nothing (Just b) (vec_header_from_list_text hs) Nothing cid >>= isReject [4]
+      ic_http_post_request' (\fee -> ic00viaWithCyclesRefund fee cid fee) sub "anything" Nothing (Just b) (vec_header_from_list_text hs) Nothing cid >>= isReject [4]
 
     , simpleTestCase "maximum response header value length" $ \cid -> do
       let n = http_headers_max_name_value_length
       let hs = [(T.pack "name", T.pack $ replicate (fromIntegral n) 'x')]
       resp <- ic_http_get_request (ic00viaWithCyclesRefund 0 cid) sub ("long_response_header_value/" ++ show n) Nothing Nothing cid
       (resp .! #status) @?= 200
-      let map_to_lower = map (\(n, v) -> (T.toLower n, v))
       assertBool "Response HTTP headers have not been received properly." $ list_subset (map_to_lower hs) (map_to_lower $ http_response_headers resp)
       check_http_response resp
 
@@ -492,7 +500,7 @@ canister_http_calls sub =
       let n = http_headers_max_total_size `div` (2 * chunk)
       let b = toUtf8 $ T.pack $ "Hello, world!"
       let hs = [(T.pack $ [charFromInt i] ++ replicate (fromIntegral chunk - 1) 'x', T.pack $ replicate (fromIntegral chunk) 'x') | i <- [0..fromIntegral n - 1]]
-      resp <- ic_http_post_request (ic00viaWithCyclesRefund 0 cid) sub Nothing (Just b) (vec_header_from_list_text hs) Nothing cid
+      resp <- ic_http_post_request (ic00viaWithCyclesRefund 0 cid) sub "anything" Nothing (Just b) (vec_header_from_list_text hs) Nothing cid
       (resp .! #status) @?= 200
       check_http_response resp
       check_http_json "POST" hs b $ (decode (resp .! #body) :: Maybe HttpRequest)
@@ -504,7 +512,7 @@ canister_http_calls sub =
       let n = http_headers_max_total_size `div` (2 * chunk)
       let b = toUtf8 $ T.pack $ "Hello, world!"
       let hs = (T.pack "x", T.empty) : [(T.pack $ [charFromInt i] ++ replicate (fromIntegral chunk - 1) 'x', T.pack $ replicate (fromIntegral chunk) 'x') | i <- [0..fromIntegral n - 1]]
-      ic_http_post_request' (\fee -> ic00viaWithCyclesRefund fee cid fee) sub Nothing (Just b) (vec_header_from_list_text hs) Nothing cid >>= isReject [4]
+      ic_http_post_request' (\fee -> ic00viaWithCyclesRefund fee cid fee) sub "anything" Nothing (Just b) (vec_header_from_list_text hs) Nothing cid >>= isReject [4]
 
     , simpleTestCase "maximum response total header size" $ \cid -> do
       let n = http_headers_max_total_size
