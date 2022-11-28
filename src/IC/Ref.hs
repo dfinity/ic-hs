@@ -13,6 +13,7 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE NumericUnderscores #-}
+{-# LANGUAGE MultiWayIf #-}
 
 {-|
 This module implements the main abstract logic of the Internet Computer. It
@@ -933,77 +934,81 @@ invokeManagementCanister _ _ Heartbeat = error "heartbeat invoked on management 
 invokeManagementCanister _ _ GlobalTimer = error "global timer invoked on management canister"
 
 icHttpRequest :: (ICM m, CanReject m) => EntityId -> CallId -> ICManagement m .! "http_request"
-icHttpRequest caller ctxt_id r =
-  let max_resp_size = max_response_size r in
+icHttpRequest caller ctxt_id r = do
+  available <- getCallContextCycles ctxt_id
+  (_, subnet, _, _) <- getSubnetFromCanisterId caller
+  let fee = fromIntegral $ http_request_fee r subnet
+  let url = T.unpack $ r .! #url
+  let max_resp_size = max_response_size r
   let transform_principal_check =
         case (r .! #transform) of
           Nothing -> True
           Just t -> case t .! #function of
-            FuncRef p _ -> principalToEntityId p == caller in
-  if not transform_principal_check then
-    reject RC_CANISTER_REJECT "transform needs to be exported by the caller canister" (Just EC_CANISTER_REJECTED)
-  else if max_resp_size > max_response_bytes_limit then
-    reject RC_CANISTER_REJECT ("max_response_bytes cannot exceed " ++ show max_response_bytes_limit) (Just EC_CANISTER_REJECTED)
-  else if utf8_length (r .! #url) > max_http_request_url_length then
-    reject RC_CANISTER_REJECT "Failed to parse URL: uri too long" (Just EC_INVALID_ARGUMENT)
-  else if not (check_http_request_headers_number r) then
-    reject RC_CANISTER_REJECT ("number of request http headers exceeds the limit of " ++ show http_headers_max_number) (Just EC_CANISTER_REJECTED)
-  else if not (check_http_request_headers_name_length r) then
-    reject RC_CANISTER_REJECT ("number of bytes to represent some request http header name exceeds the limit of " ++ show http_headers_max_name_length) (Just EC_CANISTER_REJECTED)
-  else if not (check_http_request_headers_total_size r) then
-    reject RC_CANISTER_REJECT ("total number of bytes to represent request http headers exceeds the limit of " ++ show http_headers_max_total_size) (Just EC_CANISTER_REJECTED)
-  else do
-    available <- getCallContextCycles ctxt_id
-    (_, subnet, _, _) <- getSubnetFromCanisterId caller
-    let fee = fromIntegral $ http_request_fee r subnet
-    let url = T.unpack $ r .! #url
-    if available < fee then reject RC_CANISTER_REJECT ("http_request request sent with " ++ show available ++ " cycles, but " ++ show fee ++ " cycles are required.") (Just EC_CANISTER_REJECTED)
-    else do
+            FuncRef p _ -> principalToEntityId p == caller
+  if
+    | not transform_principal_check ->
+      reject RC_CANISTER_REJECT "transform needs to be exported by the caller canister" (Just EC_CANISTER_REJECTED)
+    | max_resp_size > max_response_bytes_limit ->
+      reject RC_CANISTER_REJECT ("max_response_bytes cannot exceed " ++ show max_response_bytes_limit) (Just EC_CANISTER_REJECTED)
+    | utf8_length (r .! #url) > max_http_request_url_length ->
+      reject RC_CANISTER_REJECT "Failed to parse URL: uri too long" (Just EC_INVALID_ARGUMENT)
+    | not (check_http_request_headers_number r) ->
+      reject RC_CANISTER_REJECT ("number of request http headers exceeds the limit of " ++ show http_headers_max_number) (Just EC_CANISTER_REJECTED)
+    | not (check_http_request_headers_name_length r) ->
+      reject RC_CANISTER_REJECT ("number of bytes to represent some request http header name exceeds the limit of " ++ show http_headers_max_name_length) (Just EC_CANISTER_REJECTED)
+    | not (check_http_request_headers_total_size r) ->
+      reject RC_CANISTER_REJECT ("total number of bytes to represent request http headers exceeds the limit of " ++ show http_headers_max_total_size) (Just EC_CANISTER_REJECTED)
+    | available < fee ->
+      reject RC_CANISTER_REJECT ("http_request request sent with " ++ show available ++ " cycles, but " ++ show fee ++ " cycles are required.") (Just EC_CANISTER_REJECTED)
+    | otherwise -> do
       setCallContextCycles ctxt_id (available - fee)
-      if parseURI url == Nothing then
-        reject RC_SYS_FATAL "url must be valid according to RFC-3986" (Just EC_INVALID_ARGUMENT)
-      else if not (isPrefixOf "https://" url) then
-        reject RC_SYS_FATAL "url must start with https://" (Just EC_INVALID_ARGUMENT)
-      else do
-        method <- if (r .! #method) == V.IsJust #get () then return $ T.encodeUtf8 "GET"
-                  else if (r .! #method) == V.IsJust #post () then return $ T.encodeUtf8 "POST"
-                  else if (r .! #method) == V.IsJust #head () then return $ T.encodeUtf8 "HEAD"
-                  else reject RC_SYS_FATAL ("unknown HTTP method") (Just EC_CANISTER_REJECTED)
-        let headers = map (\r -> (CI.mk $ T.encodeUtf8 $ r .! #name, T.encodeUtf8 $ r .! #value)) $ Vec.toList (r .! #headers)
-        let body = case r .! #body of Nothing -> ""
-                                      Just b -> b
-        resp <- liftIO $ sendHttpRequest getRootCerts (r .! #url) method headers body
-        if http_response_size resp > max_resp_size then
-          reject RC_SYS_FATAL ("response body size cannot exceed " ++ show max_resp_size ++ " bytes") (Just EC_CANISTER_REJECTED)
-        else if not (check_http_response_headers_number resp) then
-          reject RC_SYS_FATAL ("number of response http headers exceeds the limit of " ++ show http_headers_max_number) (Just EC_CANISTER_REJECTED)
-        else if not (check_http_response_headers_name_length resp) then
-          reject RC_SYS_FATAL ("number of bytes to represent some response http header name exceeds the limit of " ++ show http_headers_max_name_length) (Just EC_CANISTER_REJECTED)
-        else if not (check_http_response_headers_total_size resp) then
-          reject RC_SYS_FATAL ("total number of bytes to represent response http headers exceeds the limit of " ++ show http_headers_max_total_size) (Just EC_CANISTER_REJECTED)
-        else do
-          case (r .! #transform) of
-            Nothing -> return resp
-            Just t -> case t .! #function of
-              FuncRef p m -> do
-                  let cid = principalToEntityId p
-                  let arg = R.empty
-                        .+ #response .== resp
-                        .+ #context .== t .! #context
-                  can_mod <- getCanisterMod cid
-                  wasm_state <- getCanisterState cid
-                  env <- canisterEnv cid
-                  case M.lookup (T.unpack m) (query_methods can_mod) of
-                    Nothing -> reject RC_DESTINATION_INVALID "transform function with a given name does not exist" (Just EC_METHOD_NOT_FOUND)
-                    Just f -> case f managementCanisterId env (Codec.Candid.encode arg) wasm_state of
-                      Return (Reply r) -> case Codec.Candid.decode @HttpResponse r of
-                        Left _ -> reject RC_CANISTER_ERROR "could not decode the response" (Just EC_INVALID_ENCODING)
-                        Right resp ->
-                          if fromIntegral (BS.length r) > max_response_bytes_limit then
-                            reject RC_SYS_FATAL ("transformed response body size cannot exceed " ++ show max_response_bytes_limit ++ " bytes") (Just EC_CANISTER_REJECTED)
-                          else
-                            return resp
-                      _ -> reject RC_CANISTER_ERROR "transform did not return a response properly" (Just EC_CANISTER_DID_NOT_REPLY)
+      if
+        | parseURI url == Nothing ->
+          reject RC_SYS_FATAL "url must be valid according to RFC-3986" (Just EC_INVALID_ARGUMENT)
+        | not (isPrefixOf "https://" url) ->
+          reject RC_SYS_FATAL "url must start with https://" (Just EC_INVALID_ARGUMENT)
+        | otherwise -> do
+          method <- if
+            | (r .! #method) == V.IsJust #get () -> return $ T.encodeUtf8 "GET"
+            | (r .! #method) == V.IsJust #post () -> return $ T.encodeUtf8 "POST"
+            | (r .! #method) == V.IsJust #head () -> return $ T.encodeUtf8 "HEAD"
+            | otherwise -> reject RC_SYS_FATAL ("unknown HTTP method") (Just EC_CANISTER_REJECTED)
+          let headers = map (\r -> (CI.mk $ T.encodeUtf8 $ r .! #name, T.encodeUtf8 $ r .! #value)) $ Vec.toList (r .! #headers)
+          let body = case r .! #body of Nothing -> ""
+                                        Just b -> b
+          resp <- liftIO $ sendHttpRequest getRootCerts (r .! #url) method headers body
+          if
+            | http_response_size resp > max_resp_size ->
+              reject RC_SYS_FATAL ("response body size cannot exceed " ++ show max_resp_size ++ " bytes") (Just EC_CANISTER_REJECTED)
+            | not (check_http_response_headers_number resp) ->
+              reject RC_SYS_FATAL ("number of response http headers exceeds the limit of " ++ show http_headers_max_number) (Just EC_CANISTER_REJECTED)
+            | not (check_http_response_headers_name_length resp) ->
+              reject RC_SYS_FATAL ("number of bytes to represent some response http header name exceeds the limit of " ++ show http_headers_max_name_length) (Just EC_CANISTER_REJECTED)
+            | not (check_http_response_headers_total_size resp) ->
+              reject RC_SYS_FATAL ("total number of bytes to represent response http headers exceeds the limit of " ++ show http_headers_max_total_size) (Just EC_CANISTER_REJECTED)
+            | otherwise -> do
+              case (r .! #transform) of
+                Nothing -> return resp
+                Just t -> case t .! #function of
+                  FuncRef p m -> do
+                      let cid = principalToEntityId p
+                      let arg = R.empty
+                            .+ #response .== resp
+                            .+ #context .== t .! #context
+                      can_mod <- getCanisterMod cid
+                      wasm_state <- getCanisterState cid
+                      env <- canisterEnv cid
+                      case M.lookup (T.unpack m) (query_methods can_mod) of
+                        Nothing -> reject RC_DESTINATION_INVALID "transform function with a given name does not exist" (Just EC_METHOD_NOT_FOUND)
+                        Just f -> case f managementCanisterId env (Codec.Candid.encode arg) wasm_state of
+                          Return (Reply r) -> case Codec.Candid.decode @HttpResponse r of
+                            Left _ -> reject RC_CANISTER_ERROR "could not decode the response" (Just EC_INVALID_ENCODING)
+                            Right resp ->
+                              if fromIntegral (BS.length r) > max_response_bytes_limit then
+                                reject RC_SYS_FATAL ("transformed response body size cannot exceed " ++ show max_response_bytes_limit ++ " bytes") (Just EC_CANISTER_REJECTED)
+                              else
+                                return resp
+                          _ -> reject RC_CANISTER_ERROR "transform did not return a response properly" (Just EC_CANISTER_DID_NOT_REPLY)
 
 icCreateCanister :: (ICM m, CanReject m) => EntityId -> CallId -> ICManagement m .! "create_canister"
 icCreateCanister caller ctxt_id r = do
