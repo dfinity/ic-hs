@@ -27,6 +27,7 @@ import qualified Data.IntMap as IM
 import qualified Data.Map.Lazy as M
 import qualified Data.Vector as V
 import Data.ByteString.Lazy (ByteString)
+import Data.Kind (Type)
 
 import qualified IC.Canister.StableMemory as Stable
 
@@ -56,8 +57,8 @@ resumeMemory :: W.MemoryInst (ST s) -> ByteString -> ST s ()
 resumeMemory i p = resume i p
 
 class Monad (M a) => Persistable a where
-  type Persisted a :: *
-  type M a :: * -> *
+  type Persisted a :: Type
+  type M a :: Type -> Type
   persist :: a -> M a (Persisted a)
   resume :: a -> Persisted a -> M a ()
 
@@ -101,7 +102,7 @@ instance Persistable a => Persistable [a] where
   type M [a] = M a
   persist = mapM persist
   resume xs ys = do
-    unless (length xs == length ys) $ error "Lengths don’t match"
+    unless (length xs == length ys) $ error "Lengths don't match"
     zipWithM_ resume xs ys
 
 instance Persistable a => Persistable (V.Vector a) where
@@ -109,7 +110,7 @@ instance Persistable a => Persistable (V.Vector a) where
   type M (V.Vector a) = M a
   persist = mapM persist
   resume xs ys = do
-    unless (V.length xs == V.length ys) $ error "Lengths don’t match"
+    unless (V.length xs == V.length ys) $ error "Lengths don't match"
     V.zipWithM_ resume xs ys
 
 instance (Eq k, Persistable a) => Persistable (M.Map k a) where
@@ -117,7 +118,7 @@ instance (Eq k, Persistable a) => Persistable (M.Map k a) where
   type M (M.Map k a) = M a
   persist = mapM persist
   resume xs ys = do
-    unless (M.keys xs == M.keys ys) $ error "Map keys don’t match"
+    unless (M.keys xs == M.keys ys) $ error "Map keys don't match"
     zipWithM_ resume (M.elems xs) (M.elems ys)
 
 instance Persistable a => Persistable (IM.IntMap a) where
@@ -126,7 +127,7 @@ instance Persistable a => Persistable (IM.IntMap a) where
   persist = mapM persist . M.fromList . IM.toList
   resume xs ys = do
     let ys' = IM.fromList (M.toList ys)
-    unless (IM.keys xs == IM.keys ys') $ error "Map keys don’t match"
+    unless (IM.keys xs == IM.keys ys') $ error "Map keys don't match"
     zipWithM_ resume (IM.elems xs) (IM.elems ys')
 
 instance Persistable a => Persistable (a, Int) where

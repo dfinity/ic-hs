@@ -16,10 +16,13 @@ module IC.Canister
 import qualified Data.Map as M
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
+import qualified Data.ByteString.Lazy.Char8 as BS
+import Data.Char (chr)
 import Data.List
 import Control.Monad
 import Data.Foldable
 import Control.Monad.Except
+import Codec.Compression.GZip (decompress)
 
 import IC.Types
 import IC.Wasm.Winter (parseModule, exportedFunctions, Module)
@@ -53,15 +56,27 @@ data CanisterModule = CanisterModule
   , post_upgrade_method :: EntityId -> Env -> Blob -> Blob -> TrapOr (WasmState, CanisterActions)
   , inspect_message :: MethodName -> EntityId -> Env -> Blob -> WasmState -> TrapOr ()
   , heartbeat :: Env -> WasmState -> TrapOr (WasmState, ([MethodCall], CanisterActions))
+  , canister_global_timer :: Env -> WasmState -> TrapOr (WasmState, ([MethodCall], CanisterActions))
   , metadata :: T.Text ↦ (IsPublic, Blob)
   }
 
 instance Show CanisterModule where
     show _ = "CanisterModule{...}"
 
+decodeModule :: Blob -> Either String Blob
+decodeModule bytes =
+  if | asmMagic `BS.isPrefixOf` bytes -> Right bytes
+     | gzipMagic `BS.isPrefixOf` bytes -> Right $ decompress bytes
+     | otherwise -> throwError $ "Unsupported module encoding"
+  where
+    asBytes = BS.pack . map chr
+    asmMagic = asBytes [0x00, 0x61, 0x73, 0x6d]
+    gzipMagic = asBytes [0x1f, 0x8b, 0x08]
+
 parseCanister :: Blob -> Either String CanisterModule
 parseCanister bytes = do
-  wasm_mod <- either throwError pure (parseModule bytes)
+  decodedModule <- decodeModule bytes
+  wasm_mod <- either throwError pure (parseModule decodedModule)
   let icp_sections =
         [ (icp_name, W._customPayload section)
         | section <- toList (W._moduleCustom wasm_mod)
@@ -110,6 +125,7 @@ parseCanister bytes = do
     , inspect_message = \method_name caller env arg wasm_state ->
           snd <$> invoke wasm_state (rawInspectMessage method_name caller env arg)
     , heartbeat = \env wasm_state -> invoke wasm_state (rawHeartbeat env)
+    , canister_global_timer = \env wasm_state -> invoke wasm_state (rawGlobalTimer env)
     , metadata = M.fromList metadata
     }
 

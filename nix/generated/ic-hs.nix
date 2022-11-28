@@ -6,14 +6,15 @@
 , aeson
 , asn1-encoding
 , asn1-types
+, async
 , atomic-write
 , base
 , base32
 , base64-bytestring
 , binary
-, bindings-DSL
 , bytestring
 , candid
+, case-insensitive
 , cborg
 , cereal
 , containers
@@ -22,8 +23,10 @@
 , data-default-class
 , directory
 , ed25519
+, either
 , filepath
 , hashable
+, haskoin-core
 , hex-text
 , http-client
 , http-client-tls
@@ -63,6 +66,7 @@
 , wai-cors
 , wai-extra
 , warp
+, wide-word
 , winter
 , zlib
 }:
@@ -77,14 +81,15 @@ mkDerivation {
     aeson
     asn1-encoding
     asn1-types
+    async
     atomic-write
     base
     base32
     base64-bytestring
     binary
-    bindings-DSL
     bytestring
     candid
+    case-insensitive
     cborg
     cereal
     containers
@@ -93,8 +98,10 @@ mkDerivation {
     data-default-class
     directory
     ed25519
+    either
     filepath
     hashable
+    haskoin-core
     hex-text
     http-client
     http-client-tls
@@ -133,6 +140,7 @@ mkDerivation {
     wai-cors
     wai-extra
     warp
+    wide-word
     winter
     zlib
   ];
@@ -140,14 +148,15 @@ mkDerivation {
     aeson
     asn1-encoding
     asn1-types
+    async
     atomic-write
     base
     base32
     base64-bytestring
     binary
-    bindings-DSL
     bytestring
     candid
+    case-insensitive
     cborg
     cereal
     containers
@@ -156,8 +165,10 @@ mkDerivation {
     data-default-class
     directory
     ed25519
+    either
     filepath
     hashable
+    haskoin-core
     hex-text
     http-client
     http-client-tls
@@ -193,6 +204,7 @@ mkDerivation {
     wai-cors
     wai-extra
     warp
+    wide-word
     winter
     zlib
   ];
@@ -205,9 +217,9 @@ mkDerivation {
     base32
     base64-bytestring
     binary
-    bindings-DSL
     bytestring
     candid
+    case-insensitive
     cborg
     cereal
     containers
@@ -216,9 +228,14 @@ mkDerivation {
     data-default-class
     directory
     ed25519
+    either
     filepath
     hashable
+    haskoin-core
     hex-text
+    http-client
+    http-client-tls
+    http-types
     leb128-cereal
     memory
     MonadRandom
