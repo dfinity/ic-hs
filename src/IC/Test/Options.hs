@@ -68,11 +68,11 @@ polltimeoutOption = Option (Proxy :: Proxy PollTimeout)
 newtype TestSubnetType = TestSubnetType SubnetType
 
 instance Read TestSubnetType where
-  readsPrec _ x = do
-    if x == "application" then return (TestSubnetType Application, "")
-    else if x == "verified_application" then return (TestSubnetType VerifiedApplication, "")
-    else if x == "system" then return (TestSubnetType System, "")
-    else fail "could not read SubnetType"
+  readsPrec _ x
+    | x == "application" = return (TestSubnetType Application, "")
+    | x == "verified_application" = return (TestSubnetType VerifiedApplication, "")
+    | x == "system" = return (TestSubnetType System, "")
+    | otherwise = fail "could not read SubnetType"
 
 instance Show TestSubnetType where
   show (TestSubnetType Application) = "application"
