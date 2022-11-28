@@ -27,6 +27,7 @@ import Data.Row ((.!), type (.!))
 
 import IC.Constants
 import IC.Management
+import IC.Types
 
 freshKey :: M.Map Int a -> Int
 freshKey m | M.null m = 0
@@ -89,9 +90,11 @@ max_response_size r = aux $ fmap fromIntegral $ r .! #max_response_bytes
     aux Nothing = max_response_bytes_limit
     aux (Just w) = w
 
-http_request_fee :: (a -> IO b) ~ (ICManagement IO .! "http_request") => a -> W.Word64 -> W.Word64 -> W.Word64
-http_request_fee r base per_byte = base + per_byte * total_bytes
+http_request_fee :: (a -> IO b) ~ (ICManagement IO .! "http_request") => a -> SubnetType -> W.Word64
+http_request_fee r sub = base + per_byte * total_bytes
   where
+    base = getHttpRequestBaseFee sub
+    per_byte = getHttpRequestPerByteFee sub
     response_size_fee Nothing = max_response_bytes_limit
     response_size_fee (Just max_response_size) = max_response_size
     transform_fee Nothing = 0

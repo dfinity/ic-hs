@@ -157,7 +157,7 @@ cborToBlobPair r = assertFailure $ "Expected list of pairs, got: " <> show r
 ic00via :: HasAgentConfig => Blob -> IC00
 ic00via cid = ic00viaWithCycles cid 0
 
-ic00viaWithCyclesImpl :: HasAgentConfig => Prog -> Prog -> Blob -> Word64 -> IC00
+ic00viaWithCyclesImpl :: HasAgentConfig => Prog -> Prog -> Blob -> IC00WithCycles
 ic00viaWithCyclesImpl relayReply relayReject cid cycles _ecid method_name arg =
   do call' cid $
       callNew
@@ -168,10 +168,10 @@ ic00viaWithCyclesImpl relayReply relayReject cid cycles _ecid method_name arg =
       callPerform
    >>= isReply >>= isRelay
 
-ic00viaWithCycles :: HasAgentConfig => Blob -> Word64 -> IC00
+ic00viaWithCycles :: HasAgentConfig => Blob -> IC00WithCycles
 ic00viaWithCycles = ic00viaWithCyclesImpl relayReply relayReject
 
-ic00viaWithCyclesRefund :: HasAgentConfig => Word64 -> Blob -> Word64 -> IC00
+ic00viaWithCyclesRefund :: HasAgentConfig => Word64 -> Blob -> IC00WithCycles
 ic00viaWithCyclesRefund amount = ic00viaWithCyclesImpl (relayReplyRefund amount) (relayRejectRefund amount)
 
 -- * Interacting with the universal canister

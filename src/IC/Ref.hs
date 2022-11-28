@@ -955,9 +955,7 @@ icHttpRequest caller ctxt_id r =
   else do
     available <- getCallContextCycles ctxt_id
     (_, subnet, _, _) <- getSubnetFromCanisterId caller
-    let base = getHttpRequestBaseFee subnet
-    let per_byte = getHttpRequestPerByteFee subnet
-    let fee = fromIntegral $ http_request_fee r base per_byte
+    let fee = fromIntegral $ http_request_fee r subnet
     let url = T.unpack $ r .! #url
     if available < fee then reject RC_CANISTER_REJECT ("http_request request sent with " ++ show available ++ " cycles, but " ++ show fee ++ " cycles are required.") (Just EC_CANISTER_REJECTED)
     else do
