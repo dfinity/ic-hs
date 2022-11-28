@@ -182,6 +182,21 @@ canister_http_calls sub =
       cid <- install noop
       ic_http_get_request' (ic00viaWithCyclesRefund 0 cid) sub "http://" ("base64/" ++ enc) Nothing Nothing cid >>= isReject [1]
 
+    -- "The size of an HTTP request from the canister is the total number of bytes representing the names and values of HTTP headers and the HTTP body. The maximal size for the request from the canister is 2MB (2,000,000B)."
+
+    , simpleTestCase "maximum possible request size" $ \cid -> do
+      let hs = [(T.pack "Name1", T.pack "value1"), (T.pack "Name2", T.pack "value2")]
+      let len_hs = sum $ map (\(n, v) -> utf8_length n + utf8_length v) hs
+      let b = toUtf8 $ T.pack $ replicate (fromIntegral $ max_request_bytes_limit - len_hs) 'x'
+      resp <- ic_http_head_request (ic00viaWithCyclesRefund 0 cid) sub Nothing (Just b) (vec_header_from_list_text hs) Nothing cid
+      (resp .! #status) @?= 200
+
+    , simpleTestCase "maximum possible request size exceeded" $ \cid -> do
+      let hs = [(T.pack "Name1", T.pack "value1"), (T.pack "Name2", T.pack "value2")]
+      let len_hs = sum $ map (\(n, v) -> utf8_length n + utf8_length v) hs
+      let b = toUtf8 $ T.pack $ replicate (fromIntegral $ max_request_bytes_limit - len_hs + 1) 'x'
+      ic_http_head_request' (\fee -> ic00viaWithCyclesRefund fee cid fee) sub Nothing (Just b) (vec_header_from_list_text hs) Nothing cid >>= isReject [4]
+
     -- "The size of an HTTP response from the remote server is the total number of bytes representing the names and values of HTTP headers and the HTTP body. Each request can specify a maximal size for the response from the remote HTTP server."
 
     , simpleTestCase "small maximum possible response size" $ \cid -> do
