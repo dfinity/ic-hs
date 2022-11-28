@@ -83,9 +83,6 @@ ignore = op 1
 int :: Word32 -> Exp 'I
 int x = Exp $ word8 2 <> word32LE x
 
-int64 :: Word64 -> Exp 'I64
-int64 x = Exp $ word8 31 <> word64LE x
-
 bytes :: BS.ByteString -> Exp 'B
 bytes bytes = Exp $
     word8 3 <>
@@ -116,9 +113,6 @@ reject_code = op 11
 i2b :: Exp 'I -> Exp 'B
 i2b = op 12
 
-i64tob :: Exp 'I64 -> Exp 'B
-i64tob = op 25
-
 argData :: Exp 'B
 argData = op 13
 
@@ -137,21 +131,6 @@ stableRead = op 17
 stableWrite :: Exp 'I -> Exp 'B -> Prog
 stableWrite = op 18
 
-getTime :: Exp 'I64
-getTime = op 26
-
-getAvailableCycles :: Exp 'I64
-getAvailableCycles = op 27
-
-getBalance :: Exp 'I64
-getBalance = op 28
-
-getRefund :: Exp 'I64
-getRefund = op 29
-
-acceptCycles :: Exp 'I64 -> Exp 'I64
-acceptCycles = op 30
-
 debugPrint :: Exp 'B -> Prog
 debugPrint = op 19
 
@@ -169,6 +148,24 @@ badPrint = op 23
 
 onPreUpgrade :: Exp 'B -> Prog
 onPreUpgrade = op 24
+
+getTime :: Exp 'I64
+getTime = op 26
+
+getAvailableCycles :: Exp 'I64
+getAvailableCycles = op 27
+
+getBalance :: Exp 'I64
+getBalance = op 28
+
+getRefund :: Exp 'I64
+getRefund = op 29
+
+acceptCycles :: Exp 'I64 -> Exp 'I64
+acceptCycles = op 30
+
+int64 :: Word64 -> Exp 'I64
+int64 x = Exp $ word8 31 <> word64LE x
 
 callNew :: Exp 'B -> Exp 'B -> Exp 'B -> Exp 'B -> Prog
 callNew = op 32
@@ -194,14 +191,14 @@ getCertificate = op 38
 getStatus :: Exp 'I
 getStatus = op 39
 
+onHeartbeat :: Exp 'B -> Prog
+onHeartbeat = op 40
+
 acceptMessage :: Prog
-acceptMessage = op 40
+acceptMessage = op 41
 
 onInspectMessage :: Exp 'B -> Prog
-onInspectMessage = op 41
-
-methodName :: Exp 'B
-methodName = op 42
+onInspectMessage = op 42
 
 trapIfEq :: Exp 'B -> Exp 'B -> Exp 'B -> Prog
 trapIfEq = op 43
@@ -209,29 +206,29 @@ trapIfEq = op 43
 callOnCleanup :: Exp 'B -> Prog
 callOnCleanup = op 44
 
+stableFill :: Exp 'I -> Exp 'I -> Exp 'I -> Prog
+stableFill = op 45
+
 stable64Size :: Exp 'I64
-stable64Size = op 45
+stable64Size = op 46
 
 stable64Grow :: Exp 'I64 -> Exp 'I64
-stable64Grow = op 46
+stable64Grow = op 47
 
 stable64Read :: Exp 'I64 -> Exp 'I64 -> Exp 'B
-stable64Read = op 47
+stable64Read = op 48
 
 stable64Write :: Exp 'I64 -> Exp 'B -> Prog
-stable64Write = op 48
+stable64Write = op 49
 
-onHeartbeat :: Exp 'B -> Prog
-onHeartbeat = op 49
-
-performanceCounter :: Exp 'I64
-performanceCounter = op 50
-
-getBalance128 :: Exp 'B
-getBalance128 = op 51
+i64tob :: Exp 'I64 -> Exp 'B
+i64tob = op 50
 
 getAvailableCycles128 :: Exp 'B
-getAvailableCycles128 = op 52
+getAvailableCycles128 = op 51
+
+getBalance128 :: Exp 'B
+getBalance128 = op 52
 
 getRefund128 :: Exp 'B
 getRefund128 = op 53
@@ -241,6 +238,33 @@ acceptCycles128 = op 54
 
 callCyclesAdd128 :: Exp 'I64 -> Exp 'I64 -> Prog
 callCyclesAdd128 = op 55
+
+onGlobalTimer :: Exp 'B -> Prog
+onGlobalTimer = op 62
+
+apiGlobalTimerSet :: Exp 'I64 -> Exp 'I64
+apiGlobalTimerSet = op 63
+
+performanceCounter :: Exp 'I -> Exp 'I64
+performanceCounter = op 66
+
+methodName :: Exp 'B
+methodName = op 67
+
+parsePrincipal :: Exp 'B -> Exp 'B
+parsePrincipal = op 68
+
+onTransform :: Exp 'B -> Prog
+onTransform = op 69
+
+getHttpReplyWithBody :: Exp 'B -> Exp 'B
+getHttpReplyWithBody = op 70
+
+getHttpTransformContext :: Exp 'B -> Exp 'B
+getHttpTransformContext = op 71
+
+canisterVersion :: Exp 'I64
+canisterVersion = op 73
 
 -- Some convenience combinators
 

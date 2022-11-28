@@ -16,6 +16,16 @@ type definite_canister_settings = record {
   freezing_threshold : nat;
 };
 
+type http_header = record { name: text; value: text };
+
+type http_response = record {
+  status: nat;
+  headers: vec http_header;
+  body: blob;
+};
+
+type ecdsa_curve = variant { secp256k1; };
+
 service ic : {
   create_canister : (record {
     settings : opt canister_settings
@@ -39,10 +49,34 @@ service ic : {
       module_hash: opt blob;
       memory_size: nat;
       cycles: nat;
+      idle_cycles_burned_per_day: nat;
   });
   delete_canister : (record {canister_id : canister_id}) -> ();
   deposit_cycles : (record {canister_id : canister_id}) -> ();
   raw_rand : () -> (blob);
+  http_request : (record {
+    url : text;
+    max_response_bytes: opt nat64;
+    method : variant { get; post; head };
+    headers: vec http_header;
+    body : opt blob;
+    transform : opt record {
+      function : func (record {response : http_response; context : blob}) -> (http_response) query;
+      context : blob
+    };
+  }) -> (http_response);
+
+  // Threshold ECDSA signature
+  ecdsa_public_key : (record {
+    canister_id : opt canister_id;
+    derivation_path : vec blob;
+    key_id : record { curve: ecdsa_curve; name: text };
+  }) -> (record { public_key : blob; chain_code : blob; });
+  sign_with_ecdsa : (record {
+    message_hash : blob;
+    derivation_path : vec blob;
+    key_id : record { curve: ecdsa_curve; name: text };
+  }) -> (record { signature : blob });
 
   // provisional interfaces for the pre-ledger world
   provisional_create_canister_with_cycles : (record {

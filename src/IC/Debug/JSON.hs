@@ -80,8 +80,18 @@ instance ToJSON RejectCode where
     toJSON     = genericToJSON customOptions
     toEncoding = genericToEncoding customOptions
 
+deriving instance Generic ErrorCode
+instance ToJSON ErrorCode where
+    toJSON     = genericToJSON customOptions
+    toEncoding = genericToEncoding customOptions
+
 deriving instance Generic Response
 instance ToJSON Response where
+    toJSON     = genericToJSON customOptions
+    toEncoding = genericToEncoding customOptions
+
+deriving instance Generic SubnetType
+instance ToJSON SubnetType where
     toJSON     = genericToJSON customOptions
     toEncoding = genericToEncoding customOptions
 
@@ -190,3 +200,4 @@ instance ToJSON StdGen where
 
 instance ToJSON SecretKey where
     toJSON = placeholder "(secret key)"
+

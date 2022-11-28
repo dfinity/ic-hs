@@ -1,5 +1,6 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 module Main (main) where
 
@@ -27,6 +28,9 @@ main = do
       [ rerunningTests
         [ listingTests
         , includingOptions [endpointOption]
+        , includingOptions [ecidOption]
+        , includingOptions [httpbinOption]
+        , includingOptions [polltimeoutOption]
         , antXMLRunner `composeReporters` htmlRunner `composeReporters` consoleTestReporter
         ]
       ]

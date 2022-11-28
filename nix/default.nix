@@ -1,8 +1,8 @@
 { system ? builtins.currentSystem }:
 let
   sourcesnix = builtins.fetchurl {
-    url = https://raw.githubusercontent.com/nmattia/niv/v0.2.19/nix/sources.nix;
-    sha256 = "1n92ka2rkdiib6ian6jh2b7fwvklnnwlp5yy5bv6ywm7m1y5hyfl";
+    url = https://raw.githubusercontent.com/nmattia/niv/v0.2.21/nix/sources.nix;
+    sha256 = "129xhkih5sjdifcdfgfy36vj0a9qlli3cgxlrpqq8qfz42avn93v";
   };
   nixpkgs_src = (import sourcesnix { sourcesFile = ./sources.json; inherit pkgs; }).nixpkgs;
 
@@ -44,9 +44,13 @@ let
           });
 
           all-cabal-hashes = self.fetchurl {
-            url = "https://github.com/commercialhaskell/all-cabal-hashes/archive/174d622dcd2324afe16a2f191ce1d319028d3935.tar.gz";
-            sha256 = "0arh58mszf3b11d9yxldd63l1f4hr6fz03vjcv5yfwnkwy5yyyda";
+            url = "https://github.com/commercialhaskell/all-cabal-hashes/archive/35f4996e28c5ba20a3a633346f21abe2072afeb6.tar.gz";
+            sha256 = "sha256-L/PmFUGlBOOd5rAx4NFxv+s2USI9q0YgOsfpdeRDyds=";
           };
+
+          # We override secp256k1 since the version in nixpkgs doesn't provide a
+          # .a library needed for a static build of ic-hs.
+          secp256k1 = super.callPackage ./secp256k1 {};
         })
       ];
     };

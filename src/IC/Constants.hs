@@ -1,6 +1,9 @@
+{-# LANGUAGE NumericUnderscores #-}
+
 module IC.Constants where
 
 import Numeric.Natural
 
-cMAX_CANISTER_BALANCE :: Natural
-cMAX_CANISTER_BALANCE = 2^(120::Int)
+cDEFAULT_PROVISIONAL_CYCLES_BALANCE :: Natural
+cDEFAULT_PROVISIONAL_CYCLES_BALANCE = 100_000_000_000_000
+

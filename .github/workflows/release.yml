@@ -12,15 +12,22 @@ jobs:
         os:
         - ubuntu-latest
         - macos-latest
-        # TODO: - windows-latest
       fail-fast: false
     runs-on: ${{ matrix.os }}
+    env:
+      SSH_KEY_FOR_NIXBUILD: ${{ secrets.SSH_KEY_FOR_NIXBUILD }}
     steps:
     - uses: actions/checkout@v2
-    - uses: cachix/install-nix-action@v16
+    - if: matrix.os == 'macos-latest'
+      uses: cachix/install-nix-action@v16
+    - if: matrix.os == 'ubuntu-latest'
+      uses: nixbuild/nix-quick-install-action@v13
       with:
-        extra_nix_config: |
-          experimental-features = nix-command
+        nix_conf: experimental-features = nix-command
+    - if: matrix.os == 'ubuntu-latest' && env.SSH_KEY_FOR_NIXBUILD != ''
+      uses: nixbuild/nixbuild-action@v10
+      with:
+        nixbuild_ssh_key: ${{ secrets.SSH_KEY_FOR_NIXBUILD }}
     - run: nix-env -iA nix-build-uncached -f nix/
     - uses: cachix/cachix-action@v10
       with:
@@ -53,9 +60,20 @@ jobs:
           - os: macos-latest
             nix-system: x86_64-darwin
     runs-on: ${{ matrix.os }}
+    env:
+      SSH_KEY_FOR_NIXBUILD: ${{ secrets.SSH_KEY_FOR_NIXBUILD }}
     steps:
     - uses: actions/checkout@v2
-    - uses: cachix/install-nix-action@v16
+    - if: matrix.os == 'macos-latest'
+      uses: cachix/install-nix-action@v16
+    - if: matrix.os == 'ubuntu-latest'
+      uses: nixbuild/nix-quick-install-action@v13
+      with:
+        nix_conf: experimental-features = nix-command
+    - if: matrix.os == 'ubuntu-latest' && env.SSH_KEY_FOR_NIXBUILD != ''
+      uses: nixbuild/nixbuild-action@v10
+      with:
+        nixbuild_ssh_key: ${{ secrets.SSH_KEY_FOR_NIXBUILD }}
     - uses: cachix/cachix-action@v10
       with:
         name: ic-hs-test
@@ -73,7 +91,7 @@ jobs:
         echo "::set-output name=out::$out_path"
 
     - run: |
-        tar -C "${{ steps.buildit.outputs.out }}/bin" -czvf ic-ref.tar.gz .
+        tar -C "${{ steps.buildit.outputs.out }}" -czvf ic-ref.tar.gz bin test-data
 
         ref_short="$(echo "$GITHUB_SHA" | cut -c1-8)"
         version="${{ steps.get_version.outputs.version }}-$ref_short"

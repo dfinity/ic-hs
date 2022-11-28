@@ -14,35 +14,31 @@ This module contains a test suite for the Internet Computer
 module IC.Test.Spec (icTests) where
 
 import qualified Data.Text as T
-import qualified Data.Text.Encoding as T
-import qualified Data.Text.Encoding.Error as T
 import qualified Data.ByteString.Lazy as BS
 import qualified Data.HashMap.Lazy as HM
 import qualified Data.Map.Lazy as M
 import qualified Data.Set as S
 import qualified Data.Vector as Vec
+import Data.ByteString.Builder
 import Numeric.Natural
 import Data.List
 import Test.Tasty
 import Test.Tasty.HUnit
+import Codec.Compression.GZip (compress)
 import Control.Monad
 import Data.Word
 import Data.Functor
-import System.FilePath
-import System.Directory
-import System.Environment
-import Network.HTTP.Client
+import Data.Row as R
 import Data.Time.Clock.POSIX
-import qualified Data.Binary.Get as Get
 import Codec.Candid (Principal(..))
 import qualified Codec.Candid as Candid
-import Data.Row
 import Data.Serialize.LEB128 (toLEB128)
+import Control.Concurrent
+import System.Timeout
 
 import IC.Types (EntityId(..))
 import IC.HTTP.GenR
 import IC.HTTP.RequestId
-import qualified IC.HTTP.CBOR as CBOR
 import IC.Crypto
 import qualified IC.Crypto.CanisterSig as CanisterSig
 import qualified IC.Crypto.DER as DER
@@ -52,8 +48,57 @@ import IC.HashTree hiding (Blob, Label)
 import IC.Certificate
 import IC.Hash
 import IC.Test.Agent
+import IC.Test.Agent.Calls
+import IC.Test.Spec.Utils
+import qualified IC.Test.Spec.TECDSA
 
-type Blob = BS.ByteString
+-- * Helpers
+
+waitFor :: HasAgentConfig => IO Bool -> IO ()
+waitFor act = do
+    result <- timeout (tc_timeout agentConfig * (10::Int) ^ (6::Int)) doActUntil
+    when (result == Nothing) $ assertFailure "Polling timed out"
+  where
+    doActUntil = do
+      stop <- act
+      unless stop (threadDelay 1000 *> doActUntil)
+
+-- * Canister http calls
+
+canister_http_calls :: HasAgentConfig => Word64 -> Word64 -> [TestTree]
+canister_http_calls base_fee per_byte_fee =
+  [ simpleTestCase "simple call, no transform" $ \cid -> do
+      resp <- ic_http_request (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "base64/SGVsbG8gd29ybGQh" cid Nothing
+      (resp .! #status) @?= 200
+      (resp .! #body) @?= "Hello world!"
+
+    , testCase "non-existent transform function" $ do
+      cid <- install noop
+      ic_http_request' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "base64/SGVsbG8gd29ybGQh" cid (Just ("nonExistent", ""), cid) >>= isReject [3]
+
+    , testCase "reference to a transform function exposed by another canister" $ do
+      cid <- install noop
+      cid2 <- install (onTransform (callback (replyData (bytes (Candid.encode dummyResponse)))))
+      ic_http_request' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "base64/SGVsbG8gd29ybGQh" cid (Just ("transform", ""), cid2) >>= isReject [4]
+
+    , testCase "simple call with dummy transform" $ do
+      cid <- install (onTransform (callback (replyData (bytes (Candid.encode dummyResponse)))))
+      resp <- ic_http_request (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "base64/SGVsbG8gd29ybGQh" cid (Just ("transform", ""))
+      (resp .! #status) @?= 202
+      (resp .! #body) @?= "Dummy!"
+
+    , testCase "simple call with transform, reflect transform context" $ do
+      cid <- install (onTransform (callback (replyData (getHttpReplyWithBody (getHttpTransformContext argData)))))
+      resp <- ic_http_request (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "base64/SGVsbG8gd29ybGQh" cid (Just ("transform", "asdf"))
+      (resp .! #status) @?= 200
+      (resp .! #body) @?= "asdf"
+
+    , testCase "simple call with transform, check caller of transform" $ do
+      cid <- install (onTransform (callback (replyData (getHttpReplyWithBody (parsePrincipal caller)))))
+      resp <- ic_http_request (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "base64/SGVsbG8gd29ybGQh" cid (Just ("transform", "caller"))
+      (resp .! #status) @?= 200
+      (resp .! #body) @?= "aaaaa-aa"
+  ]
 
 -- * The test suite (see below for helper functions)
 
@@ -100,6 +145,34 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
 
       step "Reinstall as new controller"
       ic_install (ic00as otherUser) (enum #reinstall) can_id trivialWasmModule ""
+
+  , testCaseSteps "install (gzip compressed)" $ \step -> do
+      cid <- create
+      let compressedModule = compress trivialWasmModule
+
+      step "Install compressed module"
+      ic_install ic00 (enum #install) cid compressedModule""
+
+      cs <- ic_canister_status ic00 cid
+      cs .! #module_hash @?= Just (sha256 compressedModule)
+
+      step "Reinstall compressed module"
+      ic_install ic00 (enum #reinstall) cid compressedModule ""
+
+      cs <- ic_canister_status ic00 cid
+      cs .! #module_hash @?= Just (sha256 compressedModule)
+
+      step "Install raw module"
+      ic_install ic00 (enum #reinstall) cid trivialWasmModule ""
+
+      cs <- ic_canister_status ic00 cid
+      cs .! #module_hash @?= Just (sha256 trivialWasmModule)
+
+      step "Upgrade to a compressed module"
+      ic_install ic00 (enum #upgrade) cid compressedModule ""
+
+      cs <- ic_canister_status ic00 cid
+      cs .! #module_hash @?= Just (sha256 compressedModule)
 
   , testCaseSteps "reinstall on empty" $ \step -> do
       step "Create"
@@ -193,14 +266,14 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
 
       step "Create long-running call"
       grs1 <- submitCall cid $ callRequest cid messageHold
-      grs1 >>= isPendingOrProcessing
+      awaitKnown grs1 >>= isPendingOrProcessing
 
       step "Normal call (to sync)"
       call_ cid reply
 
       step "Stop"
       grs2 <- submitCall cid $ stopRequest cid
-      grs2 >>= isPendingOrProcessing
+      awaitKnown grs2 >>= isPendingOrProcessing
 
       step "Is stopping (via management)?"
       cs <- ic_canister_status ic00 cid
@@ -208,7 +281,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
 
       step "Next stop waits, too"
       grs3 <- submitCall cid $ stopRequest cid
-      grs3 >>= isPendingOrProcessing
+      awaitKnown grs3 >>= isPendingOrProcessing
 
       step "Cannot call (update)?"
       call'' cid reply >>= isErrOrReject [5]
@@ -246,11 +319,11 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
 
       step "Create long-running call"
       grs1 <- submitCall cid $ callRequest cid messageHold
-      grs1 >>= isPendingOrProcessing
+      awaitKnown grs1 >>= isPendingOrProcessing
 
       step "Start stopping"
       grs2 <- submitCall cid $ stopRequest cid
-      grs2 >>= isPendingOrProcessing
+      awaitKnown grs2 >>= isPendingOrProcessing
 
       step "Is stopping?"
       cs <- ic_canister_status ic00 cid
@@ -323,6 +396,9 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     step "Reinstall"
     ic_install (ic00via cid) (enum #reinstall) can_id trivialWasmModule ""
 
+    step "Reinstall (gzip compressed)"
+    ic_install (ic00via cid) (enum #reinstall) can_id (compress trivialWasmModule) ""
+
     step "Reinstall as wrong user"
     ic_install' (ic00via cid2) (enum #reinstall) can_id trivialWasmModule ""
       >>= isReject [3,5]
@@ -347,7 +423,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     ic_install (ic00via cid) (enum #reinstall) can_id2 trivialWasmModule ""
 
   , simpleTestCase "aaaaa-aa (inter-canister, large)" $ \cid -> do
-    universal_wasm <- getTestWasm "universal_canister"
+    universal_wasm <- getTestWasm "universal-canister"
     can_id <- ic_provisional_create (ic00via cid) Nothing empty
     ic_install (ic00via cid) (enum #install) can_id universal_wasm ""
     do call can_id $ replyData "Hi"
@@ -359,6 +435,10 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     BS.length r1 @?= 32
     BS.length r2 @?= 32
     assertBool "random blobs are different" $ r1 /= r2
+
+  , IC.Test.Spec.TECDSA.tests
+  , testGroup "canister http calls.only_system" $ canister_http_calls 0 0
+  , testGroup "canister http calls.only_application" $ canister_http_calls 400000000 100000
 
   , testGroup "simple calls"
     [ simpleTestCase "Call" $ \cid ->
@@ -728,7 +808,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     , t "canister_self"                star          $ ignore self
     , t "canister_cycle_balance"       star          $ ignore getBalance
     , t "canister_cycle_balance128"    star          $ ignore getBalance128
-    , t "call_new…call_perform"        "U Rt Ry H"   $
+    , t "call_new_call_perform"        "U Rt Ry H"   $
         callNew "foo" "bar" "baz" "quux" >>>
         callDataAppend "foo" >>>
         callCyclesAdd (int64 0) >>>
@@ -751,7 +831,9 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     , t "msg_method_name"              "F"             $ ignore methodName
     , t "accept_message"               never             acceptMessage -- due to double accept
     , t "time"                         star            $ ignore getTime
-    , t "performance_counter"          star            $ ignore performanceCounter
+    , t "performance_counter"          star            $ ignore $ performanceCounter (int 0)
+    , t "canister_version"             star            $ ignore $ canisterVersion
+    , t "global_timer_set"             "I U Ry Rt C H" $ ignore $ apiGlobalTimerSet (int64 0)
     , t "debug_print"                  star            $ debugPrint "hello"
     , t "trap"                         never           $ trap "this better traps"
     ]
@@ -816,6 +898,10 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
             , "arg" =: GBlob (run reply)
             ]
       addNonceExpiryEnv req >>= postQueryCBOR cid2 >>= code4xx
+
+    , simpleTestCase "in read_state" $ \cid -> do
+        cid2 <- install noop
+        getStateCert' defaultUser cid2 [["canisters", cid, "controllers"]] >>= code4xx
 
     -- read_state tested in read_state group
     --
@@ -1114,7 +1200,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     [ simpleTestCase "in query" $ \cid ->
       query cid (replyData getTimeTwice) >>= as2Word64 >>= bothSame
     , simpleTestCase "in update" $ \cid ->
-      query cid (replyData getTimeTwice) >>= as2Word64 >>= bothSame
+      call cid (replyData getTimeTwice) >>= as2Word64 >>= bothSame
     , testCase "in install" $ do
       cid <- install $ setGlobal getTimeTwice
       query cid (replyData getGlobal) >>= as2Word64 >>= bothSame
@@ -1127,6 +1213,227 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     , simpleTestCase "in post_upgrade" $ \cid -> do
       upgrade cid $ setGlobal getTimeTwice
       query cid (replyData getGlobal) >>= as2Word64 >>= bothSame
+    ]
+
+  , testGroup "canister global timer" $
+    let on_timer_prog n = onGlobalTimer $ callback (setGlobal $ i64tob $ int64 $ fromIntegral n) in
+    let set_timer_prog time = setGlobal $ i64tob $ apiGlobalTimerSet $ int64 time in
+    let install_canister_with_global_timer n = install $ on_timer_prog n in
+    let reset_global cid = call cid ((setGlobal $ i64tob $ int64 42) >>> replyData "") in
+    let get_global cid = call cid (replyData $ getGlobal) in
+    let get_far_past_time = return 1 in
+    let get_current_time = floor . (* 1e9) <$> getPOSIXTime in
+    let get_far_future_time = floor . (* 1e9) <$> (+) 100000 <$> getPOSIXTime in
+    let get_far_far_future_time = floor . (* 1e9) <$> (+) 1000000 <$> getPOSIXTime in
+    let set_timer cid time = call cid (replyData $ i64tob $ apiGlobalTimerSet $ int64 time) in
+    let blob = toLazyByteString . word64LE . fromIntegral in
+    let wait_for_timer cid n = waitFor $ (blob n ==) <$> get_global cid in
+    [ testCase "in update" $ do
+      cid <- install_canister_with_global_timer (1::Int)
+      _ <- reset_global cid
+      far_future_time <- get_far_future_time
+      timer1 <- set_timer cid far_future_time
+      timer2 <- set_timer cid far_future_time
+      ctr <- get_global cid
+      timer1 @?= blob 0
+      timer2 @?= blob far_future_time
+      ctr @?= blob 42
+    , testCase "in init" $ do
+      far_future_time <- get_far_future_time
+      cid <- install $ on_timer_prog (1::Int) >>> set_timer_prog far_future_time
+      timer1 <- get_global cid
+      timer2 <- set_timer cid far_future_time
+      timer1 @?= blob 0
+      timer2 @?= blob far_future_time
+    , testCase "in post-upgrade" $ do
+      cid <- install_canister_with_global_timer (1::Int)
+      _ <- reset_global cid
+      far_future_time <- get_far_future_time
+      timer1 <- set_timer cid far_future_time
+      far_far_future_time <- get_far_far_future_time
+      universal_wasm <- getTestWasm "universal-canister"
+      _ <- ic_install ic00 (enum #upgrade) cid universal_wasm (run $ set_timer_prog far_far_future_time)
+      timer2 <- get_global cid
+      timer3 <- set_timer cid far_future_time
+      timer1 @?= blob 0
+      timer2 @?= blob 0
+      timer3 @?= blob far_far_future_time
+    , testCase "deactivate timer" $ do
+      cid <- install_canister_with_global_timer (1::Int)
+      _ <- reset_global cid
+      far_future_time <- get_far_future_time
+      timer1 <- set_timer cid far_future_time
+      timer2 <- set_timer cid 0
+      timer3 <- set_timer cid far_future_time
+      ctr <- get_global cid
+      timer1 @?= blob 0
+      timer2 @?= blob far_future_time
+      timer3 @?= blob 0
+      ctr @?= blob 42
+    , testCase "set timer far in the past" $ do
+      cid <- install_canister_with_global_timer (1::Int)
+      _ <- reset_global cid
+      past_time <- get_far_past_time
+      timer1 <- set_timer cid past_time
+      wait_for_timer cid 1
+      future_time <- get_far_future_time
+      timer2 <- set_timer cid future_time
+      timer1 @?= blob 0
+      timer2 @?= blob 0
+    , testCase "set timer at current time" $ do
+      cid <- install_canister_with_global_timer (1::Int)
+      _ <- reset_global cid
+      current_time <- get_current_time
+      timer1 <- set_timer cid current_time
+      wait_for_timer cid 1
+      future_time <- get_far_future_time
+      timer2 <- set_timer cid future_time
+      timer1 @?= blob 0
+      timer2 @?= blob 0
+    , testCase "stop and start canister" $ do
+      cid <- install_canister_with_global_timer (1::Int)
+      _ <- reset_global cid
+      far_future_time <- get_far_future_time
+      timer1 <- set_timer cid far_future_time
+      timer2 <- set_timer cid far_future_time
+      _ <- ic_stop_canister ic00 cid
+      _ <- ic_start_canister ic00 cid
+      timer3 <- set_timer cid far_future_time
+      ctr <- get_global cid
+      timer1 @?= blob 0
+      timer2 @?= blob far_future_time
+      timer3 @?= blob far_future_time
+      ctr @?= blob 42
+    , testCase "uninstall and install canister" $ do
+      cid <- install_canister_with_global_timer (1::Int)
+      _ <- reset_global cid
+      far_future_time <- get_far_future_time
+      timer1 <- set_timer cid far_future_time
+      timer2 <- set_timer cid far_future_time
+      universal_wasm <- getTestWasm "universal-canister"
+      _ <- ic_uninstall ic00 cid
+      _ <- ic_install ic00 (enum #install) cid universal_wasm (run $ on_timer_prog (1::Int))
+      timer3 <- set_timer cid far_future_time
+      timer1 @?= blob 0
+      timer2 @?= blob far_future_time
+      timer3 @?= blob 0
+    , testCase "upgrade canister" $ do
+      cid <- install_canister_with_global_timer (1::Int)
+      _ <- reset_global cid
+      far_future_time <- get_far_future_time
+      timer1 <- set_timer cid far_future_time
+      timer2 <- set_timer cid far_future_time
+      universal_wasm <- getTestWasm "universal-canister"
+      _ <- ic_install ic00 (enum #upgrade) cid universal_wasm (run $ on_timer_prog (1::Int))
+      timer3 <- set_timer cid far_future_time
+      timer1 @?= blob 0
+      timer2 @?= blob far_future_time
+      timer3 @?= blob 0
+    , testCase "reinstall canister" $ do
+      cid <- install_canister_with_global_timer (1::Int)
+      _ <- reset_global cid
+      far_future_time <- get_far_future_time
+      timer1 <- set_timer cid far_future_time
+      timer2 <- set_timer cid far_future_time
+      universal_wasm <- getTestWasm "universal-canister"
+      _ <- ic_install ic00 (enum #reinstall) cid universal_wasm (run $ on_timer_prog (1::Int))
+      timer3 <- set_timer cid far_future_time
+      timer1 @?= blob 0
+      timer2 @?= blob far_future_time
+      timer3 @?= blob 0
+    ]
+
+  , testGroup "canister version" $
+    let canister_version = i64tob canisterVersion in
+    [ simpleTestCase "in query" $ \cid -> do
+      ctr <- query cid (replyData canister_version) >>= asWord64
+      ctr @?= 1
+    , simpleTestCase "in update" $ \cid -> do
+      ctr <- call cid (replyData canister_version) >>= asWord64
+      ctr @?= 1
+    , testCase "in install" $ do
+      cid <- install $ setGlobal canister_version
+      ctr1 <- query cid (replyData getGlobal) >>= asWord64
+      ctr2 <- query cid (replyData canister_version) >>= asWord64
+      ctr1 @?= 1
+      ctr2 @?= 1
+    , testCase "in reinstall" $ do
+      cid <- install noop
+      ctr1 <- query cid (replyData canister_version) >>= asWord64
+      _ <- reinstall cid $ setGlobal canister_version
+      ctr2 <- query cid (replyData getGlobal) >>= asWord64
+      ctr3 <- query cid (replyData canister_version) >>= asWord64
+      ctr1 @?= 1
+      ctr2 @?= 2
+      ctr3 @?= 2
+    , testCase "in pre_upgrade" $ do
+      cid <- install $
+        ignore (stableGrow (int 1)) >>>
+        onPreUpgrade (callback $ stableWrite (int 0) canister_version)
+      ctr1 <- query cid (replyData canister_version) >>= asWord64
+      upgrade cid noop
+      ctr2 <- query cid (replyData (stableRead (int 0) (int 8))) >>= asWord64
+      ctr3 <- query cid (replyData canister_version) >>= asWord64
+      ctr1 @?= 1
+      ctr2 @?= 1
+      ctr3 @?= 2
+    , simpleTestCase "in post_upgrade" $ \cid -> do
+      ctr1 <- query cid (replyData canister_version) >>= asWord64
+      upgrade cid $ setGlobal canister_version
+      ctr2 <- query cid (replyData getGlobal) >>= asWord64
+      ctr3 <- query cid (replyData canister_version) >>= asWord64
+      ctr1 @?= 1
+      ctr2 @?= 2
+      ctr3 @?= 2
+    , simpleTestCase "after uninstalling canister" $ \cid -> do
+      ctr1 <- query cid (replyData canister_version) >>= asWord64
+      ic_uninstall ic00 cid
+      installAt cid noop
+      ctr2 <- query cid (replyData canister_version) >>= asWord64
+      ctr1 @?= 1
+      ctr2 @?= 3
+    , simpleTestCase "after setting controllers" $ \cid -> do
+      ctr1 <- query cid (replyData canister_version) >>= asWord64
+      ic_set_controllers ic00 cid [otherUser]
+      ctr2 <- query cid (replyData canister_version) >>= asWord64
+      ctr1 @?= 1
+      ctr2 @?= 2
+    , simpleTestCase "after setting freezing threshold" $ \cid -> do
+      ctr1 <- query cid (replyData canister_version) >>= asWord64
+      ic_update_settings ic00 cid (#freezing_threshold .== 2^(20::Int))
+      ctr2 <- query cid (replyData canister_version) >>= asWord64
+      ctr1 @?= 1
+      ctr2 @?= 2
+    , testCase "after failed install" $ do
+      cid <- create
+      _ <- ic_install' ic00 (enum #install) cid "" ""
+      cid <- install noop
+      ctr1 <- query cid (replyData canister_version) >>= asWord64
+      ctr1 @?= 1
+    , simpleTestCase "after failed reinstall" $ \cid -> do
+      ctr1 <- query cid (replyData canister_version) >>= asWord64
+      _ <- ic_install' ic00 (enum #reinstall) cid "" ""
+      ctr2 <- query cid (replyData canister_version) >>= asWord64
+      ctr1 @?= 1
+      ctr2 @?= 1
+    , simpleTestCase "after failed upgrade" $ \cid -> do
+      ctr1 <- query cid (replyData canister_version) >>= asWord64
+      _ <- ic_install' ic00 (enum #upgrade) cid "" ""
+      ctr2 <- query cid (replyData canister_version) >>= asWord64
+      ctr1 @?= 1
+      ctr2 @?= 1
+    , simpleTestCase "after failed uninstall" $ \cid -> do
+      ctr1 <- query cid (replyData canister_version) >>= asWord64
+      _ <- ic_uninstall'' otherUser cid
+      ctr2 <- query cid (replyData canister_version) >>= asWord64
+      ctr1 @?= 1
+      ctr2 @?= 1
+    , simpleTestCase "after failed change of settings" $ \cid -> do
+      ctr1 <- query cid (replyData canister_version) >>= asWord64
+      _ <- ic_update_settings' ic00 cid (#freezing_threshold .== 2^(70::Int))
+      ctr2 <- query cid (replyData canister_version) >>= asWord64
+      ctr1 @?= 1
+      ctr2 @?= 1
     ]
 
   , testGroup "upgrades" $
@@ -1271,14 +1578,14 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     , testCase "uninstall and reinstall wipes state" $ do
       cid <- install (setGlobal "FOO")
       ic_uninstall ic00 cid
-      universal_wasm <- getTestWasm "universal_canister"
+      universal_wasm <- getTestWasm "universal-canister"
       ic_install ic00 (enum #install) cid universal_wasm (run (setGlobal "BAR"))
       query cid (replyData getGlobal) >>= is "BAR"
 
     , testCase "uninstall and reinstall wipes stable memory" $ do
       cid <- install (ignore (stableGrow (int 1)) >>> stableWrite (int 0) "FOO")
       ic_uninstall ic00 cid
-      universal_wasm <- getTestWasm "universal_canister"
+      universal_wasm <- getTestWasm "universal-canister"
       ic_install ic00 (enum #install) cid universal_wasm (run (setGlobal "BAR"))
       query cid (replyData (i2b stableSize)) >>= asWord32 >>= is 0
       do query cid $
@@ -1294,7 +1601,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
       cid <- install $ setCertifiedData "FOO"
       query cid (replyData getCertificate) >>= extractCertData cid >>= is "FOO"
       ic_uninstall ic00 cid
-      universal_wasm <- getTestWasm "universal_canister"
+      universal_wasm <- getTestWasm "universal-canister"
       ic_install ic00 (enum #install) cid universal_wasm (run noop)
       query cid (replyData getCertificate) >>= extractCertData cid >>= is ""
 
@@ -1314,7 +1621,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
 
       step "Create long-running call"
       grs1 <- submitCall cid $ callRequest cid messageHold
-      grs1 >>= isPendingOrProcessing
+      awaitKnown grs1 >>= isPendingOrProcessing
 
       step "Uninstall"
       ic_uninstall ic00 cid
@@ -1337,7 +1644,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
 
       step "Create long-running call"
       grs1 <- submitCall cid $ callRequest cid messageHold
-      grs1 >>= isPendingOrProcessing
+      awaitKnown grs1 >>= isPendingOrProcessing
 
       step "Uninstall"
       ic_uninstall ic00 cid
@@ -1379,14 +1686,14 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
                   { other_side = messageHold1
                   , on_reply = replyData "First"
                   }
-      grs1 >>= isPendingOrProcessing
+      awaitKnown grs1 >>= isPendingOrProcessing
 
       step "Uninstall"
       ic_uninstall ic00 cid
       awaitStatus grs1 >>= isReject [4]
 
       step "Reinstall"
-      universal_wasm <- getTestWasm "universal_canister"
+      universal_wasm <- getTestWasm "universal-canister"
       ic_install ic00 (enum #install) cid universal_wasm (run (setGlobal "BAR"))
 
       step "Create second long-running call"
@@ -1396,12 +1703,12 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
                   , on_reply = replyData "Second"
                   }
       awaitStatus grs1 >>= isReject [4]
-      grs2 >>= isPendingOrProcessing
+      awaitKnown grs2 >>= isPendingOrProcessing
 
       step "Release first call"
       release1
       awaitStatus grs1 >>= isReject [4]
-      grs2 >>= isPendingOrProcessing
+      awaitKnown grs2 >>= isPendingOrProcessing
 
       step "Release second call"
       release2
@@ -1536,17 +1843,23 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
         cert <- getStateCert defaultUser cid [["canister", cid, "controllers"]]
         certValue @Blob cert ["canister", cid, "controllers"] >>= asCBORBlobList >>= isSet []
 
-    , testCase "module_hash of empty canister" $ do
+    , testCase "module_hash of universal canister" $ do
         cid <- install noop
-        universal_wasm <- getTestWasm "universal_canister"
+        universal_wasm <- getTestWasm "universal-canister"
         cert <- getStateCert anonymousUser cid [["canister", cid, "module_hash"]]
         certValue @Blob cert ["canister", cid, "module_hash"] >>= is (sha256 universal_wasm)
+
+    , testGroup "malformed request id"
+        [ simpleTestCase ("rid \"" ++ shorten 8 (asHex rid) ++ "\"") $ \cid -> do
+            getStateCert' defaultUser cid [["request_status", rid]] >>= code4xx
+        | rid <- [ "", "foo" ]
+        ]
 
     , testGroup "non-existence proofs for non-existing request id"
         [ simpleTestCase ("rid \"" ++ shorten 8 (asHex rid) ++ "\"") $ \cid -> do
             cert <- getStateCert defaultUser cid [["request_status", rid]]
             certValueAbsent cert ["request_status", rid, "status"]
-        | rid <- [ "", BS.replicate 32 0, BS.replicate 32 8, BS.replicate 32 255 ]
+        | rid <- [ BS.replicate 32 0, BS.replicate 32 8, BS.replicate 32 255 ]
         ]
 
     , simpleTestCase "can ask for portion of request status " $ \cid -> do
@@ -1638,6 +1951,12 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
           ic_install ic00 (enum #install) cid mod ""
           cert <- getStateCert anonymousUser cid [["canister", cid, "metadata", ""]]
           lookupPath (cert_tree cert) ["canister", cid, "metadata", ""] @?= Found "bar"
+      , testCase "metadata section name with spaces" $ do
+          let mod = withSections [("icp:public metadata section name with spaces", "bar")]
+          cid <- create
+          ic_install ic00 (enum #install) cid mod ""
+          cert <- getStateCert anonymousUser cid [["canister", cid, "metadata", "metadata section name with spaces"]]
+          lookupPath (cert_tree cert) ["canister", cid, "metadata", "metadata section name with spaces"] @?= Found "bar"
       ]
     ]
 
@@ -1693,6 +2012,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
   , testGroup "cycles" $
     let replyBalance = replyData (i64tob getBalance)
         replyBalance128 = replyData getBalance128
+        replyBalanceBalance128 = replyDataAppend (i64tob getBalance) >>> replyDataAppend getBalance128 >>> reply
         rememberBalance =
           ignore (stableGrow (int 1)) >>>
           stableWrite (int 0) (i64tob getBalance)
@@ -1700,6 +2020,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
         acceptAll = ignore (acceptCycles getAvailableCycles)
         queryBalance cid = query cid replyBalance >>= asWord64
         queryBalance128 cid = query cid replyBalance128 >>= asWord128
+        queryBalanceBalance128 cid = query cid replyBalanceBalance128 >>= asWord64Word128
 
         -- At the time of writing, creating a canister needs at least 1T
         -- and the freezing limit is 5T
@@ -1716,7 +2037,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
         -- some more.
         eps = 3_000_000_000_000 :: Integer
 
-        isRoughly :: (HasCallStack, Show a, Num a, Integral a) => a -> a -> Assertion
+        isRoughly :: (HasCallStack, Show a, Num a, Integral a, Show b, Num b, Integral b) => a -> b -> Assertion
         isRoughly exp act = assertBool
            (show act ++ " not near " ++ show exp)
            (abs (fromIntegral exp - fromIntegral act) < eps)
@@ -1727,14 +2048,13 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
           return cid
         create_via cid initial_cycles = do
           cid2 <- ic_create (ic00viaWithCycles cid initial_cycles) empty
-          universal_wasm <- getTestWasm "universal_canister"
+          universal_wasm <- getTestWasm "universal-canister"
           ic_install (ic00via cid) (enum #install) cid2 universal_wasm (run noop)
           return cid2
     in
     [ testGroup "cycles API - backward compatibility" $
         [ simpleTestCase "canister_cycle_balance = canister_cycle_balance128 for numbers fitting in 64 bits" $ \cid -> do
-          a <- queryBalance cid
-          b <- queryBalance128 cid
+          (a, b) <- queryBalanceBalance128 cid
           bothSame (a, fromIntegral b)
         , testCase "legacy API traps when a result is too big" $ do
           cid <- create noop
@@ -1794,7 +2114,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     , testCase "cycles in canister_status" $ do
         cid <- create noop
         cs <- ic_canister_status ic00 cid
-        isRoughly (fromIntegral def_cycles) (cs .! #cycles)
+        isRoughly def_cycles (cs .! #cycles)
 
     , testGroup "cycle balance"
       [ testCase "install" $ do
@@ -1871,7 +2191,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
           , on_reply = replyData (i64tob getRefund)
           , on_reject = trap "unexpected reject"
           }
-        >>= asWord64 >>= isRoughly 0
+        >>= asWord64 >>= isRoughly (0::Word64)
       queryBalance cid1 >>= isRoughly (def_cycles `div` 2)
       queryBalance cid2 >>= isRoughly (def_cycles `div` 4)
       queryBalance cid3 >>= isRoughly (2*def_cycles + def_cycles `div` 4)
@@ -1991,8 +2311,8 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
         cycles <- queryBalance128 cid
         step $ "Cycle balance now at " ++ show cycles
       , testCase "nonexisting canister" $ do
-        ic_top_up' ic00 doesn'tExist (fromIntegral def_cycles)
-          >>= isReject [3,5]
+        ic_top_up''' ic00' doesn'tExist (fromIntegral def_cycles)
+          >>= isErrOrReject [3,5]
       ]
     ]
 
@@ -2058,6 +2378,15 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     , testCase "management canister: raw_rand not accepted" $ do
       ic_raw_rand'' defaultUser >>= isErrOrReject []
 
+    , testCase "management canister: http_request not accepted" $ do
+      ic_http_request'' defaultUser >>= isErrOrReject []
+
+    , testCase "management canister: ecdsa_public_key not accepted" $ do
+      ic_ecdsa_public_key'' defaultUser >>= isErrOrReject []
+
+    , testCase "management canister: sign_with_ecdsa not accepted" $ do
+      ic_sign_with_ecdsa'' defaultUser (sha256 "dummy") >>= isErrOrReject []
+
     , simpleTestCase "management canister: deposit_cycles not accepted" $ \cid -> do
       ic_deposit_cycles'' defaultUser cid >>= isErrOrReject []
 
@@ -2088,7 +2417,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
         -- sign request with delegations
         delegationEnv defaultSK dels req >>= postCallCBOR cid >>= code2xx
         -- wait for it
-        void $ awaitStatus (getRequestStatus defaultUser cid rid) >>= isReply
+        void $ awaitStatus (getRequestStatus' defaultUser cid rid) >>= isReply
         -- also read status with delegation
         sreq <- addExpiry $ rec
           [ "request_type" =: GText "read_state"
@@ -2108,7 +2437,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
         -- submit with plain signature
         envelope defaultSK req >>= postCallCBOR cid >>= code202
         -- wait for it
-        void $ awaitStatus (getRequestStatus defaultUser cid rid) >>= isReply
+        void $ awaitStatus (getRequestStatus' defaultUser cid rid) >>= isReply
         -- also read status with delegation
         sreq <- addExpiry $ rec
           [ "request_type" =: GText "read_state"
@@ -2203,7 +2532,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
       signed_req <- env req
       postCallCBOR cid signed_req >>= code2xx
 
-      awaitStatus (getRequestStatus user cid (requestId req)) >>= isReply >>= is ""
+      awaitStatus (getRequestStatus' user cid (requestId req)) >>= isReply >>= is ""
     ]
 
   , testGroup "signature checking" $
@@ -2378,354 +2707,3 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
 
     ]
   ]
-
--- * Equality assertions
-
-is :: (HasCallStack, Eq a, Show a) => a -> a -> Assertion
-is exp act = act @?= exp
-
-isSet :: (HasCallStack, Ord a, Show a) => [a] -> [a] -> Assertion
-isSet exp act = S.fromList exp @?= S.fromList act
-
-isContainedIn :: (HasCallStack, Ord a, Show a) => a -> [(a,a)] -> Assertion
-isContainedIn p ranges = assertBool (show p ++ " not contained in: " ++ show ranges) $
-    any (\(l,r) -> l <= p && p <= r) ranges
-
--- * Simple Wasm
-
-trivialWasmModule :: Blob
-trivialWasmModule = "\0asm\1\0\0\0"
-
--- * Some test data related to standard requests
-
-queryToNonExistant :: GenR
-queryToNonExistant = rec
-    [ "request_type" =: GText "query"
-    , "sender" =: GBlob anonymousUser
-    , "canister_id" =: GBlob doesn'tExist
-    , "method_name" =: GText "foo"
-    , "arg" =: GBlob "nothing to see here"
-    ]
-
-readStateEmpty :: GenR
-readStateEmpty = rec
-    [ "request_type" =: GText "read_state"
-    , "sender" =: GBlob defaultUser
-    , "paths" =: GList []
-    ]
-
-badEnvelope :: GenR -> GenR
-badEnvelope content = rec
-    [ "sender_pubkey" =: GBlob (toPublicKey defaultSK)
-    , "sender_sig" =: GBlob (BS.replicate 64 0x42)
-    , "content" =: content
-    ]
-
--- * Bad requests
-
-noDomainSepEnv :: SecretKey -> GenR -> IO GenR
-noDomainSepEnv sk content = do
-  sig <- sign "" sk (requestId content)
-  return $ rec
-    [ "sender_pubkey" =: GBlob (toPublicKey sk)
-    , "sender_sig" =: GBlob sig
-    , "content" =: content
-    ]
-
-noExpiryEnv, pastExpiryEnv, futureExpiryEnv :: GenR -> GenR
-noExpiryEnv = deleteField "ingress_expiry"
-pastExpiryEnv = modNatField "ingress_expiry" (subtract 3600_000_000_000)
-futureExpiryEnv = modNatField "ingress_expiry" (+ 3600_000_000_000)
-
-deleteField :: T.Text -> GenR -> GenR
-deleteField f (GRec hm) = GRec $ HM.delete f hm
-deleteField _ _ = error "deleteField: not a record"
-
-modNatField :: T.Text -> (Natural -> Natural) -> GenR -> GenR
-modNatField f g (GRec hm) = GRec $ HM.adjust underNat f hm
-  where underNat :: GenR -> GenR
-        underNat (GNat n) = GNat (g n)
-        underNat _ = error "modNatField: not a nat field"
-modNatField _ _ _ = error "modNatField: not a record"
-
--- * Double request
-
-awaitCallTwice :: HasAgentConfig => Blob -> GenR -> IO ReqResponse
-awaitCallTwice cid req = do
-  req <- addNonce req
-  req <- addExpiry req
-  res <- envelopeFor (senderOf req) req >>= postCallCBOR cid
-  code202 res
-  res <- envelopeFor (senderOf req) req >>= postCallCBOR cid
-  code202 res
-  assertBool "Response body not empty" (BS.null (responseBody res))
-  awaitStatus (getRequestStatus (senderOf req) cid (requestId req))
-
-
-
--- * CBOR decoding
-
-asCBORBlobList :: Blob -> IO [Blob]
-asCBORBlobList blob = do
-    decoded <- asRight $ CBOR.decode blob
-    case decoded of
-        GList list -> mapM cborToBlob list
-        _ -> assertFailure $ "Failed to decode as CBOR encoded list of blobs: " <> show decoded
-
-cborToBlob :: GenR -> IO Blob
-cborToBlob (GBlob blob) = return blob
-cborToBlob r = assertFailure $ "Expected blob, got " <> show r
-
-asCBORBlobPairList :: Blob -> IO [(Blob, Blob)]
-asCBORBlobPairList blob = do
-    decoded <- asRight $ CBOR.decode blob
-    case decoded of
-        GList list -> do
-            mapM cborToBlobPair list
-        _ -> assertFailure $ "Failed to decode as CBOR encoded list of blob pairs: " <> show decoded
-
-cborToBlobPair :: GenR -> IO (Blob, Blob)
-cborToBlobPair (GList [GBlob x, GBlob y]) = return (x, y)
-cborToBlobPair r = assertFailure $ "Expected list of pairs, got: " <> show r
-
--- Interaction with aaaaa-aa via the universal canister
-
-ic00via :: HasAgentConfig => Blob -> IC00
-ic00via cid = ic00viaWithCycles cid 0
-
-ic00viaWithCycles :: HasAgentConfig => Blob -> Word64 -> IC00
-ic00viaWithCycles cid cycles _ecid method_name arg =
-  do call' cid $
-      callNew
-        (bytes "") (bytes (BS.fromStrict (T.encodeUtf8 method_name))) -- aaaaa-aa
-        (callback relayReply) (callback relayReject) >>>
-      callDataAppend (bytes arg) >>>
-      callCyclesAdd (int64 cycles) >>>
-      callPerform
-   >>= isReply >>= isRelay
-
--- * Interacting with the universal canister
-
--- Some common operations on the universal canister
--- The primed variant (call') return the response record,
--- e.g. to check for error conditions.
--- The unprimed variant expect a reply.
-
-install' :: (HasCallStack, HasAgentConfig) => Blob -> Prog -> IO ReqResponse
-install' cid prog = do
-  universal_wasm <- getTestWasm "universal_canister"
-  ic_install' ic00 (enum #install) cid universal_wasm (run prog)
-
-installAt :: (HasCallStack, HasAgentConfig) => Blob -> Prog -> IO ()
-installAt cid prog = do
-  universal_wasm <- getTestWasm "universal_canister"
-  ic_install ic00 (enum #install) cid universal_wasm (run prog)
-
--- Also calls create, used default 'ic00'
-install :: (HasCallStack, HasAgentConfig) => Prog -> IO Blob
-install prog = do
-    cid <- create
-    installAt cid prog
-    return cid
-
-create :: (HasCallStack, HasAgentConfig) => IO Blob
-create = ic_provisional_create ic00 (Just (2^(60::Int))) empty
-
-upgrade' :: (HasCallStack, HasAgentConfig) => Blob -> Prog -> IO ReqResponse
-upgrade' cid prog = do
-  universal_wasm <- getTestWasm "universal_canister"
-  ic_install' ic00 (enum #upgrade) cid universal_wasm (run prog)
-
-upgrade :: (HasCallStack, HasAgentConfig) => Blob -> Prog -> IO ()
-upgrade cid prog = do
-  universal_wasm <- getTestWasm "universal_canister"
-  ic_install ic00 (enum #upgrade) cid universal_wasm (run prog)
-
-reinstall' :: (HasCallStack, HasAgentConfig) => Blob -> Prog -> IO ReqResponse
-reinstall' cid prog = do
-  universal_wasm <- getTestWasm "universal_canister"
-  ic_install' ic00 (enum #reinstall) cid universal_wasm (run prog)
-
-reinstall :: (HasCallStack, HasAgentConfig) => Blob -> Prog -> IO ()
-reinstall cid prog = do
-  universal_wasm <- getTestWasm "universal_canister"
-  ic_install ic00 (enum #reinstall) cid universal_wasm (run prog)
-
-callRequestAs :: (HasCallStack, HasAgentConfig) => Blob -> Blob -> Prog -> GenR
-callRequestAs user cid prog = rec
-    [ "request_type" =: GText "call"
-    , "sender" =: GBlob user
-    , "canister_id" =: GBlob cid
-    , "method_name" =: GText "update"
-    , "arg" =: GBlob (run prog)
-    ]
-
-callToQueryRequestAs :: (HasCallStack, HasAgentConfig) => Blob -> Blob -> Prog -> GenR
-callToQueryRequestAs user cid prog = rec
-    [ "request_type" =: GText "call"
-    , "sender" =: GBlob user
-    , "canister_id" =: GBlob cid
-    , "method_name" =: GText "query"
-    , "arg" =: GBlob (run prog)
-    ]
-
-callRequest :: (HasCallStack, HasAgentConfig) => Blob -> Prog -> GenR
-callRequest cid prog = callRequestAs defaultUser cid prog
-
-callToQuery'' :: (HasCallStack, HasAgentConfig) => Blob -> Prog -> IO (HTTPErrOr ReqResponse)
-callToQuery'' cid prog = awaitCall' cid $ callToQueryRequestAs defaultUser cid prog
-
-stopRequest :: (HasCallStack, HasAgentConfig) => Blob -> GenR
-stopRequest cid = rec
-    [ "request_type" =: GText "call"
-    , "sender" =: GBlob defaultUser
-    , "canister_id" =: GBlob ""
-    , "method_name" =: GText "stop_canister"
-    , "arg" =: GBlob (Candid.encode (#canister_id .== Principal cid))
-    ]
-
--- The following variants of the call combinator differ in how much failure they allow:
---
---   call'' allows HTTP errors at `submit` time already
---   call'  requires submission to succeed, and allows reject responses
---   call   requires a reply response
---   call_  requires a reply response with an empty blob (a common case)
-
-call'' :: (HasCallStack, HasAgentConfig) => Blob -> Prog -> IO (HTTPErrOr ReqResponse)
-call'' cid prog = awaitCall' cid (callRequest cid prog)
-
-call' :: (HasCallStack, HasAgentConfig) => Blob -> Prog -> IO ReqResponse
-call' cid prog = call'' cid prog >>= is2xx
-
-call :: (HasCallStack, HasAgentConfig) => Blob -> Prog -> IO Blob
-call cid prog = call' cid prog >>= isReply
-
-call_ :: (HasCallStack, HasAgentConfig) => Blob -> Prog -> IO ()
-call_ cid prog = call cid prog >>= is ""
-
-callTwice' :: (HasCallStack, HasAgentConfig) => Blob -> Prog -> IO ReqResponse
-callTwice' cid prog = awaitCallTwice cid (callRequest cid prog)
-
-
-query' :: (HasCallStack, HasAgentConfig) => Blob -> Prog -> IO ReqResponse
-query' cid prog =
-  queryCBOR cid >=> queryResponse $ rec
-    [ "request_type" =: GText "query"
-    , "sender" =: GBlob defaultUser
-    , "canister_id" =: GBlob cid
-    , "method_name" =: GText "query"
-    , "arg" =: GBlob (run prog)
-    ]
-
-query :: (HasCallStack, HasAgentConfig) => Blob -> Prog -> IO Blob
-query cid prog = query' cid prog >>= isReply
-
-query_ :: (HasCallStack, HasAgentConfig) => Blob -> Prog -> IO ()
-query_ cid prog = query cid prog >>= is ""
-
--- Predicates to handle the responses from relayReply and relayReject
-isRelay :: HasCallStack => Blob -> IO ReqResponse
-isRelay = runGet $ Get.getWord32le >>= \case
-    0 -> Reply <$> Get.getRemainingLazyByteString
-    0x4c444944 -> fail "Encountered Candid when expectin relayed data. Did you forget to use isRelay?"
-    c -> do
-      msg <- Get.getRemainingLazyByteString
-      return $ Reject (fromIntegral c) (T.decodeUtf8With T.lenientDecode (BS.toStrict msg))
-
-
--- Shortcut for test cases that just need one canister.
-simpleTestCase :: (HasCallStack, HasAgentConfig) => String -> (Blob -> IO ()) -> TestTree
-simpleTestCase name act = testCase name $ install noop >>= act
-
--- * Programmatic test generation
-
--- | Runs test once for each field with that field removed, including nested
--- fields
-omitFields :: GenR -> (GenR -> Assertion) -> [TestTree]
-omitFields (GRec hm) act =
-    [ let hm' = HM.delete f hm
-      in testCase ("omitting " ++ T.unpack f) $ act (GRec hm')
-    | f <- fields
-    ] ++ concat
-    [ omitFields val $ \val' -> act (GRec (HM.insert f val' hm))
-    | f <- fields
-    , val@(GRec _) <- return $ hm HM.! f
-    ]
-  where fields = sort $ HM.keys hm
-omitFields _ _ = error "omitFields needs a GRec"
-
-
--- * Test data access
-
-getTestFile :: FilePath -> IO FilePath
-getTestFile file =
-    lookupEnv "IC_TEST_DATA" >>= \case
-    Just fp -> return $ fp </> file
-    Nothing -> do
-      -- nix use
-      exePath <- getExecutablePath
-      let exeRelPath = takeDirectory exePath </> "../test-data"
-      -- convenient for cabal new-run use
-      try [ exeRelPath, "test-data", "../test-data", "impl/test-data" ]
-  where
-    try (d:ds) = doesFileExist (d </> file) >>= \case
-      True -> return (d </> file)
-      False -> try ds
-    try [] = error $ "getTestDir: Could not read " ++ file ++ " from test-data/. Please consult README.md"
-
-getTestWasm :: FilePath -> IO BS.ByteString
-getTestWasm base = do
-  fp <- getTestFile $ base <.> "wasm"
-  BS.readFile fp
-
--- * Helper patterns
-
--- A barrier
-
--- This will stop and start all mentioned canisters. This guarantees
--- that all outstanding callbacks are handled
-barrier :: HasAgentConfig => [Blob] -> IO ()
-barrier cids = do
-  mapM_ (ic_stop_canister ic00) cids
-  mapM_ (ic_start_canister ic00) cids
-
-
--- A message hold
---
--- This allows the test driver to withhold the response to a message, and
--- control when they are released, in order to produce situations with
--- outstanding call contexts.
---
--- In an ideal world (from our pov), we could instrument and control the
--- system's scheduler this way, but we can't. So instead, we use some tricks.
--- Ideally, the details of this trick are irrelevant to the users of this
--- function (yay, abstraction), and if we find better tricks, we can swap them
--- out easily. We'll see if that holds water.
---
--- One problem with this approach is that a test failure could mean that the
--- system doesn't pass the test, but it could also mean that the system has a
--- bug that prevents this trick from working, so take care.
---
--- The current trick is: Create a canister (the "stopper"). Make it its own
--- controller. Tell the canister to stop itself. This call will now hang,
--- because a canister cannot stop itself. We can release the call (producing a
--- reject) by starting the canister again.
---
--- Returns a program to be executed by any canister, which will cause this
--- canister to send a message that will not be responded to, until the given
--- IO action is performed.
-createMessageHold :: HasAgentConfig => IO (Prog, IO ())
-createMessageHold = do
-  cid <- install noop
-  ic_set_controllers ic00 cid [defaultUser, cid]
-  let holdMessage = inter_update cid defArgs
-        { other_side =
-            callNew "" "stop_canister" (callback (trap "createMessageHold: stopping succeeded?")) (callback reply) >>>
-            callDataAppend (bytes (Candid.encode (#canister_id .== Principal cid))) >>>
-            callPerform
-        , on_reply = reply
-        }
-  let release = ic_start_canister ic00 cid
-  return (holdMessage, release)
-
-

@@ -3,7 +3,8 @@
 module IC.HTTP where
 
 import Network.Wai
-import Control.Concurrent (forkIO)
+import Control.Concurrent (forkIO, threadDelay)
+import Control.Concurrent.Async (withAsync)
 import Network.HTTP.Types
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
@@ -25,9 +26,20 @@ import IC.Serialise ()
 import IC.StateFile
 import IC.Crypto
 
-withApp :: Maybe FilePath -> (Application -> IO a) -> IO a
-withApp backingFile action =
-    withStore initialIC backingFile (action . handle)
+withApp :: [SubnetConfig] -> Int -> Maybe FilePath -> (Application -> IO a) -> IO a
+withApp subnets systemTaskPeriod backingFile action =
+    withStore (initialIC subnets) backingFile $ \store -> 
+      withAsync (loopIC store) $ \_async -> 
+        action $ handle store
+  where
+    loopIC :: Store IC -> IO ()
+    loopIC store = forever $ do
+        threadDelay systemTaskPeriod
+        modifyStore store aux
+      where
+        aux = do
+          lift getTimestamp >>= setAllTimesTo
+          processSystemTasks
 
 handle :: Store IC -> Application
 handle store req respond = case (requestMethod req, pathInfo req) of
@@ -50,7 +62,7 @@ handle store req respond = case (requestMethod req, pathInfo req) of
                             Left err ->
                                 lift $ invalidRequest err
                             Right () -> do
-                                submitRequest (requestId gr) cr
+                                submitRequest (requestId gr) cr (EntityId ecid)
                                 lift $ empty status202
                 "query" -> withSignedCBOR root_key $ \(gr, ev) -> case queryRequest gr of
                     Left err -> invalidRequest err
@@ -72,17 +84,19 @@ handle store req respond = case (requestMethod req, pathInfo req) of
                                 lift $ invalidRequest err
                             Right () -> do
                                 t <- lift getTimestamp
-                                r <- handleReadState t rsr
-                                lift $ cbor status200 (IC.HTTP.Request.response r)
+                                r <- handleReadState t (EntityId ecid) rsr
+                                case r of
+                                  Left err -> lift $ invalidRequest err
+                                  Right r -> lift $ cbor status200 (IC.HTTP.Request.response r)
                 _ -> notFound req
     _ -> notFound req
   where
     runIC :: StateT IC IO a -> IO a
     runIC a = do
-      modifyStore store processHeartbeats
       x <- modifyStore store $ do
         -- Here we make IC.Ref use “real time”
         lift getTimestamp >>= setAllTimesTo
+        processSystemTasks
         a
       -- begin processing in the background (it is important that
       -- this thread returns, else warp is blocked somehow)

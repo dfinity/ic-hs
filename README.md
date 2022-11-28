@@ -190,6 +190,14 @@ It’s necessary to wrap all lines with the `r $ …` for now; this sets the
 endpoint parameter.
 
 
+Continuous Integration
+----------------------
+
+We use GitHub Actions to trigger builds of the jobs defined in `./default.nix`. However the builds themselves are run on the [nixbuild.net](https://nixbuild.net/) service since it provides more capacity and is more efficient than GitHub runners.
+
+Please use the artifacts produced by GitHub Actions and nixbuild.net at your own risk or consider building independently from source.
+
+
 Running
 -------
 
@@ -224,7 +232,7 @@ which will run `ic-ref` and restart upon file changes.  Similarly
 
 For `ic-ref-test`, before running it, you make sure you have built the universal canister.
 
-The symbolic link in `test-data/universal_canister.wasm` points to the
+The symbolic link in `test-data/universal-canister.wasm` points to the
 build output produced by
 
     cd universal-canister

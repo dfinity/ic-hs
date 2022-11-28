@@ -22,7 +22,6 @@ import GHC.Generics
 
 import qualified IC.Wasm.Winter as W
 import qualified IC.Canister.StableMemory as Stable
-
 import Control.Monad.Random.Lazy
 import System.Random.Internal (StdGen(..))
 import System.Random.SplitMix
@@ -47,8 +46,14 @@ instance Serialise NeedsToRespond where
 deriving instance Generic RejectCode
 instance Serialise RejectCode where
 
+deriving instance Generic ErrorCode
+instance Serialise ErrorCode where
+
 deriving instance Generic Response
 instance Serialise Response where
+
+deriving instance Generic SubnetType
+instance Serialise SubnetType where
 
 deriving instance Generic WasmClosure
 instance Serialise WasmClosure where
@@ -135,3 +140,4 @@ instance Serialise SecretKey where
     encode (BLS sk) = encode sk
     encode _ = error "IC.Serialise SecretKey: Only BLS supported"
     decode = BLS <$> decode
+
