@@ -644,7 +644,7 @@ icTests subnet = withAgentConfig $ testGroup "Interface Spec acceptance tests"
       ic_stop_canister ic00 cid
 
       step "Cannot call (update)?"
-      call'' cid reply >>= isErrOrReject [5]
+      call' cid reply >>= isReject [5]
 
       step "Cannot call (query)?"
       query' cid reply >>= isReject [5]
@@ -710,7 +710,7 @@ icTests subnet = withAgentConfig $ testGroup "Interface Spec acceptance tests"
       awaitKnown grs3 >>= isPendingOrProcessing
 
       step "Cannot call (update)?"
-      call'' cid reply >>= isErrOrReject [5]
+      call' cid reply >>= isReject [5]
 
       step "Cannot call (query)?"
       query' cid reply >>= isReject [5]
@@ -729,7 +729,7 @@ icTests subnet = withAgentConfig $ testGroup "Interface Spec acceptance tests"
 
 
       step "Cannot call (update)?"
-      call'' cid reply >>= isErrOrReject [5]
+      call' cid reply >>= isReject [5]
 
       step "Cannot call (query)?"
       query' cid reply >>= isReject [5]

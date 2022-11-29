@@ -539,9 +539,6 @@ inspectIngress (CallRequest canister_id user_id method arg)
   | otherwise = do
     onReject (throwError . T.pack . rejectMessage) $
         canisterMustExist canister_id
-    getRunStatus canister_id >>= \case
-       IsRunning -> return ()
-       _ -> throwError "canister is stopped"
     empty <- isCanisterEmpty canister_id
     when empty $ throwError "canister is empty"
     wasm_state <- getCanisterState canister_id
