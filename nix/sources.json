@@ -63,5 +63,11 @@
         "type": "tarball",
         "url": "https://github.com/dfinity-side-projects/winter/archive/530d5e395bb9919187d47d3966c4d526e668b62a.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
+    },
+    "http-client": {
+        "branch": "mraszyk/nix",
+        "url": "https://github.com/mraszyk/http-client/raw/mraszyk/nix/http-client.tar.gz",
+        "sha256": "0jm9klh5a1gvzyxxinj0yylij2rgxqlprlgin6hfrby1xvwkdps7",
+        "type": "tarball"
     }
 }

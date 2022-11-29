@@ -32,6 +32,7 @@ module IC.Test.Agent
       HTTPErrOr,
       HasAgentConfig,
       IC00,
+      IC00WithCycles,
       IC00',
       ReqResponse(..),
       ReqStatus(..),
@@ -751,6 +752,7 @@ be refactored so that the test can declarative pick A, B and C separately.
 
 -- how to reach the management canister
 type IC00 = Blob -> T.Text -> Blob -> IO ReqResponse
+type IC00WithCycles = Word64 -> IC00
 type IC00' = Blob -> T.Text -> Blob -> IO (HTTPErrOr ReqResponse)
 
 ic00as :: (HasAgentConfig, HasCallStack) => Blob -> IC00
