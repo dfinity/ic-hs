@@ -39,6 +39,10 @@ type Settings = [candidType|
     }
   |]
 
+type HttpHeader = [candidType|
+    record { name: text; value: text }
+  |]
+
 type HttpResponse = [candidType|
     record {
       status: nat;

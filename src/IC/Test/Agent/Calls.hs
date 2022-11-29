@@ -28,9 +28,15 @@ module IC.Test.Agent.Calls
       ic_ecdsa_public_key'',
       ic_ecdsa_public_key',
       ic_ecdsa_public_key,
-      ic_http_request'',
-      ic_http_request',
-      ic_http_request,
+      ic_http_get_request'',
+      ic_http_get_request',
+      ic_http_get_request,
+      ic_http_post_request',
+      ic_http_post_request,
+      ic_http_head_request',
+      ic_http_head_request,
+      ic_long_url_http_request',
+      ic_long_url_http_request,
       ic_install'',
       ic_install',
       ic_install,
@@ -72,6 +78,8 @@ import qualified Data.Word as W
 import IC.Management
 import IC.Id.Forms
 import IC.Test.Agent
+import IC.Types(SubnetType(..))
+import IC.Utils
 
 ic_create :: (HasCallStack, HasAgentConfig, PartialSettings r) => IC00 -> Rec r -> IO Blob
 ic_create ic00 ps = do
@@ -150,33 +158,58 @@ ic_raw_rand :: HasAgentConfig => IC00 -> IO Blob
 ic_raw_rand ic00 =
   callIC ic00 agentEcid #raw_rand ()
 
-max_inter_canister_payload_in_bytes :: W.Word64
-max_inter_canister_payload_in_bytes = 2 * 1024 * 1024 -- 2 MiB
-
-http_request_fee :: (a -> IO b) ~ (ICManagement IO .! "http_request") => a -> W.Word64 -> W.Word64 -> W.Word64
-http_request_fee r base per_byte = base + per_byte * total_bytes
-  where
-    response_size_fee Nothing = max_inter_canister_payload_in_bytes
-    response_size_fee (Just max_response_size) = max_response_size
-    transform_fee Nothing = 0
-    transform_fee (Just v) = dec_var (v .! #function) + fromIntegral (BS.length (v .! #context))
-    dec_var (Candid.FuncRef _ t) = T.length t
-    body_fee Nothing = 0
-    body_fee (Just t) = BS.length t
-    total_bytes = response_size_fee (fmap fromIntegral $ r .! #max_response_bytes)
-      + (fromIntegral $ T.length $ r .! #url)
-      + (fromIntegral $ sum $ map (\h -> T.length (h .! #name) + T.length (h .! #value)) $ Vec.toList $ r .! #headers)
-      + (fromIntegral $ body_fee $ r .! #body)
-      + (fromIntegral $ transform_fee $ r .! #transform)
-
-ic_http_request ::
+ic_http_get_request ::
     forall a b. (a -> IO b) ~ (ICManagement IO .! "http_request") =>
-    HasAgentConfig => ((W.Word64 -> W.Word64 -> W.Word64) -> IC00) -> String -> Blob -> Maybe (String, Blob) -> IO b
-ic_http_request ic00 path canister_id transform =
-  callIC (ic00 $ http_request_fee request) "" #http_request request
+    HasAgentConfig => IC00WithCycles -> SubnetType -> String -> Maybe W.Word64 -> Maybe (String, Blob) -> Blob -> IO b
+ic_http_get_request ic00 sub path max_response_bytes transform canister_id =
+  callIC (ic00 $ http_request_fee request sub) "" #http_request request
   where
     request = empty
-      .+ #url .== (T.pack $ httpbin ++ "/" ++ path)
+      .+ #url .== (T.pack $ "https://" ++ httpbin ++ "/" ++ path)
+      .+ #max_response_bytes .== max_response_bytes
+      .+ #method .== enum #get
+      .+ #headers .== Vec.empty
+      .+ #body .== Nothing
+      .+ #transform .== (toTransformFn transform canister_id)
+
+ic_http_post_request :: HasAgentConfig =>
+    (a -> IO b) ~ (ICManagement IO .! "http_request") =>
+    IC00WithCycles -> SubnetType -> String -> Maybe W.Word64 -> Maybe BS.ByteString -> Vec.Vector HttpHeader -> Maybe (String, Blob) -> Blob -> IO b
+ic_http_post_request ic00 sub path max_response_bytes body headers transform canister_id =
+  callIC (ic00 $ http_request_fee request sub) "" #http_request request
+  where
+    request = empty
+      .+ #url .== (T.pack $ "https://" ++ httpbin ++ "/" ++ path)
+      .+ #max_response_bytes .== max_response_bytes
+      .+ #method .== enum #post
+      .+ #headers .== headers
+      .+ #body .== body
+      .+ #transform .== (toTransformFn transform canister_id)
+
+ic_http_head_request :: HasAgentConfig =>
+    (a -> IO b) ~ (ICManagement IO .! "http_request") =>
+    IC00WithCycles -> SubnetType -> String -> Maybe W.Word64 -> Maybe BS.ByteString -> Vec.Vector HttpHeader -> Maybe (String, Blob) -> Blob -> IO b
+ic_http_head_request ic00 sub path max_response_bytes body headers transform canister_id =
+  callIC (ic00 $ http_request_fee request sub) "" #http_request request
+  where
+    request = empty
+      .+ #url .== (T.pack $ "https://" ++ httpbin ++ "/" ++ path)
+      .+ #max_response_bytes .== max_response_bytes
+      .+ #method .== enum #head
+      .+ #headers .== headers
+      .+ #body .== body
+      .+ #transform .== (toTransformFn transform canister_id)
+
+ic_long_url_http_request :: HasAgentConfig =>
+  forall a b. (a -> IO b) ~ (ICManagement IO .! "http_request") =>
+  IC00WithCycles -> SubnetType -> String -> W.Word64 -> Maybe (String, Blob) -> Blob -> IO b
+ic_long_url_http_request ic00 sub proto len transform canister_id =
+  callIC (ic00 $ http_request_fee request sub) "" #http_request request
+  where
+    l = fromIntegral len - (length $ proto ++ httpbin ++ "/ascii/")
+    path = take l $ repeat 'x'
+    request = empty
+      .+ #url .== (T.pack $ proto ++ httpbin ++ "/ascii/" ++ path)
       .+ #max_response_bytes .== Nothing
       .+ #method .== enum #get
       .+ #headers .== Vec.empty
@@ -266,17 +299,55 @@ ic_ecdsa_public_key' ic00 canister_id path =
        .+ #name .== (T.pack "0")
     )
 
-ic_http_request' :: HasAgentConfig => ((W.Word64 -> W.Word64 -> W.Word64) -> IC00) -> String -> Blob -> (Maybe (String, Blob), Blob) -> IO ReqResponse
-ic_http_request' ic00 path canister_id (transform, cid) =
-  callIC' (ic00 $ http_request_fee request) canister_id #http_request request
+ic_http_get_request' :: HasAgentConfig => IC00WithCycles -> SubnetType -> String -> String -> Maybe W.Word64 -> Maybe (String, Blob) -> Blob -> IO ReqResponse
+ic_http_get_request' ic00 sub proto path max_response_bytes transform canister_id =
+  callIC' (ic00 $ http_request_fee request sub) "" #http_request request
   where
     request = empty
-      .+ #url .== (T.pack $ httpbin ++ "/" ++ path)
+      .+ #url .== (T.pack $ proto ++ httpbin ++ "/" ++ path)
+      .+ #max_response_bytes .== max_response_bytes
+      .+ #method .== enum #get
+      .+ #headers .== Vec.empty
+      .+ #body .== Nothing
+      .+ #transform .== (toTransformFn transform canister_id)
+
+ic_http_post_request' :: HasAgentConfig => IC00WithCycles -> SubnetType -> String -> Maybe W.Word64 -> Maybe BS.ByteString -> Vec.Vector HttpHeader -> Maybe (String, Blob) -> Blob -> IO ReqResponse
+ic_http_post_request' ic00 sub path max_response_bytes body headers transform canister_id =
+  callIC' (ic00 $ http_request_fee request sub) "" #http_request request
+  where
+    request = empty
+      .+ #url .== (T.pack $ "https://" ++ httpbin ++ "/" ++ path)
+      .+ #max_response_bytes .== max_response_bytes
+      .+ #method .== enum #post
+      .+ #headers .== headers
+      .+ #body .== body
+      .+ #transform .== (toTransformFn transform canister_id)
+
+ic_http_head_request' :: HasAgentConfig => IC00WithCycles -> SubnetType -> String -> Maybe W.Word64 -> Maybe BS.ByteString -> Vec.Vector HttpHeader -> Maybe (String, Blob) -> Blob -> IO ReqResponse
+ic_http_head_request' ic00 sub path max_response_bytes body headers transform canister_id =
+  callIC' (ic00 $ http_request_fee request sub) "" #http_request request
+  where
+    request = empty
+      .+ #url .== (T.pack $ "https://" ++ httpbin ++ "/" ++ path)
+      .+ #max_response_bytes .== max_response_bytes
+      .+ #method .== enum #head
+      .+ #headers .== headers
+      .+ #body .== body
+      .+ #transform .== (toTransformFn transform canister_id)
+
+ic_long_url_http_request' :: HasAgentConfig => IC00WithCycles -> SubnetType -> String -> W.Word64 -> Maybe (String, Blob) -> Blob -> IO ReqResponse
+ic_long_url_http_request' ic00 sub proto len transform canister_id =
+  callIC' (ic00 $ http_request_fee request sub) "" #http_request request
+  where
+    l = fromIntegral len - (length $ proto ++ httpbin ++ "/ascii/")
+    path = take l $ repeat 'x'
+    request = empty
+      .+ #url .== (T.pack $ proto ++ httpbin ++ "/ascii/" ++ path)
       .+ #max_response_bytes .== Nothing
       .+ #method .== enum #get
       .+ #headers .== Vec.empty
       .+ #body .== Nothing
-      .+ #transform .== (toTransformFn transform cid)
+      .+ #transform .== (toTransformFn transform canister_id)
 
 ic_install'' :: (HasCallStack, HasAgentConfig) => Blob -> InstallMode -> Blob -> Blob -> Blob -> IO (HTTPErrOr ReqResponse)
 ic_install'' user mode canister_id wasm_module arg =
@@ -326,10 +397,10 @@ ic_raw_rand'' :: HasAgentConfig => Blob -> IO (HTTPErrOr ReqResponse)
 ic_raw_rand'' user = do
   callIC'' user agentEcid #raw_rand ()
 
-ic_http_request'' :: HasAgentConfig => Blob -> IO (HTTPErrOr ReqResponse)
-ic_http_request'' user =
-  callIC'' user agentEcid #http_request $ empty
-    .+ #url .== (T.pack $ httpbin)
+ic_http_get_request'' :: HasAgentConfig => Blob -> IO (HTTPErrOr ReqResponse)
+ic_http_get_request'' user =
+  callIC'' user "" #http_request $ empty
+    .+ #url .== (T.pack $ "https://" ++ httpbin)
     .+ #max_response_bytes .== Nothing
     .+ #method .== enum #get
     .+ #headers .== Vec.empty

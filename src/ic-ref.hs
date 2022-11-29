@@ -2,7 +2,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 import Options.Applicative
 import Data.Foldable
+import Data.Maybe(fromJust)
 import Data.Word as W
+import qualified Data.X509.CertificateStore as C
 import Control.Concurrent
 import Control.Monad (join, forever)
 import Network.Wai.Middleware.Cors
@@ -11,6 +13,7 @@ import Network.Wai.Handler.Warp
 import qualified Data.Text as T
 import IC.HTTP
 import IC.Types
+import IC.Utils
 import IC.Version
 import qualified IC.Crypto.BLS as BLS
 
@@ -18,12 +21,15 @@ defaultPort :: Port
 defaultPort = 8001
 
 
-work :: [(SubnetType, String, [(W.Word64, W.Word64)])] -> Int -> Maybe Int -> Maybe FilePath -> Maybe FilePath -> Bool ->  IO ()
-work subnets systemTaskPeriod portToUse writePortTo backingFile log = do
+work :: [(SubnetType, String, [(W.Word64, W.Word64)])] -> Maybe String -> Int -> Maybe Int -> Maybe FilePath -> Maybe FilePath -> Bool ->  IO ()
+work subnets maybe_cert_path systemTaskPeriod portToUse writePortTo backingFile log = do
     let subs = map (\(t, n, ranges) -> SubnetConfig t n ranges) subnets
     putStrLn "Starting ic-ref..."
     BLS.init
-    withApp subs (systemTaskPeriod * 1000000) backingFile $ \app -> do
+    certs <- case maybe_cert_path of Nothing -> return []
+                                     Just ps -> C.listCertificates <$> fromJust <$> C.readCertificateStore ps
+    conf <- makeRefConfig certs
+    withRefConfig conf $ withApp subs (systemTaskPeriod * 1000000) backingFile $ \app -> do
         let app' =  laxCorsSettings $ if log then logStdoutDev app else app
         case portToUse of
           Nothing ->
@@ -83,6 +89,11 @@ main = join . customExecParser (prefs showHelpOnError) $
           )
         <|> pure defaultSubnetConfig
         )
+      <*> optional (strOption
+            (  long "cert-path"
+            <> help "path to certificate file or directory"
+            )
+          )
       <*>
         (
           (

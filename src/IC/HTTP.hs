@@ -25,8 +25,9 @@ import IC.Debug.JSON ()
 import IC.Serialise ()
 import IC.StateFile
 import IC.Crypto
+import IC.Utils
 
-withApp :: [SubnetConfig] -> Int -> Maybe FilePath -> (Application -> IO a) -> IO a
+withApp :: HasRefConfig => [SubnetConfig] -> Int -> Maybe FilePath -> (Application -> IO a) -> IO a
 withApp subnets systemTaskPeriod backingFile action =
     withStore (initialIC subnets) backingFile $ \store -> 
       withAsync (loopIC store) $ \_async -> 
@@ -41,7 +42,7 @@ withApp subnets systemTaskPeriod backingFile action =
           lift getTimestamp >>= setAllTimesTo
           processSystemTasks
 
-handle :: Store IC -> Application
+handle :: HasRefConfig => Store IC -> Application
 handle store req respond = case (requestMethod req, pathInfo req) of
     ("GET", []) -> peekStore store >>= json status200
     ("GET", ["api","v1",_]) -> noV1 req

@@ -10,6 +10,7 @@
 , atomic-write
 , base
 , base32
+, base64
 , base64-bytestring
 , binary
 , bytestring
@@ -17,6 +18,7 @@
 , case-insensitive
 , cborg
 , cereal
+, connection
 , containers
 , crc
 , cryptonite
@@ -36,6 +38,7 @@
 , memory
 , MonadRandom
 , mtl
+, network-uri
 , optparse-applicative
 , parallel
 , prettyprinter
@@ -57,6 +60,7 @@
 , temporary
 , text
 , time
+, tls
 , transformers
 , uglymemo
 , unordered-containers
@@ -68,6 +72,10 @@
 , warp
 , wide-word
 , winter
+, word8
+, x509
+, x509-store
+, x509-validation
 , zlib
 }:
 mkDerivation {
@@ -85,6 +93,7 @@ mkDerivation {
     atomic-write
     base
     base32
+    base64
     base64-bytestring
     binary
     bytestring
@@ -92,6 +101,7 @@ mkDerivation {
     case-insensitive
     cborg
     cereal
+    connection
     containers
     crc
     cryptonite
@@ -110,6 +120,7 @@ mkDerivation {
     memory
     MonadRandom
     mtl
+    network-uri
     optparse-applicative
     parallel
     prettyprinter
@@ -131,6 +142,7 @@ mkDerivation {
     temporary
     text
     time
+    tls
     transformers
     uglymemo
     unordered-containers
@@ -142,6 +154,10 @@ mkDerivation {
     warp
     wide-word
     winter
+    word8
+    x509
+    x509-store
+    x509-validation
     zlib
   ];
   executableHaskellDepends = [
@@ -152,6 +168,7 @@ mkDerivation {
     atomic-write
     base
     base32
+    base64
     base64-bytestring
     binary
     bytestring
@@ -159,6 +176,7 @@ mkDerivation {
     case-insensitive
     cborg
     cereal
+    connection
     containers
     crc
     cryptonite
@@ -177,6 +195,7 @@ mkDerivation {
     memory
     MonadRandom
     mtl
+    network-uri
     optparse-applicative
     parallel
     prettyprinter
@@ -195,6 +214,7 @@ mkDerivation {
     template-haskell
     text
     time
+    tls
     transformers
     uglymemo
     unordered-containers
@@ -206,6 +226,10 @@ mkDerivation {
     warp
     wide-word
     winter
+    word8
+    x509
+    x509-store
+    x509-validation
     zlib
   ];
   testHaskellDepends = [
@@ -215,6 +239,7 @@ mkDerivation {
     atomic-write
     base
     base32
+    base64
     base64-bytestring
     binary
     bytestring
@@ -222,6 +247,7 @@ mkDerivation {
     case-insensitive
     cborg
     cereal
+    connection
     containers
     crc
     cryptonite
@@ -240,6 +266,7 @@ mkDerivation {
     memory
     MonadRandom
     mtl
+    network-uri
     parallel
     primitive
     quickcheck-io
@@ -254,12 +281,17 @@ mkDerivation {
     temporary
     text
     time
+    tls
     transformers
     uglymemo
     unordered-containers
     utf8-string
     vector
     winter
+    word8
+    x509
+    x509-store
+    x509-validation
     zlib
   ];
   doCheck = false;

@@ -140,4 +140,3 @@ instance Serialise SecretKey where
     encode (BLS sk) = encode sk
     encode _ = error "IC.Serialise SecretKey: Only BLS supported"
     decode = BLS <$> decode
-

@@ -25,11 +25,13 @@ import IC.Test.Secp256k1
 import IC.Test.StableMemory
 import IC.HTTP.GenR
 import IC.HTTP.RequestId
+import IC.Utils
 
 main :: IO ()
 main = do
     BLS.init
-    defaultMain tests
+    conf <- makeRefConfig []
+    defaultMain $ tests conf
 
 defaultSubnetConfig :: [SubnetConfig]
 defaultSubnetConfig = [SubnetConfig Application "sk" [(0, 0)]]
@@ -37,8 +39,8 @@ defaultSubnetConfig = [SubnetConfig Application "sk" [(0, 0)]]
 defaultEcid :: CanisterId
 defaultEcid = wordToId 0
 
-tests :: TestTree
-tests = testGroup "ic-ref unit tests"
+tests :: RefConfig -> TestTree
+tests conf = testGroup "ic-ref unit tests"
   [ testCase "Request id calculation from interface spec" $
      let gr = GRec $ mconcat
           [ "request_type" =: GText "call"
@@ -62,7 +64,7 @@ tests = testGroup "ic-ref unit tests"
 
         -- Create the state
         withStore (initialIC defaultSubnetConfig) (Just fn) $ \store -> do
-          modifyStore store $ submitRequest "dummyrequestid"
+          modifyStore store $ withRefConfig conf $ submitRequest "dummyrequestid"
             (CallRequest (EntityId mempty) (EntityId "yay") "provisional_create_canister_with_cycles" "DIDL\x01\x6c\0\1\0") defaultEcid
 
         -- now the file should exist
@@ -71,7 +73,7 @@ tests = testGroup "ic-ref unit tests"
         withStore (initialIC defaultSubnetConfig) (Just fn) $ \store -> do
           ic <- peekStore store
           assertBool "No canisters yet expected" (null (canisters ic))
-          modifyStore store runToCompletion
+          modifyStore store $ withRefConfig conf runToCompletion
 
         withStore (initialIC defaultSubnetConfig) (Just fn) $ \store -> do
           ic <- peekStore store

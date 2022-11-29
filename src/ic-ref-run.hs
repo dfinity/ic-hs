@@ -41,6 +41,7 @@ import IC.Types
 import IC.Ref
 import IC.DRun.Parse (Ingress(..), parseFile)
 import IC.Management
+import IC.Utils
 
 import IC.StateFile
 import IC.Serialise ()
@@ -92,7 +93,7 @@ shorten n s = a ++ (if null b then "" else "...")
   where (a,b) = splitAt n s
 
 
-submitAndRun :: Store IC -> CanisterId -> CallRequest -> IO ()
+submitAndRun :: HasRefConfig => Store IC -> CanisterId -> CallRequest -> IO ()
 submitAndRun store ecid r = do
     printCallRequest r
     rid <- mkRequestId
@@ -107,7 +108,7 @@ submitAndRun store ecid r = do
         False -> return ()
 
 
-submitQuery :: Store IC -> QueryRequest -> IO ()
+submitQuery :: HasRefConfig => Store IC -> QueryRequest -> IO ()
 submitQuery store r = do
     printQueryRequest r
     t <- getTimestamp
@@ -123,7 +124,7 @@ mkRequestId :: IO RequestID
 mkRequestId = B.toLazyByteString . B.word64BE <$> randomIO
 
 callManagement :: forall s a b.
-  KnownSymbol s =>
+  HasRefConfig => KnownSymbol s =>
   (a -> IO b) ~ (ICManagement IO .! s) =>
   Candid.CandidArg a =>
   Store IC -> CanisterId -> EntityId -> Label s -> a -> IO ()
@@ -137,40 +138,41 @@ work subnets systemTaskPeriod msg_file = do
   msgs <- parseFile msg_file
 
   let user_id = dummyUserId
+  conf <- makeRefConfig []
   withStore (initialIC subs) Nothing $ \store ->
-      withAsync (loopIC store) $ \_async ->
+      withAsync (withRefConfig conf $ loopIC store) $ \_async ->
           forM_ msgs $ \case
             Create ecid ->
-              callManagement store (EntityId ecid) user_id #provisional_create_canister_with_cycles $ empty
+              withRefConfig conf $ callManagement store (EntityId ecid) user_id #provisional_create_canister_with_cycles $ empty
                 .+ #settings .== Nothing
                 .+ #amount .== Nothing
             Install cid filename arg -> do
               wasm <- liftIO $ B.readFile filename
-              callManagement store (EntityId cid) user_id #install_code $ empty
+              withRefConfig conf $ callManagement store (EntityId cid) user_id #install_code $ empty
                 .+ #mode .== V.IsJust #install ()
                 .+ #canister_id .== Candid.Principal cid
                 .+ #wasm_module .== wasm
                 .+ #arg .== arg
             Reinstall cid filename arg -> do
               wasm <- liftIO $ B.readFile filename
-              callManagement store (EntityId cid) user_id #install_code $ empty
+              withRefConfig conf $ callManagement store (EntityId cid) user_id #install_code $ empty
                 .+ #mode .== V.IsJust #reinstall ()
                 .+ #canister_id .== Candid.Principal cid
                 .+ #wasm_module .== wasm
                 .+ #arg .== arg
             Upgrade cid filename arg -> do
               wasm <- liftIO $ B.readFile filename
-              callManagement store (EntityId cid) user_id #install_code $ empty
+              withRefConfig conf $ callManagement store (EntityId cid) user_id #install_code $ empty
                 .+ #mode .== V.IsJust #upgrade ()
                 .+ #canister_id .== Candid.Principal cid
                 .+ #wasm_module .== wasm
                 .+ #arg .== arg
             Query  cid method arg ->
-              submitQuery store (QueryRequest (EntityId cid) user_id method arg)
+              withRefConfig conf $ submitQuery store (QueryRequest (EntityId cid) user_id method arg)
             Update cid method arg ->
-              submitAndRun store (EntityId cid) (CallRequest (EntityId cid) user_id method arg)
+              withRefConfig conf $ submitAndRun store (EntityId cid) (CallRequest (EntityId cid) user_id method arg)
   where
-    loopIC :: Store IC -> IO ()
+    loopIC :: HasRefConfig => Store IC -> IO ()
     loopIC store = forever $ do
         threadDelay (systemTaskPeriod * 1000000)
         modifyStore store aux
