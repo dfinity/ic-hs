@@ -97,6 +97,7 @@ submitAndRun :: HasRefConfig => Store IC -> CanisterId -> CallRequest -> IO ()
 submitAndRun store ecid r = do
     printCallRequest r
     rid <- mkRequestId
+    modifyStore store processSystemTasks
     modifyStore store $ submitRequest rid r ecid
     loopIC
     (r, _) <- peekStore store >>= evalStateT (gets (snd . (M.! rid) . requests))
