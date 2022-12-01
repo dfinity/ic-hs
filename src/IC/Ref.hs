@@ -197,6 +197,8 @@ data Message
 
 -- Finally, the full IC state:
 
+type Subnet = (EntityId, SubnetType, SecretKey, [(W.Word64, W.Word64)])
+
 data IC = IC
   { canisters :: CanisterId ↦ CanState
   , requests :: RequestID ↦ (CallRequest, (RequestStatus, CanisterId))
@@ -205,7 +207,7 @@ data IC = IC
   , rng :: StdGen
   , secretRootKey :: SecretKey
   , rootSubnet :: Maybe EntityId
-  , subnets :: [(EntityId, SubnetType, SecretKey, [(W.Word64, W.Word64)])]
+  , subnets :: [Subnet]
   }
   deriving (Show)
 
@@ -620,7 +622,7 @@ delegationTree (Timestamp t) (EntityId subnet_id) subnet_pub_key ranges = node
     val = Value . toCertVal
     (=:) = M.singleton
 
-getSubnetFromCanisterId :: (CanReject m, ICM m) => CanisterId -> m (EntityId, SubnetType, SecretKey, [(W.Word64, W.Word64)])
+getSubnetFromCanisterId :: (CanReject m, ICM m) => CanisterId -> m Subnet
 getSubnetFromCanisterId cid = do
     subnets <- gets subnets
     case subnetOfCid cid subnets of
@@ -628,6 +630,9 @@ getSubnetFromCanisterId cid = do
       Just x -> return x
     where
       subnetOfCid cid subnets = find (\(_, _, _, ranges) -> find (\(a, b) -> wordToId a <= cid && cid <= wordToId b) ranges /= Nothing) subnets
+
+getSubnetFromSubnetId :: (CanReject m, ICM m) => CanisterId -> m (Maybe Subnet)
+getSubnetFromSubnetId sid = find (\(id, _, _, _) -> sid == id) <$> gets subnets
 
 getPrunedCertificate :: (CanReject m, ICM m) => Timestamp -> CanisterId -> [Path] -> m Certificate
 getPrunedCertificate time ecid paths = do
@@ -796,10 +801,10 @@ processMessage :: ICM m => Message -> m ()
 processMessage m = case m of
   CallMessage ctxt_id entry -> onReject (rejectCallContext ctxt_id) $ do
     callee <- calleeOfCallID ctxt_id
-    if callee == managementCanisterId
-    then do
+    maybeSubnet <- getSubnetFromSubnetId callee
+    if callee == managementCanisterId || isJust maybeSubnet then do
       caller <- callerOfCallID ctxt_id
-      invokeManagementCanister caller ctxt_id entry
+      invokeManagementCanister caller maybeSubnet ctxt_id entry
     else do
       canisterMustExist callee
       status <- getRunStatus callee
@@ -888,24 +893,24 @@ managementCanisterId = EntityId mempty
 
 
 invokeManagementCanister ::
-  forall m. (CanReject m, ICM m, MonadIO m) => EntityId -> CallId -> EntryPoint -> m ()
-invokeManagementCanister caller ctxt_id (Public method_name arg) =
+  forall m. (CanReject m, ICM m, MonadIO m) => EntityId -> Maybe Subnet -> CallId -> EntryPoint -> m ()
+invokeManagementCanister caller maybeSubnet ctxt_id (Public method_name arg) =
   case method_name of
       "create_canister" -> atomic $ icCreateCanister caller ctxt_id
-      "install_code" -> atomic $ onlyController caller $ icInstallCode caller
-      "uninstall_code" -> atomic $ onlyController caller $ icUninstallCode
-      "update_settings" -> atomic $ onlyController caller icUpdateCanisterSettings
-      "start_canister" -> atomic $ onlyController caller icStartCanister
-      "stop_canister" -> deferred $ onlyController caller $ icStopCanister ctxt_id
-      "canister_status" -> atomic $ onlyController caller icCanisterStatus
-      "delete_canister" -> atomic $ onlyController caller icDeleteCanister
-      "deposit_cycles" -> atomic $ icDepositCycles ctxt_id
+      "install_code" -> atomic $ onlyController caller $ checkSubnet fetchCanisterId maybeSubnet $ icInstallCode caller
+      "uninstall_code" -> atomic $ onlyController caller $ checkSubnet fetchCanisterId maybeSubnet $ icUninstallCode
+      "update_settings" -> atomic $ onlyController caller $ checkSubnet fetchCanisterId maybeSubnet icUpdateCanisterSettings
+      "start_canister" -> atomic $ onlyController caller $ checkSubnet fetchCanisterId maybeSubnet icStartCanister
+      "stop_canister" -> deferred $ onlyController caller $ checkSubnet fetchCanisterId maybeSubnet $ icStopCanister ctxt_id
+      "canister_status" -> atomic $ onlyController caller $ checkSubnet fetchCanisterId maybeSubnet icCanisterStatus
+      "delete_canister" -> atomic $ onlyController caller $ checkSubnet fetchCanisterId maybeSubnet icDeleteCanister
+      "deposit_cycles" -> atomic $ checkSubnet fetchCanisterId maybeSubnet $ icDepositCycles ctxt_id
       "provisional_create_canister_with_cycles" -> atomic $ icCreateCanisterWithCycles caller ctxt_id
-      "provisional_top_up_canister" -> atomic icTopUpCanister
-      "raw_rand" -> atomic icRawRand
-      "http_request" -> atomic $ icHttpRequest caller ctxt_id
-      "ecdsa_public_key" -> atomic $ icEcdsaPublicKey caller
-      "sign_with_ecdsa" -> atomic $ icSignWithEcdsa caller
+      "provisional_top_up_canister" -> atomic $ checkSubnet fetchCanisterId maybeSubnet icTopUpCanister
+      "raw_rand" -> atomic $ noSubnet maybeSubnet icRawRand
+      "http_request" -> atomic $ noSubnet maybeSubnet $ icHttpRequest caller ctxt_id
+      "ecdsa_public_key" -> atomic $ checkSubnet (fetchCanisterIdfromMaybe caller) maybeSubnet $ icEcdsaPublicKey caller
+      "sign_with_ecdsa" -> atomic $ noSubnet maybeSubnet $ icSignWithEcdsa caller
       _ -> reject RC_DESTINATION_INVALID ("Unsupported management function " ++ method_name) (Just EC_METHOD_NOT_FOUND)
   where
     -- always responds
@@ -926,9 +931,9 @@ invokeManagementCanister caller ctxt_id (Public method_name arg) =
         Left msg -> reject RC_CANISTER_ERROR ("Candid failed to decode: " ++ msg) (Just EC_INVALID_ENCODING)
         Right x -> method (raw_reply . encode @b) x
 
-invokeManagementCanister _ _ Closure{} = error "closure invoked on management canister"
-invokeManagementCanister _ _ Heartbeat = error "heartbeat invoked on management canister"
-invokeManagementCanister _ _ GlobalTimer = error "global timer invoked on management canister"
+invokeManagementCanister _ _ _ Closure{} = error "closure invoked on management canister"
+invokeManagementCanister _ _ _ Heartbeat = error "heartbeat invoked on management canister"
+invokeManagementCanister _ _ _ GlobalTimer = error "global timer invoked on management canister"
 
 icHttpRequest :: (ICM m, CanReject m) => EntityId -> CallId -> ICManagement m .! "http_request"
 icHttpRequest caller ctxt_id r = do
@@ -1079,6 +1084,40 @@ onlyController caller act r = do
         prettyID caller <> " is not authorized to manage canister " <>
         prettyID canister_id <> ", Controllers are: " <> intercalate ", " (map prettyID (S.toList controllers)))
         (Just EC_NOT_AUTHORIZED)
+
+fetchCanisterIdfromMaybe ::
+  ((r .! "canister_id") ~ Maybe Principal) =>
+  EntityId -> R.Rec r -> EntityId
+fetchCanisterIdfromMaybe cid r =
+  case r .! #canister_id of Nothing -> cid
+                            Just c -> principalToEntityId c
+
+fetchCanisterId ::
+  ((r .! "canister_id") ~ Principal) =>
+  R.Rec r -> EntityId
+fetchCanisterId r = principalToEntityId (r .! #canister_id)
+
+checkSubnet ::
+  (ICM m, CanReject m) =>
+  (r -> EntityId) -> Maybe Subnet -> (r -> m a) -> (r -> m a)
+checkSubnet _ Nothing act r = act r
+checkSubnet c (Just (subnet_id, _, _, _)) act r = do
+    let canister_id = c r
+    canisterMustExist canister_id
+    (subnet_id', _, _, _) <- getSubnetFromCanisterId canister_id
+    if subnet_id == subnet_id'
+    then act r
+    else reject RC_CANISTER_ERROR (
+        prettyID canister_id <> " does not belong to subnet " <>
+        prettyID subnet_id)
+        (Just EC_INVALID_ARGUMENT)
+
+noSubnet ::
+  (ICM m, CanReject m) =>
+  Maybe Subnet -> (r -> m a) -> (r -> m a)
+noSubnet Nothing act r = act r
+noSubnet (Just _) _ _ = do
+    reject RC_CANISTER_ERROR "this method cannot be called in a subnet message" (Just EC_INVALID_ARGUMENT)
 
 icInstallCode :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "install_code"
 icInstallCode caller r = do
@@ -1260,9 +1299,7 @@ runRandIC a = state $ \ic ->
 
 icEcdsaPublicKey :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "ecdsa_public_key"
 icEcdsaPublicKey caller r = do
-    let cid = case r .! #canister_id of
-                Just cid -> principalToEntityId cid
-                Nothing -> caller
+    let cid = fetchCanisterIdfromMaybe caller r
     canisterMustExist cid
     let key = getCanisterRootKey cid
     case Bitcoin.derivePublicKey key (r .! #derivation_path) of
