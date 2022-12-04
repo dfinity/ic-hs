@@ -896,7 +896,7 @@ invokeManagementCanister ::
   forall m. (CanReject m, ICM m, MonadIO m) => EntityId -> Maybe Subnet -> CallId -> EntryPoint -> m ()
 invokeManagementCanister caller maybeSubnet ctxt_id (Public method_name arg) =
   case method_name of
-      "create_canister" -> atomic $ icCreateCanister caller ctxt_id
+      "create_canister" -> atomic $ noSubnet caller maybeSubnet $ icCreateCanister caller ctxt_id
       "install_code" -> atomic $ onlyController caller $ checkSubnet fetchCanisterId maybeSubnet $ icInstallCode caller
       "uninstall_code" -> atomic $ onlyController caller $ checkSubnet fetchCanisterId maybeSubnet $ icUninstallCode
       "update_settings" -> atomic $ onlyController caller $ checkSubnet fetchCanisterId maybeSubnet icUpdateCanisterSettings
@@ -907,10 +907,10 @@ invokeManagementCanister caller maybeSubnet ctxt_id (Public method_name arg) =
       "deposit_cycles" -> atomic $ checkSubnet fetchCanisterId maybeSubnet $ icDepositCycles ctxt_id
       "provisional_create_canister_with_cycles" -> atomic $ icCreateCanisterWithCycles caller ctxt_id
       "provisional_top_up_canister" -> atomic $ checkSubnet fetchCanisterId maybeSubnet icTopUpCanister
-      "raw_rand" -> atomic $ noSubnet maybeSubnet icRawRand
-      "http_request" -> atomic $ noSubnet maybeSubnet $ icHttpRequest caller ctxt_id
+      "raw_rand" -> atomic $ noSubnet caller maybeSubnet icRawRand
+      "http_request" -> atomic $ noSubnet caller maybeSubnet $ icHttpRequest caller ctxt_id
       "ecdsa_public_key" -> atomic $ checkSubnet (fetchCanisterIdfromMaybe caller) maybeSubnet $ icEcdsaPublicKey caller
-      "sign_with_ecdsa" -> atomic $ noSubnet maybeSubnet $ icSignWithEcdsa caller
+      "sign_with_ecdsa" -> atomic $ noSubnet caller maybeSubnet $ icSignWithEcdsa caller
       _ -> reject RC_DESTINATION_INVALID ("Unsupported management function " ++ method_name) (Just EC_METHOD_NOT_FOUND)
   where
     -- always responds
@@ -1114,10 +1114,15 @@ checkSubnet c (Just (subnet_id, _, _, _)) act r = do
 
 noSubnet ::
   (ICM m, CanReject m) =>
-  Maybe Subnet -> (r -> m a) -> (r -> m a)
-noSubnet Nothing act r = act r
-noSubnet (Just _) _ _ = do
-    reject RC_CANISTER_ERROR "this method cannot be called in a subnet message" (Just EC_INVALID_ARGUMENT)
+  EntityId -> Maybe Subnet -> (r -> m a) -> (r -> m a)
+noSubnet _ Nothing act r = act r
+noSubnet caller (Just (subnet_id, _, _, _)) act r = do
+    root_subnet_id <- gets rootSubnet
+    (caller_subnet_id, _, _, _) <- getSubnetFromCanisterId caller
+    if (root_subnet_id == Just caller_subnet_id || subnet_id == caller_subnet_id) then
+      reject RC_CANISTER_ERROR "the caller must be on the root subnet or belong to the target subnet" (Just EC_INVALID_ARGUMENT)
+    else
+      act r
 
 icInstallCode :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "install_code"
 icInstallCode caller r = do
