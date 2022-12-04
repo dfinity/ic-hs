@@ -848,6 +848,55 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
       addNonceExpiryEnv readStateEmpty >>= postQueryCBOR cid >>= code4xx
     ]
 
+  , testGroup "wrong effective canister id"
+    [ simpleTestCase "in call" $ \cid1 -> do
+      cid2 <- create
+      let req = rec
+            [ "request_type" =: GText "call"
+            , "sender" =: GBlob defaultUser
+            , "canister_id" =: GBlob cid1
+            , "method_name" =: GText "update"
+            , "arg" =: GBlob (run reply)
+            ]
+      addNonceExpiryEnv req >>= postCallCBOR cid2 >>= code4xx
+
+    , simpleTestCase "in query" $ \cid1 -> do
+      cid2 <- create
+      let req = rec
+            [ "request_type" =: GText "query"
+            , "sender" =: GBlob defaultUser
+            , "canister_id" =: GBlob cid1
+            , "method_name" =: GText "query"
+            , "arg" =: GBlob (run reply)
+            ]
+      addNonceExpiryEnv req >>= postQueryCBOR cid2 >>= code4xx
+
+    , simpleTestCase "in read_state" $ \cid -> do
+        cid2 <- install noop
+        getStateCert' defaultUser cid2 [["canisters", cid, "controllers"]] >>= code4xx
+
+    , simpleTestCase "non-existing (and likely invalid)" $ \cid1 -> do
+      let req = rec
+            [ "request_type" =: GText "call"
+            , "sender" =: GBlob defaultUser
+            , "canister_id" =: GBlob cid1
+            , "method_name" =: GText "update"
+            , "arg" =: GBlob (run reply)
+            ]
+      addNonceExpiryEnv req >>= postCallCBOR "foobar" >>= code4xx
+
+    , simpleTestCase "invalid textual represenation" $ \cid1 -> do
+      let req = rec
+            [ "request_type" =: GText "call"
+            , "sender" =: GBlob defaultUser
+            , "canister_id" =: GBlob cid1
+            , "method_name" =: GText "update"
+            , "arg" =: GBlob (run reply)
+            ]
+      let path = "/api/v2/canister/" ++ filter (/= '-') (textual cid1) ++ "/call"
+      addNonceExpiryEnv req >>= postCBOR path >>= code4xx
+    ]
+
   , testGroup "inter-canister calls"
     [ testGroup "builder interface"
       [ testGroup "traps without call_new"
