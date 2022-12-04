@@ -18,7 +18,7 @@ let universal-canister = (naersk.buildPackage rec {
     release = true;
 }).overrideAttrs (old: {
     postFixup = (old.postFixup or "") + ''
-      mv $out/bin/universal_canister.wasm $out/universal_canister.wasm
+      mv $out/bin/universal-canister.wasm $out/universal-canister.wasm
       rmdir $out/bin
     '';
 }); in
@@ -43,7 +43,7 @@ let
     haskellPackages.ic-hs.overrideAttrs (old: {
       installPhase = (old.installPhase or "") + ''
         mkdir $out/test-data
-        cp ${universal-canister}/universal_canister.wasm $out/test-data
+        cp ${universal-canister}/universal-canister.wasm $out/test-data
       '';
       # variant of justStaticExecutables that retains propagatedBuildInputs
       postFixup = "rm -rf $out/lib $out/share/doc";
@@ -64,10 +64,15 @@ let
       } ''
         mkdir -p $out/bin
         cp ${ic-ref}/bin/ic-ref $out/bin
+        cp ${ic-ref}/bin/ic-ref-test $out/bin
+        mkdir -p $out/test-data
+        cp ${ic-ref}/test-data/universal-canister.wasm $out/test-data/universal-canister.wasm
         chmod u+w $out/bin/ic-ref
+        chmod u+w $out/bin/ic-ref-test
         dylibbundler \
           -b \
           -x $out/bin/ic-ref \
+          -x $out/bin/ic-ref-test \
           -d $out/bin \
           -p '@executable_path' \
           -i /usr/lib/system \
@@ -80,6 +85,7 @@ let
           -t ${nixpkgs.darwin.Libsystem} \
           -t ${nixpkgs.darwin.CF} \
           -t ${nixpkgs.libiconv} \
+          -t ${staticHaskellPackages.tasty-html.data} \
           $out/bin/*
 
         # sanity check
@@ -101,6 +107,9 @@ let
       } ''
         mkdir -p $out/bin
         cp ${ic-hs-static}/bin/ic-ref $out/bin
+        cp ${ic-hs-static}/bin/ic-ref-test $out/bin
+        mkdir -p $out/test-data
+        cp ${ic-hs}/test-data/universal-canister.wasm $out/test-data/universal-canister.wasm
 
         # The Paths_warp module in warp contains references to warp's /nix/store path like:
         #
@@ -126,6 +135,10 @@ let
         #
         # So we can safely remove the references to warp:
         remove-references-to -t ${staticHaskellPackages.warp} $out/bin/ic-ref
+        remove-references-to \
+          -t ${staticHaskellPackages.tasty-html} \
+          -t ${staticHaskellPackages.tasty-html.data} \
+          $out/bin/ic-ref-test
       '';
 
 
@@ -138,9 +151,23 @@ in
 let
   httpbin =
     let
-      python = nixpkgs.python3.withPackages
-        (ps: [ ps.httpbin ps.gunicorn ps.gevent ]);
-    in "${python}/bin/gunicorn -b 127.0.0.1:8003 httpbin:app -k gevent";
+      my-python-package = ps: ps.callPackage ./httpbin.nix {};
+      python-with-my-packages = nixpkgs.python3.withPackages(ps: with ps; [
+        (my-python-package ps) ps.gunicorn ps.gevent
+      ]);
+      openssl = nixpkgs.openssl;
+    in "${openssl}/bin/openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -sha256 -nodes -subj '/C=CH/ST=Zurich/L=Zurich/O=DFINITY/CN=127.0.0.1';
+        echo \"import gunicorn.http.wsgi
+from six import wraps
+
+def wrap_default_headers(func):
+    @wraps(func)
+    def default_headers(*args, **kwargs):
+        return [header for header in func(*args, **kwargs) if not header.startswith('Server: ') and not header.startswith('Date: ')]
+    return default_headers
+
+gunicorn.http.wsgi.Response.default_headers = wrap_default_headers(gunicorn.http.wsgi.Response.default_headers)\" > conf.py;
+        ${python-with-my-packages}/bin/gunicorn -b 127.0.0.1:8003 --limit-request-line 0 --limit-request-field_size 0 --certfile cert.pem --keyfile key.pem httpbin:app -k gevent -c conf.py";
 in
 
 rec {
@@ -157,14 +184,15 @@ rec {
         pids="$(jobs -p)"
         kill $pids
       }
-      ic-ref --pick-port --write-port-to port &
+      ${httpbin} &
+      sleep 1
+      ic-ref --pick-port --write-port-to port --cert-path "cert.pem" &
       trap kill_jobs EXIT PIPE
       sleep 1
       test -e port
       mkdir -p $out
-      ${httpbin} &
       sleep 1
-      LANG=C.UTF8 ic-ref-test --endpoint "http://127.0.0.1:$(cat port)/" --httpbin "http://127.0.0.1:8003" --html $out/report.html
+      LANG=C.UTF8 ic-ref-test --ecid 5v3p4-iyaaa-aaaaa-qaaaa-cai --endpoint "http://127.0.0.1:$(cat port)/" --httpbin "127.0.0.1:8003" --html $out/report.html
       pids="$(jobs -p)"
       kill -INT $pids
       trap - EXIT PIPE
@@ -182,13 +210,14 @@ rec {
         pids="$(jobs -p)"
         kill $pids
       }
-      ic-ref --pick-port --write-port-to port &
+      ${httpbin} &
+      sleep 1
+      ic-ref --pick-port --write-port-to port --cert-path "cert.pem" &
       trap kill_jobs EXIT PIPE
       sleep 1
       test -e port
-      ${httpbin} &
       sleep 1
-      LANG=C.UTF8 ic-ref-test --endpoint "http://127.0.0.1:$(cat port)/" --httpbin "http://127.0.0.1:8003"
+      LANG=C.UTF8 ic-ref-test --ecid 5v3p4-iyaaa-aaaaa-qaaaa-cai --endpoint "http://127.0.0.1:$(cat port)/" --httpbin "127.0.0.1:8003"
       pids="$(jobs -p)"
       kill -INT $pids
       trap - EXIT PIPE

@@ -68,6 +68,7 @@ executable ic-ref
   build-depends: aeson >=1.4.7
   build-depends: asn1-encoding
   build-depends: asn1-types
+  build-depends: async
   build-depends: atomic-write
   build-depends: base32
   build-depends: base >=4.12 && <5
@@ -78,6 +79,7 @@ executable ic-ref
   build-depends: case-insensitive
   build-depends: cborg
   build-depends: cereal
+  build-depends: connection >= 0.3.1
   build-depends: containers
   build-depends: crc
   build-depends: cryptonite
@@ -95,6 +97,7 @@ executable ic-ref
   build-depends: memory
   build-depends: MonadRandom
   build-depends: mtl
+  build-depends: network-uri
   build-depends: optparse-applicative
   build-depends: parallel
   build-depends: prettyprinter
@@ -108,6 +111,7 @@ executable ic-ref
   build-depends: template-haskell
   build-depends: text
   build-depends: time
+  build-depends: tls
   build-depends: transformers
   build-depends: unordered-containers
   build-depends: utf8-string
@@ -117,8 +121,12 @@ executable ic-ref
   build-depends: wai-extra
   build-depends: warp
   build-depends: winter
+  build-depends: word8
   build-depends: uglymemo
   build-depends: warp
+  build-depends: x509
+  build-depends: x509-store
+  build-depends: x509-validation
   build-depends: zlib
   build-depends: either
   other-modules: IC.Canister
@@ -178,6 +186,8 @@ executable ic-ref-run
   build-depends: aeson >=1.4.7
   build-depends: asn1-encoding
   build-depends: asn1-types
+  build-depends: async
+  build-depends: atomic-write
   build-depends: base32
   build-depends: base >=4.12 && <5
   build-depends: base64-bytestring >= 1.1
@@ -187,10 +197,12 @@ executable ic-ref-run
   build-depends: case-insensitive
   build-depends: cborg
   build-depends: cereal
+  build-depends: connection >= 0.3.1
   build-depends: containers
   build-depends: crc
   build-depends: cryptonite
   build-depends: data-default-class
+  build-depends: directory
   build-depends: ed25519
   build-depends: filepath
   build-depends: hashable
@@ -203,21 +215,30 @@ executable ic-ref-run
   build-depends: memory
   build-depends: MonadRandom
   build-depends: mtl
+  build-depends: network-uri
   build-depends: optparse-applicative
   build-depends: parallel
   build-depends: prettyprinter
   build-depends: primitive
   build-depends: process
+  build-depends: random
   build-depends: row-types
+  build-depends: serialise
   build-depends: split
+  build-depends: splitmix
   build-depends: template-haskell
   build-depends: text
   build-depends: time
+  build-depends: tls
   build-depends: transformers
   build-depends: unordered-containers
   build-depends: utf8-string
   build-depends: vector
   build-depends: winter
+  build-depends: word8
+  build-depends: x509
+  build-depends: x509-store
+  build-depends: x509-validation
   build-depends: uglymemo
   build-depends: zlib
   build-depends: either
@@ -251,6 +272,7 @@ executable ic-ref-run
   other-modules: IC.HTTP.CBOR
   other-modules: IC.HTTP.GenR
   other-modules: IC.HTTP.GenR.Parse
+  other-modules: IC.HTTP.Request
   other-modules: IC.HTTP.RequestId
   other-modules: IC.Id.Forms
   other-modules: IC.Id.Fresh
@@ -258,6 +280,8 @@ executable ic-ref-run
   other-modules: IC.Purify
   other-modules: IC.Ref
   other-modules: IC.Ref.IO
+  other-modules: IC.Serialise
+  other-modules: IC.StateFile
   other-modules: IC.Types
   other-modules: IC.Utils
   other-modules: IC.Version
@@ -275,6 +299,7 @@ executable ic-ref-test
   build-depends: asn1-types
   build-depends: base32
   build-depends: base >=4.12 && <5
+  build-depends: base64 >= 0.4.2.4
   build-depends: base64-bytestring >= 1.1
   build-depends: binary
   build-depends: bytestring
@@ -282,9 +307,11 @@ executable ic-ref-test
   build-depends: case-insensitive
   build-depends: cborg
   build-depends: cereal
+  build-depends: connection >= 0.3.1
   build-depends: containers
   build-depends: crc
   build-depends: cryptonite
+  build-depends: data-default-class
   build-depends: directory
   build-depends: ed25519
   build-depends: filepath
@@ -311,11 +338,17 @@ executable ic-ref-test
   build-depends: template-haskell
   build-depends: text
   build-depends: time
+  build-depends: tls
   build-depends: transformers
   build-depends: unordered-containers
+  build-depends: utf8-string
   build-depends: vector
   build-depends: wai
   build-depends: warp
+  build-depends: wide-word
+  build-depends: x509
+  build-depends: x509-store
+  build-depends: x509-validation
   build-depends: zlib
   build-depends: either
   other-modules: IC.CBOR.Parser
@@ -325,6 +358,7 @@ executable ic-ref-test
   other-modules: IC.Certificate.CBOR
   other-modules: IC.Certificate.Validate
   other-modules: IC.Certificate.Value
+  other-modules: IC.Constants
   other-modules: IC.Crypto.Bitcoin
   other-modules: IC.Crypto
   other-modules: IC.Crypto.BLS
@@ -343,6 +377,7 @@ executable ic-ref-test
   other-modules: IC.HTTP.GenR
   other-modules: IC.HTTP.GenR.Parse
   other-modules: IC.HTTP.RequestId
+  other-modules: IC.Id.Fresh
   other-modules: IC.Id.Forms
   other-modules: IC.Management
   other-modules: IC.Ref.IO
@@ -364,6 +399,7 @@ executable ic-request-id
   build-depends: base32
   build-depends: base >=4.12 && <5
   build-depends: bytestring
+  build-depends: candid
   build-depends: cborg
   build-depends: containers
   build-depends: crc
@@ -374,18 +410,26 @@ executable ic-request-id
   build-depends: mtl
   build-depends: optparse-applicative
   build-depends: process
+  build-depends: row-types
   build-depends: split
   build-depends: template-haskell
   build-depends: text
   build-depends: unordered-containers
+  build-depends: utf8-string
+  build-depends: vector
+  build-depends: x509
+  build-depends: x509-store
+  build-depends: x509-validation
   build-depends: either
   other-modules: IC.CBOR.Utils
+  other-modules: IC.Constants
   other-modules: IC.Hash
   other-modules: IC.HTTP.CBOR
   other-modules: IC.HTTP.GenR
   other-modules: IC.HTTP.GenR.Parse
   other-modules: IC.HTTP.RequestId
   other-modules: IC.Id.Forms
+  other-modules: IC.Management
   other-modules: IC.Types
   other-modules: IC.Version
   other-modules: IC.Utils
@@ -402,6 +446,7 @@ test-suite unit-test
   build-depends: base32
   build-depends: base >=4.12 && <5
   build-depends: base >= 4 && < 5
+  build-depends: base64 >= 0.4.2.4
   build-depends: base64-bytestring >= 1.1
   build-depends: binary
   build-depends: bytestring
@@ -409,6 +454,7 @@ test-suite unit-test
   build-depends: case-insensitive
   build-depends: cborg
   build-depends: cereal
+  build-depends: connection >= 0.3.1
   build-depends: containers
   build-depends: crc
   build-depends: cryptonite
@@ -427,6 +473,7 @@ test-suite unit-test
   build-depends: memory
   build-depends: MonadRandom
   build-depends: mtl
+  build-depends: network-uri
   build-depends: parallel
   build-depends: primitive
   build-depends: quickcheck-io
@@ -441,11 +488,16 @@ test-suite unit-test
   build-depends: temporary
   build-depends: text
   build-depends: time
+  build-depends: tls
   build-depends: transformers
   build-depends: unordered-containers
   build-depends: utf8-string
   build-depends: vector
   build-depends: winter
+  build-depends: word8
+  build-depends: x509
+  build-depends: x509-store
+  build-depends: x509-validation
   build-depends: uglymemo
   build-depends: zlib
   build-depends: either
@@ -508,10 +560,12 @@ library
   build-depends: aeson >=1.4.7
   build-depends: asn1-encoding
   build-depends: asn1-types
+  build-depends: async
   build-depends: atomic-write
   build-depends: base32
   build-depends: base >=4.12 && <5
   build-depends: base >= 4 && < 5
+  build-depends: base64 >= 0.4.2.4
   build-depends: base64-bytestring >= 1.1
   build-depends: binary
   build-depends: bytestring
@@ -519,6 +573,7 @@ library
   build-depends: case-insensitive
   build-depends: cborg
   build-depends: cereal
+  build-depends: connection >= 0.3.1
   build-depends: containers
   build-depends: crc
   build-depends: cryptonite
@@ -536,6 +591,7 @@ library
   build-depends: memory
   build-depends: MonadRandom
   build-depends: mtl
+  build-depends: network-uri
   build-depends: optparse-applicative
   build-depends: parallel
   build-depends: prettyprinter
@@ -559,6 +615,7 @@ library
   build-depends: temporary
   build-depends: text
   build-depends: time
+  build-depends: tls
   build-depends: transformers
   build-depends: unordered-containers
   build-depends: utf8-string
@@ -567,7 +624,12 @@ library
   build-depends: wai-cors
   build-depends: wai-extra
   build-depends: warp
+  build-depends: wide-word
   build-depends: winter
+  build-depends: word8
+  build-depends: x509
+  build-depends: x509-store
+  build-depends: x509-validation
   build-depends: uglymemo
   build-depends: zlib
   build-depends: either

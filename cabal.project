@@ -9,3 +9,15 @@ source-repository-package
     type: git
     location: https://github.com/nomeata/haskell-candid
     tag: bff9fcf23e6c60bb8cd7c1ac1ae3d39f6fc05ec0
+
+source-repository-package
+    type: git
+    location: https://github.com/mraszyk/http-client
+    tag: 367bca36dfe9142e7bbea922574387497f205823
+    subdir: http-client
+
+source-repository-package
+    type: git
+    location: https://github.com/mraszyk/http-client
+    tag: 367bca36dfe9142e7bbea922574387497f205823
+    subdir: http-client-tls

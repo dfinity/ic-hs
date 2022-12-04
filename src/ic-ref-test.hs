@@ -5,6 +5,7 @@
 module Main (main) where
 
 import Test.Tasty
+import Test.Tasty.Options (lookupOption)
 import Test.Tasty.Ingredients
 import Test.Tasty.Ingredients.Basic
 import Test.Tasty.Ingredients.Rerun
@@ -22,14 +23,17 @@ main = do
     BLS.init
     os <- parseOptions ingredients (testGroup "dummy" [])
     ac <- preFlight os
-    defaultMainWithIngredients ingredients (icTests ac)
+    let TestSubnetType subnet = lookupOption os
+    defaultMainWithIngredients ingredients (icTests subnet ac)
   where
     ingredients =
       [ rerunningTests
         [ listingTests
         , includingOptions [endpointOption]
+        , includingOptions [ecidOption]
         , includingOptions [httpbinOption]
         , includingOptions [polltimeoutOption]
+        , includingOptions [subnettypeOption]
         , antXMLRunner `composeReporters` htmlRunner `composeReporters` consoleTestReporter
         ]
       ]

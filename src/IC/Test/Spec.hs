@@ -10,6 +10,7 @@ This module contains a test suite for the Internet Computer
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE FlexibleInstances #-}
 
 module IC.Test.Spec (icTests) where
 
@@ -19,6 +20,9 @@ import qualified Data.HashMap.Lazy as HM
 import qualified Data.Map.Lazy as M
 import qualified Data.Set as S
 import qualified Data.Vector as Vec
+import qualified Data.ByteString.Lazy.UTF8 as BLU
+import Data.Text.Encoding.Base64(encodeBase64)
+import Data.ByteString.Builder
 import Numeric.Natural
 import Data.List
 import Test.Tasty
@@ -32,10 +36,20 @@ import Data.Time.Clock.POSIX
 import Codec.Candid (Principal(..))
 import qualified Codec.Candid as Candid
 import Data.Serialize.LEB128 (toLEB128)
+import Control.Concurrent
+import System.Timeout
 
+import Data.Aeson
+import Data.Char
+import Data.Maybe
+import qualified Data.Aeson.Key as K
+import qualified Data.Aeson.KeyMap as KM
+
+import IC.Management (HttpResponse, HttpHeader)
 import IC.Types (EntityId(..))
 import IC.HTTP.GenR
 import IC.HTTP.RequestId
+import IC.Constants
 import IC.Crypto
 import qualified IC.Crypto.CanisterSig as CanisterSig
 import qualified IC.Crypto.DER as DER
@@ -47,37 +61,475 @@ import IC.Hash
 import IC.Test.Agent
 import IC.Test.Agent.Calls
 import IC.Test.Spec.Utils
+import IC.Types(SubnetType(..))
+import IC.Utils
 import qualified IC.Test.Spec.TECDSA
+
+-- * Helpers
+
+waitFor :: HasAgentConfig => IO Bool -> IO ()
+waitFor act = do
+    result <- timeout (tc_timeout agentConfig * (10::Int) ^ (6::Int)) doActUntil
+    when (result == Nothing) $ assertFailure "Polling timed out"
+  where
+    doActUntil = do
+      stop <- act
+      unless stop (threadDelay 1000 *> doActUntil)
+
+charFromInt :: Int -> Char
+charFromInt n = chr $ n + ord 'a'
 
 -- * Canister http calls
 
-canister_http_calls :: HasAgentConfig => Word64 -> Word64 -> [TestTree]
-canister_http_calls base_fee per_byte_fee =
-  [ simpleTestCase "simple call, no transform" $ \cid -> do
-      resp <- ic_http_request (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "base64/SGVsbG8gd29ybGQh" cid Nothing
+check_distinct_headers :: Vec.Vector HttpHeader -> Bool
+check_distinct_headers v = length xs == length (nub xs)
+  where xs = map (\r -> T.toLower $ r .! #name) $ Vec.toList v
+
+http_headers_to_map :: Vec.Vector HttpHeader -> T.Text -> Maybe T.Text
+http_headers_to_map v n = lookup n $ map_to_lower $ map (\r -> (r .! #name, r .! #value)) $ Vec.toList v
+
+map_to_lower :: [(T.Text, T.Text)] -> [(T.Text, T.Text)]
+map_to_lower = map (\(n, v) -> (T.toLower n, v))
+
+check_http_response :: HttpResponse -> IO ()
+check_http_response resp = do
+  assertBool "HTTP response header names must be distinct" $ check_distinct_headers (resp .! #headers)
+  assertBool "HTTP header \"Content-Length\" must contain the length of the body" $
+    case h (T.pack "content-length") of Nothing -> False
+                                        Just l  -> l == (T.pack $ show $ BS.length $ resp .! #body)
+  where
+    h = http_headers_to_map $ resp .! #headers
+
+newtype HttpRequestHeaders = HttpRequestHeaders [(T.Text, T.Text)]
+
+newtype HttpRequestBody = HttpRequestBody BS.ByteString
+  deriving Eq
+
+data HttpRequest =
+  HttpRequest { method :: T.Text
+              , headers :: HttpRequestHeaders
+              , body :: HttpRequestBody
+  }
+
+instance FromJSON HttpRequest where
+  parseJSON (Object v) =
+    HttpRequest <$> v .: "method"
+                <*> v .: "headers"
+                <*> v .: "data"
+  parseJSON _          = error "unsupported"
+
+instance FromJSON HttpRequestHeaders where
+  parseJSON (Object v) =
+    do
+      let r = foldr (\(k, v) r -> case v of String s -> fmap (\hs -> (K.toText k, s) : hs) r
+                                            _ -> Nothing) (Just []) (KM.toList v)
+      case r of Nothing -> error "unsupported"
+                Just hs -> return $ HttpRequestHeaders hs
+  parseJSON _          = error "unsupported"
+
+instance FromJSON HttpRequestBody where
+  parseJSON (String s) = return $ HttpRequestBody $ toUtf8 s
+  parseJSON _          = error "unsupported"
+
+list_subset :: Eq a => [a] -> [a] -> Bool
+list_subset xs ys = all (\x -> elem x ys) xs
+
+headers_match :: [(T.Text, T.Text)] -> [(T.Text, T.Text)] -> Bool
+headers_match xs ys = all (\x -> elem x ys) xs && all (\(n, v) -> elem (n, v) xs || n == "host" || n == "content-length" || n == "accept-encoding") ys
+
+check_http_json :: String -> [(T.Text, T.Text)] -> BS.ByteString -> Maybe HttpRequest -> Assertion
+check_http_json _ _ _ Nothing = assertFailure "Could not parse the original HttpRequest from the response"
+check_http_json m hs b (Just req) = do
+  assertBool "Wrong HTTP method" $ T.pack m == method req
+  assertBool "Headers were not properly included in the HTTP request" $ headers_match (map_to_lower hs) (case headers req of HttpRequestHeaders hs -> map_to_lower hs)
+  assertBool "Body was not properly included in the HTTP request" $ HttpRequestBody b == body req
+
+check_http_body :: BS.ByteString -> Bool
+check_http_body = aux . fromUtf8
+  where
+    aux Nothing = False
+    aux (Just s) = all ((==) 'x') $ T.unpack s
+
+canister_http_calls :: HasAgentConfig => SubnetType -> [TestTree]
+canister_http_calls sub =
+  [
+    -- "Currently, the GET, HEAD, and POST methods are supported for HTTP requests."
+
+    simpleTestCase "GET call" $ \cid -> do
+      let s = "Hello world!"
+      let enc = T.unpack $ encodeBase64 $ T.pack s
+      resp <- ic_http_get_request (ic00viaWithCyclesRefund 0 cid) sub ("base64/" ++ enc) (Just 666) Nothing cid
       (resp .! #status) @?= 200
-      (resp .! #body) @?= "Hello world!"
+      (resp .! #body) @?= BLU.fromString s
+      check_http_response resp
 
-    , testCase "non-existent transform function" $ do
+    , simpleTestCase "POST call" $ \cid -> do
+      let b = toUtf8 $ T.pack $ "Hello, world!"
+      let hs = [(T.pack "Name1", T.pack "value1"), (T.pack "Name2", T.pack "value2")]
+      resp <- ic_http_post_request (ic00viaWithCyclesRefund 0 cid) sub "anything" (Just 666) (Just b) (vec_header_from_list_text hs) Nothing cid
+      (resp .! #status) @?= 200
+      check_http_response resp
+      check_http_json "POST" hs b $ (decode (resp .! #body) :: Maybe HttpRequest)
+
+    , simpleTestCase "HEAD call" $ \cid -> do
+      let n = 6666
+      let b = toUtf8 $ T.pack $ replicate n 'x'
+      let hs = [(T.pack "Name1", T.pack "value1"), (T.pack "Name2", T.pack "value2")]
+      resp <- ic_http_head_request (ic00viaWithCyclesRefund 0 cid) sub "anything" (Just 666) (Just b) (vec_header_from_list_text hs) Nothing cid
+      (resp .! #status) @?= 200
+      (resp .! #body) @?= (toUtf8 $ T.pack "")
+      assertBool "HTTP response header names must be distinct" $ check_distinct_headers (resp .! #headers)
+      let h = http_headers_to_map (resp .! #headers) "content-length"
+      assertBool ("Content-Length must be present and at least " ++ show n) $
+        case h of Nothing -> False
+                  Just l -> (read (T.unpack l) :: Int) >= n
+
+    -- "For security reasons, only HTTPS connections are allowed (URLs must start with https://)."
+
+    , testCase "url must start with https://" $ do
+      let enc = T.unpack $ encodeBase64 $ T.pack "Hello world!"
       cid <- install noop
-      ic_http_request' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "base64/SGVsbG8gd29ybGQh" cid (Just "nonExistent", cid) >>= isReject [3]
+      ic_http_get_request' (ic00viaWithCyclesRefund 0 cid) sub "http://" ("base64/" ++ enc) Nothing Nothing cid >>= isReject [1]
 
-    , testCase "reference to a transform function exposed by another canister" $ do
-      cid <- install noop
-      cid2 <- install (onTransform (callback (replyData (bytes (Candid.encode dummyResponse)))))
-      ic_http_request' (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "base64/SGVsbG8gd29ybGQh" cid (Just "transform", cid2) >>= isReject [4]
+    -- "The size of an HTTP request from the canister is the total number of bytes representing the names and values of HTTP headers and the HTTP body. The maximal size for the request from the canister is 2MB (2,000,000B)."
 
-    , testCase "simple call with transform" $ do
+    , simpleTestCase "maximum possible request size" $ \cid -> do
+      let hs = [(T.pack "Name1", T.pack "value1"), (T.pack "Name2", T.pack "value2"), (T.pack "Content-Type", T.pack "text/html; charset=utf-8")]
+      let len_hs = sum $ map (\(n, v) -> utf8_length n + utf8_length v) hs
+      let b = toUtf8 $ T.pack $ replicate (fromIntegral $ max_request_bytes_limit - len_hs) 'x'
+      resp <- ic_http_post_request (ic00viaWithCyclesRefund 0 cid) sub "request_size" Nothing (Just b) (vec_header_from_list_text hs) Nothing cid
+      (resp .! #status) @?= 200
+      check_http_response resp
+      let n = read (T.unpack $ fromJust $ fromUtf8 (resp .! #body)) :: Word64
+      assertBool ("Request size must be at least (the HTTP client can add more headers) " ++ show max_request_bytes_limit) $ n >= len_hs + fromIntegral (BS.length b)
+
+    , simpleTestCase "maximum possible request size exceeded" $ \cid -> do
+      let hs = [(T.pack "Name1", T.pack "value1"), (T.pack "Name2", T.pack "value2"), (T.pack "Content-Type", T.pack "text/html; charset=utf-8")]
+      let len_hs = sum $ map (\(n, v) -> utf8_length n + utf8_length v) hs
+      let b = toUtf8 $ T.pack $ replicate (fromIntegral $ max_request_bytes_limit - len_hs + 1) 'x'
+      ic_http_post_request' (\fee -> ic00viaWithCyclesRefund fee cid fee) sub "request_size" Nothing (Just b) (vec_header_from_list_text hs) Nothing cid >>= isReject [4]
+
+    -- "The size of an HTTP response from the remote server is the total number of bytes representing the names and values of HTTP headers and the HTTP body. Each request can specify a maximal size for the response from the remote HTTP server."
+
+    , simpleTestCase "small maximum possible response size" $ \cid -> do
+      let s = "Hello world!"
+      let enc = T.unpack $ encodeBase64 $ T.pack s
+      {- Response headers (size: 136)
+          Connection: keep-alive
+          Content-Type: text/html; charset=utf-8
+          Content-Length: 12
+          Access-Control-Allow-Origin: *
+          Access-Control-Allow-Credentials: true
+      -}
+      let header_size = 136
+      resp <- ic_http_get_request (ic00viaWithCyclesRefund 0 cid) sub ("base64/" ++ enc) (Just $ fromIntegral $ length s + header_size) Nothing cid
+      (resp .! #status) @?= 200
+      (resp .! #body) @?= BLU.fromString s
+      check_http_response resp
+
+    , simpleTestCase "small maximum possible response size exceeded" $ \cid -> do
+      let s = "Hello world!"
+      let enc = T.unpack $ encodeBase64 $ T.pack s
+      {- Response headers (size: 136)
+          Connection: keep-alive
+          Content-Type: text/html; charset=utf-8
+          Content-Length: 12
+          Access-Control-Allow-Origin: *
+          Access-Control-Allow-Credentials: true
+      -}
+      let header_size = 136
+      ic_http_get_request' (ic00viaWithCyclesRefund 0 cid) sub "https://" ("base64/" ++ enc) (Just $ fromIntegral $ length s + header_size - 1) Nothing cid >>= isReject [1]
+
+    , simpleTestCase "small maximum possible response size (only headers)" $ \cid -> do
+      {- Response headers (size: 136)
+          Connection: keep-alive
+          Content-Type: application/octet-stream
+          Content-Length: 0
+          Access-Control-Allow-Origin: *
+          Access-Control-Allow-Credentials: true
+      -}
+      let header_size = 135
+      resp <- ic_http_get_request (ic00viaWithCyclesRefund 0 cid) sub ("equal_bytes/0") (Just header_size) Nothing cid
+      (resp .! #status) @?= 200
+      (resp .! #body) @?= BS.empty
+      check_http_response resp
+
+    , simpleTestCase "small maximum possible response size (only headers) exceeded" $ \cid -> do
+      {- Response headers (size: 136)
+          Connection: keep-alive
+          Content-Type: application/octet-stream
+          Content-Length: 0
+          Access-Control-Allow-Origin: *
+          Access-Control-Allow-Credentials: true
+      -}
+      let header_size = 135
+      ic_http_get_request' (ic00viaWithCyclesRefund 0 cid) sub "https://" ("equal_bytes/0") (Just $ header_size - 1) Nothing cid >>= isReject [1]
+
+    -- "The upper limit on the maximal size for the response is 2MB (2,000,000B) and this value also applies if no maximal size value is specified."
+
+    , testCase "large maximum possible response size" $ do
+      {- Response headers (size: 141)
+          Connection: keep-alive
+          Content-Type: application/octet-stream
+          Content-Length: 1999859
+          Access-Control-Allow-Origin: *
+          Access-Control-Allow-Credentials: true
+      -}
+      let header_size = 141
       cid <- install (onTransform (callback (replyData (bytes (Candid.encode dummyResponse)))))
-      resp <- ic_http_request (\fee -> ic00viaWithCycles cid (fee base_fee per_byte_fee)) "base64/SGVsbG8gd29ybGQh" cid (Just "transform")
+      resp <- ic_http_get_request (ic00viaWithCyclesRefund 0 cid) sub ("equal_bytes/" ++ show (max_response_bytes_limit - header_size)) Nothing (Just ("transform", "")) cid
       (resp .! #status) @?= 202
       (resp .! #body) @?= "Dummy!"
+      check_http_response resp
+
+    , testCase "large maximum possible response size exceeded" $ do
+      {- Response headers (size: 141)
+          Connection: keep-alive
+          Content-Type: application/octet-stream
+          Content-Length: 1999860
+          Access-Control-Allow-Origin: *
+          Access-Control-Allow-Credentials: true
+      -}
+      let header_size = 141
+      cid <- install (onTransform (callback (replyData (bytes (Candid.encode dummyResponse)))))
+      ic_http_get_request' (ic00viaWithCyclesRefund 0 cid) sub "https://" ("equal_bytes/" ++ show (max_response_bytes_limit - header_size + 1)) Nothing (Just ("transform", "")) cid >>= isReject [1]
+
+    -- "The URL must be valid according to RFC-3986 and its length must not exceed 8192."
+
+    , simpleTestCase "non-ascii URL" $ \cid -> do
+      ic_http_get_request' (ic00viaWithCyclesRefund 0 cid) sub "https://" "ascii/안녕하세요" Nothing Nothing cid >>= isReject [1]
+
+    , simpleTestCase "maximum possible url size" $ \cid -> do
+      resp <- ic_long_url_http_request (ic00viaWithCyclesRefund 0 cid) sub "https://" max_http_request_url_length Nothing cid
+      (resp .! #status) @?= 200
+      assertBool "HTTP response body is malformed" $ check_http_body $ resp .! #body
+      check_http_response resp
+
+    , simpleTestCase "maximum possible url size exceeded" $ \cid -> do
+      ic_long_url_http_request' (\fee -> ic00viaWithCyclesRefund fee cid fee) sub "https://" (max_http_request_url_length + 1) Nothing cid >>= isReject [4]
+
+    -- "max_response_bytes - If provided, the value must not exceed 2MB (2,000,000B)."
+
+    , simpleTestCase "maximum possible value of max_response_bytes" $ \cid -> do
+      let s = "Hello world!"
+      let enc = T.unpack $ encodeBase64 $ T.pack s
+      resp <- ic_http_get_request (ic00viaWithCyclesRefund 0 cid) sub ("base64/" ++ enc) (Just max_response_bytes_limit) Nothing cid
+      (resp .! #status) @?= 200
+      (resp .! #body) @?= BLU.fromString s
+      check_http_response resp
+
+    , simpleTestCase "maximum possible value of max_response_bytes exceeded" $ \cid -> do
+      let enc = T.unpack $ encodeBase64 $ T.pack "Hello world!"
+      ic_http_get_request' (\fee -> ic00viaWithCyclesRefund fee cid fee) sub "https://" ("base64/" ++ enc) (Just $ max_response_bytes_limit + 1) Nothing cid >>= isReject [4]
+
+    -- "transform - an optional record that includes a function that transforms raw responses to sanitized responses, and a byte-encoded context that is provided to the function upon invocation, along with the response to be sanitized."
+
+    , testCase "call with simple transform" $ do
+      let b = toUtf8 $ T.pack $ "Hello, world!"
+      let hs = vec_header_from_list_text [(T.pack "Name1", T.pack "value1"), (T.pack "Name2", T.pack "value2")]
+      cid <- install (onTransform (callback (replyData (bytes (Candid.encode dummyResponse)))))
+      resp <- ic_http_post_request (ic00viaWithCyclesRefund 0 cid) sub "anything" (Just 666) (Just b) hs (Just ("transform", "")) cid
+      (resp .! #status) @?= 202
+      (resp .! #body) @?= "Dummy!"
+      check_http_response resp
+
+    , testCase "reflect transform context" $ do
+      let enc = T.unpack $ encodeBase64 $ T.pack "Hello world!"
+      cid <- install (onTransform (callback (replyData (getHttpReplyWithBody (getHttpTransformContext argData)))))
+      resp <- ic_http_get_request (ic00viaWithCyclesRefund 0 cid) sub ("base64/" ++ enc) Nothing (Just ("transform", "asdf")) cid
+      (resp .! #status) @?= 200
+      (resp .! #body) @?= "asdf"
+
+    -- "If provided, the calling canister itself must export this (transform) function."
+
+    , testCase "non-existent transform function" $ do
+      let enc = T.unpack $ encodeBase64 $ T.pack "Hello world!"
+      cid <- install noop
+      ic_http_get_request' (ic00viaWithCyclesRefund 0 cid) sub "https://" ("base64/" ++ enc) Nothing (Just ("nonExistent", "")) cid >>= isReject [3]
+
+    , testCase "reference to a transform function exposed by another canister" $ do
+      let enc = T.unpack $ encodeBase64 $ T.pack "Hello world!"
+      cid <- install noop
+      cid2 <- install (onTransform (callback (replyData (bytes (Candid.encode dummyResponse)))))
+      ic_http_get_request' (\fee -> ic00viaWithCyclesRefund fee cid fee) sub "https://" ("base64/" ++ enc) Nothing (Just ("transform", "")) cid2 >>= isReject [4]
+
+    -- "The maximal number of bytes representing the response produced by the transform function is 2MB (2,000,000B)."
+
+    , testCase "maximum possible canister response size" $ do
+      {- Response headers (size: 141)
+          Connection: keep-alive
+          Content-Type: application/octet-stream
+          Content-Length: 1999859
+          Access-Control-Allow-Origin: *
+          Access-Control-Allow-Credentials: true
+      -}
+      let header_size = 141
+      let size = maximumSizeResponseBodySize
+      let new_pages = int $ size `div` (64 * 1024) + 1
+      let max_size = int $ size
+      cid <- install (onTransform (callback (ignore (stableGrow new_pages) >>> stableFill (int 0) (int 120) max_size >>> replyData (getHttpReplyWithBody (stableRead (int 0) max_size)))))
+      resp <- ic_http_get_request (ic00viaWithCyclesRefund 0 cid) sub ("equal_bytes/" ++ show (max_response_bytes_limit - header_size)) Nothing (Just ("transform", "")) cid
+      (resp .! #status) @?= 200
+      (resp .! #body) @?= bodyOfSize maximumSizeResponseBodySize
+
+    , testCase "maximum possible canister response size exceeded" $ do
+      {- Response headers (size: 141)
+          Connection: keep-alive
+          Content-Type: application/octet-stream
+          Content-Length: 1999859
+          Access-Control-Allow-Origin: *
+          Access-Control-Allow-Credentials: true
+      -}
+      let header_size = 141
+      let size = maximumSizeResponseBodySize + 1
+      let new_pages = int $ size `div` (64 * 1024) + 1
+      let max_size = int $ size
+      cid <- install (onTransform (callback (ignore (stableGrow new_pages) >>> stableFill (int 0) (int 120) max_size >>> replyData (getHttpReplyWithBody (stableRead (int 0) max_size)))))
+      ic_http_get_request' (ic00viaWithCyclesRefund 0 cid) sub "https://" ("equal_bytes/" ++ show (max_response_bytes_limit - header_size)) Nothing (Just ("transform", "")) cid >>= isReject [1]
+
+    -- "When the transform function is invoked by the system due to a canister HTTP request, the caller's identity is the principal of the management canister."
+
+    , testCase "check caller of transform" $ do
+      let enc = T.unpack $ encodeBase64 $ T.pack "Hello world!"
+      cid <- install (onTransform (callback (replyData (getHttpReplyWithBody (parsePrincipal caller)))))
+      resp <- ic_http_get_request (ic00viaWithCyclesRefund 0 cid) sub ("base64/" ++ enc) Nothing (Just ("transform", "caller")) cid
+      (resp .! #status) @?= 200
+      (resp .! #body) @?= "aaaaa-aa"
+
+    -- "The following additional limits apply to HTTP requests and HTTP responses from the remote sever: the number of headers must not exceed 64."
+
+    , simpleTestCase "maximum number of request headers" $ \cid -> do
+      let b = toUtf8 $ T.pack $ "Hello, world!"
+      let hs = [(T.pack ("Name" ++ show i), T.pack ("value" ++ show i)) | i <- [0..http_headers_max_number - 1]]
+      resp <- ic_http_post_request (ic00viaWithCyclesRefund 0 cid) sub "anything" Nothing (Just b) (vec_header_from_list_text hs) Nothing cid
+      (resp .! #status) @?= 200
+      check_http_response resp
+      check_http_json "POST" hs b $ (decode (resp .! #body) :: Maybe HttpRequest)
+
+    , simpleTestCase "maximum number of request headers exceeded" $ \cid -> do
+      let b = toUtf8 $ T.pack $ "Hello, world!"
+      let hs = [(T.pack ("Name" ++ show i), T.pack ("value" ++ show i)) | i <- [0..http_headers_max_number]]
+      ic_http_post_request' (\fee -> ic00viaWithCyclesRefund fee cid fee) sub "anything" Nothing (Just b) (vec_header_from_list_text hs) Nothing cid >>= isReject [4]
+
+    , simpleTestCase "maximum number of response headers" $ \cid -> do
+      {- These 5 response headers are always included:
+          Connection: keep-alive
+          Content-Type: text/html; charset=utf-8
+          Content-Length: 0
+          Access-Control-Allow-Origin: *
+          Access-Control-Allow-Credentials: true
+      -}
+      let n = http_headers_max_number - 5
+      let hs = [(T.pack ("Name" ++ show i), T.pack ("value" ++ show i)) | i <- [0..n - 1]]
+      resp <- ic_http_get_request (ic00viaWithCyclesRefund 0 cid) sub ("many_response_headers/" ++ show n) Nothing Nothing cid
+      (resp .! #status) @?= 200
+      assertBool "Response HTTP headers have not been received properly." $ list_subset (map_to_lower hs) (map_to_lower $ http_response_headers resp)
+      check_http_response resp
+
+    , simpleTestCase "maximum number of response headers exceeded" $ \cid -> do
+      {- These 5 response headers are always included:
+          Connection: keep-alive
+          Content-Type: text/html; charset=utf-8
+          Content-Length: 0
+          Access-Control-Allow-Origin: *
+          Access-Control-Allow-Credentials: true
+      -}
+      let n = http_headers_max_number - 5 + 1
+      ic_http_get_request' (ic00viaWithCyclesRefund 0 cid) sub "https://" ("many_response_headers/" ++ show n) Nothing Nothing cid >>= isReject [1]
+
+    -- "The following additional limits apply to HTTP requests and HTTP responses from the remote sever: the number of bytes representing a header name must not exceed 8KiB."
+
+    , simpleTestCase "maximum request header name length" $ \cid -> do
+      let b = toUtf8 $ T.pack $ "Hello, world!"
+      let hs = [(T.pack (replicate (fromIntegral http_headers_max_name_value_length) 'x'), T.pack ("value"))]
+      resp <- ic_http_post_request (ic00viaWithCyclesRefund 0 cid) sub "anything" Nothing (Just b) (vec_header_from_list_text hs) Nothing cid
+      (resp .! #status) @?= 200
+      check_http_response resp
+      check_http_json "POST" hs b $ (decode (resp .! #body) :: Maybe HttpRequest)
+
+    , simpleTestCase "maximum request header name length exceeded" $ \cid -> do
+      let b = toUtf8 $ T.pack $ "Hello, world!"
+      let hs = [(T.pack (replicate (fromIntegral $ http_headers_max_name_value_length + 1) 'x'), T.pack ("value"))]
+      ic_http_post_request' (\fee -> ic00viaWithCyclesRefund fee cid fee) sub "anything" Nothing (Just b) (vec_header_from_list_text hs) Nothing cid >>= isReject [4]
+
+    , simpleTestCase "maximum response header name length" $ \cid -> do
+      let n = http_headers_max_name_value_length
+      let hs = [(T.pack $ replicate (fromIntegral n) 'x', T.pack "value")]
+      resp <- ic_http_get_request (ic00viaWithCyclesRefund 0 cid) sub ("long_response_header_name/" ++ show n) Nothing Nothing cid
+      (resp .! #status) @?= 200
+      assertBool "Response HTTP headers have not been received properly." $ list_subset (map_to_lower hs) (map_to_lower $ http_response_headers resp)
+      check_http_response resp
+
+    , simpleTestCase "maximum response header name length exceeded" $ \cid -> do
+      let n = http_headers_max_name_value_length + 1
+      ic_http_get_request' (ic00viaWithCyclesRefund 0 cid) sub "https://" ("long_response_header_name/" ++ show n) Nothing Nothing cid >>= isReject [1]
+
+    -- "The following additional limits apply to HTTP requests and HTTP responses from the remote sever: the number of bytes representing a header value must not exceed 8KiB."
+
+    , simpleTestCase "maximum request header value length" $ \cid -> do
+      let b = toUtf8 $ T.pack $ "Hello, world!"
+      let hs = [(T.pack "name", T.pack (replicate (fromIntegral http_headers_max_name_value_length) 'x'))]
+      resp <- ic_http_post_request (ic00viaWithCyclesRefund 0 cid) sub "anything" Nothing (Just b) (vec_header_from_list_text hs) Nothing cid
+      (resp .! #status) @?= 200
+      check_http_response resp
+      check_http_json "POST" hs b $ (decode (resp .! #body) :: Maybe HttpRequest)
+
+    , simpleTestCase "maximum request header value length exceeded" $ \cid -> do
+      let b = toUtf8 $ T.pack $ "Hello, world!"
+      let hs = [(T.pack "name", T.pack (replicate (fromIntegral $ http_headers_max_name_value_length + 1) 'x'))]
+      ic_http_post_request' (\fee -> ic00viaWithCyclesRefund fee cid fee) sub "anything" Nothing (Just b) (vec_header_from_list_text hs) Nothing cid >>= isReject [4]
+
+    , simpleTestCase "maximum response header value length" $ \cid -> do
+      let n = http_headers_max_name_value_length
+      let hs = [(T.pack "name", T.pack $ replicate (fromIntegral n) 'x')]
+      resp <- ic_http_get_request (ic00viaWithCyclesRefund 0 cid) sub ("long_response_header_value/" ++ show n) Nothing Nothing cid
+      (resp .! #status) @?= 200
+      assertBool "Response HTTP headers have not been received properly." $ list_subset (map_to_lower hs) (map_to_lower $ http_response_headers resp)
+      check_http_response resp
+
+    , simpleTestCase "maximum response header value length exceeded" $ \cid -> do
+      let n = http_headers_max_name_value_length + 1
+      ic_http_get_request' (ic00viaWithCyclesRefund 0 cid) sub "https://" ("long_response_header_value/" ++ show n) Nothing Nothing cid >>= isReject [1]
+
+    -- "The following additional limits apply to HTTP requests and HTTP responses from the remote sever: the total number of bytes representing the header names and values must not exceed 48KiB."
+
+    , simpleTestCase "maximum request total header size" $ \cid -> do
+      let chunk = http_headers_max_name_value_length
+      assertBool ("Maximum number of bytes to represent all request header names and value is not divisible by " ++ show (2 * chunk)) (http_headers_max_total_size `mod` (2 * chunk) == 0)
+      assertBool ("Maximum number of bytes to represent all request header names and value exceeds " ++ show (2 * chunk * 26)) (http_headers_max_total_size `div` (2 * chunk) <= fromIntegral (min 26 http_headers_max_number))
+      let n = http_headers_max_total_size `div` (2 * chunk)
+      let b = toUtf8 $ T.pack $ "Hello, world!"
+      let hs = [(T.pack $ [charFromInt i] ++ replicate (fromIntegral chunk - 1) 'x', T.pack $ replicate (fromIntegral chunk) 'x') | i <- [0..fromIntegral n - 1]]
+      resp <- ic_http_post_request (ic00viaWithCyclesRefund 0 cid) sub "anything" Nothing (Just b) (vec_header_from_list_text hs) Nothing cid
+      (resp .! #status) @?= 200
+      check_http_response resp
+      check_http_json "POST" hs b $ (decode (resp .! #body) :: Maybe HttpRequest)
+
+    , simpleTestCase "maximum request total header size exceeded" $ \cid -> do
+      let chunk = http_headers_max_name_value_length
+      assertBool ("Maximum number of bytes to represent all request header names and value is not divisible by " ++ show (2 * chunk)) (http_headers_max_total_size `mod` (2 * chunk) == 0)
+      assertBool ("Maximum number of bytes to represent all request header names and value exceeds " ++ show (2 * chunk * 26)) (http_headers_max_total_size `div` (2 * chunk) <= fromIntegral (min 26 http_headers_max_number))
+      let n = http_headers_max_total_size `div` (2 * chunk)
+      let b = toUtf8 $ T.pack $ "Hello, world!"
+      let hs = (T.pack "x", T.empty) : [(T.pack $ [charFromInt i] ++ replicate (fromIntegral chunk - 1) 'x', T.pack $ replicate (fromIntegral chunk) 'x') | i <- [0..fromIntegral n - 1]]
+      ic_http_post_request' (\fee -> ic00viaWithCyclesRefund fee cid fee) sub "anything" Nothing (Just b) (vec_header_from_list_text hs) Nothing cid >>= isReject [4]
+
+    , simpleTestCase "maximum response total header size" $ \cid -> do
+      let n = http_headers_max_total_size
+      resp <- ic_http_get_request (ic00viaWithCyclesRefund 0 cid) sub ("large_response_total_header_size/" ++ show http_headers_max_name_value_length ++ "/" ++ show n) Nothing Nothing cid
+      (resp .! #status) @?= 200
+      assertBool ("Total header size is not equal to " ++ show n) $ http_response_headers_total_size resp == n
+      check_http_response resp
+
+    , simpleTestCase "maximum response total header size exceeded" $ \cid -> do
+      let n = http_headers_max_total_size + 1
+      ic_http_get_request' (ic00viaWithCyclesRefund 0 cid) sub "https://" ("large_response_total_header_size/" ++ show http_headers_max_name_value_length ++ "/" ++ show n) Nothing Nothing cid >>= isReject [1]
   ]
 
 -- * The test suite (see below for helper functions)
 
-icTests :: AgentConfig -> TestTree
-icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
+icTests :: SubnetType -> AgentConfig -> TestTree
+icTests subnet = withAgentConfig $ testGroup "Interface Spec acceptance tests"
   [ simpleTestCase "create and install" $ \_ ->
       return ()
 
@@ -192,7 +644,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
       ic_stop_canister ic00 cid
 
       step "Cannot call (update)?"
-      call'' cid reply >>= isErrOrReject [5]
+      call' cid reply >>= isReject [5]
 
       step "Cannot call (query)?"
       query' cid reply >>= isReject [5]
@@ -258,7 +710,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
       awaitKnown grs3 >>= isPendingOrProcessing
 
       step "Cannot call (update)?"
-      call'' cid reply >>= isErrOrReject [5]
+      call' cid reply >>= isReject [5]
 
       step "Cannot call (query)?"
       query' cid reply >>= isReject [5]
@@ -277,7 +729,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
 
 
       step "Cannot call (update)?"
-      call'' cid reply >>= isErrOrReject [5]
+      call' cid reply >>= isReject [5]
 
       step "Cannot call (query)?"
       query' cid reply >>= isReject [5]
@@ -397,7 +849,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     ic_install (ic00via cid) (enum #reinstall) can_id2 trivialWasmModule ""
 
   , simpleTestCase "aaaaa-aa (inter-canister, large)" $ \cid -> do
-    universal_wasm <- getTestWasm "universal_canister"
+    universal_wasm <- getTestWasm "universal-canister"
     can_id <- ic_provisional_create (ic00via cid) Nothing empty
     ic_install (ic00via cid) (enum #install) can_id universal_wasm ""
     do call can_id $ replyData "Hi"
@@ -411,8 +863,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     assertBool "random blobs are different" $ r1 /= r2
 
   , IC.Test.Spec.TECDSA.tests
-  , testGroup "canister http calls.only_system" $ canister_http_calls 0 0
-  , testGroup "canister http calls.only_application" $ canister_http_calls 400000000 100000
+  , testGroup "canister http calls" $ canister_http_calls subnet
 
   , testGroup "simple calls"
     [ simpleTestCase "Call" $ \cid ->
@@ -558,46 +1009,37 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
         cs .! #settings .! #freezing_threshold @?= 1000_000
 
     , testGroup "via provisional_create_canister_with_cycles:"
-        [ testCase "Invalid compute allocation" $ do
+        [ testCase "Invalid compute allocation (101)" $ do
             ic_provisional_create' ic00 Nothing (#compute_allocation .== 101)
-               >>= isReject [3,5]
-        , testCase "Invalid memory allocation (2^49)" $ do
-            ic_provisional_create' ic00 Nothing (#compute_allocation .== 2^(49::Int))
-               >>= isReject [3,5]
-        , testCase "Invalid memory allocation (2^70)" $ do
-            ic_provisional_create' ic00 Nothing (#compute_allocation .== 2^(70::Int))
-               >>= isReject [3,5]
-        , testCase "Invalid freezing threshold (2^70)" $ do
-            ic_provisional_create' ic00 Nothing (#freezing_threshold .== 2^(70::Int))
-               >>= isReject [3,5]
+               >>= isReject [5]
+        , testCase "Invalid memory allocation (2^48+1)" $ do
+            ic_provisional_create' ic00 Nothing (#memory_allocation .== (2^(48::Int)+1))
+               >>= isReject [5]
+        , testCase "Invalid freezing threshold (2^64)" $ do
+            ic_provisional_create' ic00 Nothing (#freezing_threshold .== 2^(64::Int))
+               >>= isReject [5]
         ]
     , testGroup "via create_canister:"
-        [ simpleTestCase "Invalid compute allocation" $ \cid -> do
+        [ simpleTestCase "Invalid compute allocation (101)" $ \cid -> do
             ic_create' (ic00via cid) (#compute_allocation .== 101)
-               >>= isReject [3,5]
-        , simpleTestCase "Invalid memory allocation (2^49)" $ \cid -> do
-            ic_create' (ic00via cid) (#compute_allocation .== 2^(49::Int))
-               >>= isReject [3,5]
-        , simpleTestCase "Invalid memory allocation (2^70)" $ \cid -> do
-            ic_create' (ic00via cid) (#compute_allocation .== 2^(70::Int))
-               >>= isReject [3,5]
-        , simpleTestCase "Invalid freezing threshold (2^70)" $ \cid -> do
-            ic_create' (ic00via cid) (#freezing_threshold .== 2^(70::Int))
-               >>= isReject [3,5]
+               >>= isReject [5]
+        , simpleTestCase "Invalid memory allocation (2^48+1)" $ \cid -> do
+            ic_create' (ic00via cid) (#memory_allocation .== (2^(48::Int)+1))
+               >>= isReject [5]
+        , simpleTestCase "Invalid freezing threshold (2^64)" $ \cid -> do
+            ic_create' (ic00via cid) (#freezing_threshold .== 2^(64::Int))
+               >>= isReject [5]
         ]
     , testGroup "via update_settings"
-        [ simpleTestCase "Invalid compute allocation" $ \cid -> do
+        [ simpleTestCase "Invalid compute allocation (101)" $ \cid -> do
             ic_update_settings' ic00 cid (#compute_allocation .== 101)
-               >>= isReject [3,5]
-        , simpleTestCase "Invalid memory allocation (2^49)" $ \cid -> do
-            ic_update_settings' ic00 cid (#compute_allocation .== 2^(49::Int))
-               >>= isReject [3,5]
-        , simpleTestCase "Invalid memory allocation (2^70)" $ \cid -> do
-            ic_update_settings' ic00 cid (#compute_allocation .== 2^(70::Int))
-               >>= isReject [3,5]
-        , simpleTestCase "Invalid freezing threshold (2^70)" $ \cid -> do
-            ic_update_settings' ic00 cid (#freezing_threshold .== 2^(70::Int))
-               >>= isReject [3,5]
+               >>= isReject [5]
+        , simpleTestCase "Invalid memory allocation (2^48+1)" $ \cid -> do
+            ic_update_settings' ic00 cid (#memory_allocation .== (2^(48::Int)+1))
+               >>= isReject [5]
+        , simpleTestCase "Invalid freezing threshold (2^64)" $ \cid -> do
+            ic_update_settings' ic00 cid (#freezing_threshold .== 2^(64::Int))
+               >>= isReject [5]
         ]
     ]
 
@@ -806,6 +1248,8 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     , t "accept_message"               never             acceptMessage -- due to double accept
     , t "time"                         star            $ ignore getTime
     , t "performance_counter"          star            $ ignore $ performanceCounter (int 0)
+    , t "canister_version"             star            $ ignore $ canisterVersion
+    , t "global_timer_set"             "I U Ry Rt C H" $ ignore $ apiGlobalTimerSet (int64 0)
     , t "debug_print"                  star            $ debugPrint "hello"
     , t "trap"                         never           $ trap "this better traps"
     ]
@@ -1159,7 +1603,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     [ simpleTestCase "in query" $ \cid ->
       query cid (replyData getTimeTwice) >>= as2Word64 >>= bothSame
     , simpleTestCase "in update" $ \cid ->
-      query cid (replyData getTimeTwice) >>= as2Word64 >>= bothSame
+      call cid (replyData getTimeTwice) >>= as2Word64 >>= bothSame
     , testCase "in install" $ do
       cid <- install $ setGlobal getTimeTwice
       query cid (replyData getGlobal) >>= as2Word64 >>= bothSame
@@ -1172,6 +1616,227 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     , simpleTestCase "in post_upgrade" $ \cid -> do
       upgrade cid $ setGlobal getTimeTwice
       query cid (replyData getGlobal) >>= as2Word64 >>= bothSame
+    ]
+
+  , testGroup "canister global timer" $
+    let on_timer_prog n = onGlobalTimer $ callback (setGlobal $ i64tob $ int64 $ fromIntegral n) in
+    let set_timer_prog time = setGlobal $ i64tob $ apiGlobalTimerSet $ int64 time in
+    let install_canister_with_global_timer n = install $ on_timer_prog n in
+    let reset_global cid = call cid ((setGlobal $ i64tob $ int64 42) >>> replyData "") in
+    let get_global cid = call cid (replyData $ getGlobal) in
+    let get_far_past_time = return 1 in
+    let get_current_time = floor . (* 1e9) <$> getPOSIXTime in
+    let get_far_future_time = floor . (* 1e9) <$> (+) 100000 <$> getPOSIXTime in
+    let get_far_far_future_time = floor . (* 1e9) <$> (+) 1000000 <$> getPOSIXTime in
+    let set_timer cid time = call cid (replyData $ i64tob $ apiGlobalTimerSet $ int64 time) in
+    let blob = toLazyByteString . word64LE . fromIntegral in
+    let wait_for_timer cid n = waitFor $ (blob n ==) <$> get_global cid in
+    [ testCase "in update" $ do
+      cid <- install_canister_with_global_timer (1::Int)
+      _ <- reset_global cid
+      far_future_time <- get_far_future_time
+      timer1 <- set_timer cid far_future_time
+      timer2 <- set_timer cid far_future_time
+      ctr <- get_global cid
+      timer1 @?= blob 0
+      timer2 @?= blob far_future_time
+      ctr @?= blob 42
+    , testCase "in init" $ do
+      far_future_time <- get_far_future_time
+      cid <- install $ on_timer_prog (1::Int) >>> set_timer_prog far_future_time
+      timer1 <- get_global cid
+      timer2 <- set_timer cid far_future_time
+      timer1 @?= blob 0
+      timer2 @?= blob far_future_time
+    , testCase "in post-upgrade" $ do
+      cid <- install_canister_with_global_timer (1::Int)
+      _ <- reset_global cid
+      far_future_time <- get_far_future_time
+      timer1 <- set_timer cid far_future_time
+      far_far_future_time <- get_far_far_future_time
+      universal_wasm <- getTestWasm "universal-canister"
+      _ <- ic_install ic00 (enum #upgrade) cid universal_wasm (run $ set_timer_prog far_far_future_time)
+      timer2 <- get_global cid
+      timer3 <- set_timer cid far_future_time
+      timer1 @?= blob 0
+      timer2 @?= blob 0
+      timer3 @?= blob far_far_future_time
+    , testCase "deactivate timer" $ do
+      cid <- install_canister_with_global_timer (1::Int)
+      _ <- reset_global cid
+      far_future_time <- get_far_future_time
+      timer1 <- set_timer cid far_future_time
+      timer2 <- set_timer cid 0
+      timer3 <- set_timer cid far_future_time
+      ctr <- get_global cid
+      timer1 @?= blob 0
+      timer2 @?= blob far_future_time
+      timer3 @?= blob 0
+      ctr @?= blob 42
+    , testCase "set timer far in the past" $ do
+      cid <- install_canister_with_global_timer (1::Int)
+      _ <- reset_global cid
+      past_time <- get_far_past_time
+      timer1 <- set_timer cid past_time
+      wait_for_timer cid 1
+      future_time <- get_far_future_time
+      timer2 <- set_timer cid future_time
+      timer1 @?= blob 0
+      timer2 @?= blob 0
+    , testCase "set timer at current time" $ do
+      cid <- install_canister_with_global_timer (1::Int)
+      _ <- reset_global cid
+      current_time <- get_current_time
+      timer1 <- set_timer cid current_time
+      wait_for_timer cid 1
+      future_time <- get_far_future_time
+      timer2 <- set_timer cid future_time
+      timer1 @?= blob 0
+      timer2 @?= blob 0
+    , testCase "stop and start canister" $ do
+      cid <- install_canister_with_global_timer (1::Int)
+      _ <- reset_global cid
+      far_future_time <- get_far_future_time
+      timer1 <- set_timer cid far_future_time
+      timer2 <- set_timer cid far_future_time
+      _ <- ic_stop_canister ic00 cid
+      _ <- ic_start_canister ic00 cid
+      timer3 <- set_timer cid far_future_time
+      ctr <- get_global cid
+      timer1 @?= blob 0
+      timer2 @?= blob far_future_time
+      timer3 @?= blob far_future_time
+      ctr @?= blob 42
+    , testCase "uninstall and install canister" $ do
+      cid <- install_canister_with_global_timer (1::Int)
+      _ <- reset_global cid
+      far_future_time <- get_far_future_time
+      timer1 <- set_timer cid far_future_time
+      timer2 <- set_timer cid far_future_time
+      universal_wasm <- getTestWasm "universal-canister"
+      _ <- ic_uninstall ic00 cid
+      _ <- ic_install ic00 (enum #install) cid universal_wasm (run $ on_timer_prog (1::Int))
+      timer3 <- set_timer cid far_future_time
+      timer1 @?= blob 0
+      timer2 @?= blob far_future_time
+      timer3 @?= blob 0
+    , testCase "upgrade canister" $ do
+      cid <- install_canister_with_global_timer (1::Int)
+      _ <- reset_global cid
+      far_future_time <- get_far_future_time
+      timer1 <- set_timer cid far_future_time
+      timer2 <- set_timer cid far_future_time
+      universal_wasm <- getTestWasm "universal-canister"
+      _ <- ic_install ic00 (enum #upgrade) cid universal_wasm (run $ on_timer_prog (1::Int))
+      timer3 <- set_timer cid far_future_time
+      timer1 @?= blob 0
+      timer2 @?= blob far_future_time
+      timer3 @?= blob 0
+    , testCase "reinstall canister" $ do
+      cid <- install_canister_with_global_timer (1::Int)
+      _ <- reset_global cid
+      far_future_time <- get_far_future_time
+      timer1 <- set_timer cid far_future_time
+      timer2 <- set_timer cid far_future_time
+      universal_wasm <- getTestWasm "universal-canister"
+      _ <- ic_install ic00 (enum #reinstall) cid universal_wasm (run $ on_timer_prog (1::Int))
+      timer3 <- set_timer cid far_future_time
+      timer1 @?= blob 0
+      timer2 @?= blob far_future_time
+      timer3 @?= blob 0
+    ]
+
+  , testGroup "canister version" $
+    let canister_version = i64tob canisterVersion in
+    [ simpleTestCase "in query" $ \cid -> do
+      ctr <- query cid (replyData canister_version) >>= asWord64
+      ctr @?= 1
+    , simpleTestCase "in update" $ \cid -> do
+      ctr <- call cid (replyData canister_version) >>= asWord64
+      ctr @?= 1
+    , testCase "in install" $ do
+      cid <- install $ setGlobal canister_version
+      ctr1 <- query cid (replyData getGlobal) >>= asWord64
+      ctr2 <- query cid (replyData canister_version) >>= asWord64
+      ctr1 @?= 1
+      ctr2 @?= 1
+    , testCase "in reinstall" $ do
+      cid <- install noop
+      ctr1 <- query cid (replyData canister_version) >>= asWord64
+      _ <- reinstall cid $ setGlobal canister_version
+      ctr2 <- query cid (replyData getGlobal) >>= asWord64
+      ctr3 <- query cid (replyData canister_version) >>= asWord64
+      ctr1 @?= 1
+      ctr2 @?= 2
+      ctr3 @?= 2
+    , testCase "in pre_upgrade" $ do
+      cid <- install $
+        ignore (stableGrow (int 1)) >>>
+        onPreUpgrade (callback $ stableWrite (int 0) canister_version)
+      ctr1 <- query cid (replyData canister_version) >>= asWord64
+      upgrade cid noop
+      ctr2 <- query cid (replyData (stableRead (int 0) (int 8))) >>= asWord64
+      ctr3 <- query cid (replyData canister_version) >>= asWord64
+      ctr1 @?= 1
+      ctr2 @?= 1
+      ctr3 @?= 2
+    , simpleTestCase "in post_upgrade" $ \cid -> do
+      ctr1 <- query cid (replyData canister_version) >>= asWord64
+      upgrade cid $ setGlobal canister_version
+      ctr2 <- query cid (replyData getGlobal) >>= asWord64
+      ctr3 <- query cid (replyData canister_version) >>= asWord64
+      ctr1 @?= 1
+      ctr2 @?= 2
+      ctr3 @?= 2
+    , simpleTestCase "after uninstalling canister" $ \cid -> do
+      ctr1 <- query cid (replyData canister_version) >>= asWord64
+      ic_uninstall ic00 cid
+      installAt cid noop
+      ctr2 <- query cid (replyData canister_version) >>= asWord64
+      ctr1 @?= 1
+      ctr2 @?= 3
+    , simpleTestCase "after setting controllers" $ \cid -> do
+      ctr1 <- query cid (replyData canister_version) >>= asWord64
+      ic_set_controllers ic00 cid [otherUser]
+      ctr2 <- query cid (replyData canister_version) >>= asWord64
+      ctr1 @?= 1
+      ctr2 @?= 2
+    , simpleTestCase "after setting freezing threshold" $ \cid -> do
+      ctr1 <- query cid (replyData canister_version) >>= asWord64
+      ic_update_settings ic00 cid (#freezing_threshold .== 2^(20::Int))
+      ctr2 <- query cid (replyData canister_version) >>= asWord64
+      ctr1 @?= 1
+      ctr2 @?= 2
+    , testCase "after failed install" $ do
+      cid <- create
+      _ <- ic_install' ic00 (enum #install) cid "" ""
+      cid <- install noop
+      ctr1 <- query cid (replyData canister_version) >>= asWord64
+      ctr1 @?= 1
+    , simpleTestCase "after failed reinstall" $ \cid -> do
+      ctr1 <- query cid (replyData canister_version) >>= asWord64
+      _ <- ic_install' ic00 (enum #reinstall) cid "" ""
+      ctr2 <- query cid (replyData canister_version) >>= asWord64
+      ctr1 @?= 1
+      ctr2 @?= 1
+    , simpleTestCase "after failed upgrade" $ \cid -> do
+      ctr1 <- query cid (replyData canister_version) >>= asWord64
+      _ <- ic_install' ic00 (enum #upgrade) cid "" ""
+      ctr2 <- query cid (replyData canister_version) >>= asWord64
+      ctr1 @?= 1
+      ctr2 @?= 1
+    , simpleTestCase "after failed uninstall" $ \cid -> do
+      ctr1 <- query cid (replyData canister_version) >>= asWord64
+      _ <- ic_uninstall'' otherUser cid
+      ctr2 <- query cid (replyData canister_version) >>= asWord64
+      ctr1 @?= 1
+      ctr2 @?= 1
+    , simpleTestCase "after failed change of settings" $ \cid -> do
+      ctr1 <- query cid (replyData canister_version) >>= asWord64
+      _ <- ic_update_settings' ic00 cid (#freezing_threshold .== 2^(70::Int))
+      ctr2 <- query cid (replyData canister_version) >>= asWord64
+      ctr1 @?= 1
+      ctr2 @?= 1
     ]
 
   , testGroup "upgrades" $
@@ -1316,14 +1981,14 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     , testCase "uninstall and reinstall wipes state" $ do
       cid <- install (setGlobal "FOO")
       ic_uninstall ic00 cid
-      universal_wasm <- getTestWasm "universal_canister"
+      universal_wasm <- getTestWasm "universal-canister"
       ic_install ic00 (enum #install) cid universal_wasm (run (setGlobal "BAR"))
       query cid (replyData getGlobal) >>= is "BAR"
 
     , testCase "uninstall and reinstall wipes stable memory" $ do
       cid <- install (ignore (stableGrow (int 1)) >>> stableWrite (int 0) "FOO")
       ic_uninstall ic00 cid
-      universal_wasm <- getTestWasm "universal_canister"
+      universal_wasm <- getTestWasm "universal-canister"
       ic_install ic00 (enum #install) cid universal_wasm (run (setGlobal "BAR"))
       query cid (replyData (i2b stableSize)) >>= asWord32 >>= is 0
       do query cid $
@@ -1339,7 +2004,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
       cid <- install $ setCertifiedData "FOO"
       query cid (replyData getCertificate) >>= extractCertData cid >>= is "FOO"
       ic_uninstall ic00 cid
-      universal_wasm <- getTestWasm "universal_canister"
+      universal_wasm <- getTestWasm "universal-canister"
       ic_install ic00 (enum #install) cid universal_wasm (run noop)
       query cid (replyData getCertificate) >>= extractCertData cid >>= is ""
 
@@ -1431,7 +2096,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
       awaitStatus grs1 >>= isReject [4]
 
       step "Reinstall"
-      universal_wasm <- getTestWasm "universal_canister"
+      universal_wasm <- getTestWasm "universal-canister"
       ic_install ic00 (enum #install) cid universal_wasm (run (setGlobal "BAR"))
 
       step "Create second long-running call"
@@ -1583,7 +2248,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
 
     , testCase "module_hash of universal canister" $ do
         cid <- install noop
-        universal_wasm <- getTestWasm "universal_canister"
+        universal_wasm <- getTestWasm "universal-canister"
         cert <- getStateCert anonymousUser cid [["canister", cid, "module_hash"]]
         certValue @Blob cert ["canister", cid, "module_hash"] >>= is (sha256 universal_wasm)
 
@@ -1744,6 +2409,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
   , testGroup "cycles" $
     let replyBalance = replyData (i64tob getBalance)
         replyBalance128 = replyData getBalance128
+        replyBalanceBalance128 = replyDataAppend (i64tob getBalance) >>> replyDataAppend getBalance128 >>> reply
         rememberBalance =
           ignore (stableGrow (int 1)) >>>
           stableWrite (int 0) (i64tob getBalance)
@@ -1751,6 +2417,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
         acceptAll = ignore (acceptCycles getAvailableCycles)
         queryBalance cid = query cid replyBalance >>= asWord64
         queryBalance128 cid = query cid replyBalance128 >>= asWord128
+        queryBalanceBalance128 cid = query cid replyBalanceBalance128 >>= asWord64Word128
 
         -- At the time of writing, creating a canister needs at least 1T
         -- and the freezing limit is 5T
@@ -1767,7 +2434,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
         -- some more.
         eps = 3_000_000_000_000 :: Integer
 
-        isRoughly :: (HasCallStack, Show a, Num a, Integral a) => a -> a -> Assertion
+        isRoughly :: (HasCallStack, Show a, Num a, Integral a, Show b, Num b, Integral b) => a -> b -> Assertion
         isRoughly exp act = assertBool
            (show act ++ " not near " ++ show exp)
            (abs (fromIntegral exp - fromIntegral act) < eps)
@@ -1778,14 +2445,13 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
           return cid
         create_via cid initial_cycles = do
           cid2 <- ic_create (ic00viaWithCycles cid initial_cycles) empty
-          universal_wasm <- getTestWasm "universal_canister"
+          universal_wasm <- getTestWasm "universal-canister"
           ic_install (ic00via cid) (enum #install) cid2 universal_wasm (run noop)
           return cid2
     in
     [ testGroup "cycles API - backward compatibility" $
         [ simpleTestCase "canister_cycle_balance = canister_cycle_balance128 for numbers fitting in 64 bits" $ \cid -> do
-          a <- queryBalance cid
-          b <- queryBalance128 cid
+          (a, b) <- queryBalanceBalance128 cid
           bothSame (a, fromIntegral b)
         , testCase "legacy API traps when a result is too big" $ do
           cid <- create noop
@@ -1845,7 +2511,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     , testCase "cycles in canister_status" $ do
         cid <- create noop
         cs <- ic_canister_status ic00 cid
-        isRoughly (fromIntegral def_cycles) (cs .! #cycles)
+        isRoughly def_cycles (cs .! #cycles)
 
     , testGroup "cycle balance"
       [ testCase "install" $ do
@@ -1922,7 +2588,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
           , on_reply = replyData (i64tob getRefund)
           , on_reject = trap "unexpected reject"
           }
-        >>= asWord64 >>= isRoughly 0
+        >>= asWord64 >>= isRoughly (0::Word64)
       queryBalance cid1 >>= isRoughly (def_cycles `div` 2)
       queryBalance cid2 >>= isRoughly (def_cycles `div` 4)
       queryBalance cid3 >>= isRoughly (2*def_cycles + def_cycles `div` 4)
@@ -2042,8 +2708,8 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
         cycles <- queryBalance128 cid
         step $ "Cycle balance now at " ++ show cycles
       , testCase "nonexisting canister" $ do
-        ic_top_up' ic00 doesn'tExist (fromIntegral def_cycles)
-          >>= isReject [3,5]
+        ic_top_up''' ic00' doesn'tExist (fromIntegral def_cycles)
+          >>= isErrOrReject [3,5]
       ]
     ]
 
@@ -2110,7 +2776,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
       ic_raw_rand'' defaultUser >>= isErrOrReject []
 
     , testCase "management canister: http_request not accepted" $ do
-      ic_http_request'' defaultUser >>= isErrOrReject []
+      ic_http_get_request'' defaultUser >>= isErrOrReject []
 
     , testCase "management canister: ecdsa_public_key not accepted" $ do
       ic_ecdsa_public_key'' defaultUser >>= isErrOrReject []
@@ -2148,7 +2814,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
         -- sign request with delegations
         delegationEnv defaultSK dels req >>= postCallCBOR cid >>= code2xx
         -- wait for it
-        void $ awaitStatus (getRequestStatus defaultUser cid rid) >>= isReply
+        void $ awaitStatus (getRequestStatus' defaultUser cid rid) >>= isReply
         -- also read status with delegation
         sreq <- addExpiry $ rec
           [ "request_type" =: GText "read_state"
@@ -2168,7 +2834,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
         -- submit with plain signature
         envelope defaultSK req >>= postCallCBOR cid >>= code202
         -- wait for it
-        void $ awaitStatus (getRequestStatus defaultUser cid rid) >>= isReply
+        void $ awaitStatus (getRequestStatus' defaultUser cid rid) >>= isReply
         -- also read status with delegation
         sreq <- addExpiry $ rec
           [ "request_type" =: GText "read_state"
@@ -2263,7 +2929,7 @@ icTests = withAgentConfig $ testGroup "Interface Spec acceptance tests"
       signed_req <- env req
       postCallCBOR cid signed_req >>= code2xx
 
-      awaitStatus (getRequestStatus user cid (requestId req)) >>= isReply >>= is ""
+      awaitStatus (getRequestStatus' user cid (requestId req)) >>= isReply >>= is ""
     ]
 
   , testGroup "signature checking" $

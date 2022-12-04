@@ -12,6 +12,8 @@
 module Main where
 
 import Options.Applicative hiding (empty)
+import Control.Concurrent (threadDelay)
+import Control.Concurrent.Async (withAsync)
 import Control.Monad
 import qualified Data.Map as M
 import qualified Data.ByteString.Lazy as B
@@ -30,19 +32,21 @@ import GHC.TypeLits (KnownSymbol, symbolVal)
 import Data.Row (empty, (.==), (.+), type (.!), Label)
 import qualified Codec.Candid as Candid
 import qualified Data.Row.Variants as V
+import qualified Data.Word as W
 
 
+import IC.HTTP.Request
 import IC.Version
 import IC.Types
 import IC.Ref
 import IC.DRun.Parse (Ingress(..), parseFile)
 import IC.Management
+import IC.Utils
 
+import IC.StateFile
+import IC.Serialise ()
 
 type DRun = StateT IC IO
-
-dummyUserId :: CanisterId
-dummyUserId = EntityId $ B.pack [0xCA, 0xFF, 0xEE]
 
 -- Pretty printing
 
@@ -89,21 +93,28 @@ shorten n s = a ++ (if null b then "" else "...")
   where (a,b) = splitAt n s
 
 
-submitAndRun :: CallRequest -> DRun ()
-submitAndRun r = do
-    lift $ printCallRequest r
-    rid <- lift mkRequestId
-    submitRequest rid r
-    runToCompletion
-    r <- gets (snd . (M.! rid) . requests)
-    lift $ printReqStatus r
+submitAndRun :: HasRefConfig => Store IC -> CanisterId -> CallRequest -> IO ()
+submitAndRun store ecid r = do
+    printCallRequest r
+    rid <- mkRequestId
+    modifyStore store processSystemTasks
+    modifyStore store $ submitRequest rid r ecid
+    loopIC
+    (r, _) <- peekStore store >>= evalStateT (gets (snd . (M.! rid) . requests))
+    printReqStatus r
+    where
+      loopIC :: IO ()
+      loopIC = modifyStore store runStep >>= \case
+        True -> loopIC
+        False -> return ()
 
-submitQuery :: QueryRequest -> DRun ()
-submitQuery r = do
-    lift $ printQueryRequest r
-    t <- lift getTimestamp
-    r <- handleQuery t r
-    lift $ printReqResponse r
+
+submitQuery :: HasRefConfig => Store IC -> QueryRequest -> IO ()
+submitQuery store r = do
+    printQueryRequest r
+    t <- getTimestamp
+    r <- peekStore store >>= evalStateT (handleQuery t r)
+    printReqResponse r
   where
     getTimestamp :: IO Timestamp
     getTimestamp = do
@@ -114,50 +125,62 @@ mkRequestId :: IO RequestID
 mkRequestId = B.toLazyByteString . B.word64BE <$> randomIO
 
 callManagement :: forall s a b.
-  KnownSymbol s =>
+  HasRefConfig => KnownSymbol s =>
   (a -> IO b) ~ (ICManagement IO .! s) =>
   Candid.CandidArg a =>
-  EntityId -> Label s -> a -> StateT IC IO ()
-callManagement user_id l x =
-  submitAndRun $
+  Store IC -> CanisterId -> EntityId -> Label s -> a -> IO ()
+callManagement store ecid user_id l x =
+  submitAndRun store ecid $
     CallRequest (EntityId mempty) user_id (symbolVal l) (Candid.encode x)
 
-work :: FilePath -> IO ()
-work msg_file = do
+work :: [(SubnetType, String, [(W.Word64, W.Word64)])] -> Int -> FilePath -> IO ()
+work subnets systemTaskPeriod msg_file = do
+  let subs = map (\(t, n, ranges) -> SubnetConfig t n ranges) subnets
   msgs <- parseFile msg_file
 
   let user_id = dummyUserId
-  ic <- initialIC
-  flip evalStateT ic $
-    forM_ msgs $ \case
-      Create ->
-        callManagement user_id #create_canister $ empty
-          .+ #settings .== Nothing
-      Install cid filename arg -> do
-        wasm <- liftIO $ B.readFile filename
-        callManagement user_id #install_code $ empty
-          .+ #mode .== V.IsJust #install ()
-          .+ #canister_id .== Candid.Principal cid
-          .+ #wasm_module .== wasm
-          .+ #arg .== arg
-      Reinstall cid filename arg -> do
-        wasm <- liftIO $ B.readFile filename
-        callManagement user_id #install_code $ empty
-          .+ #mode .== V.IsJust #reinstall ()
-          .+ #canister_id .== Candid.Principal cid
-          .+ #wasm_module .== wasm
-          .+ #arg .== arg
-      Upgrade cid filename arg -> do
-        wasm <- liftIO $ B.readFile filename
-        callManagement user_id #install_code $ empty
-          .+ #mode .== V.IsJust #upgrade ()
-          .+ #canister_id .== Candid.Principal cid
-          .+ #wasm_module .== wasm
-          .+ #arg .== arg
-      Query  cid method arg ->
-        submitQuery  (QueryRequest (EntityId cid) user_id method arg)
-      Update cid method arg ->
-        submitAndRun (CallRequest (EntityId cid) user_id method arg)
+  conf <- makeRefConfig []
+  withStore (initialIC subs) Nothing $ \store ->
+      withAsync (withRefConfig conf $ loopIC store) $ \_async ->
+          forM_ msgs $ \case
+            Create ecid ->
+              withRefConfig conf $ callManagement store (EntityId ecid) user_id #provisional_create_canister_with_cycles $ empty
+                .+ #settings .== Nothing
+                .+ #amount .== Nothing
+            Install cid filename arg -> do
+              wasm <- liftIO $ B.readFile filename
+              withRefConfig conf $ callManagement store (EntityId cid) user_id #install_code $ empty
+                .+ #mode .== V.IsJust #install ()
+                .+ #canister_id .== Candid.Principal cid
+                .+ #wasm_module .== wasm
+                .+ #arg .== arg
+            Reinstall cid filename arg -> do
+              wasm <- liftIO $ B.readFile filename
+              withRefConfig conf $ callManagement store (EntityId cid) user_id #install_code $ empty
+                .+ #mode .== V.IsJust #reinstall ()
+                .+ #canister_id .== Candid.Principal cid
+                .+ #wasm_module .== wasm
+                .+ #arg .== arg
+            Upgrade cid filename arg -> do
+              wasm <- liftIO $ B.readFile filename
+              withRefConfig conf $ callManagement store (EntityId cid) user_id #install_code $ empty
+                .+ #mode .== V.IsJust #upgrade ()
+                .+ #canister_id .== Candid.Principal cid
+                .+ #wasm_module .== wasm
+                .+ #arg .== arg
+            Query  cid method arg ->
+              withRefConfig conf $ submitQuery store (QueryRequest (EntityId cid) user_id method arg)
+            Update cid method arg ->
+              withRefConfig conf $ submitAndRun store (EntityId cid) (CallRequest (EntityId cid) user_id method arg)
+  where
+    loopIC :: HasRefConfig => Store IC -> IO ()
+    loopIC store = forever $ do
+        threadDelay (systemTaskPeriod * 1000000)
+        modifyStore store aux
+      where
+        aux = do
+          lift getTimestamp >>= setAllTimesTo
+          processSystemTasks
 
 main :: IO ()
 main = join . customExecParser (prefs showHelpOnError) $
@@ -171,6 +194,14 @@ main = join . customExecParser (prefs showHelpOnError) $
     versions =
           infoOption (T.unpack implVersion) (long "version" <> help "show version number")
       <*> infoOption (T.unpack specVersion) (long "spec-version" <> help "show spec version number")
+    canister_ids_per_subnet :: W.Word64
+    canister_ids_per_subnet = 1_048_576
+    range :: W.Word64 -> (W.Word64, W.Word64)
+    range n = (n * canister_ids_per_subnet, (n + 1) * canister_ids_per_subnet - 1)
+    defaultSubnetConfig :: [(SubnetType, String, [(W.Word64, W.Word64)])]
+    defaultSubnetConfig = [(System, "sk1", [range 0]), (Application, "sk2", [range 1])]
+    defaultSystemTaskPeriod :: Int
+    defaultSystemTaskPeriod = 1
     parser :: Parser (IO ())
     parser = work
       <$  strOption
@@ -179,6 +210,25 @@ main = join . customExecParser (prefs showHelpOnError) $
           <> metavar "CONFIG"
           <> value ""
           )
+      <*> (
+            (
+              option auto
+              (  long "subnet-config"
+              <> help ("choose initial subnet configurations (default: " ++ show defaultSubnetConfig ++ ")")
+              )
+            )
+          <|> pure defaultSubnetConfig
+          )
+      <*>
+        (
+          (
+            option auto
+            (  long "system-task-period"
+            <> help ("choose execution period (in integer seconds) for system tasks, i.e., heartbeats and global timers (default: " ++ show defaultSystemTaskPeriod ++ ")")
+            )
+          )
+        <|> pure defaultSystemTaskPeriod
+        )
       <*> strArgument
           (  metavar "script"
           <> help "messages to execute"

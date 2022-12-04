@@ -6,9 +6,11 @@
 , aeson
 , asn1-encoding
 , asn1-types
+, async
 , atomic-write
 , base
 , base32
+, base64
 , base64-bytestring
 , binary
 , bytestring
@@ -16,6 +18,7 @@
 , case-insensitive
 , cborg
 , cereal
+, connection
 , containers
 , crc
 , cryptonite
@@ -35,6 +38,7 @@
 , memory
 , MonadRandom
 , mtl
+, network-uri
 , optparse-applicative
 , parallel
 , prettyprinter
@@ -56,6 +60,7 @@
 , temporary
 , text
 , time
+, tls
 , transformers
 , uglymemo
 , unordered-containers
@@ -65,7 +70,12 @@
 , wai-cors
 , wai-extra
 , warp
+, wide-word
 , winter
+, word8
+, x509
+, x509-store
+, x509-validation
 , zlib
 }:
 mkDerivation {
@@ -79,9 +89,11 @@ mkDerivation {
     aeson
     asn1-encoding
     asn1-types
+    async
     atomic-write
     base
     base32
+    base64
     base64-bytestring
     binary
     bytestring
@@ -89,6 +101,7 @@ mkDerivation {
     case-insensitive
     cborg
     cereal
+    connection
     containers
     crc
     cryptonite
@@ -107,6 +120,7 @@ mkDerivation {
     memory
     MonadRandom
     mtl
+    network-uri
     optparse-applicative
     parallel
     prettyprinter
@@ -128,6 +142,7 @@ mkDerivation {
     temporary
     text
     time
+    tls
     transformers
     uglymemo
     unordered-containers
@@ -137,16 +152,23 @@ mkDerivation {
     wai-cors
     wai-extra
     warp
+    wide-word
     winter
+    word8
+    x509
+    x509-store
+    x509-validation
     zlib
   ];
   executableHaskellDepends = [
     aeson
     asn1-encoding
     asn1-types
+    async
     atomic-write
     base
     base32
+    base64
     base64-bytestring
     binary
     bytestring
@@ -154,6 +176,7 @@ mkDerivation {
     case-insensitive
     cborg
     cereal
+    connection
     containers
     crc
     cryptonite
@@ -172,6 +195,7 @@ mkDerivation {
     memory
     MonadRandom
     mtl
+    network-uri
     optparse-applicative
     parallel
     prettyprinter
@@ -190,6 +214,7 @@ mkDerivation {
     template-haskell
     text
     time
+    tls
     transformers
     uglymemo
     unordered-containers
@@ -199,7 +224,12 @@ mkDerivation {
     wai-cors
     wai-extra
     warp
+    wide-word
     winter
+    word8
+    x509
+    x509-store
+    x509-validation
     zlib
   ];
   testHaskellDepends = [
@@ -209,6 +239,7 @@ mkDerivation {
     atomic-write
     base
     base32
+    base64
     base64-bytestring
     binary
     bytestring
@@ -216,6 +247,7 @@ mkDerivation {
     case-insensitive
     cborg
     cereal
+    connection
     containers
     crc
     cryptonite
@@ -234,6 +266,7 @@ mkDerivation {
     memory
     MonadRandom
     mtl
+    network-uri
     parallel
     primitive
     quickcheck-io
@@ -248,12 +281,17 @@ mkDerivation {
     temporary
     text
     time
+    tls
     transformers
     uglymemo
     unordered-containers
     utf8-string
     vector
     winter
+    word8
+    x509
+    x509-store
+    x509-validation
     zlib
   ];
   doCheck = false;

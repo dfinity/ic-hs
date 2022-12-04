@@ -13,6 +13,7 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE NumericUnderscores #-}
+{-# LANGUAGE MultiWayIf #-}
 
 {-|
 This module implements the main abstract logic of the Internet Computer. It
@@ -38,7 +39,7 @@ module IC.Ref
   , handleReadState
   , runStep
   , runToCompletion
-  , processHeartbeats
+  , processSystemTasks
   -- $ Exported for use as a library, e.g. in testing
   , setAllTimesTo
   , createEmptyCanister
@@ -53,13 +54,17 @@ module IC.Ref
   )
 where
 
+import qualified Data.CaseInsensitive as CI
 import qualified Data.Map as M
 import qualified Data.Row as R
 import qualified Data.Row.Variants as V
 import qualified Data.ByteString.Lazy as BS
+import qualified Data.ByteString.Lazy.UTF8 as BLU
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as T
 import qualified Data.Vector as Vec
 import qualified Data.Set as S
+import qualified Data.Word as W
 import Data.List
 import Data.Maybe
 import Numeric.Natural
@@ -72,12 +77,14 @@ import Data.Foldable (toList)
 import Codec.Candid
 import Data.Row ((.==), (.+), (.!), type (.!))
 import GHC.Stack
+import Network.URI (parseURI)
 
 import IC.Types
 import IC.Constants
 import IC.Canister
 import IC.CBOR.Utils
 import IC.Id.Fresh
+import IC.Id.Forms(mkSelfAuthenticatingId)
 import IC.Utils
 import IC.Management
 import IC.HashTree hiding (Blob)
@@ -140,6 +147,8 @@ data CanState = CanState
   , time :: Timestamp
   , cycle_balance :: Natural
   , certified_data :: Blob
+  , canister_version :: Natural
+  , global_timer :: Natural
   -- |Not part of the spec, but in this implementation we schedule
   -- heartbeats only for canisters who have not been idle since the
   -- last heartbeat, so we remember the last action.
@@ -153,6 +162,7 @@ data EntryPoint
   = Public MethodName Blob
   | Closure Callback Response Cycles
   | Heartbeat
+  | GlobalTimer
   deriving (Show)
 
 type CallId = Int
@@ -168,9 +178,9 @@ data CallContext = CallContext
   deriving (Show)
 
 data CallOrigin
-  = FromUser RequestID
+  = FromUser RequestID CanisterId
   | FromCanister CallId Callback
-  | FromHeartbeat
+  | FromSystemTask
   deriving (Eq, Show)
 
 data Message
@@ -189,32 +199,38 @@ data Message
 
 data IC = IC
   { canisters :: CanisterId ↦ CanState
-  , requests :: RequestID ↦ (CallRequest, RequestStatus)
+  , requests :: RequestID ↦ (CallRequest, (RequestStatus, CanisterId))
   , messages :: Seq Message
   , call_contexts :: CallId ↦ CallContext
   , rng :: StdGen
   , secretRootKey :: SecretKey
-  , secretSubnetKey :: SecretKey
+  , rootSubnet :: Maybe EntityId
+  , subnets :: [(EntityId, SubnetType, SecretKey, [(W.Word64, W.Word64)])]
   }
   deriving (Show)
 
 -- The functions below want stateful access to a value of type 'IC'
-type ICM m = (MonadState IC m, HasCallStack, MonadIO m)
+type ICM m = (MonadState IC m, HasRefConfig, HasCallStack, MonadIO m)
 
-initialIC :: IO IC
-initialIC = do
-    let sk1 = createSecretKeyBLS "ic-ref's very secure secret key"
-    let sk2 = createSecretKeyBLS "ic-ref's very secure subnet key"
-    IC mempty mempty mempty mempty <$> newStdGen <*> pure sk1 <*> pure sk2
+initialIC :: [SubnetConfig] -> IO IC
+initialIC subnets = do
+    let root_subnet = find (\conf -> subnet_type conf == System) subnets
+    let sk = case root_subnet of Nothing -> createSecretKeyBLS "ic-ref's very secure secret root key"
+                                 Just conf -> key conf
+    IC mempty mempty mempty mempty <$> newStdGen <*> pure sk <*> pure (fmap (sub_id . key) root_subnet) <*> pure (map sub subnets)
+  where
+    sub conf = (sub_id (key conf), subnet_type conf, key conf, canister_ranges conf)
+    sub_id = EntityId . mkSelfAuthenticatingId . toPublicKey
+    key = createSecretKeyBLS . BLU.fromString . nonce
 
 -- Request handling
 
-findRequest :: RequestID -> IC -> Maybe (CallRequest, RequestStatus)
+findRequest :: RequestID -> IC -> Maybe (CallRequest, (RequestStatus, CanisterId))
 findRequest rid ic = M.lookup rid (requests ic)
 
 setReqStatus :: ICM m => RequestID -> RequestStatus -> m ()
 setReqStatus rid s = modify $ \ic ->
-  ic { requests = M.adjust (\(r,_) -> (r,s)) rid (requests ic) }
+  ic { requests = M.adjust (\(r,(_,ecid)) -> (r,(s,ecid))) rid (requests ic) }
 
 calleeOfCallRequest :: CallRequest -> EntityId
 calleeOfCallRequest = \case
@@ -246,6 +262,8 @@ createEmptyCanister cid controllers time = modify $ \ic ->
       , time = time
       , cycle_balance = 0
       , certified_data = ""
+      , canister_version = 0
+      , global_timer = 0
       , last_action = Nothing
       }
 
@@ -348,6 +366,20 @@ getCanisterMod cid = can_mod . fromJust . content <$> getCanister cid
 getCanisterTime :: ICM m => CanisterId -> m Timestamp
 getCanisterTime cid = time <$> getCanister cid
 
+getCanisterVersion :: ICM m => CanisterId -> m Natural
+getCanisterVersion cid = canister_version <$> getCanister cid
+
+bumpCanisterVersion :: ICM m => CanisterId -> m ()
+bumpCanisterVersion cid = modCanister cid $
+    \cs -> cs { canister_version = canister_version cs + 1 }
+
+getCanisterGlobalTimer :: ICM m => CanisterId -> m Natural
+getCanisterGlobalTimer cid = global_timer <$> getCanister cid
+
+setCanisterGlobalTimer :: ICM m => CanisterId -> Natural -> m ()
+setCanisterGlobalTimer cid ts = modCanister cid $
+    \cs -> cs { global_timer = ts }
+
 module_hash :: CanState -> Maybe Blob
 module_hash = fmap (raw_wasm_hash . can_mod) . content
 
@@ -425,12 +457,16 @@ canisterEnv canister_id = do
       IsStopping _pending -> Stopping
       IsStopped -> Stopped
       IsDeleted -> error "deleted canister encountered"
+  env_canister_version <- getCanisterVersion canister_id
+  env_global_timer <- getCanisterGlobalTimer canister_id
   return $ Env
     { env_self = canister_id
     , env_time
     , env_balance
     , env_status
     , env_certificate = Nothing
+    , env_canister_version
+    , env_global_timer
     }
 
 -- Synchronous requests
@@ -457,11 +493,11 @@ handleQuery time (QueryRequest canister_id user_id method arg) =
       Return (Reject (rc, rm)) -> reject rc rm (Just EC_CANISTER_REJECTED)
       Return (Reply res) -> return $ Replied res
 
-handleReadState :: ICM m => Timestamp -> ReadStateRequest -> m ReqResponse
-handleReadState time (ReadStateRequest _sender paths) = do
+handleReadState :: ICM m => Timestamp -> CanisterId -> ReadStateRequest -> m (Either T.Text ReqResponse)
+handleReadState time ecid (ReadStateRequest _sender paths) = onReject (\(_, s, _) -> return $ Left $ T.pack s) $ do
     -- NB: Already authorized in authSyncRequest
-    cert <- getPrunedCertificate time (["time"] : paths)
-    return $ ReadStateResponse cert
+    cert <- getPrunedCertificate time ecid (["time"] : paths)
+    return $ Right $ ReadStateResponse cert
 
 checkEffectiveCanisterID :: RequestValidation m => CanisterId -> CanisterId -> MethodName -> Blob -> m ()
 checkEffectiveCanisterID ecid cid method arg
@@ -503,9 +539,6 @@ inspectIngress (CallRequest canister_id user_id method arg)
   | otherwise = do
     onReject (throwError . T.pack . rejectMessage) $
         canisterMustExist canister_id
-    getRunStatus canister_id >>= \case
-       IsRunning -> return ()
-       _ -> throwError "canister is stopped"
     empty <- isCanisterEmpty canister_id
     when empty $ throwError "canister is empty"
     wasm_state <- getCanisterState canister_id
@@ -521,6 +554,7 @@ inspectIngress (CallRequest canister_id user_id method arg)
 stateTree :: Timestamp -> IC -> LabeledTree
 stateTree (Timestamp t) ic = node
   [ "time" =: val t
+  , "subnet" =: node (map subnet_tree (subnets ic))
   , "request_status" =: node
     [ rid =: case rs of
         Received -> node
@@ -537,7 +571,7 @@ stateTree (Timestamp t) ic = node
           , "reject_code" =: val (rejectCode c)
           , "reject_message" =: val (T.pack msg)
           ]
-    | (rid, (_, rs)) <- M.toList (requests ic)
+    | (rid, (_, (rs, _))) <- M.toList (requests ic)
     ]
   , "canister" =: node
     [ cid =: node (
@@ -563,14 +597,19 @@ stateTree (Timestamp t) ic = node
     val = Value . toCertVal
     str = val @T.Text
     (=:) = M.singleton
+    subnet_tree (EntityId subnet_id, _, _, ranges) = subnet_id =: node (
+        [ "public_key" =: val subnet_id
+        , "canister_ranges" =: val (encodeCanisterRangeList $ map (\(a, b) -> (wordToId a, wordToId b)) ranges)
+        ]
+      )
 
-delegationTree :: Timestamp -> SubnetId -> Blob -> LabeledTree
-delegationTree (Timestamp t) (EntityId subnet_id) subnet_pub_key = node
+delegationTree :: Timestamp -> SubnetId -> Blob -> [(W.Word64, W.Word64)] -> LabeledTree
+delegationTree (Timestamp t) (EntityId subnet_id) subnet_pub_key ranges = node
   [ "time" =: val t
   , "subnet" =: node
     [ subnet_id =: node (
           [ "public_key" =: val subnet_pub_key
-          , "canister_ranges" =: val (encodeCanisterRangeList [icCanisterIdRange])
+          , "canister_ranges" =: val (encodeCanisterRangeList $ map (\(a, b) -> (wordToId a, wordToId b)) ranges)
           ]
       )
     ]
@@ -581,18 +620,26 @@ delegationTree (Timestamp t) (EntityId subnet_id) subnet_pub_key = node
     val = Value . toCertVal
     (=:) = M.singleton
 
-getPrunedCertificate :: ICM m => Timestamp -> [Path] -> m Certificate
-getPrunedCertificate time paths = do
+getSubnetFromCanisterId :: (CanReject m, ICM m) => CanisterId -> m (EntityId, SubnetType, SecretKey, [(W.Word64, W.Word64)])
+getSubnetFromCanisterId cid = do
+    subnets <- gets subnets
+    case subnetOfCid cid subnets of
+      Nothing -> reject RC_SYS_FATAL "Canister id does not belong to any subnet." Nothing
+      Just x -> return x
+    where
+      subnetOfCid cid subnets = find (\(_, _, _, ranges) -> find (\(a, b) -> wordToId a <= cid && cid <= wordToId b) ranges /= Nothing) subnets
+
+getPrunedCertificate :: (CanReject m, ICM m) => Timestamp -> CanisterId -> [Path] -> m Certificate
+getPrunedCertificate time ecid paths = do
+    root_subnet <- gets rootSubnet
+    sk1 <- gets secretRootKey
+    (subnet_id, _, sk2, ranges) <- getSubnetFromCanisterId ecid
     full_tree <- gets (construct . stateTree time)
     let cert_tree = prune full_tree (["time"] : paths)
-    sk1 <- gets secretRootKey
-    sk2 <- gets secretSubnetKey
-    return $ signCertificate time sk1 (Just (fake_subnet_id, sk2)) cert_tree
-  where
-    fake_subnet_id = EntityId "\x01"
+    return $ signCertificate time sk1 (if root_subnet == Just subnet_id then Nothing else Just (subnet_id, sk2, ranges)) cert_tree
 
-signCertificate :: Timestamp -> SecretKey -> Maybe (SubnetId, SecretKey) -> HashTree -> Certificate
-signCertificate time rootKey (Just (subnet_id, subnet_key)) cert_tree =
+signCertificate :: Timestamp -> SecretKey -> Maybe (SubnetId, SecretKey, [(W.Word64, W.Word64)]) -> HashTree -> Certificate
+signCertificate time rootKey (Just (subnet_id, subnet_key, ranges)) cert_tree =
     Certificate { cert_tree, cert_sig, cert_delegation }
  where
     cert_sig = signPure "ic-state-root" subnet_key (reconstruct cert_tree)
@@ -602,7 +649,7 @@ signCertificate time rootKey (Just (subnet_id, subnet_key)) cert_tree =
       encodeCert $
       signCertificate time rootKey Nothing $
       construct $
-      delegationTree time subnet_id (toPublicKey subnet_key)
+      delegationTree time subnet_id (toPublicKey subnet_key) ranges
 
 signCertificate _time rootKey Nothing cert_tree =
     Certificate { cert_tree, cert_sig, cert_delegation = Nothing }
@@ -613,30 +660,30 @@ signCertificate _time rootKey Nothing cert_tree =
 -- Since ic-ref creates a fresh state tree everytime it is used, we _could_
 -- construct one with just the required data, e.g. only of the canister in
 -- question. That would not be secure, but `ic-ref` doesn’t have to be.
-getDataCertificate :: ICM m => Timestamp -> CanisterId -> m Blob
+getDataCertificate :: (CanReject m, ICM m) => Timestamp -> CanisterId -> m Blob
 getDataCertificate t cid = do
-    encodeCert <$> getPrunedCertificate t
+    encodeCert <$> getPrunedCertificate t cid
         [["time"], ["canister", rawEntityId cid, "certified_data"]]
 
 -- Asynchronous requests
 
 -- | Submission simply enqueues requests
 
-submitRequest :: ICM m => RequestID -> CallRequest -> m ()
-submitRequest rid r = modify $ \ic ->
+submitRequest :: ICM m => RequestID -> CallRequest -> CanisterId -> m ()
+submitRequest rid r ecid = modify $ \ic ->
   if M.member rid (requests ic)
   then ic
-  else ic { requests = M.insert rid (r, Received) (requests ic) }
+  else ic { requests = M.insert rid (r, (Received, ecid)) (requests ic) }
 
 
 -- | Eventually, they are processed
 
-processRequest :: ICM m => (RequestID, CallRequest) -> m ()
-processRequest (rid, CallRequest canister_id _user_id method arg) =
+processRequest :: ICM m => (RequestID, CallRequest, CanisterId) -> m ()
+processRequest (rid, CallRequest canister_id _user_id method arg, ecid) =
   onReject (setReqStatus rid . CallResponse . canisterRejected) $ do
     ctxt_id <- newCallContext $ CallContext
       { canister = canister_id
-      , origin = FromUser rid
+      , origin = FromUser rid ecid
       , needs_to_respond = NeedsToRespond True
       , deleted = False
       , last_trap = Nothing
@@ -674,8 +721,8 @@ respondCallContext ctxt_id response = do
   ctxt <- getCallContext ctxt_id
   when (deleted ctxt) $
     error "Internal error: response to deleted call context"
-  when (origin ctxt == FromHeartbeat) $
-    error "Internal error: Heartbeats cannot be responded to"
+  when (origin ctxt == FromSystemTask) $
+    error "Internal error: System tasks cannot be responded to"
   when (needs_to_respond ctxt == NeedsToRespond False) $
     error $ "Internal error: Double response when responding with " <> show response
   modifyCallContext ctxt_id $ \ctxt -> ctxt
@@ -713,9 +760,9 @@ callerOfCallID :: ICM m => CallId -> m EntityId
 callerOfCallID ctxt_id = do
   ctxt <- getCallContext ctxt_id
   case origin ctxt of
-    FromUser rid -> callerOfRequest rid
+    FromUser rid _ -> callerOfRequest rid
     FromCanister other_ctxt_id _callback -> calleeOfCallID other_ctxt_id
-    FromHeartbeat -> return $ canister ctxt
+    FromSystemTask -> return $ canister ctxt
 
 calleeOfCallID :: ICM m => CallId -> m EntityId
 calleeOfCallID ctxt_id = canister <$> getCallContext ctxt_id
@@ -733,6 +780,13 @@ starveCallContext ctxt_id = do
                  | otherwise                = ("canister did not respond", EC_CANISTER_DID_NOT_REPLY)
   rejectCallContext ctxt_id (RC_CANISTER_ERROR, msg, Just err)
 
+ecidOfCallID :: ICM m => CallId -> m CanisterId
+ecidOfCallID ctxt_id = do
+  ctxt <- getCallContext ctxt_id
+  case origin ctxt of
+    FromUser _rid ecid -> return ecid
+    _ -> callerOfCallID ctxt_id
+
 -- Message handling
 
 enqueueMessage :: ICM m => Message -> m ()
@@ -745,8 +799,7 @@ processMessage m = case m of
     if callee == managementCanisterId
     then do
       caller <- callerOfCallID ctxt_id
-      rejectAsCanister $
-        invokeManagementCanister caller ctxt_id entry
+      invokeManagementCanister caller ctxt_id entry
     else do
       canisterMustExist callee
       status <- getRunStatus callee
@@ -773,8 +826,8 @@ processMessage m = case m of
   ResponseMessage ctxt_id response refunded_cycles -> do
     ctxt <- getCallContext ctxt_id
     case origin ctxt of
-      FromHeartbeat -> error "Response from heartbeat"
-      FromUser rid -> setReqStatus rid $ CallResponse $
+      FromSystemTask -> error "Response from system task"
+      FromUser rid _ -> setReqStatus rid $ CallResponse $
         -- NB: Here cycles disappear
         case response of
           Reject (rc, msg) -> canisterRejected (rc, msg, Nothing)
@@ -803,6 +856,7 @@ performCallActions ctxt_id ca = do
 performCanisterActions :: ICM m => CanisterId -> CanisterActions -> m ()
 performCanisterActions cid ca = do
   mapM_ (setCertifiedData cid) (set_certified_data ca)
+  mapM_ (setCanisterGlobalTimer cid) (set_global_timer ca)
 
 updateBalances :: ICM m => CallId -> [MethodCall] -> Cycles -> m ()
 updateBalances ctxt_id new_calls accepted = do
@@ -846,10 +900,10 @@ invokeManagementCanister caller ctxt_id (Public method_name arg) =
       "canister_status" -> atomic $ onlyController caller icCanisterStatus
       "delete_canister" -> atomic $ onlyController caller icDeleteCanister
       "deposit_cycles" -> atomic $ icDepositCycles ctxt_id
-      "provisional_create_canister_with_cycles" -> atomic $ icCreateCanisterWithCycles caller
+      "provisional_create_canister_with_cycles" -> atomic $ icCreateCanisterWithCycles caller ctxt_id
       "provisional_top_up_canister" -> atomic icTopUpCanister
       "raw_rand" -> atomic icRawRand
-      "http_request" -> atomic $ icHttpRequest caller
+      "http_request" -> atomic $ icHttpRequest caller ctxt_id
       "ecdsa_public_key" -> atomic $ icEcdsaPublicKey caller
       "sign_with_ecdsa" -> atomic $ icSignWithEcdsa caller
       _ -> reject RC_DESTINATION_INVALID ("Unsupported management function " ++ method_name) (Just EC_METHOD_NOT_FOUND)
@@ -874,68 +928,136 @@ invokeManagementCanister caller ctxt_id (Public method_name arg) =
 
 invokeManagementCanister _ _ Closure{} = error "closure invoked on management canister"
 invokeManagementCanister _ _ Heartbeat = error "heartbeat invoked on management canister"
+invokeManagementCanister _ _ GlobalTimer = error "global timer invoked on management canister"
 
-icHttpRequest :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "http_request"
-icHttpRequest caller r = do
-    resp <- liftIO $ sendHttpRequest (r .! #url)
-    case (r .! #transform) of
-      Nothing -> return resp
-      Just t -> case V.trial' t #function of
-        Nothing -> reject RC_CANISTER_REJECT "transform needs to be a function" (Just EC_CANISTER_REJECTED)
-        Just (FuncRef p m) -> do
-            let cid = principalToEntityId p
-            unless (cid == caller) $
-              reject RC_CANISTER_REJECT "transform needs to be exported by a caller canister" (Just EC_CANISTER_REJECTED)
-            can_mod <- getCanisterMod cid
-            wasm_state <- getCanisterState cid
-            env <- canisterEnv cid
-            case M.lookup (T.unpack m) (query_methods can_mod) of
-              Nothing -> reject RC_DESTINATION_INVALID "transform function with a given name does not exist" (Just EC_METHOD_NOT_FOUND)
-              Just f -> case f cid env (Codec.Candid.encode resp) wasm_state of
-                Return (Reply r) -> case Codec.Candid.decode @HttpResponse r of
-                  Left _ -> reject RC_CANISTER_ERROR "could not decode the response" (Just EC_INVALID_ENCODING)
-                  Right r -> return r
-                _ -> reject RC_CANISTER_ERROR "canister did not return a response properly" (Just EC_CANISTER_DID_NOT_REPLY)
+icHttpRequest :: (ICM m, CanReject m) => EntityId -> CallId -> ICManagement m .! "http_request"
+icHttpRequest caller ctxt_id r = do
+  available <- getCallContextCycles ctxt_id
+  (_, subnet, _, _) <- getSubnetFromCanisterId caller
+  let fee = fromIntegral $ http_request_fee r subnet
+  let url = T.unpack $ r .! #url
+  let max_resp_size = max_response_size r
+  let transform_principal_check =
+        case (r .! #transform) of
+          Nothing -> True
+          Just t -> case t .! #function of
+            FuncRef p _ -> principalToEntityId p == caller
+  if
+    | not transform_principal_check ->
+      reject RC_CANISTER_REJECT "transform needs to be exported by the caller canister" (Just EC_CANISTER_REJECTED)
+    | max_resp_size > max_response_bytes_limit ->
+      reject RC_CANISTER_REJECT ("max_response_bytes cannot exceed " ++ show max_response_bytes_limit) (Just EC_CANISTER_REJECTED)
+    | utf8_length (r .! #url) > max_http_request_url_length ->
+      reject RC_CANISTER_REJECT "Failed to parse URL: uri too long" (Just EC_INVALID_ARGUMENT)
+    | http_request_size r > max_request_bytes_limit ->
+      reject RC_CANISTER_REJECT ("number of bytes to represent all request header names and values and request body exceeds the limit of " ++ show max_request_bytes_limit) (Just EC_CANISTER_REJECTED)
+    | not (check_http_request_headers_number r) ->
+      reject RC_CANISTER_REJECT ("number of request http headers exceeds the limit of " ++ show http_headers_max_number) (Just EC_CANISTER_REJECTED)
+    | not (check_http_request_headers_name_length r) ->
+      reject RC_CANISTER_REJECT ("number of bytes to represent some request http header name exceeds the limit of " ++ show http_headers_max_name_value_length) (Just EC_CANISTER_REJECTED)
+    | not (check_http_request_headers_value_length r) ->
+      reject RC_CANISTER_REJECT ("number of bytes to represent some request http header value exceeds the limit of " ++ show http_headers_max_name_value_length) (Just EC_CANISTER_REJECTED)
+    | not (check_http_request_headers_total_size r) ->
+      reject RC_CANISTER_REJECT ("total number of bytes to represent request http headers exceeds the limit of " ++ show http_headers_max_total_size) (Just EC_CANISTER_REJECTED)
+    | available < fee ->
+      reject RC_CANISTER_REJECT ("http_request request sent with " ++ show available ++ " cycles, but " ++ show fee ++ " cycles are required.") (Just EC_CANISTER_REJECTED)
+    | otherwise -> do
+      setCallContextCycles ctxt_id (available - fee)
+      if
+        | parseURI url == Nothing ->
+          reject RC_SYS_FATAL "url must be valid according to RFC-3986" (Just EC_INVALID_ARGUMENT)
+        | not (isPrefixOf "https://" url) ->
+          reject RC_SYS_FATAL "url must start with https://" (Just EC_INVALID_ARGUMENT)
+        | otherwise -> do
+          method <- if
+            | (r .! #method) == V.IsJust #get () -> return $ T.encodeUtf8 "GET"
+            | (r .! #method) == V.IsJust #post () -> return $ T.encodeUtf8 "POST"
+            | (r .! #method) == V.IsJust #head () -> return $ T.encodeUtf8 "HEAD"
+            | otherwise -> reject RC_SYS_FATAL ("unknown HTTP method") (Just EC_CANISTER_REJECTED)
+          let headers = map (\r -> (CI.mk $ T.encodeUtf8 $ r .! #name, T.encodeUtf8 $ r .! #value)) $ Vec.toList (r .! #headers)
+          let body = case r .! #body of Nothing -> ""
+                                        Just b -> b
+          resp <- liftIO $ sendHttpRequest getRootCerts (r .! #url) method headers body
+          if
+            | http_response_size resp > max_resp_size ->
+              reject RC_SYS_FATAL ("response body size cannot exceed " ++ show max_resp_size ++ " bytes") (Just EC_CANISTER_REJECTED)
+            | not (check_http_response_headers_number resp) ->
+              reject RC_SYS_FATAL ("number of response http headers exceeds the limit of " ++ show http_headers_max_number) (Just EC_CANISTER_REJECTED)
+            | not (check_http_response_headers_name_length resp) ->
+              reject RC_SYS_FATAL ("number of bytes to represent some response http header name exceeds the limit of " ++ show http_headers_max_name_value_length) (Just EC_CANISTER_REJECTED)
+            | not (check_http_response_headers_value_length resp) ->
+              reject RC_SYS_FATAL ("number of bytes to represent some response http header value exceeds the limit of " ++ show http_headers_max_name_value_length) (Just EC_CANISTER_REJECTED)
+            | not (check_http_response_headers_total_size resp) ->
+              reject RC_SYS_FATAL ("total number of bytes to represent response http headers exceeds the limit of " ++ show http_headers_max_total_size) (Just EC_CANISTER_REJECTED)
+            | otherwise -> do
+              case (r .! #transform) of
+                Nothing -> return resp
+                Just t -> case t .! #function of
+                  FuncRef p m -> do
+                      let cid = principalToEntityId p
+                      let arg = R.empty
+                            .+ #response .== resp
+                            .+ #context .== t .! #context
+                      can_mod <- getCanisterMod cid
+                      wasm_state <- getCanisterState cid
+                      env <- canisterEnv cid
+                      case M.lookup (T.unpack m) (query_methods can_mod) of
+                        Nothing -> reject RC_DESTINATION_INVALID "transform function with a given name does not exist" (Just EC_METHOD_NOT_FOUND)
+                        Just f -> case f managementCanisterId env (Codec.Candid.encode arg) wasm_state of
+                          Return (Reply r) -> case Codec.Candid.decode @HttpResponse r of
+                            Left _ -> reject RC_CANISTER_ERROR "could not decode the response" (Just EC_INVALID_ENCODING)
+                            Right resp ->
+                              if fromIntegral (BS.length r) > max_response_bytes_limit then
+                                reject RC_SYS_FATAL ("transformed response body size cannot exceed " ++ show max_response_bytes_limit ++ " bytes") (Just EC_CANISTER_REJECTED)
+                              else
+                                return resp
+                          _ -> reject RC_CANISTER_ERROR "transform did not return a response properly" (Just EC_CANISTER_DID_NOT_REPLY)
 
 icCreateCanister :: (ICM m, CanReject m) => EntityId -> CallId -> ICManagement m .! "create_canister"
 icCreateCanister caller ctxt_id r = do
     forM_ (r .! #settings) validateSettings
     available <- getCallContextCycles ctxt_id
     setCallContextCycles ctxt_id 0
-    cid <- icCreateCanisterCommon caller available
+    (_, _, _, ranges) <- getSubnetFromCanisterId caller
+    cid <- icCreateCanisterCommon ranges caller available
     forM_ (r .! #settings) $ applySettings cid
     return (#canister_id .== entityIdToPrincipal cid)
 
-icCreateCanisterWithCycles :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "provisional_create_canister_with_cycles"
-icCreateCanisterWithCycles caller r = do
+icCreateCanisterWithCycles :: (ICM m, CanReject m) => EntityId -> CallId -> ICManagement m .! "provisional_create_canister_with_cycles"
+icCreateCanisterWithCycles caller ctxt_id r = do
     forM_ (r .! #settings) validateSettings
-    cid <- icCreateCanisterCommon caller (fromMaybe cDEFAULT_PROVISIONAL_CYCLES_BALANCE (r .! #amount))
+    ecid <- ecidOfCallID ctxt_id
+    (_, _, _, ranges) <- getSubnetFromCanisterId ecid
+    cid <- icCreateCanisterCommon ranges caller (fromMaybe cDEFAULT_PROVISIONAL_CYCLES_BALANCE (r .! #amount))
     forM_ (r .! #settings) $ applySettings cid
     return (#canister_id .== entityIdToPrincipal cid)
 
-icCreateCanisterCommon :: (ICM m, CanReject m) => EntityId -> Natural -> m EntityId
-icCreateCanisterCommon controller amount = do
-    new_id <- gets (freshId . M.keys . canisters)
-    let currentTime = 0 -- ic-ref lives in the 70ies
-    createEmptyCanister new_id (S.singleton controller) currentTime
-    -- Here we fill up the canister with the cycles provided by the caller
-    setBalance new_id amount
-    return new_id
+icCreateCanisterCommon :: (ICM m, CanReject m) => [(W.Word64, W.Word64)] -> EntityId -> Natural -> m EntityId
+icCreateCanisterCommon ranges controller amount = do
+    taken <- gets (M.keys . canisters)
+    case freshId ranges taken of
+      Nothing -> reject RC_SYS_FATAL ("Could not create canister. Subnet has surpassed its canister ID allocation.") Nothing
+      Just new_id -> do
+        let currentTime = 0 -- ic-ref lives in the 70ies
+        createEmptyCanister new_id (S.singleton controller) currentTime
+        -- Here we fill up the canister with the cycles provided by the caller
+        setBalance new_id amount
+        return new_id
 
 validateSettings :: CanReject m => Settings -> m ()
 validateSettings r = do
     forM_ (r .! #compute_allocation) $ \n -> do
         unless (n <= 100) $
-            reject RC_SYS_FATAL  "Compute allocation not <= 100" (Just EC_INVALID_ARGUMENT)
+            reject RC_CANISTER_ERROR "Compute allocation not <= 100" (Just EC_CANISTER_CONTRACT_VIOLATION)
     forM_ (r .! #memory_allocation) $ \n -> do
         unless (n <= 2^(48::Int)) $
-            reject RC_SYS_FATAL  "Memory allocation not <= 2^48" (Just EC_INVALID_ARGUMENT)
+            reject RC_CANISTER_ERROR "Memory allocation not <= 2^48" (Just EC_CANISTER_CONTRACT_VIOLATION)
     forM_ (r .! #freezing_threshold) $ \n -> do
         unless (n < 2^(64::Int)) $
-            reject RC_SYS_FATAL  "Memory allocation not < 2^64" (Just EC_INVALID_ARGUMENT)
+            reject RC_CANISTER_ERROR "Freezing threshold not < 2^64" (Just EC_CANISTER_CONTRACT_VIOLATION)
     forM_ (r .! #controllers) $ \n -> do
         unless (length n <= 10) $
-            reject RC_SYS_FATAL  "Controllers cannot be > 10" (Just EC_INVALID_ARGUMENT)
+            reject RC_CANISTER_ERROR "Controllers cannot be > 10" (Just EC_CANISTER_CONTRACT_VIOLATION)
 
 applySettings :: ICM m => EntityId -> Settings -> m ()
 applySettings cid r = do
@@ -953,7 +1075,7 @@ onlyController caller act r = do
     controllers <- getControllers canister_id
     if caller `S.member` controllers
     then act r
-    else reject RC_SYS_FATAL (
+    else reject RC_CANISTER_ERROR (
         prettyID caller <> " is not authorized to manage canister " <>
         prettyID canister_id <> ", Controllers are: " <> intercalate ", " (map prettyID (S.toList controllers)))
         (Just EC_NOT_AUTHORIZED)
@@ -963,19 +1085,22 @@ icInstallCode caller r = do
     let canister_id = principalToEntityId (r .! #canister_id)
     let arg = r .! #arg
     new_can_mod <- return (parseCanister (r .! #wasm_module))
-      `onErr` (\err -> reject RC_SYS_FATAL ("Parsing failed: " ++ err) (Just EC_INVALID_MODULE))
+      `onErr` (\err -> reject RC_CANISTER_ERROR ("Parsing failed: " ++ err) (Just EC_INVALID_MODULE))
     was_empty <- isCanisterEmpty canister_id
-    env <- canisterEnv canister_id
 
     let
       reinstall = do
-        (wasm_state, ca) <- return (init_method new_can_mod caller env arg)
+        env <- canisterEnv canister_id
+        let env1 = env { env_canister_version = env_canister_version env + 1, env_global_timer = 0 }
+        (wasm_state, ca) <- return (init_method new_can_mod caller env1 arg)
           `onTrap` (\msg -> reject RC_CANISTER_ERROR ("Initialization trapped: " ++ msg) (Just EC_CANISTER_TRAPPED))
         setCanisterContent canister_id $ CanisterContent
             { can_mod = new_can_mod
             , wasm_state = wasm_state
             }
         performCanisterActions canister_id ca
+        bumpCanisterVersion canister_id
+        when (set_global_timer ca == Nothing) $ setCanisterGlobalTimer canister_id 0
 
       install = do
         unless was_empty $
@@ -987,11 +1112,13 @@ icInstallCode caller r = do
           reject RC_DESTINATION_INVALID "canister is empty during upgrade" (Just EC_CANISTER_EMPTY)
         old_wasm_state <- getCanisterState canister_id
         old_can_mod <- getCanisterMod canister_id
-        (ca1, mem) <- return (pre_upgrade_method old_can_mod old_wasm_state caller env)
+        env <- canisterEnv canister_id
+        let env1 = env
+        (ca1, mem) <- return (pre_upgrade_method old_can_mod old_wasm_state caller env1)
           `onTrap` (\msg -> reject RC_CANISTER_ERROR ("Pre-upgrade trapped: " ++ msg) (Just EC_CANISTER_TRAPPED))
         -- TODO: update balance in env based on ca1 here, once canister actions
         -- can change balances
-        let env2 = env
+        let env2 = env { env_canister_version = env_canister_version env + 1, env_global_timer = 0 }
         (new_wasm_state, ca2) <- return (post_upgrade_method new_can_mod caller env2 mem arg)
           `onTrap` (\msg -> reject RC_CANISTER_ERROR ("Post-upgrade trapped: " ++ msg) (Just EC_CANISTER_TRAPPED))
 
@@ -999,7 +1126,9 @@ icInstallCode caller r = do
             { can_mod = new_can_mod
             , wasm_state = new_wasm_state
             }
-        performCanisterActions canister_id (ca1 <> ca2)
+        performCanisterActions canister_id (ca1 { set_global_timer = Nothing } <> ca2)
+        bumpCanisterVersion canister_id
+        when (set_global_timer ca2 == Nothing) $ setCanisterGlobalTimer canister_id 0
 
     R.switch (r .! #mode) $ R.empty
       .+ #install .== (\() -> install)
@@ -1013,6 +1142,8 @@ icUninstallCode r = do
     modCanister canister_id $ \can_state -> can_state
       { content = Nothing
       , certified_data = ""
+      , canister_version = canister_version can_state + 1
+      , global_timer = 0
       }
     -- reject all call open contexts of this canister
     gets (M.toList . call_contexts) >>= mapM_ (\(ctxt_id, ctxt) ->
@@ -1026,6 +1157,7 @@ icUpdateCanisterSettings r = do
     let canister_id = principalToEntityId (r .! #canister_id)
     validateSettings (r .! #settings)
     applySettings canister_id (r .! #settings)
+    bumpCanisterVersion canister_id
 
 icStartCanister :: (ICM m, CanReject m) => ICManagement m .! "start_canister"
 icStartCanister r = do
@@ -1092,8 +1224,8 @@ icDeleteCanister :: (ICM m, CanReject m) => ICManagement m .! "delete_canister"
 icDeleteCanister r = do
     let canister_id = principalToEntityId (r .! #canister_id)
     getRunStatus canister_id >>= \case
-        IsRunning -> reject RC_SYS_FATAL "Cannot delete running canister" (Just EC_CANISTER_NOT_STOPPED)
-        IsStopping _pending -> reject RC_SYS_FATAL "Cannot delete stopping canister" (Just EC_CANISTER_NOT_STOPPED)
+        IsRunning -> reject RC_CANISTER_ERROR "Cannot delete running canister" (Just EC_CANISTER_NOT_STOPPED)
+        IsStopping _pending -> reject RC_CANISTER_ERROR "Cannot delete stopping canister" (Just EC_CANISTER_NOT_STOPPED)
         IsStopped -> return ()
         IsDeleted -> error "deleted canister encountered"
 
@@ -1179,6 +1311,11 @@ invokeEntry ctxt_id wasm_state can_mod env entry = do
             Trap _ -> Return (wasm_state, (noCallActions, noCanisterActions))
             Return (wasm_state, (calls, actions)) ->
                 Return (wasm_state, (noCallActions { ca_new_calls = calls }, actions))
+      GlobalTimer -> return $ do
+        case canister_global_timer can_mod env wasm_state of
+            Trap _ -> Return (wasm_state, (noCallActions, noCanisterActions))
+            Return (wasm_state, (calls, actions)) ->
+                Return (wasm_state, (noCallActions { ca_new_calls = calls }, actions))
   where
     lookupUpdate method can_mod
         | Just f <- M.lookup method (update_methods can_mod) = Just f
@@ -1203,9 +1340,9 @@ newCall from_ctxt_id call = do
 -- Scheduling
 
 -- | Pick next request in state `received`
-nextReceived :: ICM m => m (Maybe (RequestID, CallRequest))
+nextReceived :: ICM m => m (Maybe (RequestID, CallRequest, CanisterId))
 nextReceived = gets $ \ic -> listToMaybe
-  [ (rid,r) | (rid, (r, Received)) <- M.toList (requests ic) ]
+  [ (rid,r,ecid) | (rid, (r, (Received, ecid))) <- M.toList (requests ic) ]
 
 -- A call context is still waiting for a response if…
 willReceiveResponse :: IC -> CallId -> Bool
@@ -1269,10 +1406,10 @@ runHeartbeat cid = do
   can <- getCanister cid
   is_empty   <- isCanisterEmpty cid
   is_running <- isCanisterRunning cid
-  unless (idleSinceLastHeartbeat (last_action can) || is_empty || not is_running) $ do
+  when (not (idleSinceLastHeartbeat $ last_action can) && not is_empty && is_running) $ do
     new_ctxt_id <- newCallContext $ CallContext
       { canister = cid
-      , origin = FromHeartbeat
+      , origin = FromSystemTask
       , needs_to_respond = NeedsToRespond False
       , deleted = False
       , last_trap = Nothing
@@ -1283,10 +1420,33 @@ runHeartbeat cid = do
       , entry = Heartbeat
       }
 
-processHeartbeats :: ICM m => m ()
-processHeartbeats = do
+runGlobalTimer :: ICM m => CanisterId -> m ()
+runGlobalTimer cid = do
+  is_empty   <- isCanisterEmpty cid
+  is_running <- isCanisterRunning cid
+  Timestamp current_time <- getCanisterTime cid
+  global_timer <- getCanisterGlobalTimer cid
+  let should_fire = global_timer /= 0 && current_time >= global_timer
+  when (should_fire && is_running && not is_empty) $ do
+    setCanisterGlobalTimer cid 0
+    new_ctxt_id <- newCallContext $ CallContext
+      { canister = cid
+      , origin = FromSystemTask
+      , needs_to_respond = NeedsToRespond False
+      , deleted = False
+      , last_trap = Nothing
+      , available_cycles = 0
+      }
+    processMessage $ CallMessage
+      { call_context = new_ctxt_id
+      , entry = GlobalTimer
+      }
+
+processSystemTasks :: ICM m => m ()
+processSystemTasks = do
   cs <- gets (M.keys . canisters)
   forM_ cs runHeartbeat
+  forM_ cs runGlobalTimer
 
 idleSinceLastHeartbeat :: Maybe EntryPoint -> Bool
 idleSinceLastHeartbeat (Just Heartbeat) = True
@@ -1316,18 +1476,6 @@ runToCompletion = repeatWhileTrue runStep
 type CanReject = MonadError (RejectCode, String, Maybe ErrorCode)
 reject :: CanReject m => RejectCode -> String -> Maybe ErrorCode -> m a2
 reject code msg err = throwError (code, msg, err)
-
--- To maintain the abstraction that the management canister is a canister,
--- all its errors are turned into canister errors
-isCanisterRejectedCode :: RejectCode -> Bool
-isCanisterRejectedCode RC_SYS_FATAL           = False
-isCanisterRejectedCode RC_SYS_TRANSIENT       = False
-isCanisterRejectedCode RC_DESTINATION_INVALID = True
-isCanisterRejectedCode RC_CANISTER_REJECT     = True
-isCanisterRejectedCode RC_CANISTER_ERROR      = True
-
-rejectAsCanister :: CanReject m => m a -> m a
-rejectAsCanister act = catchError act (\(c, msg, err) -> if isCanisterRejectedCode c then reject c msg err else reject RC_CANISTER_ERROR msg (Just EC_CANISTER_REJECTED))
 
 canisterRejected :: (RejectCode, String, Maybe ErrorCode) -> CallResponse
 canisterRejected (rc, msg, err) =  Rejected (rc, msg, Just $ maybe EC_CANISTER_REJECTED id err)

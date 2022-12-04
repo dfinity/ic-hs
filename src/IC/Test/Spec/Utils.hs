@@ -15,6 +15,7 @@ import qualified Data.ByteString.Lazy as BS
 import qualified Data.HashMap.Lazy as HM
 import qualified Data.Set as S
 import qualified Data.Vector as Vec
+import qualified Data.Word as W
 import Numeric.Natural
 import Data.List
 import Test.Tasty
@@ -38,7 +39,7 @@ import IC.Test.Universal
 import IC.Utils
 import IC.Test.Agent
 import IC.Test.Agent.Calls
-import IC.Management (HttpResponse)
+import IC.Management (HttpResponse, HttpHeader)
 
 type Blob = BS.ByteString
 
@@ -122,7 +123,7 @@ awaitCallTwice cid req = do
   res <- envelopeFor (senderOf req) req >>= postCallCBOR cid
   code202 res
   assertBool "Response body not empty" (BS.null (responseBody res))
-  awaitStatus (getRequestStatus (senderOf req) cid (requestId req))
+  awaitStatus (getRequestStatus' (senderOf req) cid (requestId req))
 
 
 
@@ -156,8 +157,8 @@ cborToBlobPair r = assertFailure $ "Expected list of pairs, got: " <> show r
 ic00via :: HasAgentConfig => Blob -> IC00
 ic00via cid = ic00viaWithCycles cid 0
 
-ic00viaWithCycles :: HasAgentConfig => Blob -> Word64 -> IC00
-ic00viaWithCycles cid cycles _ecid method_name arg =
+ic00viaWithCyclesImpl :: HasAgentConfig => Prog -> Prog -> Blob -> IC00WithCycles
+ic00viaWithCyclesImpl relayReply relayReject cid cycles _ecid method_name arg =
   do call' cid $
       callNew
         (bytes "") (bytes (BS.fromStrict (T.encodeUtf8 method_name))) -- aaaaa-aa
@@ -166,6 +167,12 @@ ic00viaWithCycles cid cycles _ecid method_name arg =
       callCyclesAdd (int64 cycles) >>>
       callPerform
    >>= isReply >>= isRelay
+
+ic00viaWithCycles :: HasAgentConfig => Blob -> IC00WithCycles
+ic00viaWithCycles = ic00viaWithCyclesImpl relayReply relayReject
+
+ic00viaWithCyclesRefund :: HasAgentConfig => Word64 -> Blob -> IC00WithCycles
+ic00viaWithCyclesRefund amount = ic00viaWithCyclesImpl (relayReplyRefund amount) (relayRejectRefund amount)
 
 -- * Interacting with the universal canister
 
@@ -176,12 +183,12 @@ ic00viaWithCycles cid cycles _ecid method_name arg =
 
 install' :: (HasCallStack, HasAgentConfig) => Blob -> Prog -> IO ReqResponse
 install' cid prog = do
-  universal_wasm <- getTestWasm "universal_canister"
+  universal_wasm <- getTestWasm "universal-canister"
   ic_install' ic00 (enum #install) cid universal_wasm (run prog)
 
 installAt :: (HasCallStack, HasAgentConfig) => Blob -> Prog -> IO ()
 installAt cid prog = do
-  universal_wasm <- getTestWasm "universal_canister"
+  universal_wasm <- getTestWasm "universal-canister"
   ic_install ic00 (enum #install) cid universal_wasm (run prog)
 
 -- Also calls create, used default 'ic00'
@@ -196,22 +203,22 @@ create = ic_provisional_create ic00 (Just (2^(60::Int))) empty
 
 upgrade' :: (HasCallStack, HasAgentConfig) => Blob -> Prog -> IO ReqResponse
 upgrade' cid prog = do
-  universal_wasm <- getTestWasm "universal_canister"
+  universal_wasm <- getTestWasm "universal-canister"
   ic_install' ic00 (enum #upgrade) cid universal_wasm (run prog)
 
 upgrade :: (HasCallStack, HasAgentConfig) => Blob -> Prog -> IO ()
 upgrade cid prog = do
-  universal_wasm <- getTestWasm "universal_canister"
+  universal_wasm <- getTestWasm "universal-canister"
   ic_install ic00 (enum #upgrade) cid universal_wasm (run prog)
 
 reinstall' :: (HasCallStack, HasAgentConfig) => Blob -> Prog -> IO ReqResponse
 reinstall' cid prog = do
-  universal_wasm <- getTestWasm "universal_canister"
+  universal_wasm <- getTestWasm "universal-canister"
   ic_install' ic00 (enum #reinstall) cid universal_wasm (run prog)
 
 reinstall :: (HasCallStack, HasAgentConfig) => Blob -> Prog -> IO ()
 reinstall cid prog = do
-  universal_wasm <- getTestWasm "universal_canister"
+  universal_wasm <- getTestWasm "universal-canister"
   ic_install ic00 (enum #reinstall) cid universal_wasm (run prog)
 
 callRequestAs :: (HasCallStack, HasAgentConfig) => Blob -> Blob -> Prog -> GenR
@@ -290,7 +297,7 @@ query_ cid prog = query cid prog >>= is ""
 isRelay :: HasCallStack => Blob -> IO ReqResponse
 isRelay = runGet $ Get.getWord32le >>= \case
     0 -> Reply <$> Get.getRemainingLazyByteString
-    0x4c444944 -> fail "Encountered Candid when expectin relayed data. Did you forget to use isRelay?"
+    0x4c444944 -> fail "Encountered Candid when expecting relayed data. Did you forget to use isRelay?"
     c -> do
       msg <- Get.getRemainingLazyByteString
       return $ Reject (fromIntegral c) (T.decodeUtf8With T.lenientDecode (BS.toStrict msg)) Nothing
@@ -391,8 +398,21 @@ createMessageHold = do
   let release = ic_start_canister ic00 cid
   return (holdMessage, release)
 
+vec_header_from_list_text :: [(T.Text, T.Text)] -> Vec.Vector HttpHeader
+vec_header_from_list_text = Vec.fromList . map aux
+  where
+    aux (a, b) = empty .+ #name .== a .+ #value .== b
+
 dummyResponse :: HttpResponse
 dummyResponse = R.empty
   .+ #status .== 202
-  .+ #headers .== Vec.empty
-  .+ #body .== (toUtf8 "Dummy!")
+  .+ #headers .== vec_header_from_list_text [(T.pack "Content-Length", T.pack $ show $ length s)]
+  .+ #body .== (toUtf8 $ T.pack s)
+  where s = "Dummy!" :: String
+
+bodyOfSize :: W.Word32 -> BS.ByteString
+bodyOfSize n = toUtf8 $ T.pack $ take (fromIntegral n) $ repeat 'x'
+
+-- maximum body size of HTTP response with status 200 and no headers such that the length of its Candid encoding does not exceed max_response_bytes_limit
+maximumSizeResponseBodySize :: W.Word32
+maximumSizeResponseBodySize = 1999950

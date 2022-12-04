@@ -69,6 +69,11 @@ let
       src = pkgs.sources.haskell-candid;
       src_subst = "pkgs.sources.haskell-candid";
     };
+    http-client = haskellSrc2nixWithDoc {
+      name = "http-client";
+      src = pkgs.sources.http-client;
+      src_subst = "pkgs.sources.http-client";
+    };
   };
 
   allGenerated = pkgs.runCommandNoCC "generated" {
