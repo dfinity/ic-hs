@@ -1104,12 +1104,12 @@ icInstallCode caller r = do
 
       install = do
         unless was_empty $
-          reject RC_DESTINATION_INVALID "canister is not empty during installation" (Just EC_CANISTER_NOT_EMPTY)
+          reject RC_CANISTER_ERROR "canister is not empty during installation" (Just EC_CANISTER_NOT_EMPTY)
         reinstall
 
       upgrade = do
         when was_empty $
-          reject RC_DESTINATION_INVALID "canister is empty during upgrade" (Just EC_CANISTER_EMPTY)
+          reject RC_CANISTER_ERROR "canister is empty during upgrade" (Just EC_CANISTER_EMPTY)
         old_wasm_state <- getCanisterState canister_id
         old_can_mod <- getCanisterMod canister_id
         env <- canisterEnv canister_id
