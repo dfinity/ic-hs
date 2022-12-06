@@ -932,11 +932,18 @@ icTests subnet = withAgentConfig $ testGroup "Interface Spec acceptance tests"
         [testCase "Multiple controllers (provisional)" $ do
         let controllers = [Principal defaultUser, Principal otherUser]
         cid <- ic_provisional_create ic00 Nothing (#controllers .== Vec.fromList controllers)
+        universal_wasm <- getTestWasm "universal-canister"
+        ic_install ic00 (enum #install) cid universal_wasm ""
 
         -- Controllers should be able to fetch the canister status.
         cs <- ic_canister_status (ic00as defaultUser) cid
         Vec.toList (cs .! #settings .! #controllers) `isSet` controllers
         cs <- ic_canister_status (ic00as otherUser) cid
+        Vec.toList (cs .! #settings .! #controllers) `isSet` controllers
+
+        -- A canister can request its own status if it does not control itself
+        cs <- ic_canister_status (ic00via cid) cid
+        assertBool "canister should not control itself in this test" $ not $ elem (Principal cid) controllers
         Vec.toList (cs .! #settings .! #controllers) `isSet` controllers
 
         -- Non-controllers cannot fetch the canister status
@@ -958,11 +965,18 @@ icTests subnet = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     , simpleTestCase "Multiple controllers (aaaaa-aa)" $ \cid -> do
         let controllers = [Principal cid, Principal otherUser]
         cid2 <- ic_create (ic00viaWithCycles cid 20_000_000_000_000) (#controllers .== Vec.fromList controllers)
+        universal_wasm <- getTestWasm "universal-canister"
+        ic_install (ic00via cid) (enum #install) cid2 universal_wasm ""
 
         -- Controllers should be able to fetch the canister status.
         cs <- ic_canister_status (ic00via cid) cid2
         Vec.toList (cs .! #settings .! #controllers) `isSet` controllers
         cs <- ic_canister_status (ic00as otherUser) cid2
+        Vec.toList (cs .! #settings .! #controllers) `isSet` controllers
+
+        -- A canister can request its own status if it does not control itself
+        cs <- ic_canister_status (ic00via cid2) cid2
+        assertBool "canister should not control itself in this test" $ not $ elem (Principal cid2) controllers
         Vec.toList (cs .! #settings .! #controllers) `isSet` controllers
 
         -- Set new controller

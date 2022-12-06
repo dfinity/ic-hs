@@ -892,13 +892,13 @@ invokeManagementCanister ::
 invokeManagementCanister caller ctxt_id (Public method_name arg) =
   case method_name of
       "create_canister" -> atomic $ icCreateCanister caller ctxt_id
-      "install_code" -> atomic $ onlyController caller $ icInstallCode caller
-      "uninstall_code" -> atomic $ onlyController caller $ icUninstallCode
-      "update_settings" -> atomic $ onlyController caller icUpdateCanisterSettings
-      "start_canister" -> atomic $ onlyController caller icStartCanister
-      "stop_canister" -> deferred $ onlyController caller $ icStopCanister ctxt_id
-      "canister_status" -> atomic $ onlyController caller icCanisterStatus
-      "delete_canister" -> atomic $ onlyController caller icDeleteCanister
+      "install_code" -> atomic $ onlyControllerOrSelf method_name False caller $ icInstallCode caller
+      "uninstall_code" -> atomic $ onlyControllerOrSelf method_name False caller $ icUninstallCode
+      "update_settings" -> atomic $ onlyControllerOrSelf method_name False caller icUpdateCanisterSettings
+      "start_canister" -> atomic $ onlyControllerOrSelf method_name False caller icStartCanister
+      "stop_canister" -> deferred $ onlyControllerOrSelf method_name False caller $ icStopCanister ctxt_id
+      "canister_status" -> atomic $ onlyControllerOrSelf method_name True caller icCanisterStatus
+      "delete_canister" -> atomic $ onlyControllerOrSelf method_name False caller icDeleteCanister
       "deposit_cycles" -> atomic $ icDepositCycles ctxt_id
       "provisional_create_canister_with_cycles" -> atomic $ icCreateCanisterWithCycles caller ctxt_id
       "provisional_top_up_canister" -> atomic icTopUpCanister
@@ -1066,18 +1066,19 @@ applySettings cid r = do
     forM_ (r .! #memory_allocation) $ setMemoryAllocation cid
     forM_ (r .! #freezing_threshold) $ setFreezingThreshold cid
 
-onlyController ::
+onlyControllerOrSelf ::
   (ICM m, CanReject m, (r .! "canister_id") ~ Principal) =>
-  EntityId -> (R.Rec r -> m a) -> (R.Rec r -> m a)
-onlyController caller act r = do
+  String -> Bool -> EntityId -> (R.Rec r -> m a) -> (R.Rec r -> m a)
+onlyControllerOrSelf method_name self caller act r = do
     let canister_id = principalToEntityId (r .! #canister_id)
     canisterMustExist canister_id
     controllers <- getControllers canister_id
-    if caller `S.member` controllers
+    let allowed = if self then S.insert canister_id controllers else controllers
+    if caller `S.member` allowed
     then act r
     else reject RC_CANISTER_ERROR (
-        prettyID caller <> " is not authorized to manage canister " <>
-        prettyID canister_id <> ", Controllers are: " <> intercalate ", " (map prettyID (S.toList controllers)))
+        prettyID caller <> " is not authorized to call " ++ method_name ++ " on canister " <>
+        prettyID canister_id <> ", Allowed principals are: " <> intercalate ", " (map prettyID (S.toList allowed)))
         (Just EC_NOT_AUTHORIZED)
 
 icInstallCode :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "install_code"
