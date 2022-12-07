@@ -50,6 +50,7 @@ jobs:
     - run: nix-build-uncached
 
   release:
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
     needs: test
     strategy:
       matrix:
