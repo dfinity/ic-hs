@@ -75,9 +75,7 @@ let
           -x $out/bin/ic-ref-test \
           -d $out/bin \
           -p '@executable_path' \
-          -i /usr/lib/system \
-          -i ${nixpkgs.libiconv}/lib \
-          -i ${nixpkgs.darwin.Libsystem}/lib
+          -i /usr/lib/system
 
         # there are still plenty of nix store references
         # but they should not matter
