@@ -90,7 +90,12 @@ jobs:
         echo "::set-output name=out::$out_path"
 
     - run: |
-        tar -C "${{ steps.buildit.outputs.out }}/bin" -czvf ic-ref.tar.gz ic-ref *.dylib
+        if [[ -d "${{ steps.buildit.outputs.out }}/bin/libs" ]]
+        then
+          tar -C "${{ steps.buildit.outputs.out }}/bin" -czvf ic-ref.tar.gz ic-ref libs
+        else
+          tar -C "${{ steps.buildit.outputs.out }}/bin" -czvf ic-ref.tar.gz ic-ref
+        fi
         tar -C "${{ steps.buildit.outputs.out }}" -czvf ic-ref-test.tar.gz bin test-data
 
         ref_short="$(echo "$GITHUB_SHA" | cut -c1-8)"

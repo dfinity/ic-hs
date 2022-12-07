@@ -62,7 +62,7 @@ let
         buildInputs = [ nixpkgs.macdylibbundler nixpkgs.removeReferencesTo ];
         allowedRequisites = [];
       } ''
-        mkdir -p $out/bin
+        mkdir -p $out/bin/libs
         cp ${ic-ref}/bin/ic-ref $out/bin
         cp ${ic-ref}/bin/ic-ref-test $out/bin
         mkdir -p $out/test-data
@@ -73,8 +73,8 @@ let
           -b \
           -x $out/bin/ic-ref \
           -x $out/bin/ic-ref-test \
-          -d $out/bin \
-          -p '@executable_path' \
+          -d $out/bin/libs \
+          -p '@executable_path/libs' \
           -i /usr/lib/system \
           -i ${nixpkgs.libiconv}/lib \
           -i ${nixpkgs.darwin.Libsystem}/lib
