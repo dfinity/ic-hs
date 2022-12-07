@@ -94,6 +94,7 @@ jobs:
         tar -C "${{ steps.buildit.outputs.out }}" -czvf ic-ref-test.tar.gz bin test-data
 
         "${{ steps.buildit.outputs.out }}/bin/ic-ref" --version
+        ls -l "${{ steps.buildit.outputs.out }}/bin"
 
         ref_short="$(echo "$GITHUB_SHA" | cut -c1-8)"
         version="${{ steps.get_version.outputs.version }}-$ref_short"
