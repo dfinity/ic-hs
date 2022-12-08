@@ -62,18 +62,18 @@ let
         buildInputs = [ nixpkgs.macdylibbundler nixpkgs.removeReferencesTo ];
         allowedRequisites = [];
       } ''
-        mkdir -p $out/bin/libs
-        cp ${ic-ref}/bin/ic-ref $out/bin
-        cp ${ic-ref}/bin/ic-ref-test $out/bin
+        mkdir -p $out/build/libs
+        cp ${ic-ref}/bin/ic-ref $out/build
+        cp ${ic-ref}/bin/ic-ref-test $out/build
         mkdir -p $out/test-data
         cp ${ic-ref}/test-data/universal-canister.wasm $out/test-data/universal-canister.wasm
-        chmod u+w $out/bin/ic-ref
-        chmod u+w $out/bin/ic-ref-test
+        chmod u+w $out/build/ic-ref
+        chmod u+w $out/build/ic-ref-test
         dylibbundler \
           -b \
-          -x $out/bin/ic-ref \
-          -x $out/bin/ic-ref-test \
-          -d $out/bin/libs \
+          -x $out/build/ic-ref \
+          -x $out/build/ic-ref-test \
+          -d $out/build/libs \
           -p '@executable_path/libs' \
           -i /usr/lib/system \
           -i ${nixpkgs.libiconv}/lib \
@@ -86,10 +86,10 @@ let
           -t ${nixpkgs.darwin.CF} \
           -t ${nixpkgs.libiconv} \
           -t ${staticHaskellPackages.tasty-html.data} \
-          $out/bin/*
+          $out/build/*
 
         # sanity check
-        $out/bin/ic-ref --version
+        $out/build/ic-ref --version
       ''
 
     # on Linux, build statically using musl
@@ -105,9 +105,9 @@ let
         allowedReferences = [];
         nativeBuildInputs = [ nixpkgs.removeReferencesTo ];
       } ''
-        mkdir -p $out/bin
-        cp ${ic-hs-static}/bin/ic-ref $out/bin
-        cp ${ic-hs-static}/bin/ic-ref-test $out/bin
+        mkdir -p $out/build
+        cp ${ic-hs-static}/bin/ic-ref $out/build
+        cp ${ic-hs-static}/bin/ic-ref-test $out/build
         mkdir -p $out/test-data
         cp ${ic-hs}/test-data/universal-canister.wasm $out/test-data/universal-canister.wasm
 
@@ -120,7 +120,7 @@ let
         #   warp_libexecdir"/nix/store/...-warp-static-x86_64-unknown-linux-musl-3.3.17/libexec/x86_64-linux-ghc-8.10.7/warp-3.3.17"
         #   warp_sysconfdir"/nix/store/...-warp-static-x86_64-unknown-linux-musl-3.3.17/etc"
         #
-        # These paths end up in the statically compiled $out/bin/ic-ref which
+        # These paths end up in the statically compiled $out/build/ic-ref which
         # will fail the `allowedReferences = []` check.
         #
         # Fortunatley warp doesn't use these `warp_*` paths:
@@ -134,11 +134,11 @@ let
         #   Network/Wai/Handler/Warp/Settings.hs:    , settingsServerName = C8.pack $ "Warp/" ++ showVersion Paths_warp.version
         #
         # So we can safely remove the references to warp:
-        remove-references-to -t ${staticHaskellPackages.warp} $out/bin/ic-ref
+        remove-references-to -t ${staticHaskellPackages.warp} $out/build/ic-ref
         remove-references-to \
           -t ${staticHaskellPackages.tasty-html} \
           -t ${staticHaskellPackages.tasty-html.data} \
-          $out/bin/ic-ref-test
+          $out/build/ic-ref-test
       '';
 
 
