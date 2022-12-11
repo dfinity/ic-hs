@@ -78,8 +78,8 @@ instance Show TestSubnet where
 
 instance IsOption TestSubnet where
   defaultValue = TestSubnet (Application, 1)
-  parseValue = read
-  optionName = return "test-subnet-configuration"
+  parseValue = Just <$> read
+  optionName = return "test-subnet-config"
   optionHelp = return $ "Test subnet configuration consisting of subnet type and replication factor (default: " ++ show (TestSubnet (Application, 1)) ++ ")"
 
 testSubnetOption :: OptionDescription
