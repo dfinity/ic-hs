@@ -197,6 +197,8 @@ data Message
 
 -- Finally, the full IC state:
 
+type Subnet = (EntityId, SubnetType, W.Word64, SecretKey, [(W.Word64, W.Word64)])
+
 data IC = IC
   { canisters :: CanisterId ↦ CanState
   , requests :: RequestID ↦ (CallRequest, (RequestStatus, CanisterId))
@@ -205,7 +207,7 @@ data IC = IC
   , rng :: StdGen
   , secretRootKey :: SecretKey
   , rootSubnet :: Maybe EntityId
-  , subnets :: [(EntityId, SubnetType, SecretKey, [(W.Word64, W.Word64)])]
+  , subnets :: [Subnet]
   }
   deriving (Show)
 
@@ -219,7 +221,7 @@ initialIC subnets = do
                                  Just conf -> key conf
     IC mempty mempty mempty mempty <$> newStdGen <*> pure sk <*> pure (fmap (sub_id . key) root_subnet) <*> pure (map sub subnets)
   where
-    sub conf = (sub_id (key conf), subnet_type conf, key conf, canister_ranges conf)
+    sub conf = (sub_id (key conf), subnet_type conf, subnet_size conf, key conf, canister_ranges conf)
     sub_id = EntityId . mkSelfAuthenticatingId . toPublicKey
     key = createSecretKeyBLS . BLU.fromString . nonce
 
@@ -597,7 +599,7 @@ stateTree (Timestamp t) ic = node
     val = Value . toCertVal
     str = val @T.Text
     (=:) = M.singleton
-    subnet_tree (EntityId subnet_id, _, _, ranges) = subnet_id =: node (
+    subnet_tree (EntityId subnet_id, _, _, _, ranges) = subnet_id =: node (
         [ "public_key" =: val subnet_id
         , "canister_ranges" =: val (encodeCanisterRangeList $ map (\(a, b) -> (wordToId a, wordToId b)) ranges)
         ]
@@ -620,20 +622,20 @@ delegationTree (Timestamp t) (EntityId subnet_id) subnet_pub_key ranges = node
     val = Value . toCertVal
     (=:) = M.singleton
 
-getSubnetFromCanisterId :: (CanReject m, ICM m) => CanisterId -> m (EntityId, SubnetType, SecretKey, [(W.Word64, W.Word64)])
+getSubnetFromCanisterId :: (CanReject m, ICM m) => CanisterId -> m Subnet
 getSubnetFromCanisterId cid = do
     subnets <- gets subnets
     case subnetOfCid cid subnets of
       Nothing -> reject RC_SYS_FATAL "Canister id does not belong to any subnet." Nothing
       Just x -> return x
     where
-      subnetOfCid cid subnets = find (\(_, _, _, ranges) -> find (\(a, b) -> wordToId a <= cid && cid <= wordToId b) ranges /= Nothing) subnets
+      subnetOfCid cid subnets = find (\(_, _, _, _, ranges) -> find (\(a, b) -> wordToId a <= cid && cid <= wordToId b) ranges /= Nothing) subnets
 
 getPrunedCertificate :: (CanReject m, ICM m) => Timestamp -> CanisterId -> [Path] -> m Certificate
 getPrunedCertificate time ecid paths = do
     root_subnet <- gets rootSubnet
     sk1 <- gets secretRootKey
-    (subnet_id, _, sk2, ranges) <- getSubnetFromCanisterId ecid
+    (subnet_id, _, _, sk2, ranges) <- getSubnetFromCanisterId ecid
     full_tree <- gets (construct . stateTree time)
     let cert_tree = prune full_tree (["time"] : paths)
     return $ signCertificate time sk1 (if root_subnet == Just subnet_id then Nothing else Just (subnet_id, sk2, ranges)) cert_tree
@@ -933,8 +935,8 @@ invokeManagementCanister _ _ GlobalTimer = error "global timer invoked on manage
 icHttpRequest :: (ICM m, CanReject m) => EntityId -> CallId -> ICManagement m .! "http_request"
 icHttpRequest caller ctxt_id r = do
   available <- getCallContextCycles ctxt_id
-  (_, subnet, _, _) <- getSubnetFromCanisterId caller
-  let fee = fromIntegral $ http_request_fee r subnet
+  (_, subnet_type, subnet_size, _, _) <- getSubnetFromCanisterId caller
+  let fee = fromIntegral $ http_request_fee r (subnet_type, subnet_size)
   let url = T.unpack $ r .! #url
   let max_resp_size = max_response_size r
   let transform_principal_check =
@@ -1018,7 +1020,7 @@ icCreateCanister caller ctxt_id r = do
     forM_ (r .! #settings) validateSettings
     available <- getCallContextCycles ctxt_id
     setCallContextCycles ctxt_id 0
-    (_, _, _, ranges) <- getSubnetFromCanisterId caller
+    (_, _, _, _, ranges) <- getSubnetFromCanisterId caller
     cid <- icCreateCanisterCommon ranges caller available
     forM_ (r .! #settings) $ applySettings cid
     return (#canister_id .== entityIdToPrincipal cid)
@@ -1027,7 +1029,7 @@ icCreateCanisterWithCycles :: (ICM m, CanReject m) => EntityId -> CallId -> ICMa
 icCreateCanisterWithCycles caller ctxt_id r = do
     forM_ (r .! #settings) validateSettings
     ecid <- ecidOfCallID ctxt_id
-    (_, _, _, ranges) <- getSubnetFromCanisterId ecid
+    (_, _, _, _, ranges) <- getSubnetFromCanisterId ecid
     cid <- icCreateCanisterCommon ranges caller (fromMaybe cDEFAULT_PROVISIONAL_CYCLES_BALANCE (r .! #amount))
     forM_ (r .! #settings) $ applySettings cid
     return (#canister_id .== entityIdToPrincipal cid)

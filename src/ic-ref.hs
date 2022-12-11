@@ -21,9 +21,9 @@ defaultPort :: Port
 defaultPort = 8001
 
 
-work :: [(SubnetType, String, [(W.Word64, W.Word64)])] -> Maybe String -> Int -> Maybe Int -> Maybe FilePath -> Maybe FilePath -> Bool ->  IO ()
+work :: [(SubnetType, W.Word64, String, [(W.Word64, W.Word64)])] -> Maybe String -> Int -> Maybe Int -> Maybe FilePath -> Maybe FilePath -> Bool ->  IO ()
 work subnets maybe_cert_path systemTaskPeriod portToUse writePortTo backingFile log = do
-    let subs = map (\(t, n, ranges) -> SubnetConfig t n ranges) subnets
+    let subs = map (\(t, n, nonce, ranges) -> SubnetConfig t n nonce ranges) subnets
     putStrLn "Starting ic-ref..."
     BLS.init
     certs <- case maybe_cert_path of Nothing -> return []
@@ -73,8 +73,8 @@ main = join . customExecParser (prefs showHelpOnError) $
     canister_ids_per_subnet = 1_048_576
     range :: W.Word64 -> (W.Word64, W.Word64)
     range n = (n * canister_ids_per_subnet, (n + 1) * canister_ids_per_subnet - 1)
-    defaultSubnetConfig :: [(SubnetType, String, [(W.Word64, W.Word64)])]
-    defaultSubnetConfig = [(System, "sk1", [range 0]), (Application, "sk2", [range 1])]
+    defaultSubnetConfig :: [(SubnetType, W.Word64, String, [(W.Word64, W.Word64)])]
+    defaultSubnetConfig = [(System, 1, "sk1", [range 0]), (Application, 1, "sk2", [range 1])]
     defaultSystemTaskPeriod :: Int
     defaultSystemTaskPeriod = 1
     parser :: Parser (IO ())
@@ -84,7 +84,7 @@ main = join . customExecParser (prefs showHelpOnError) $
           (
             option auto
             (  long "subnet-config"
-            <> help ("choose initial subnet configurations (default: " ++ show defaultSubnetConfig ++ ")")
+            <> help ("choose initial subnet configuration consisting of subnet type, replication factor, nonce, and canister ranges for every subnet (default: " ++ show defaultSubnetConfig ++ ")")
             )
           )
         <|> pure defaultSubnetConfig
