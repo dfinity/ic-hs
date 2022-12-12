@@ -20,6 +20,7 @@ import qualified Data.HashMap.Lazy as HM
 import qualified Data.Map.Lazy as M
 import qualified Data.Set as S
 import qualified Data.Vector as Vec
+import qualified Data.Word as W
 import qualified Data.ByteString.Lazy.UTF8 as BLU
 import Data.Text.Encoding.Base64(encodeBase64)
 import Data.ByteString.Builder
@@ -150,7 +151,7 @@ check_http_body = aux . fromUtf8
     aux Nothing = False
     aux (Just s) = all ((==) 'x') $ T.unpack s
 
-canister_http_calls :: HasAgentConfig => SubnetType -> [TestTree]
+canister_http_calls :: HasAgentConfig => (SubnetType, W.Word64) -> [TestTree]
 canister_http_calls sub =
   [
     -- "Currently, the GET, HEAD, and POST methods are supported for HTTP requests."
@@ -528,8 +529,8 @@ canister_http_calls sub =
 
 -- * The test suite (see below for helper functions)
 
-icTests :: SubnetType -> AgentConfig -> TestTree
-icTests subnet = withAgentConfig $ testGroup "Interface Spec acceptance tests"
+icTests :: (SubnetType, W.Word64) -> AgentConfig -> TestTree
+icTests sub = withAgentConfig $ testGroup "Interface Spec acceptance tests"
   [ simpleTestCase "create and install" $ \_ ->
       return ()
 
@@ -863,7 +864,7 @@ icTests subnet = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     assertBool "random blobs are different" $ r1 /= r2
 
   , IC.Test.Spec.TECDSA.tests
-  , testGroup "canister http calls" $ canister_http_calls subnet
+  , testGroup "canister http calls" $ canister_http_calls sub
 
   , testGroup "simple calls"
     [ simpleTestCase "Call" $ \cid ->

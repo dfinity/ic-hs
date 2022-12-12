@@ -90,11 +90,11 @@ max_response_size r = aux $ fmap fromIntegral $ r .! #max_response_bytes
     aux Nothing = max_response_bytes_limit
     aux (Just w) = w
 
-http_request_fee :: (a -> IO b) ~ (ICManagement IO .! "http_request") => a -> SubnetType -> W.Word64
-http_request_fee r sub = base + per_byte * total_bytes
+http_request_fee :: (a -> IO b) ~ (ICManagement IO .! "http_request") => a -> (SubnetType, W.Word64) -> W.Word64
+http_request_fee r (subnet_type, subnet_size) = (normalized_fee * subnet_size) `div` reference_subnet_size
   where
-    base = getHttpRequestBaseFee sub
-    per_byte = getHttpRequestPerByteFee sub
+    base = getHttpRequestBaseFee subnet_type
+    per_byte = getHttpRequestPerByteFee subnet_type
     response_size_fee Nothing = max_response_bytes_limit
     response_size_fee (Just max_response_size) = max_response_size
     transform_fee Nothing = 0
@@ -107,7 +107,7 @@ http_request_fee r sub = base + per_byte * total_bytes
       + (fromIntegral $ sum $ map (\h -> utf8_length (h .! #name) + utf8_length (h .! #value)) $ Vec.toList $ r .! #headers)
       + (fromIntegral $ body_fee $ r .! #body)
       + (fromIntegral $ transform_fee $ r .! #transform)
-
+    normalized_fee = base + per_byte * total_bytes
 
 http_request_headers_total_size :: (a -> IO b) ~ (ICManagement IO .! "http_request") => Integral c => a -> c
 http_request_headers_total_size r = fromIntegral $ sum $ map (\h -> utf8_length (h .! #name) + utf8_length (h .! #value)) $ Vec.toList $ r .! #headers
