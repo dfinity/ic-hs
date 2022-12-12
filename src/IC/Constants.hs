@@ -15,6 +15,9 @@ cDEFAULT_PROVISIONAL_CYCLES_BALANCE :: Natural
 cDEFAULT_PROVISIONAL_CYCLES_BALANCE = 100_000_000_000_000
 
 -- Subnets
+
+-- reference_subnet_size is used for scaling cycle cost
+-- and must never be set to zero!
 reference_subnet_size :: W.Word64
 reference_subnet_size = 13
 
