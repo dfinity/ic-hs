@@ -1692,11 +1692,11 @@ icTests sub = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     , testCase "in timer callback" $ do
       past_time <- get_far_past_time
       far_future_time <- get_far_future_time
-      cid <- install $ onGlobalTimer $ callback $ set_timer_prog far_future_time -- timer callback sets timer to far_future_time and sets the previous value to global
-      _ <- reset_global cid -- sets global to 42
-      timer1 <- set_timer cid past_time -- sets timer to 1 and returns previous (0) timer
-      wait_for_timer cid 0 -- wait until global becomes 0 (previous timer set in the timer callback)
-      timer2 <- set_timer cid far_future_time -- sets timer to far_future_time and returns previous timer (far_future_time set by the timer callback)
+      cid <- install $ onGlobalTimer $ callback $ set_timer_prog far_future_time -- the timer callback sets timer to far_future_time and assigns the previous value of timer to global variable
+      _ <- reset_global cid -- sets global variable to 42
+      timer1 <- set_timer cid past_time -- sets timer to 1 and returns previous value of timer (0)
+      wait_for_timer cid 0 -- wait until global variable becomes 0 (previous value of timer assigned to global variable by the timer callback)
+      timer2 <- set_timer cid far_future_time -- sets timer to far_future_time and returns previous value of timer (far_future_time set by the timer callback)
       timer1 @?= blob 0
       timer2 @?= blob far_future_time
     , testCase "deactivate timer" $ do
