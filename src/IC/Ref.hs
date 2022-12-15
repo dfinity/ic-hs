@@ -632,7 +632,7 @@ getSubnetFromCanisterId cid = do
       subnetOfCid cid subnets = find (\(_, _, _, _, ranges) -> find (\(a, b) -> wordToId a <= cid && cid <= wordToId b) ranges /= Nothing) subnets
 
 getSubnetFromSubnetId :: (CanReject m, ICM m) => CanisterId -> m (Maybe Subnet)
-getSubnetFromSubnetId sid = find (\(id, _, _, _) -> sid == id) <$> gets subnets
+getSubnetFromSubnetId sid = find (\(id, _, _, _, _) -> sid == id) <$> gets subnets
 
 getPrunedCertificate :: (CanReject m, ICM m) => Timestamp -> CanisterId -> [Path] -> m Certificate
 getPrunedCertificate time ecid paths = do
@@ -1102,10 +1102,10 @@ checkSubnet ::
   (ICM m, CanReject m) =>
   (r -> EntityId) -> Maybe Subnet -> (r -> m a) -> (r -> m a)
 checkSubnet _ Nothing act r = act r
-checkSubnet c (Just (subnet_id, _, _, _)) act r = do
+checkSubnet c (Just (subnet_id, _, _, _, _)) act r = do
     let canister_id = c r
     canisterMustExist canister_id
-    (subnet_id', _, _, _) <- getSubnetFromCanisterId canister_id
+    (subnet_id', _, _, _, _) <- getSubnetFromCanisterId canister_id
     if subnet_id == subnet_id'
     then act r
     else reject RC_CANISTER_ERROR (
@@ -1117,9 +1117,9 @@ noSubnet ::
   (ICM m, CanReject m) =>
   EntityId -> Maybe Subnet -> (r -> m a) -> (r -> m a)
 noSubnet _ Nothing act r = act r
-noSubnet caller (Just (subnet_id, _, _, _)) act r = do
+noSubnet caller (Just (subnet_id, _, _, _, _)) act r = do
     root_subnet_id <- gets rootSubnet
-    (caller_subnet_id, _, _, _) <- getSubnetFromCanisterId caller
+    (caller_subnet_id, _, _, _, _) <- getSubnetFromCanisterId caller
     if (root_subnet_id == Just caller_subnet_id || subnet_id == caller_subnet_id) then
       reject RC_CANISTER_ERROR "the caller must be on the root subnet or belong to the target subnet" (Just EC_INVALID_ARGUMENT)
     else
