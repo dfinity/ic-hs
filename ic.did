@@ -89,6 +89,6 @@ service ic : {
   // internal methods
   setup_initial_dkg : (record {
     node_ids: vec principal;
-    registry_version: nat;
+    registry_version: nat64;
   }) -> ();
 }

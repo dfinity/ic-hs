@@ -244,7 +244,7 @@ ic_sign_with_ecdsa ic00 msg =
 
 ic_setup_initial_dkg ::
     forall a b. (a -> IO b) ~ (ICManagement IO .! "setup_initial_dkg") =>
-    HasAgentConfig => IC00 -> Blob -> [Blob] -> Natural -> IO b
+    HasAgentConfig => IC00 -> Blob -> [Blob] -> W.Word64 -> IO b
 ic_setup_initial_dkg ic00 subnet_id node_ids registry_version = do
   callIC ic00 subnet_id #setup_initial_dkg $ empty
     .+ #node_ids .== (Vec.fromList $ map Principal node_ids)
@@ -361,7 +361,7 @@ ic_long_url_http_request' ic00 (_, subnet_type, subnet_size) proto len transform
 
 ic_setup_initial_dkg' ::
     forall a b. (a -> IO b) ~ (ICManagement IO .! "setup_initial_dkg") =>
-    HasAgentConfig => IC00 -> Blob -> [Blob] -> Natural -> IO ReqResponse
+    HasAgentConfig => IC00 -> Blob -> [Blob] -> W.Word64 -> IO ReqResponse
 ic_setup_initial_dkg' ic00 subnet_id node_ids registry_version = do
   callIC' ic00 subnet_id #setup_initial_dkg $ empty
     .+ #node_ids .== (Vec.fromList $ map Principal node_ids)
