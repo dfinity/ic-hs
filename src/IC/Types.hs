@@ -142,6 +142,7 @@ instance Show SubnetType where
 
 data SubnetConfig = SubnetConfig
     { subnet_type :: SubnetType
+    , subnet_size :: W.Word64
     , nonce :: String
     , canister_ranges :: [(W.Word64, W.Word64)]
     }

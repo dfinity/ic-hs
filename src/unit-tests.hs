@@ -34,7 +34,7 @@ main = do
     defaultMain $ tests conf
 
 defaultSubnetConfig :: [SubnetConfig]
-defaultSubnetConfig = [SubnetConfig Application "sk" [(0, 0)]]
+defaultSubnetConfig = [SubnetConfig Application 1 "sk" [(0, 0)]]
 
 defaultEcid :: CanisterId
 defaultEcid = wordToId 0

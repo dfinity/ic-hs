@@ -20,6 +20,7 @@ import qualified Data.HashMap.Lazy as HM
 import qualified Data.Map.Lazy as M
 import qualified Data.Set as S
 import qualified Data.Vector as Vec
+import qualified Data.Word as W
 import qualified Data.ByteString.Lazy.UTF8 as BLU
 import Data.Text.Encoding.Base64(encodeBase64)
 import Data.ByteString.Builder
@@ -150,7 +151,7 @@ check_http_body = aux . fromUtf8
     aux Nothing = False
     aux (Just s) = all ((==) 'x') $ T.unpack s
 
-canister_http_calls :: HasAgentConfig => SubnetType -> [TestTree]
+canister_http_calls :: HasAgentConfig => (SubnetType, W.Word64) -> [TestTree]
 canister_http_calls sub =
   [
     -- "Currently, the GET, HEAD, and POST methods are supported for HTTP requests."
@@ -528,8 +529,8 @@ canister_http_calls sub =
 
 -- * The test suite (see below for helper functions)
 
-icTests :: SubnetType -> AgentConfig -> TestTree
-icTests subnet = withAgentConfig $ testGroup "Interface Spec acceptance tests"
+icTests :: (SubnetType, W.Word64) -> AgentConfig -> TestTree
+icTests sub = withAgentConfig $ testGroup "Interface Spec acceptance tests"
   [ simpleTestCase "create and install" $ \_ ->
       return ()
 
@@ -863,7 +864,7 @@ icTests subnet = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     assertBool "random blobs are different" $ r1 /= r2
 
   , IC.Test.Spec.TECDSA.tests
-  , testGroup "canister http calls" $ canister_http_calls subnet
+  , testGroup "canister http calls" $ canister_http_calls sub
 
   , testGroup "simple calls"
     [ simpleTestCase "Call" $ \cid ->
@@ -932,11 +933,18 @@ icTests subnet = withAgentConfig $ testGroup "Interface Spec acceptance tests"
         [testCase "Multiple controllers (provisional)" $ do
         let controllers = [Principal defaultUser, Principal otherUser]
         cid <- ic_provisional_create ic00 Nothing (#controllers .== Vec.fromList controllers)
+        universal_wasm <- getTestWasm "universal-canister"
+        ic_install ic00 (enum #install) cid universal_wasm ""
 
         -- Controllers should be able to fetch the canister status.
         cs <- ic_canister_status (ic00as defaultUser) cid
         Vec.toList (cs .! #settings .! #controllers) `isSet` controllers
         cs <- ic_canister_status (ic00as otherUser) cid
+        Vec.toList (cs .! #settings .! #controllers) `isSet` controllers
+
+        -- A canister can request its own status if it does not control itself
+        cs <- ic_canister_status (ic00via cid) cid
+        assertBool "canister should not control itself in this test" $ not $ elem (Principal cid) controllers
         Vec.toList (cs .! #settings .! #controllers) `isSet` controllers
 
         -- Non-controllers cannot fetch the canister status
@@ -958,11 +966,18 @@ icTests subnet = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     , simpleTestCase "Multiple controllers (aaaaa-aa)" $ \cid -> do
         let controllers = [Principal cid, Principal otherUser]
         cid2 <- ic_create (ic00viaWithCycles cid 20_000_000_000_000) (#controllers .== Vec.fromList controllers)
+        universal_wasm <- getTestWasm "universal-canister"
+        ic_install (ic00via cid) (enum #install) cid2 universal_wasm ""
 
         -- Controllers should be able to fetch the canister status.
         cs <- ic_canister_status (ic00via cid) cid2
         Vec.toList (cs .! #settings .! #controllers) `isSet` controllers
         cs <- ic_canister_status (ic00as otherUser) cid2
+        Vec.toList (cs .! #settings .! #controllers) `isSet` controllers
+
+        -- A canister can request its own status if it does not control itself
+        cs <- ic_canister_status (ic00via cid2) cid2
+        assertBool "canister should not control itself in this test" $ not $ elem (Principal cid2) controllers
         Vec.toList (cs .! #settings .! #controllers) `isSet` controllers
 
         -- Set new controller
@@ -1674,6 +1689,16 @@ icTests subnet = withAgentConfig $ testGroup "Interface Spec acceptance tests"
       timer1 @?= blob 0
       timer2 @?= blob 0
       timer3 @?= blob far_far_future_time
+    , testCase "in timer callback" $ do
+      past_time <- get_far_past_time
+      far_future_time <- get_far_future_time
+      cid <- install $ onGlobalTimer $ callback $ set_timer_prog far_future_time -- the timer callback sets timer to far_future_time and assigns the previous value of timer to global variable
+      _ <- reset_global cid -- sets global variable to 42
+      timer1 <- set_timer cid past_time -- sets timer to 1 and returns previous value of timer (0)
+      wait_for_timer cid 0 -- wait until global variable becomes 0 (previous value of timer assigned to global variable by the timer callback)
+      timer2 <- set_timer cid far_future_time -- sets timer to far_future_time and returns previous value of timer (far_future_time set by the timer callback)
+      timer1 @?= blob 0
+      timer2 @?= blob far_future_time
     , testCase "deactivate timer" $ do
       cid <- install_canister_with_global_timer (1::Int)
       _ <- reset_global cid
