@@ -908,6 +908,7 @@ invokeManagementCanister caller ctxt_id (Public method_name arg) =
       "http_request" -> atomic $ icHttpRequest caller ctxt_id
       "ecdsa_public_key" -> atomic $ icEcdsaPublicKey caller
       "sign_with_ecdsa" -> atomic $ icSignWithEcdsa caller
+      "setup_initial_dkg" -> atomic $ icSetupInitialDKG
       _ -> reject RC_DESTINATION_INVALID ("Unsupported management function " ++ method_name) (Just EC_METHOD_NOT_FOUND)
   where
     -- always responds
@@ -1327,6 +1328,12 @@ invokeEntry ctxt_id wasm_state can_mod env entry = do
         | Just f <- M.lookup method (update_methods can_mod) = Just f
         | Just f <- M.lookup method (query_methods can_mod)  = Just (asUpdate f)
         | otherwise = Nothing
+
+icSetupInitialDKG :: (ICM m, CanReject m) => ICManagement m .! "setup_initial_dkg"
+icSetupInitialDKG r = do
+  let node_ids = Vec.toList $ r .! #node_ids
+  if node_ids == nub node_ids then return ()
+  else reject RC_CANISTER_ERROR "Expected a set of NodeIds. Some NodeId is repeated." (Just EC_INVALID_ARGUMENT)
 
 newCall :: ICM m => CallId -> MethodCall -> m ()
 newCall from_ctxt_id call = do

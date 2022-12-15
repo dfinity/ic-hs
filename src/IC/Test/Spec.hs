@@ -20,7 +20,6 @@ import qualified Data.HashMap.Lazy as HM
 import qualified Data.Map.Lazy as M
 import qualified Data.Set as S
 import qualified Data.Vector as Vec
-import qualified Data.Word as W
 import qualified Data.ByteString.Lazy.UTF8 as BLU
 import Data.Text.Encoding.Base64(encodeBase64)
 import Data.ByteString.Builder
@@ -62,7 +61,7 @@ import IC.Hash
 import IC.Test.Agent
 import IC.Test.Agent.Calls
 import IC.Test.Spec.Utils
-import IC.Types(SubnetType(..))
+import IC.Types(TestSubnetConfig)
 import IC.Utils
 import qualified IC.Test.Spec.TECDSA
 
@@ -151,7 +150,7 @@ check_http_body = aux . fromUtf8
     aux Nothing = False
     aux (Just s) = all ((==) 'x') $ T.unpack s
 
-canister_http_calls :: HasAgentConfig => (SubnetType, W.Word64) -> [TestTree]
+canister_http_calls :: HasAgentConfig => TestSubnetConfig -> [TestTree]
 canister_http_calls sub =
   [
     -- "Currently, the GET, HEAD, and POST methods are supported for HTTP requests."
@@ -529,8 +528,8 @@ canister_http_calls sub =
 
 -- * The test suite (see below for helper functions)
 
-icTests :: (SubnetType, W.Word64) -> AgentConfig -> TestTree
-icTests sub = withAgentConfig $ testGroup "Interface Spec acceptance tests"
+icTests :: TestSubnetConfig -> TestSubnetConfig -> AgentConfig -> TestTree
+icTests my_sub other_sub = withAgentConfig $ testGroup "Interface Spec acceptance tests"
   [ simpleTestCase "create and install" $ \_ ->
       return ()
 
@@ -864,7 +863,14 @@ icTests sub = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     assertBool "random blobs are different" $ r1 /= r2
 
   , IC.Test.Spec.TECDSA.tests
-  , testGroup "canister http calls" $ canister_http_calls sub
+  , testGroup "canister http calls" $ canister_http_calls my_sub
+
+  , testGroup "set_up_initial_dkg"
+    [ simpleTestCase "repeated node_ids" $ \cid -> do
+      let (EntityId subnet_id, _, _) = other_sub
+      let node_id = doesn'tExist
+      ic_setup_initial_dkg' (ic00via cid) subnet_id [node_id, node_id] 0 >>= isReject [5]
+    ]
 
   , testGroup "simple calls"
     [ simpleTestCase "Call" $ \cid ->
