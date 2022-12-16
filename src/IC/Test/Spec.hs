@@ -20,7 +20,6 @@ import qualified Data.HashMap.Lazy as HM
 import qualified Data.Map.Lazy as M
 import qualified Data.Set as S
 import qualified Data.Vector as Vec
-import qualified Data.Word as W
 import qualified Data.ByteString.Lazy.UTF8 as BLU
 import Data.Text.Encoding.Base64(encodeBase64)
 import Data.ByteString.Builder
@@ -55,6 +54,7 @@ import IC.Crypto
 import qualified IC.Crypto.CanisterSig as CanisterSig
 import qualified IC.Crypto.DER as DER
 import IC.Id.Forms hiding (Blob)
+import IC.Id.Fresh
 import IC.Test.Universal
 import IC.HashTree hiding (Blob, Label)
 import IC.Certificate
@@ -62,7 +62,7 @@ import IC.Hash
 import IC.Test.Agent
 import IC.Test.Agent.Calls
 import IC.Test.Spec.Utils
-import IC.Types(SubnetType(..))
+import IC.Types(TestSubnetConfig)
 import IC.Utils
 import qualified IC.Test.Spec.TECDSA
 
@@ -151,7 +151,7 @@ check_http_body = aux . fromUtf8
     aux Nothing = False
     aux (Just s) = all ((==) 'x') $ T.unpack s
 
-canister_http_calls :: HasAgentConfig => (SubnetType, W.Word64) -> [TestTree]
+canister_http_calls :: HasAgentConfig => TestSubnetConfig -> [TestTree]
 canister_http_calls sub =
   [
     -- "Currently, the GET, HEAD, and POST methods are supported for HTTP requests."
@@ -529,9 +529,37 @@ canister_http_calls sub =
 
 -- * The test suite (see below for helper functions)
 
-icTests :: (SubnetType, W.Word64) -> AgentConfig -> TestTree
-icTests sub = withAgentConfig $ testGroup "Interface Spec acceptance tests"
-  [ simpleTestCase "create and install" $ \_ ->
+icTests :: TestSubnetConfig -> TestSubnetConfig -> AgentConfig -> TestTree
+icTests my_sub _other_sub = withAgentConfig $ testGroup "Interface Spec acceptance tests"
+  [ testCase "NNS canisters" $ do
+      registry <- install noop
+      governance <- install noop
+      ledger <- install noop
+      root <- install noop
+      cmc <- install noop
+      lifeline <- install noop
+      genesis <- install noop
+      sns <- install noop
+      identity <- install noop
+      ui <- install noop
+
+      let mint = replyData . i64tob . mintCycles . int64
+      call' root (mint 0) >>= isReject [5]
+
+      when (isRootTestSubnet my_sub) $ do
+        assertBool "registry canister ID" $ EntityId registry == wordToId 0
+        assertBool "governance canister ID" $ EntityId governance == wordToId 1
+        assertBool "ledger canister ID" $ EntityId ledger == wordToId 2
+        assertBool "root canister ID" $ EntityId root == wordToId 3
+        assertBool "cmc canister ID" $ EntityId cmc == wordToId 4
+        assertBool "lifeline canister ID" $ EntityId lifeline == wordToId 5
+        assertBool "genesis canister ID" $ EntityId genesis == wordToId 6
+        assertBool "sns canister ID" $ EntityId sns == wordToId 7
+        assertBool "identity canister ID" $ EntityId identity == wordToId 8
+        assertBool "ui canister ID" $ EntityId ui == wordToId 9
+        call cmc (mint 1_000) >>= asWord64 >>= is 1_000
+
+  , simpleTestCase "create and install" $ \_ ->
       return ()
 
   , testCase "create_canister necessary" $
@@ -864,7 +892,7 @@ icTests sub = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     assertBool "random blobs are different" $ r1 /= r2
 
   , IC.Test.Spec.TECDSA.tests
-  , testGroup "canister http calls" $ canister_http_calls sub
+  , testGroup "canister http calls" $ canister_http_calls my_sub
 
   , testGroup "simple calls"
     [ simpleTestCase "Call" $ \cid ->

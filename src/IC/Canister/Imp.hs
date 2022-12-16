@@ -47,6 +47,7 @@ import IC.Types
 import IC.Wasm.Winter
 import IC.Wasm.Imports
 import IC.Canister.StableMemory as Mem
+import IC.Id.Fresh
 import IC.Utils
 
 {-
@@ -354,6 +355,8 @@ systemAPI esref =
 
   , toImport' "ic0" "debug_print" star debug_print
   , toImport' "ic0" "trap" star explicit_trap
+
+  , toImport' "ic0" "mint_cycles" [EXC_U, EXC_Ry, EXC_Rt, EXC_T] mint_cycles
   ]
   where
     -- Utilities
@@ -737,6 +740,14 @@ systemAPI esref =
       bytes <- copy_from_canister "trap" src size
       let msg = BSU.toString bytes
       throwError $ "canister trapped explicitly: " ++ msg
+
+    mint_cycles :: Word64 -> HostM s Word64
+    mint_cycles amount = do
+      self <- gets (env_self . env)
+      let cmc = wordToId 4
+      unless (self == cmc) $ throwError $ "ic0.mint_cycles can only be executed on Cycles Minting Canister: " ++ show self ++ " != " ++ show cmc
+      addBalance esref $ fromIntegral amount
+      return amount
 
 -- The state of an instance, consisting of
 --  * the underlying Wasm state,

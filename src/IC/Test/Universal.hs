@@ -269,6 +269,9 @@ canisterVersion = op 73
 trapIfNeq :: Exp 'B -> Exp 'B -> Exp 'B -> Prog
 trapIfNeq = op 74
 
+mintCycles :: Exp 'I64 -> Exp 'I64
+mintCycles = op 75
+
 -- Some convenience combinators
 
 -- This allows us to write byte expressions as plain string literals

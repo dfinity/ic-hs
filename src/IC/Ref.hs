@@ -199,6 +199,11 @@ data Message
 
 type Subnet = (EntityId, SubnetType, W.Word64, SecretKey, [(W.Word64, W.Word64)])
 
+isRootSubnet :: Subnet -> Bool
+isRootSubnet (_, _, _, _, ranges) = checkCanisterIdInRanges ranges nns_canister_id
+  where
+    nns_canister_id = wordToId 0
+
 data IC = IC
   { canisters :: CanisterId ↦ CanState
   , requests :: RequestID ↦ (CallRequest, (RequestStatus, CanisterId))
@@ -215,11 +220,12 @@ data IC = IC
 type ICM m = (MonadState IC m, HasRefConfig, HasCallStack, MonadIO m)
 
 initialIC :: [SubnetConfig] -> IO IC
-initialIC subnets = do
-    let root_subnet = find (\conf -> subnet_type conf == System) subnets
+initialIC subnet_configs = do
+    let subnets = map sub subnet_configs
+    let root_subnet = find isRootSubnet subnets
     let sk = case root_subnet of Nothing -> createSecretKeyBLS "ic-ref's very secure secret root key"
-                                 Just conf -> key conf
-    IC mempty mempty mempty mempty <$> newStdGen <*> pure sk <*> pure (fmap (sub_id . key) root_subnet) <*> pure (map sub subnets)
+                                 Just (_, _, _, k, _) -> k
+    IC mempty mempty mempty mempty <$> newStdGen <*> pure sk <*> pure (fmap (\(id, _, _, _, _) -> id) root_subnet) <*> pure subnets
   where
     sub conf = (sub_id (key conf), subnet_type conf, subnet_size conf, key conf, canister_ranges conf)
     sub_id = EntityId . mkSelfAuthenticatingId . toPublicKey
@@ -629,7 +635,7 @@ getSubnetFromCanisterId cid = do
       Nothing -> reject RC_SYS_FATAL "Canister id does not belong to any subnet." Nothing
       Just x -> return x
     where
-      subnetOfCid cid subnets = find (\(_, _, _, _, ranges) -> find (\(a, b) -> wordToId a <= cid && cid <= wordToId b) ranges /= Nothing) subnets
+      subnetOfCid cid subnets = find (\(_, _, _, _, ranges) -> checkCanisterIdInRanges ranges cid) subnets
 
 getPrunedCertificate :: (CanReject m, ICM m) => Timestamp -> CanisterId -> [Path] -> m Certificate
 getPrunedCertificate time ecid paths = do
