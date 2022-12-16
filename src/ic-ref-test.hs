@@ -23,8 +23,8 @@ main = do
     BLS.init
     os <- parseOptions ingredients (testGroup "dummy" [])
     ac <- preFlight os
-    let MyTestSubnet my_sub = lookupOption os
-    let OtherTestSubnet other_sub = lookupOption os
+    let TestSubnet my_sub = lookupOption os
+    let PeerSubnet other_sub = lookupOption os
     defaultMainWithIngredients ingredients (icTests my_sub other_sub ac)
   where
     ingredients =
@@ -33,8 +33,8 @@ main = do
         , includingOptions [endpointOption]
         , includingOptions [httpbinOption]
         , includingOptions [polltimeoutOption]
-        , includingOptions [myTestSubnetOption]
-        , includingOptions [otherTestSubnetOption]
+        , includingOptions [testSubnetOption]
+        , includingOptions [peerSubnetOption]
         , antXMLRunner `composeReporters` htmlRunner `composeReporters` consoleTestReporter
         ]
       ]

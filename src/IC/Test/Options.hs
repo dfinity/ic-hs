@@ -67,46 +67,46 @@ defaultSysTestSubnetConfig = (getSubnetIdFromNonce "sk1", System, 1, [nth_canist
 defaultAppTestSubnetConfig :: TestSubnetConfig
 defaultAppTestSubnetConfig = (getSubnetIdFromNonce "sk2", Application, 1, [nth_canister_range 1])
 
-newtype MyTestSubnet = MyTestSubnet TestSubnetConfig
+newtype TestSubnet = TestSubnet TestSubnetConfig
 
-instance Read MyTestSubnet where
+instance Read TestSubnet where
   readsPrec p x = do
     ((id, typ, size, ranges), z) <- (readsPrec p x :: [((String, SubnetType, W.Word64, [(W.Word64, W.Word64)]), String)])
     Principal b <- case parsePrincipal (T.pack id) of Left err -> error err
                                                       Right p -> return p
-    return (MyTestSubnet (EntityId b, typ, size, ranges), z)
+    return (TestSubnet (EntityId b, typ, size, ranges), z)
 
-instance Show MyTestSubnet where
-  show (MyTestSubnet (id, typ, size, ranges)) = show (prettyID id, typ, size, ranges)
+instance Show TestSubnet where
+  show (TestSubnet (id, typ, size, ranges)) = show (prettyID id, typ, size, ranges)
 
-instance IsOption MyTestSubnet where
-  defaultValue = MyTestSubnet defaultSysTestSubnetConfig
+instance IsOption TestSubnet where
+  defaultValue = TestSubnet defaultSysTestSubnetConfig
   parseValue = Just <$> read
   optionName = return "test-subnet-config"
-  optionHelp = return $ "Test subnet configuration consisting of subnet ID, subnet type, replication factor, and canister ranges; default sys: " ++ show (MyTestSubnet defaultSysTestSubnetConfig) ++ "; default app: " ++ show (MyTestSubnet defaultAppTestSubnetConfig)
+  optionHelp = return $ "Test subnet configuration consisting of subnet ID, subnet type, replication factor, and canister ranges; default sys: " ++ show (TestSubnet defaultSysTestSubnetConfig) ++ "; default app: " ++ show (TestSubnet defaultAppTestSubnetConfig)
 
-myTestSubnetOption :: OptionDescription
-myTestSubnetOption = Option (Proxy :: Proxy MyTestSubnet)
+testSubnetOption :: OptionDescription
+testSubnetOption = Option (Proxy :: Proxy TestSubnet)
 
 -- Configuration: Peer subnet
 
-newtype OtherTestSubnet = OtherTestSubnet TestSubnetConfig
+newtype PeerSubnet = PeerSubnet TestSubnetConfig
 
-instance Read OtherTestSubnet where
+instance Read PeerSubnet where
   readsPrec p x = do
     ((id, typ, size, ranges), z) <- (readsPrec p x :: [((String, SubnetType, W.Word64, [(W.Word64, W.Word64)]), String)])
     Principal b <- case parsePrincipal (T.pack id) of Left err -> error err
                                                       Right p -> return p
-    return (OtherTestSubnet (EntityId b, typ, size, ranges), z)
+    return (PeerSubnet (EntityId b, typ, size, ranges), z)
 
-instance Show OtherTestSubnet where
-  show (OtherTestSubnet (id, typ, size, ranges)) = show (prettyID id, typ, size, ranges)
+instance Show PeerSubnet where
+  show (PeerSubnet (id, typ, size, ranges)) = show (prettyID id, typ, size, ranges)
 
-instance IsOption OtherTestSubnet where
-  defaultValue = OtherTestSubnet defaultAppTestSubnetConfig
+instance IsOption PeerSubnet where
+  defaultValue = PeerSubnet defaultAppTestSubnetConfig
   parseValue = Just <$> read
-  optionName = return "peer-test-subnet-config"
-  optionHelp = return $ "Peer test subnet configuration consisting of subnet ID, subnet type, replication factor, and canister ranges; default app: " ++ show (OtherTestSubnet defaultAppTestSubnetConfig) ++ "; default sys: " ++ show (OtherTestSubnet defaultSysTestSubnetConfig)
+  optionName = return "peer-subnet-config"
+  optionHelp = return $ "Peer subnet configuration consisting of subnet ID, subnet type, replication factor, and canister ranges; default app: " ++ show (PeerSubnet defaultAppTestSubnetConfig) ++ "; default sys: " ++ show (PeerSubnet defaultSysTestSubnetConfig)
 
-otherTestSubnetOption :: OptionDescription
-otherTestSubnetOption = Option (Proxy :: Proxy OtherTestSubnet)
+peerSubnetOption :: OptionDescription
+peerSubnetOption = Option (Proxy :: Proxy PeerSubnet)
