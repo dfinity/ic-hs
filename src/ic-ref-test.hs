@@ -31,7 +31,6 @@ main = do
       [ rerunningTests
         [ listingTests
         , includingOptions [endpointOption]
-        , includingOptions [ecidOption]
         , includingOptions [httpbinOption]
         , includingOptions [polltimeoutOption]
         , includingOptions [myTestSubnetOption]

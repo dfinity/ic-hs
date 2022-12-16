@@ -11,7 +11,6 @@ import Codec.Candid (Principal(..), parsePrincipal)
 import IC.Constants
 import IC.Crypto
 import IC.Id.Forms(mkSelfAuthenticatingId)
-import IC.Id.Fresh(wordToId)
 import IC.Types
 
 -- Configuration: The URL of the endpoint to test
@@ -29,19 +28,6 @@ instance IsOption Endpoint where
 
 endpointOption :: OptionDescription
 endpointOption = Option (Proxy :: Proxy Endpoint)
-
--- Configuration: Effective canister id for user requests to selected methods of the management canister
-
-newtype ECID = ECID CanisterId
-
-instance IsOption ECID where
-  defaultValue = ECID $ wordToId 0
-  parseValue = fmap ECID . parsePrettyID
-  optionHelp = return $ "Effective canister id for user requests to selected methods of the management canister (default: " ++ prettyID (wordToId 0) ++ ")"
-  optionName = return "ecid"
-
-ecidOption :: OptionDescription
-ecidOption = Option (Proxy :: Proxy ECID)
 
 -- Configuration: The URL of the httpbin endpoint for http_request tests
 
@@ -70,16 +56,16 @@ instance IsOption PollTimeout where
 polltimeoutOption :: OptionDescription
 polltimeoutOption = Option (Proxy :: Proxy PollTimeout)
 
--- Configuration: Subnet type
+-- Configuration: Test subnet
+
+getSubnetIdFromNonce :: String -> EntityId
+getSubnetIdFromNonce nonce = EntityId $ mkSelfAuthenticatingId $ toPublicKey $ createSecretKeyBLS $ BLU.fromString nonce
 
 defaultSysTestSubnetConfig :: TestSubnetConfig
 defaultSysTestSubnetConfig = (getSubnetIdFromNonce "sk1", System, 1, [nth_canister_range 0])
 
 defaultAppTestSubnetConfig :: TestSubnetConfig
 defaultAppTestSubnetConfig = (getSubnetIdFromNonce "sk2", Application, 1, [nth_canister_range 1])
-
-getSubnetIdFromNonce :: String -> EntityId
-getSubnetIdFromNonce nonce = EntityId $ mkSelfAuthenticatingId $ toPublicKey $ createSecretKeyBLS $ BLU.fromString nonce
 
 newtype MyTestSubnet = MyTestSubnet TestSubnetConfig
 
@@ -101,6 +87,8 @@ instance IsOption MyTestSubnet where
 
 myTestSubnetOption :: OptionDescription
 myTestSubnetOption = Option (Proxy :: Proxy MyTestSubnet)
+
+-- Configuration: Peer subnet
 
 newtype OtherTestSubnet = OtherTestSubnet TestSubnetConfig
 

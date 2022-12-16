@@ -81,17 +81,17 @@ import IC.Test.Agent
 import IC.Types(TestSubnetConfig)
 import IC.Utils
 
-ic_create :: (HasCallStack, HasAgentConfig, PartialSettings r) => IC00 -> Rec r -> IO Blob
-ic_create ic00 ps = do
-  r <- callIC ic00 agentEcid #create_canister $ empty
+ic_create :: (HasCallStack, HasAgentConfig, PartialSettings r) => IC00 -> Blob -> Rec r -> IO Blob
+ic_create ic00 ecid ps = do
+  r <- callIC ic00 ecid #create_canister $ empty
     .+ #settings .== Just (fromPartialSettings ps)
   return (rawPrincipal (r .! #canister_id))
 
 ic_provisional_create ::
     (HasCallStack, HasAgentConfig, PartialSettings r) =>
-    IC00 -> Maybe Natural -> Rec r -> IO Blob
-ic_provisional_create ic00 cycles ps = do
-  r <- callIC ic00 agentEcid #provisional_create_canister_with_cycles $ empty
+    IC00 -> Blob -> Maybe Natural -> Rec r -> IO Blob
+ic_provisional_create ic00 ecid cycles ps = do
+  r <- callIC ic00 ecid #provisional_create_canister_with_cycles $ empty
     .+ #amount .== cycles
     .+ #settings .== Just (fromPartialSettings ps)
   return (rawPrincipal (r .! #canister_id))
@@ -154,9 +154,9 @@ ic_delete_canister ic00 canister_id = do
   callIC ic00 canister_id #delete_canister $ empty
     .+ #canister_id .== Principal canister_id
 
-ic_raw_rand :: HasAgentConfig => IC00 -> IO Blob
-ic_raw_rand ic00 =
-  callIC ic00 agentEcid #raw_rand ()
+ic_raw_rand :: HasAgentConfig => IC00 -> Blob -> IO Blob
+ic_raw_rand ic00 ecid =
+  callIC ic00 ecid #raw_rand ()
 
 ic_http_get_request ::
     forall a b. (a -> IO b) ~ (ICManagement IO .! "http_request") =>
@@ -218,9 +218,9 @@ ic_long_url_http_request ic00 (_, subnet_type, subnet_size, _) proto len transfo
 
 ic_ecdsa_public_key ::
     forall a b. (a -> IO b) ~ (ICManagement IO .! "ecdsa_public_key") =>
-    HasAgentConfig => IC00 -> Maybe Blob -> Vec.Vector Blob -> IO b
-ic_ecdsa_public_key ic00 canister_id path =
-  callIC ic00 agentEcid #ecdsa_public_key $ empty
+    HasAgentConfig => IC00 -> Blob -> Maybe Blob -> Vec.Vector Blob -> IO b
+ic_ecdsa_public_key ic00 ecid canister_id path =
+  callIC ic00 ecid #ecdsa_public_key $ empty
     .+ #derivation_path .== path
     .+ #canister_id .== (fmap Principal canister_id)
     .+ #key_id .== (empty
@@ -230,9 +230,9 @@ ic_ecdsa_public_key ic00 canister_id path =
 
 ic_sign_with_ecdsa ::
     forall a b. (a -> IO b) ~ (ICManagement IO .! "sign_with_ecdsa") =>
-    HasAgentConfig => IC00 -> Blob -> IO b
-ic_sign_with_ecdsa ic00 msg =
-  callIC ic00 agentEcid #sign_with_ecdsa $ empty
+    HasAgentConfig => IC00 -> Blob -> Blob -> IO b
+ic_sign_with_ecdsa ic00 ecid msg =
+  callIC ic00 ecid #sign_with_ecdsa $ empty
     .+ #derivation_path .== Vec.empty
     .+ #message_hash .== msg
     .+ #key_id .== (empty
@@ -242,16 +242,16 @@ ic_sign_with_ecdsa ic00 msg =
 
 ic_create' ::
     (HasCallStack, HasAgentConfig, PartialSettings r) =>
-    IC00 -> Rec r -> IO ReqResponse
-ic_create' ic00 ps = do
-  callIC' ic00 agentEcid #create_canister $ empty
+    IC00 -> Blob -> Rec r -> IO ReqResponse
+ic_create' ic00 ecid ps = do
+  callIC' ic00 ecid #create_canister $ empty
     .+ #settings .== Just (fromPartialSettings ps)
 
 ic_provisional_create' ::
     (HasCallStack, HasAgentConfig, PartialSettings r) =>
-    IC00 -> Maybe Natural -> Rec r -> IO ReqResponse
-ic_provisional_create' ic00 cycles ps = do
-  callIC' ic00 agentEcid #provisional_create_canister_with_cycles $ empty
+    IC00 -> Blob -> Maybe Natural -> Rec r -> IO ReqResponse
+ic_provisional_create' ic00 ecid cycles ps = do
+  callIC' ic00 ecid #provisional_create_canister_with_cycles $ empty
     .+ #amount .== cycles
     .+ #settings .== Just (fromPartialSettings ps)
 
@@ -289,9 +289,9 @@ ic_top_up' ic00 canister_id amount = do
     .+ #canister_id .== Principal canister_id
     .+ #amount .== amount
 
-ic_ecdsa_public_key' :: HasAgentConfig => IC00 -> Maybe Blob -> Vec.Vector Blob -> IO ReqResponse
-ic_ecdsa_public_key' ic00 canister_id path =
-  callIC' ic00 agentEcid #ecdsa_public_key $ empty
+ic_ecdsa_public_key' :: HasAgentConfig => IC00 -> Blob -> Maybe Blob -> Vec.Vector Blob -> IO ReqResponse
+ic_ecdsa_public_key' ic00 ecid canister_id path =
+  callIC' ic00 ecid #ecdsa_public_key $ empty
     .+ #derivation_path .== path
     .+ #canister_id .== (Principal <$> canister_id)
     .+ #key_id .== (empty
@@ -393,9 +393,9 @@ ic_deposit_cycles'' user canister_id = do
   callIC'' user canister_id #deposit_cycles $ empty
     .+ #canister_id .== Principal canister_id
 
-ic_raw_rand'' :: HasAgentConfig => Blob -> IO (HTTPErrOr ReqResponse)
-ic_raw_rand'' user = do
-  callIC'' user agentEcid #raw_rand ()
+ic_raw_rand'' :: HasAgentConfig => Blob -> Blob -> IO (HTTPErrOr ReqResponse)
+ic_raw_rand'' user ecid = do
+  callIC'' user ecid #raw_rand ()
 
 ic_http_get_request'' :: HasAgentConfig => Blob -> IO (HTTPErrOr ReqResponse)
 ic_http_get_request'' user =
@@ -407,9 +407,9 @@ ic_http_get_request'' user =
     .+ #body .== Nothing
     .+ #transform .== Nothing
 
-ic_ecdsa_public_key'' :: HasAgentConfig => Blob -> IO (HTTPErrOr ReqResponse)
-ic_ecdsa_public_key'' user =
-  callIC'' user agentEcid #ecdsa_public_key $ empty
+ic_ecdsa_public_key'' :: HasAgentConfig => Blob -> Blob -> IO (HTTPErrOr ReqResponse)
+ic_ecdsa_public_key'' user ecid =
+  callIC'' user ecid #ecdsa_public_key $ empty
     .+ #derivation_path .== Vec.empty
     .+ #canister_id .== Nothing
     .+ #key_id .== (empty
@@ -417,9 +417,9 @@ ic_ecdsa_public_key'' user =
        .+ #name .== (T.pack "0")
     )
 
-ic_sign_with_ecdsa'' :: HasAgentConfig => Blob -> Blob -> IO (HTTPErrOr ReqResponse)
-ic_sign_with_ecdsa'' user msg =
-  callIC'' user agentEcid #sign_with_ecdsa $ empty
+ic_sign_with_ecdsa'' :: HasAgentConfig => Blob -> Blob -> Blob -> IO (HTTPErrOr ReqResponse)
+ic_sign_with_ecdsa'' user ecid msg =
+  callIC'' user ecid #sign_with_ecdsa $ empty
     .+ #derivation_path .== Vec.empty
     .+ #message_hash .== msg
     .+ #key_id .== (empty
