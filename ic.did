@@ -34,6 +34,10 @@ service ic : {
     canister_id : principal;
     settings : canister_settings
   }) -> ();
+  set_controller: (record {
+    canister_id : principal;
+    new_controller : principal;
+  }) -> ();
   install_code : (record {
     mode : variant {install; reinstall; upgrade};
     canister_id : canister_id;

@@ -909,6 +909,7 @@ invokeManagementCanister caller maybeSubnet ctxt_id (Public method_name arg) =
       "install_code" -> atomic $ onlyControllerOrSelf method_name False caller $ checkSubnet fetchCanisterId maybeSubnet $ icInstallCode caller
       "uninstall_code" -> atomic $ onlyControllerOrSelf method_name False caller $ checkSubnet fetchCanisterId maybeSubnet $ icUninstallCode
       "update_settings" -> atomic $ onlyControllerOrSelf method_name False caller $ checkSubnet fetchCanisterId maybeSubnet icUpdateCanisterSettings
+      "set_controller" -> atomic $ onlyControllerOrSelf method_name False caller $ checkSubnet fetchCanisterId maybeSubnet icSetController
       "start_canister" -> atomic $ onlyControllerOrSelf method_name False caller $ checkSubnet fetchCanisterId maybeSubnet icStartCanister
       "stop_canister" -> deferred $ onlyControllerOrSelf method_name False caller $ checkSubnet fetchCanisterId maybeSubnet $ icStopCanister ctxt_id
       "canister_status" -> atomic $ onlyControllerOrSelf method_name True caller $ checkSubnet fetchCanisterId maybeSubnet icCanisterStatus
@@ -1212,6 +1213,12 @@ icUpdateCanisterSettings r = do
     let canister_id = principalToEntityId (r .! #canister_id)
     validateSettings (r .! #settings)
     applySettings canister_id (r .! #settings)
+    bumpCanisterVersion canister_id
+
+icSetController :: (ICM m, CanReject m) => ICManagement m .! "set_controller"
+icSetController r = do
+    let canister_id = principalToEntityId (r .! #canister_id)
+    setControllers canister_id $ S.fromList $ [principalToEntityId (r .! #new_controller)]
     bumpCanisterVersion canister_id
 
 icStartCanister :: (ICM m, CanReject m) => ICManagement m .! "start_canister"
