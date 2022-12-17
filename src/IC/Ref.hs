@@ -628,14 +628,17 @@ delegationTree (Timestamp t) (EntityId subnet_id) subnet_pub_key ranges = node
     val = Value . toCertVal
     (=:) = M.singleton
 
+getSubnetFromCanisterId' :: (CanReject m, ICM m) => CanisterId -> m (Maybe Subnet)
+getSubnetFromCanisterId' cid = do
+  subnets <- gets subnets
+  return $ find (\(_, _, _, _, ranges) -> checkCanisterIdInRanges ranges cid) subnets
+
 getSubnetFromCanisterId :: (CanReject m, ICM m) => CanisterId -> m Subnet
 getSubnetFromCanisterId cid = do
-    subnets <- gets subnets
-    case subnetOfCid cid subnets of
+    subnet <- getSubnetFromCanisterId' cid
+    case subnet of
       Nothing -> reject RC_SYS_FATAL "Canister id does not belong to any subnet." Nothing
       Just x -> return x
-    where
-      subnetOfCid cid subnets = find (\(_, _, _, _, ranges) -> checkCanisterIdInRanges ranges cid) subnets
 
 getSubnetFromSubnetId :: (CanReject m, ICM m) => CanisterId -> m (Maybe Subnet)
 getSubnetFromSubnetId sid = find (\(id, _, _, _, _) -> sid == id) <$> gets subnets
@@ -857,7 +860,7 @@ processMessage m = case m of
             , entry = Closure callback response refunded_cycles
             }
 
-performCallActions :: ICM m => CallId -> CallActions -> m ()
+performCallActions :: (ICM m, CanReject m) => CallId -> CallActions -> m ()
 performCallActions ctxt_id ca = do
   updateBalances ctxt_id (ca_new_calls ca) (ca_accept ca)
   mapM_ (newCall ctxt_id) (ca_new_calls ca)
@@ -1381,10 +1384,18 @@ icSetupInitialDKG r = do
   if node_ids == nub node_ids then return ()
   else reject RC_CANISTER_ERROR "Expected a set of NodeIds. Some NodeId is repeated." (Just EC_INVALID_ARGUMENT)
 
-newCall :: ICM m => CallId -> MethodCall -> m ()
+newCall :: (ICM m, CanReject m) => CallId -> MethodCall -> m ()
 newCall from_ctxt_id call = do
+  caller <- calleeOfCallID from_ctxt_id
+  caller_subnet_id <- getSubnetFromCanisterId caller
+  let target = call_callee call
+  target_subnet_id <- getSubnetFromSubnetId target
+  unless (isRootSubnet caller_subnet_id) $ do
+    case target_subnet_id of
+      Nothing -> return ()
+      Just _ -> reject RC_DESTINATION_INVALID "Only NNS canisters can call a subnet ID directly." (Just EC_CANISTER_NOT_FOUND)
   new_ctxt_id <- newCallContext $ CallContext
-    { canister = call_callee call
+    { canister = target
     , origin = FromCanister from_ctxt_id (call_callback call)
     , needs_to_respond = NeedsToRespond True
     , deleted = False
