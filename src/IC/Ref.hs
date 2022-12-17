@@ -1073,11 +1073,14 @@ validateSettings r = do
         unless (n < 2^(64::Int)) $
             reject RC_CANISTER_ERROR "Freezing threshold not < 2^64" (Just EC_CANISTER_CONTRACT_VIOLATION)
     forM_ (r .! #controllers) $ \n -> do
+        forM_ (r .! #controller) $ \_ -> do
+            reject RC_CANISTER_ERROR "The fields 'controller' and 'controllers' must not be set simultaneously." (Just EC_CANISTER_CONTRACT_VIOLATION)
         unless (length n <= 10) $
             reject RC_CANISTER_ERROR "Controllers cannot be > 10" (Just EC_CANISTER_CONTRACT_VIOLATION)
 
 applySettings :: ICM m => EntityId -> Settings -> m ()
 applySettings cid r = do
+    forM_ (r .! #controller) $ setControllers cid . S.fromList . map principalToEntityId . singleton
     forM_ (r .! #controllers) $ setControllers cid . S.fromList . map principalToEntityId . Vec.toList
     forM_ (r .! #compute_allocation) $ setComputeAllocation cid
     forM_ (r .! #memory_allocation) $ setMemoryAllocation cid
@@ -1269,9 +1272,13 @@ icCanisterStatus r = do
     hash <- module_hash <$> getCanister canister_id
     cycles <- getBalance canister_id
     idle_cycles_burned_per_day <- idle_cycles_burned_per_day <$> getCanister canister_id
+    let single_controller = case S.toList (controllers can_state) of [] -> cDEFAULT_PRINCIPAL_ZERO_CONTROLLERS
+                                                                     [c] -> entityIdToPrincipal c
+                                                                     _ -> cDEFAULT_PRINCIPAL_MULTIPLE_CONTROLLERS
     return $ R.empty
       .+ #status .== s
       .+ #settings .== (R.empty
+        .+ #controller .== single_controller
         .+ #controllers .== Vec.fromList (map entityIdToPrincipal (S.toList (controllers can_state)))
         .+ #memory_allocation .== memory_allocation can_state
         .+ #compute_allocation .== compute_allocation can_state
