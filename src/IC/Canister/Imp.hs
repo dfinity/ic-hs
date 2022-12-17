@@ -747,6 +747,7 @@ systemAPI esref =
       let cmc = wordToId 4
       unless (self == cmc) $ throwError $ "ic0.mint_cycles can only be executed on Cycles Minting Canister: " ++ show self ++ " != " ++ show cmc
       addBalance esref $ fromIntegral amount
+      addAccepted esref $ fromIntegral amount
       return amount
 
 -- The state of an instance, consisting of
