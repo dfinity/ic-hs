@@ -1132,9 +1132,9 @@ noSubnet caller (Just (subnet_id, _, _, _, _)) act r = do
     root_subnet_id <- gets rootSubnet
     (caller_subnet_id, _, _, _, _) <- getSubnetFromCanisterId caller
     if (root_subnet_id == Just caller_subnet_id || subnet_id == caller_subnet_id) then
-      reject RC_CANISTER_ERROR "the caller must be on the root subnet or belong to the target subnet" (Just EC_INVALID_ARGUMENT)
-    else
       act r
+    else
+      reject RC_CANISTER_ERROR "the caller must be on the root subnet or belong to the target subnet" (Just EC_INVALID_ARGUMENT)
 
 icInstallCode :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "install_code"
 icInstallCode caller r = do
