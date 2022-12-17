@@ -85,4 +85,10 @@ service ic : {
   }) -> (record {canister_id : canister_id});
   provisional_top_up_canister :
     (record { canister_id: canister_id; amount: nat }) -> ();
+
+  // internal methods
+  setup_initial_dkg : (record {
+    node_ids: vec principal;
+    registry_version: nat64;
+  }) -> ();
 }

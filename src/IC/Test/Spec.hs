@@ -532,7 +532,7 @@ canister_http_calls sub =
 -- * The test suite (see below for helper functions)
 
 icTests :: TestSubnetConfig -> TestSubnetConfig -> AgentConfig -> TestTree
-icTests my_sub _other_sub =
+icTests my_sub other_sub =
   let (_, _, _, ((ecid_as_word64, _):_)) = my_sub in
   let ecid = rawEntityId $ wordToId ecid_as_word64 in
   withAgentConfig $ testGroup "Interface Spec acceptance tests" $
@@ -898,6 +898,19 @@ icTests my_sub _other_sub =
 
   , IC.Test.Spec.TECDSA.tests ecid
   , testGroup "canister http calls" $ canister_http_calls my_sub
+
+  , testGroup "set_up_initial_dkg"
+    [ simpleTestCase "distinct node_ids" ecid $ \cid -> do
+      let (EntityId subnet_id, _, _, _) = other_sub
+      let node_id = doesn'tExist
+      let node_id' = doesn'tExist'
+      ic_setup_initial_dkg (ic00via cid) subnet_id [node_id, node_id'] 0
+
+    , simpleTestCase "repeated node_ids" ecid $ \cid -> do
+      let (EntityId subnet_id, _, _, _) = other_sub
+      let node_id = doesn'tExist
+      ic_setup_initial_dkg' (ic00via cid) subnet_id [node_id, node_id] 0 >>= isReject [5]
+    ]
 
   , testGroup "simple calls"
     [ simpleTestCase "Call" ecid $ \cid ->

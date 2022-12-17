@@ -65,6 +65,7 @@ module IC.Test.Agent
       defaultUser,
       delegationEnv,
       doesn'tExist,
+      doesn'tExist',
       ecdsaSK,
       ecdsaUser,
       enum,
@@ -246,6 +247,9 @@ agentManager = tc_manager agentConfig
 
 doesn'tExist :: Blob
 doesn'tExist = "\xDE\xAD\xBE\xEF" -- hopefully no such canister/user exists
+
+doesn'tExist' :: Blob
+doesn'tExist' = "\xDE\xAD\xBE\xFF" -- hopefully no such canister/user exists
 
 defaultSK :: SecretKey
 defaultSK = createSecretKeyEd25519 "fixed32byteseedfortesting"

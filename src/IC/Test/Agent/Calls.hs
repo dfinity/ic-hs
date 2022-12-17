@@ -47,6 +47,8 @@ module IC.Test.Agent.Calls
       ic_set_controllers'',
       ic_set_controllers',
       ic_set_controllers,
+      ic_setup_initial_dkg,
+      ic_setup_initial_dkg',
       ic_sign_with_ecdsa'',
       ic_sign_with_ecdsa,
       ic_start_canister'',
@@ -240,6 +242,14 @@ ic_sign_with_ecdsa ic00 ecid msg =
        .+ #name .== (T.pack "0")
     )
 
+ic_setup_initial_dkg ::
+    forall a b. (a -> IO b) ~ (ICManagement IO .! "setup_initial_dkg") =>
+    HasAgentConfig => IC00 -> Blob -> [Blob] -> W.Word64 -> IO b
+ic_setup_initial_dkg ic00 subnet_id node_ids registry_version = do
+  callIC ic00 subnet_id #setup_initial_dkg $ empty
+    .+ #node_ids .== (Vec.fromList $ map Principal node_ids)
+    .+ #registry_version .== registry_version
+
 ic_create' ::
     (HasCallStack, HasAgentConfig, PartialSettings r) =>
     IC00 -> Blob -> Rec r -> IO ReqResponse
@@ -348,6 +358,14 @@ ic_long_url_http_request' ic00 (_, subnet_type, subnet_size, _) proto len transf
       .+ #headers .== Vec.empty
       .+ #body .== Nothing
       .+ #transform .== (toTransformFn transform canister_id)
+
+ic_setup_initial_dkg' ::
+    forall a b. (a -> IO b) ~ (ICManagement IO .! "setup_initial_dkg") =>
+    HasAgentConfig => IC00 -> Blob -> [Blob] -> W.Word64 -> IO ReqResponse
+ic_setup_initial_dkg' ic00 subnet_id node_ids registry_version = do
+  callIC' ic00 subnet_id #setup_initial_dkg $ empty
+    .+ #node_ids .== (Vec.fromList $ map Principal node_ids)
+    .+ #registry_version .== registry_version
 
 ic_install'' :: (HasCallStack, HasAgentConfig) => Blob -> InstallMode -> Blob -> Blob -> Blob -> IO (HTTPErrOr ReqResponse)
 ic_install'' user mode canister_id wasm_module arg =
