@@ -2,6 +2,7 @@ module IC.Test.Options where
 
 import Data.Proxy
 import Data.List
+import qualified Data.Word as W
 import Test.Tasty.Options
 import Options.Applicative hiding (str)
 import IC.Id.Fresh(wordToId)
@@ -65,29 +66,21 @@ polltimeoutOption = Option (Proxy :: Proxy PollTimeout)
 
 -- Configuration: Subnet type
 
-newtype TestSubnetType = TestSubnetType SubnetType
+newtype TestSubnet = TestSubnet (SubnetType, W.Word64)
 
-instance Read TestSubnetType where
-  readsPrec _ x
-    | x == "application" = return (TestSubnetType Application, "")
-    | x == "verified_application" = return (TestSubnetType VerifiedApplication, "")
-    | x == "system" = return (TestSubnetType System, "")
-    | otherwise = fail "could not read SubnetType"
+instance Read TestSubnet where
+  readsPrec p x = do
+    (y, z) <- (readsPrec p x :: [((SubnetType, W.Word64), String)])
+    return (TestSubnet y, z)
 
-instance Show TestSubnetType where
-  show (TestSubnetType Application) = "application"
-  show (TestSubnetType VerifiedApplication) = "verified_application"
-  show (TestSubnetType System) = "system"
+instance Show TestSubnet where
+  show (TestSubnet sub) = show sub
 
-instance IsOption TestSubnetType where
-  defaultValue = TestSubnetType Application
-  parseValue p
-    | p == "application" = Just $ TestSubnetType Application
-    | p == "verified_application" = Just $ TestSubnetType VerifiedApplication
-    | p == "system" = Just $ TestSubnetType System
-    | otherwise = Nothing
-  optionName = return "subnet-type"
-  optionHelp = return "Subnet type [possible values: application, verified_application, system] (default: application)"
+instance IsOption TestSubnet where
+  defaultValue = TestSubnet (Application, 1)
+  parseValue = Just <$> read
+  optionName = return "test-subnet-config"
+  optionHelp = return $ "Test subnet configuration consisting of subnet type and replication factor (default: " ++ show (TestSubnet (Application, 1)) ++ ")"
 
-subnettypeOption :: OptionDescription
-subnettypeOption = Option (Proxy :: Proxy TestSubnetType)
+testSubnetOption :: OptionDescription
+testSubnetOption = Option (Proxy :: Proxy TestSubnet)
