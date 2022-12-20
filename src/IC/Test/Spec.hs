@@ -46,7 +46,7 @@ import Data.Maybe
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
 
-import IC.Management (HttpResponse, HttpHeader)
+import IC.Management (HttpResponse, HttpHeader, entityIdToPrincipal)
 import IC.Types (EntityId(..))
 import IC.HTTP.GenR
 import IC.HTTP.RequestId
@@ -538,6 +538,21 @@ icTests sub = withAgentConfig $ testGroup "Interface Spec acceptance tests"
       ic_install'' defaultUser (enum #install) doesn'tExist trivialWasmModule ""
           >>= isErrOrReject [3,5]
 
+  , testGroup "provisional_create_canister_with_cycles" 
+    [ {-testCase "specified_id" $ do
+        let specified_id = entityIdToPrincipal $ wordToId 10000
+        ic_provisional_create ic00 (Just specified_id) (Just (2^(60::Int))) empty >>= is
+
+    ,-}
+      simpleTestCase "specified_id already taken" $ \cid -> do
+        let specified_id = entityIdToPrincipal $ EntityId cid
+        ic_provisional_create' ic00 (Just specified_id) (Just (2^(60::Int))) empty >>= isReject [3]
+
+    , testCase "specified_id does not belong to the subnet's canister ranges" $ do
+        let specified_id = entityIdToPrincipal $ EntityId doesn'tExist
+        ic_provisional_create' ic00 (Just specified_id) (Just (2^(60::Int))) empty >>= isReject [4]
+    ]
+
   , testCaseSteps "management requests" $ \step -> do
       step "Create (provisional)"
       can_id <- create
@@ -811,7 +826,7 @@ icTests sub = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     cid2 <- install noop
 
     step "Create"
-    can_id <- ic_provisional_create (ic00via cid) Nothing empty
+    can_id <- ic_provisional_create (ic00via cid) Nothing Nothing empty
 
     step "Install"
     ic_install (ic00via cid) (enum #install) can_id trivialWasmModule ""
@@ -844,14 +859,14 @@ icTests sub = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     ic_install (ic00via cid2) (enum #reinstall) can_id trivialWasmModule ""
 
     step "Create"
-    can_id2 <- ic_provisional_create (ic00via cid) Nothing empty
+    can_id2 <- ic_provisional_create (ic00via cid) Nothing Nothing empty
 
     step "Reinstall on empty"
     ic_install (ic00via cid) (enum #reinstall) can_id2 trivialWasmModule ""
 
   , simpleTestCase "aaaaa-aa (inter-canister, large)" $ \cid -> do
     universal_wasm <- getTestWasm "universal-canister"
-    can_id <- ic_provisional_create (ic00via cid) Nothing empty
+    can_id <- ic_provisional_create (ic00via cid) Nothing Nothing empty
     ic_install (ic00via cid) (enum #install) can_id universal_wasm ""
     do call can_id $ replyData "Hi"
       >>= is "Hi"
@@ -932,7 +947,7 @@ icTests sub = withAgentConfig $ testGroup "Interface Spec acceptance tests"
     [ testGroup "Controllers"
         [testCase "Multiple controllers (provisional)" $ do
         let controllers = [Principal defaultUser, Principal otherUser]
-        cid <- ic_provisional_create ic00 Nothing (#controllers .== Vec.fromList controllers)
+        cid <- ic_provisional_create ic00 Nothing Nothing (#controllers .== Vec.fromList controllers)
         universal_wasm <- getTestWasm "universal-canister"
         ic_install ic00 (enum #install) cid universal_wasm ""
 
@@ -1008,7 +1023,7 @@ icTests sub = withAgentConfig $ testGroup "Interface Spec acceptance tests"
 
     , testCase "Duplicate controllers" $ do
         let controllers = [Principal defaultUser, Principal defaultUser, Principal otherUser]
-        cid <- ic_provisional_create ic00 Nothing (#controllers .== Vec.fromList controllers)
+        cid <- ic_provisional_create ic00 Nothing Nothing (#controllers .== Vec.fromList controllers)
         cs <- ic_canister_status (ic00as defaultUser) cid
         Vec.toList (cs .! #settings .! #controllers) `isSet` controllers
     ]
@@ -1025,13 +1040,13 @@ icTests sub = withAgentConfig $ testGroup "Interface Spec acceptance tests"
 
     , testGroup "via provisional_create_canister_with_cycles:"
         [ testCase "Invalid compute allocation (101)" $ do
-            ic_provisional_create' ic00 Nothing (#compute_allocation .== 101)
+            ic_provisional_create' ic00 Nothing Nothing (#compute_allocation .== 101)
                >>= isReject [5]
         , testCase "Invalid memory allocation (2^48+1)" $ do
-            ic_provisional_create' ic00 Nothing (#memory_allocation .== (2^(48::Int)+1))
+            ic_provisional_create' ic00 Nothing Nothing (#memory_allocation .== (2^(48::Int)+1))
                >>= isReject [5]
         , testCase "Invalid freezing threshold (2^64)" $ do
-            ic_provisional_create' ic00 Nothing (#freezing_threshold .== 2^(64::Int))
+            ic_provisional_create' ic00 Nothing Nothing (#freezing_threshold .== 2^(64::Int))
                >>= isReject [5]
         ]
     , testGroup "via create_canister:"
@@ -2275,12 +2290,12 @@ icTests sub = withAgentConfig $ testGroup "Interface Spec acceptance tests"
         certValue @Blob cert ["canister", cid, "controllers"] >>= asCBORBlobList >>= isSet [defaultUser]
 
     , testCase "multiple controllers of installed canister" $ do
-        cid <- ic_provisional_create ic00 Nothing (#controllers .== Vec.fromList [Principal defaultUser, Principal otherUser])
+        cid <- ic_provisional_create ic00 Nothing Nothing (#controllers .== Vec.fromList [Principal defaultUser, Principal otherUser])
         cert <- getStateCert defaultUser cid [["canister", cid, "controllers"]]
         certValue @Blob cert ["canister", cid, "controllers"] >>= asCBORBlobList >>= isSet [defaultUser, otherUser]
 
     , testCase "zero controllers of installed canister" $ do
-        cid <- ic_provisional_create ic00 Nothing (#controllers .== Vec.fromList [])
+        cid <- ic_provisional_create ic00 Nothing Nothing (#controllers .== Vec.fromList [])
         cert <- getStateCert defaultUser cid [["canister", cid, "controllers"]]
         certValue @Blob cert ["canister", cid, "controllers"] >>= asCBORBlobList >>= isSet []
 
@@ -2484,7 +2499,7 @@ icTests sub = withAgentConfig $ testGroup "Interface Spec acceptance tests"
            (abs (fromIntegral exp - fromIntegral act) < eps)
 
         create prog = do
-          cid <- ic_provisional_create ic00 (Just (fromIntegral def_cycles)) empty
+          cid <- ic_provisional_create ic00 Nothing (Just (fromIntegral def_cycles)) empty
           installAt cid prog
           return cid
         create_via cid initial_cycles = do
@@ -2540,13 +2555,13 @@ icTests sub = withAgentConfig $ testGroup "Interface Spec acceptance tests"
         queryBalance cid >>= isRoughly def_cycles
 
       , testCaseSteps "default (i.e. max) balance" $ \step -> do
-        cid <- ic_provisional_create ic00 Nothing empty
+        cid <- ic_provisional_create ic00 Nothing Nothing empty
         installAt cid noop
         cycles <- queryBalance128 cid
         step $ "Cycle balance now at " ++ show cycles
 
       , testCaseSteps "> 2^128 succeeds" $ \step -> do
-        cid <- ic_provisional_create ic00 (Just (10 * 2^(128::Int))) empty
+        cid <- ic_provisional_create ic00 Nothing (Just (10 * 2^(128::Int))) empty
         installAt cid noop
         cycles <- queryBalance128 cid
         step $ "Cycle balance now at " ++ show cycles

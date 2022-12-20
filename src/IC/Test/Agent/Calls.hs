@@ -89,11 +89,12 @@ ic_create ic00 ps = do
 
 ic_provisional_create ::
     (HasCallStack, HasAgentConfig, PartialSettings r) =>
-    IC00 -> Maybe Natural -> Rec r -> IO Blob
-ic_provisional_create ic00 cycles ps = do
+    IC00 -> Maybe Principal -> Maybe Natural -> Rec r -> IO Blob
+ic_provisional_create ic00 specified_id cycles ps = do
   r <- callIC ic00 agentEcid #provisional_create_canister_with_cycles $ empty
     .+ #amount .== cycles
     .+ #settings .== Just (fromPartialSettings ps)
+    .+ #specified_id .== specified_id
   return (rawPrincipal (r .! #canister_id))
 
 ic_install :: (HasCallStack, HasAgentConfig) => IC00 -> InstallMode -> Blob -> Blob -> Blob -> IO ()
@@ -249,11 +250,12 @@ ic_create' ic00 ps = do
 
 ic_provisional_create' ::
     (HasCallStack, HasAgentConfig, PartialSettings r) =>
-    IC00 -> Maybe Natural -> Rec r -> IO ReqResponse
-ic_provisional_create' ic00 cycles ps = do
+    IC00 -> Maybe Principal -> Maybe Natural -> Rec r -> IO ReqResponse
+ic_provisional_create' ic00 specified_id cycles ps = do
   callIC' ic00 agentEcid #provisional_create_canister_with_cycles $ empty
     .+ #amount .== cycles
     .+ #settings .== Just (fromPartialSettings ps)
+    .+ #specified_id .== specified_id
 
 ic_install' :: HasAgentConfig => IC00 -> InstallMode -> Blob -> Blob -> Blob -> IO ReqResponse
 ic_install' ic00 mode canister_id wasm_module arg =

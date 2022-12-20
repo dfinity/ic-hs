@@ -199,7 +199,7 @@ install prog = do
     return cid
 
 create :: (HasCallStack, HasAgentConfig) => IO Blob
-create = ic_provisional_create ic00 (Just (2^(60::Int))) empty
+create = ic_provisional_create ic00 Nothing (Just (2^(60::Int))) empty
 
 upgrade' :: (HasCallStack, HasAgentConfig) => Blob -> Prog -> IO ReqResponse
 upgrade' cid prog = do

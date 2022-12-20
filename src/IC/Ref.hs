@@ -622,6 +622,9 @@ delegationTree (Timestamp t) (EntityId subnet_id) subnet_pub_key ranges = node
     val = Value . toCertVal
     (=:) = M.singleton
 
+checkCanisterIdInRanges :: [(W.Word64, W.Word64)] -> CanisterId -> Bool
+checkCanisterIdInRanges ranges cid = find (\(a, b) -> wordToId a <= cid && cid <= wordToId b) ranges /= Nothing
+
 getSubnetFromCanisterId :: (CanReject m, ICM m) => CanisterId -> m Subnet
 getSubnetFromCanisterId cid = do
     subnets <- gets subnets
@@ -629,7 +632,7 @@ getSubnetFromCanisterId cid = do
       Nothing -> reject RC_SYS_FATAL "Canister id does not belong to any subnet." Nothing
       Just x -> return x
     where
-      subnetOfCid cid subnets = find (\(_, _, _, _, ranges) -> find (\(a, b) -> wordToId a <= cid && cid <= wordToId b) ranges /= Nothing) subnets
+      subnetOfCid cid subnets = find (\(_, _, _, _, ranges) -> checkCanisterIdInRanges ranges cid) subnets
 
 getPrunedCertificate :: (CanReject m, ICM m) => Timestamp -> CanisterId -> [Path] -> m Certificate
 getPrunedCertificate time ecid paths = do
@@ -1021,7 +1024,7 @@ icCreateCanister caller ctxt_id r = do
     available <- getCallContextCycles ctxt_id
     setCallContextCycles ctxt_id 0
     (_, _, _, _, ranges) <- getSubnetFromCanisterId caller
-    cid <- icCreateCanisterCommon ranges caller available
+    cid <- icCreateCanisterCommon ranges Nothing caller available
     forM_ (r .! #settings) $ applySettings cid
     return (#canister_id .== entityIdToPrincipal cid)
 
@@ -1030,21 +1033,29 @@ icCreateCanisterWithCycles caller ctxt_id r = do
     forM_ (r .! #settings) validateSettings
     ecid <- ecidOfCallID ctxt_id
     (_, _, _, _, ranges) <- getSubnetFromCanisterId ecid
-    cid <- icCreateCanisterCommon ranges caller (fromMaybe cDEFAULT_PROVISIONAL_CYCLES_BALANCE (r .! #amount))
+    cid <- icCreateCanisterCommon ranges (principalToEntityId <$> r .! #specified_id) caller (fromMaybe cDEFAULT_PROVISIONAL_CYCLES_BALANCE (r .! #amount))
     forM_ (r .! #settings) $ applySettings cid
     return (#canister_id .== entityIdToPrincipal cid)
 
-icCreateCanisterCommon :: (ICM m, CanReject m) => [(W.Word64, W.Word64)] -> EntityId -> Natural -> m EntityId
-icCreateCanisterCommon ranges controller amount = do
+icCreateCanisterCommon :: (ICM m, CanReject m) => [(W.Word64, W.Word64)] -> Maybe EntityId -> EntityId -> Natural -> m EntityId
+icCreateCanisterCommon ranges specified_id controller amount = do
     taken <- gets (M.keys . canisters)
-    case freshId ranges taken of
-      Nothing -> reject RC_SYS_FATAL ("Could not create canister. Subnet has surpassed its canister ID allocation.") Nothing
-      Just new_id -> do
-        let currentTime = 0 -- ic-ref lives in the 70ies
-        createEmptyCanister new_id (S.singleton controller) currentTime
-        -- Here we fill up the canister with the cycles provided by the caller
-        setBalance new_id amount
-        return new_id
+    new_id <- case specified_id of
+                Nothing -> do
+                  case freshId ranges taken of
+                    Nothing -> reject RC_SYS_FATAL ("Could not create canister. Subnet has surpassed its canister ID allocation.") Nothing
+                    Just new_id -> do return new_id
+                Just cid -> do
+                  when (cid `elem` taken) $
+                    reject RC_DESTINATION_INVALID ("The specified_id of the created canister is already in use.") Nothing
+                  unless (checkCanisterIdInRanges ranges cid) $
+                    reject RC_CANISTER_REJECT ("The specified_id of the created canister does not belong to the subnet's canister ranges.") Nothing
+                  return cid
+    let currentTime = 0 -- ic-ref lives in the 70ies
+    createEmptyCanister new_id (S.singleton controller) currentTime
+    -- Here we fill up the canister with the cycles provided by the caller
+    setBalance new_id amount
+    return new_id
 
 validateSettings :: CanReject m => Settings -> m ()
 validateSettings r = do
