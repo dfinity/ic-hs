@@ -102,6 +102,5 @@ try_from_u8!(
         StableFill64 = 72,
         CanisterVersion = 73,
         TrapIfNeq = 74,
-        MintCycles = 75,
     }
 );

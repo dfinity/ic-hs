@@ -6,22 +6,13 @@
 
 module IC.Constants where
 
-import Codec.Candid (Principal(..), parsePrincipal)
-import Data.Either.Combinators(fromRight')
 import qualified Data.Word as W
-import qualified Data.Text as T
 import Numeric.Natural
 
 import IC.Types
 
 cDEFAULT_PROVISIONAL_CYCLES_BALANCE :: Natural
 cDEFAULT_PROVISIONAL_CYCLES_BALANCE = 100_000_000_000_000
-
-cDEFAULT_PRINCIPAL_ZERO_CONTROLLERS :: Principal
-cDEFAULT_PRINCIPAL_ZERO_CONTROLLERS = fromRight' $ parsePrincipal $ T.pack "zrl4w-cqaaa-nocon-troll-eraaa-d5qc"
-
-cDEFAULT_PRINCIPAL_MULTIPLE_CONTROLLERS :: Principal
-cDEFAULT_PRINCIPAL_MULTIPLE_CONTROLLERS = fromRight' $ parsePrincipal $ T.pack "ifxlm-aqaaa-multi-pleco-ntrol-lersa-h3ae"
 
 -- Subnets
 

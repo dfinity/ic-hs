@@ -32,7 +32,6 @@ type RunState = [candidType|
 
 type Settings = [candidType|
     record {
-      controller : opt principal;
       controllers : opt vec principal;
       compute_allocation : opt nat;
       memory_allocation : opt nat;

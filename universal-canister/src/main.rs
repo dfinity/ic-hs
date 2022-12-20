@@ -340,10 +340,6 @@ fn eval(ops_bytes: OpsBytes) {
                     api::trap_with_blob(&c)
                 }
             }
-            Ops::MintCycles => {
-                let amount = stack.pop_int64();
-                stack.push_int64(api::mint_cycles(amount));
-            }
         }
     }
 }
