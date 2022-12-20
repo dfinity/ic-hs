@@ -147,6 +147,8 @@ data SubnetConfig = SubnetConfig
     , canister_ranges :: [(W.Word64, W.Word64)]
     }
 
+type TestSubnetConfig = (EntityId, SubnetType, W.Word64, [(W.Word64, W.Word64)])
+
 -- Abstract canisters
 
 -- | This data type contains all read-only data that should be available to the
