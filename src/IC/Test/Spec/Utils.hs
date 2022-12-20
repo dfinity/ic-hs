@@ -192,14 +192,14 @@ installAt cid prog = do
   ic_install ic00 (enum #install) cid universal_wasm (run prog)
 
 -- Also calls create, used default 'ic00'
-install :: (HasCallStack, HasAgentConfig) => Prog -> IO Blob
-install prog = do
-    cid <- create
+install :: (HasCallStack, HasAgentConfig) => Blob -> Prog -> IO Blob
+install ecid prog = do
+    cid <- create ecid
     installAt cid prog
     return cid
 
-create :: (HasCallStack, HasAgentConfig) => IO Blob
-create = ic_provisional_create ic00 Nothing (Just (2^(60::Int))) empty
+create :: (HasCallStack, HasAgentConfig) => Blob -> IO Blob
+create ecid = ic_provisional_create ic00 ecid Nothing (Just (2^(60::Int))) empty
 
 upgrade' :: (HasCallStack, HasAgentConfig) => Blob -> Prog -> IO ReqResponse
 upgrade' cid prog = do
@@ -304,8 +304,8 @@ isRelay = runGet $ Get.getWord32le >>= \case
 
 
 -- Shortcut for test cases that just need one canister.
-simpleTestCase :: (HasCallStack, HasAgentConfig) => String -> (Blob -> IO ()) -> TestTree
-simpleTestCase name act = testCase name $ install noop >>= act
+simpleTestCase :: (HasCallStack, HasAgentConfig) => String -> Blob -> (Blob -> IO ()) -> TestTree
+simpleTestCase name ecid act = testCase name $ install ecid noop >>= act
 
 -- * Programmatic test generation
 
@@ -384,9 +384,9 @@ barrier cids = do
 -- Returns a program to be executed by any canister, which will cause this
 -- canister to send a message that will not be responded to, until the given
 -- IO action is performed.
-createMessageHold :: HasAgentConfig => IO (Prog, IO ())
-createMessageHold = do
-  cid <- install noop
+createMessageHold :: HasAgentConfig => Blob -> IO (Prog, IO ())
+createMessageHold ecid = do
+  cid <- install ecid noop
   ic_set_controllers ic00 cid [defaultUser, cid]
   let holdMessage = inter_update cid defArgs
         { other_side =

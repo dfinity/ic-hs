@@ -192,7 +192,7 @@ rec {
       test -e port
       mkdir -p $out
       sleep 1
-      LANG=C.UTF8 ic-ref-test --ecid 5v3p4-iyaaa-aaaaa-qaaaa-cai --endpoint "http://127.0.0.1:$(cat port)/" --httpbin "127.0.0.1:8003" --html $out/report.html
+      LANG=C.UTF8 ic-ref-test --endpoint "http://127.0.0.1:$(cat port)/" --httpbin "127.0.0.1:8003" --html $out/report.html
       pids="$(jobs -p)"
       kill -INT $pids
       trap - EXIT PIPE
@@ -217,7 +217,7 @@ rec {
       sleep 1
       test -e port
       sleep 1
-      LANG=C.UTF8 ic-ref-test --ecid 5v3p4-iyaaa-aaaaa-qaaaa-cai --endpoint "http://127.0.0.1:$(cat port)/" --httpbin "127.0.0.1:8003"
+      LANG=C.UTF8 ic-ref-test --endpoint "http://127.0.0.1:$(cat port)/" --httpbin "127.0.0.1:8003"
       pids="$(jobs -p)"
       kill -INT $pids
       trap - EXIT PIPE

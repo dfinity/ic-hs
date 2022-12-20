@@ -6,7 +6,10 @@
 
 module IC.Constants where
 
+import Codec.Candid (Principal(..), parsePrincipal)
+import Data.Either.Combinators(fromRight')
 import qualified Data.Word as W
+import qualified Data.Text as T
 import Numeric.Natural
 
 import IC.Types
@@ -14,7 +17,19 @@ import IC.Types
 cDEFAULT_PROVISIONAL_CYCLES_BALANCE :: Natural
 cDEFAULT_PROVISIONAL_CYCLES_BALANCE = 100_000_000_000_000
 
+cDEFAULT_PRINCIPAL_ZERO_CONTROLLERS :: Principal
+cDEFAULT_PRINCIPAL_ZERO_CONTROLLERS = fromRight' $ parsePrincipal $ T.pack "zrl4w-cqaaa-nocon-troll-eraaa-d5qc"
+
+cDEFAULT_PRINCIPAL_MULTIPLE_CONTROLLERS :: Principal
+cDEFAULT_PRINCIPAL_MULTIPLE_CONTROLLERS = fromRight' $ parsePrincipal $ T.pack "ifxlm-aqaaa-multi-pleco-ntrol-lersa-h3ae"
+
 -- Subnets
+
+canister_ids_per_subnet :: W.Word64
+canister_ids_per_subnet = 1_048_576
+
+nth_canister_range :: W.Word64 -> (W.Word64, W.Word64)
+nth_canister_range n = (n * canister_ids_per_subnet, (n + 1) * canister_ids_per_subnet - 1)
 
 -- reference_subnet_size is used for scaling cycle cost
 -- and must never be set to zero!

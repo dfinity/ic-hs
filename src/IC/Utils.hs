@@ -47,7 +47,6 @@ duplicates = go S.empty
                 | otherwise      =     go s' xs
       where s' = S.insert x s
 
-
 -- Wrappers to hide strict/lazy conversion from view
 toUtf8 :: T.Text -> BS.ByteString
 toUtf8 = BS.fromStrict . T.encodeUtf8

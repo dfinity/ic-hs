@@ -35,6 +35,7 @@ import qualified Data.Row.Variants as V
 import qualified Data.Word as W
 
 
+import IC.Constants
 import IC.HTTP.Request
 import IC.Version
 import IC.Types
@@ -194,12 +195,8 @@ main = join . customExecParser (prefs showHelpOnError) $
     versions =
           infoOption (T.unpack implVersion) (long "version" <> help "show version number")
       <*> infoOption (T.unpack specVersion) (long "spec-version" <> help "show spec version number")
-    canister_ids_per_subnet :: W.Word64
-    canister_ids_per_subnet = 1_048_576
-    range :: W.Word64 -> (W.Word64, W.Word64)
-    range n = (n * canister_ids_per_subnet, (n + 1) * canister_ids_per_subnet - 1)
     defaultSubnetConfig :: [(SubnetType, W.Word64, String, [(W.Word64, W.Word64)])]
-    defaultSubnetConfig = [(System, 1, "sk1", [range 0]), (Application, 1, "sk2", [range 1])]
+    defaultSubnetConfig = [(System, 1, "sk1", [nth_canister_range 0]), (Application, 1, "sk2", [nth_canister_range 1])]
     defaultSystemTaskPeriod :: Int
     defaultSystemTaskPeriod = 1
     parser :: Parser (IO ())

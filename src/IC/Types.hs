@@ -147,6 +147,8 @@ data SubnetConfig = SubnetConfig
     , canister_ranges :: [(W.Word64, W.Word64)]
     }
 
+type TestSubnetConfig = (EntityId, SubnetType, W.Word64, [(W.Word64, W.Word64)])
+
 -- Abstract canisters
 
 -- | This data type contains all read-only data that should be available to the
@@ -207,11 +209,12 @@ noCanisterActions = CanisterActions Nothing Nothing
 data CallActions = CallActions
   { ca_new_calls :: [MethodCall]
   , ca_accept :: Cycles
+  , ca_mint :: Cycles
   , ca_response :: Maybe Response
   }
 
 noCallActions :: CallActions
-noCallActions = CallActions [] 0 Nothing
+noCallActions = CallActions [] 0 0 Nothing
 
 type UpdateResult = (CallActions, CanisterActions)
 

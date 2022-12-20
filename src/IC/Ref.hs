@@ -199,6 +199,11 @@ data Message
 
 type Subnet = (EntityId, SubnetType, W.Word64, SecretKey, [(W.Word64, W.Word64)])
 
+isRootSubnet :: Subnet -> Bool
+isRootSubnet (_, _, _, _, ranges) = checkCanisterIdInRanges ranges nns_canister_id
+  where
+    nns_canister_id = wordToId 0
+
 data IC = IC
   { canisters :: CanisterId ↦ CanState
   , requests :: RequestID ↦ (CallRequest, (RequestStatus, CanisterId))
@@ -215,11 +220,12 @@ data IC = IC
 type ICM m = (MonadState IC m, HasRefConfig, HasCallStack, MonadIO m)
 
 initialIC :: [SubnetConfig] -> IO IC
-initialIC subnets = do
-    let root_subnet = find (\conf -> subnet_type conf == System) subnets
+initialIC subnet_configs = do
+    let subnets = map sub subnet_configs
+    let root_subnet = find isRootSubnet subnets
     let sk = case root_subnet of Nothing -> createSecretKeyBLS "ic-ref's very secure secret root key"
-                                 Just conf -> key conf
-    IC mempty mempty mempty mempty <$> newStdGen <*> pure sk <*> pure (fmap (sub_id . key) root_subnet) <*> pure (map sub subnets)
+                                 Just (_, _, _, k, _) -> k
+    IC mempty mempty mempty mempty <$> newStdGen <*> pure sk <*> pure (fmap (\(id, _, _, _, _) -> id) root_subnet) <*> pure subnets
   where
     sub conf = (sub_id (key conf), subnet_type conf, subnet_size conf, key conf, canister_ranges conf)
     sub_id = EntityId . mkSelfAuthenticatingId . toPublicKey
@@ -622,17 +628,20 @@ delegationTree (Timestamp t) (EntityId subnet_id) subnet_pub_key ranges = node
     val = Value . toCertVal
     (=:) = M.singleton
 
-checkCanisterIdInRanges :: [(W.Word64, W.Word64)] -> CanisterId -> Bool
-checkCanisterIdInRanges ranges cid = find (\(a, b) -> wordToId a <= cid && cid <= wordToId b) ranges /= Nothing
+getSubnetFromCanisterId' :: (CanReject m, ICM m) => CanisterId -> m (Maybe Subnet)
+getSubnetFromCanisterId' cid = do
+  subnets <- gets subnets
+  return $ find (\(_, _, _, _, ranges) -> checkCanisterIdInRanges ranges cid) subnets
 
 getSubnetFromCanisterId :: (CanReject m, ICM m) => CanisterId -> m Subnet
 getSubnetFromCanisterId cid = do
-    subnets <- gets subnets
-    case subnetOfCid cid subnets of
+    subnet <- getSubnetFromCanisterId' cid
+    case subnet of
       Nothing -> reject RC_SYS_FATAL "Canister id does not belong to any subnet." Nothing
       Just x -> return x
-    where
-      subnetOfCid cid subnets = find (\(_, _, _, _, ranges) -> checkCanisterIdInRanges ranges cid) subnets
+
+getSubnetFromSubnetId :: (CanReject m, ICM m) => CanisterId -> m (Maybe Subnet)
+getSubnetFromSubnetId sid = find (\(id, _, _, _, _) -> sid == id) <$> gets subnets
 
 getPrunedCertificate :: (CanReject m, ICM m) => Timestamp -> CanisterId -> [Path] -> m Certificate
 getPrunedCertificate time ecid paths = do
@@ -801,10 +810,10 @@ processMessage :: ICM m => Message -> m ()
 processMessage m = case m of
   CallMessage ctxt_id entry -> onReject (rejectCallContext ctxt_id) $ do
     callee <- calleeOfCallID ctxt_id
-    if callee == managementCanisterId
-    then do
+    maybeSubnet <- getSubnetFromSubnetId callee
+    if callee == managementCanisterId || isJust maybeSubnet then do
       caller <- callerOfCallID ctxt_id
-      invokeManagementCanister caller ctxt_id entry
+      invokeManagementCanister caller maybeSubnet ctxt_id entry
     else do
       canisterMustExist callee
       status <- getRunStatus callee
@@ -851,9 +860,9 @@ processMessage m = case m of
             , entry = Closure callback response refunded_cycles
             }
 
-performCallActions :: ICM m => CallId -> CallActions -> m ()
+performCallActions :: (ICM m, CanReject m) => CallId -> CallActions -> m ()
 performCallActions ctxt_id ca = do
-  updateBalances ctxt_id (ca_new_calls ca) (ca_accept ca)
+  updateBalances ctxt_id (ca_new_calls ca) (ca_accept ca) (ca_mint ca)
   mapM_ (newCall ctxt_id) (ca_new_calls ca)
   mapM_ (respondCallContext ctxt_id) (ca_response ca)
 
@@ -863,8 +872,8 @@ performCanisterActions cid ca = do
   mapM_ (setCertifiedData cid) (set_certified_data ca)
   mapM_ (setCanisterGlobalTimer cid) (set_global_timer ca)
 
-updateBalances :: ICM m => CallId -> [MethodCall] -> Cycles -> m ()
-updateBalances ctxt_id new_calls accepted = do
+updateBalances :: ICM m => CallId -> [MethodCall] -> Cycles -> Cycles -> m ()
+updateBalances ctxt_id new_calls accepted minted = do
   cid <- calleeOfCallID ctxt_id
 
   -- Eventually update when we track cycle consumption
@@ -875,12 +884,13 @@ updateBalances ctxt_id new_calls accepted = do
   available <- getCallContextCycles ctxt_id
   if accepted <= available
   then do
-    let to_spend = prev_balance + accepted - max_cycles
+    let to_spend = prev_balance + accepted + minted - max_cycles
     let transferred = sum [ call_transferred_cycles c | c <- new_calls]
     if transferred <= to_spend
     then do
       setBalance cid $ prev_balance
         + accepted
+        + minted
         - cycles_consumed
         - transferred
       setCallContextCycles ctxt_id $ available - accepted
@@ -893,24 +903,26 @@ managementCanisterId = EntityId mempty
 
 
 invokeManagementCanister ::
-  forall m. (CanReject m, ICM m, MonadIO m) => EntityId -> CallId -> EntryPoint -> m ()
-invokeManagementCanister caller ctxt_id (Public method_name arg) =
+  forall m. (CanReject m, ICM m, MonadIO m) => EntityId -> Maybe Subnet -> CallId -> EntryPoint -> m ()
+invokeManagementCanister caller maybeSubnet ctxt_id (Public method_name arg) =
   case method_name of
-      "create_canister" -> atomic $ icCreateCanister caller ctxt_id
-      "install_code" -> atomic $ onlyControllerOrSelf method_name False caller $ icInstallCode caller
-      "uninstall_code" -> atomic $ onlyControllerOrSelf method_name False caller $ icUninstallCode
-      "update_settings" -> atomic $ onlyControllerOrSelf method_name False caller icUpdateCanisterSettings
-      "start_canister" -> atomic $ onlyControllerOrSelf method_name False caller icStartCanister
-      "stop_canister" -> deferred $ onlyControllerOrSelf method_name False caller $ icStopCanister ctxt_id
-      "canister_status" -> atomic $ onlyControllerOrSelf method_name True caller icCanisterStatus
-      "delete_canister" -> atomic $ onlyControllerOrSelf method_name False caller icDeleteCanister
-      "deposit_cycles" -> atomic $ icDepositCycles ctxt_id
+      "create_canister" -> atomic $ noSubnet caller maybeSubnet $ icCreateCanister caller ctxt_id
+      "install_code" -> atomic $ onlyControllerOrSelf method_name False caller $ checkSubnet fetchCanisterId maybeSubnet $ icInstallCode caller
+      "uninstall_code" -> atomic $ onlyControllerOrSelf method_name False caller $ checkSubnet fetchCanisterId maybeSubnet $ icUninstallCode
+      "update_settings" -> atomic $ onlyControllerOrSelf method_name False caller $ checkSubnet fetchCanisterId maybeSubnet icUpdateCanisterSettings
+      "set_controller" -> atomic $ onlyControllerOrSelf method_name False caller $ checkSubnet fetchCanisterId maybeSubnet icSetController
+      "start_canister" -> atomic $ onlyControllerOrSelf method_name False caller $ checkSubnet fetchCanisterId maybeSubnet icStartCanister
+      "stop_canister" -> deferred $ onlyControllerOrSelf method_name False caller $ checkSubnet fetchCanisterId maybeSubnet $ icStopCanister ctxt_id
+      "canister_status" -> atomic $ onlyControllerOrSelf method_name True caller $ checkSubnet fetchCanisterId maybeSubnet icCanisterStatus
+      "delete_canister" -> atomic $ onlyControllerOrSelf method_name False caller $ checkSubnet fetchCanisterId maybeSubnet icDeleteCanister
+      "deposit_cycles" -> atomic $ checkSubnet fetchCanisterId maybeSubnet $ icDepositCycles ctxt_id
       "provisional_create_canister_with_cycles" -> atomic $ icCreateCanisterWithCycles caller ctxt_id
-      "provisional_top_up_canister" -> atomic icTopUpCanister
-      "raw_rand" -> atomic icRawRand
-      "http_request" -> atomic $ icHttpRequest caller ctxt_id
-      "ecdsa_public_key" -> atomic $ icEcdsaPublicKey caller
-      "sign_with_ecdsa" -> atomic $ icSignWithEcdsa caller
+      "provisional_top_up_canister" -> atomic $ checkSubnet fetchCanisterId maybeSubnet icTopUpCanister
+      "raw_rand" -> atomic $ noSubnet caller maybeSubnet icRawRand
+      "http_request" -> atomic $ noSubnet caller maybeSubnet $ icHttpRequest caller ctxt_id
+      "ecdsa_public_key" -> atomic $ checkSubnet (fetchCanisterIdfromMaybe caller) maybeSubnet $ icEcdsaPublicKey caller
+      "sign_with_ecdsa" -> atomic $ noSubnet caller maybeSubnet $ icSignWithEcdsa caller
+      "setup_initial_dkg" -> atomic $ noSubnet caller maybeSubnet $ icSetupInitialDKG
       _ -> reject RC_DESTINATION_INVALID ("Unsupported management function " ++ method_name) (Just EC_METHOD_NOT_FOUND)
   where
     -- always responds
@@ -931,9 +943,9 @@ invokeManagementCanister caller ctxt_id (Public method_name arg) =
         Left msg -> reject RC_CANISTER_ERROR ("Candid failed to decode: " ++ msg) (Just EC_INVALID_ENCODING)
         Right x -> method (raw_reply . encode @b) x
 
-invokeManagementCanister _ _ Closure{} = error "closure invoked on management canister"
-invokeManagementCanister _ _ Heartbeat = error "heartbeat invoked on management canister"
-invokeManagementCanister _ _ GlobalTimer = error "global timer invoked on management canister"
+invokeManagementCanister _ _ _ Closure{} = error "closure invoked on management canister"
+invokeManagementCanister _ _ _ Heartbeat = error "heartbeat invoked on management canister"
+invokeManagementCanister _ _ _ GlobalTimer = error "global timer invoked on management canister"
 
 icHttpRequest :: (ICM m, CanReject m) => EntityId -> CallId -> ICManagement m .! "http_request"
 icHttpRequest caller ctxt_id r = do
@@ -1069,11 +1081,14 @@ validateSettings r = do
         unless (n < 2^(64::Int)) $
             reject RC_CANISTER_ERROR "Freezing threshold not < 2^64" (Just EC_CANISTER_CONTRACT_VIOLATION)
     forM_ (r .! #controllers) $ \n -> do
+        forM_ (r .! #controller) $ \_ -> do
+            reject RC_CANISTER_ERROR "The fields 'controller' and 'controllers' must not be set simultaneously." (Just EC_CANISTER_CONTRACT_VIOLATION)
         unless (length n <= 10) $
             reject RC_CANISTER_ERROR "Controllers cannot be > 10" (Just EC_CANISTER_CONTRACT_VIOLATION)
 
 applySettings :: ICM m => EntityId -> Settings -> m ()
 applySettings cid r = do
+    forM_ (r .! #controller) $ setControllers cid . S.fromList . map principalToEntityId . singleton
     forM_ (r .! #controllers) $ setControllers cid . S.fromList . map principalToEntityId . Vec.toList
     forM_ (r .! #compute_allocation) $ setComputeAllocation cid
     forM_ (r .! #memory_allocation) $ setMemoryAllocation cid
@@ -1093,6 +1108,45 @@ onlyControllerOrSelf method_name self caller act r = do
         prettyID caller <> " is not authorized to call " ++ method_name ++ " on canister " <>
         prettyID canister_id <> ", Allowed principals are: " <> intercalate ", " (map prettyID (S.toList allowed)))
         (Just EC_NOT_AUTHORIZED)
+
+fetchCanisterIdfromMaybe ::
+  ((r .! "canister_id") ~ Maybe Principal) =>
+  EntityId -> R.Rec r -> EntityId
+fetchCanisterIdfromMaybe cid r =
+  case r .! #canister_id of Nothing -> cid
+                            Just c -> principalToEntityId c
+
+fetchCanisterId ::
+  ((r .! "canister_id") ~ Principal) =>
+  R.Rec r -> EntityId
+fetchCanisterId r = principalToEntityId (r .! #canister_id)
+
+checkSubnet ::
+  (ICM m, CanReject m) =>
+  (r -> EntityId) -> Maybe Subnet -> (r -> m a) -> (r -> m a)
+checkSubnet _ Nothing act r = act r
+checkSubnet c (Just (subnet_id, _, _, _, _)) act r = do
+    let canister_id = c r
+    canisterMustExist canister_id
+    (subnet_id', _, _, _, _) <- getSubnetFromCanisterId canister_id
+    if subnet_id == subnet_id'
+    then act r
+    else reject RC_CANISTER_ERROR (
+        prettyID canister_id <> " does not belong to subnet " <>
+        prettyID subnet_id)
+        (Just EC_INVALID_ARGUMENT)
+
+noSubnet ::
+  (ICM m, CanReject m) =>
+  EntityId -> Maybe Subnet -> (r -> m a) -> (r -> m a)
+noSubnet _ Nothing act r = act r
+noSubnet caller (Just (subnet_id, _, _, _, _)) act r = do
+    root_subnet_id <- gets rootSubnet
+    (caller_subnet_id, _, _, _, _) <- getSubnetFromCanisterId caller
+    if (root_subnet_id == Just caller_subnet_id || subnet_id == caller_subnet_id) then
+      act r
+    else
+      reject RC_CANISTER_ERROR "the caller must be on the root subnet or belong to the target subnet" (Just EC_INVALID_ARGUMENT)
 
 icInstallCode :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "install_code"
 icInstallCode caller r = do
@@ -1173,6 +1227,12 @@ icUpdateCanisterSettings r = do
     applySettings canister_id (r .! #settings)
     bumpCanisterVersion canister_id
 
+icSetController :: (ICM m, CanReject m) => ICManagement m .! "set_controller"
+icSetController r = do
+    let canister_id = principalToEntityId (r .! #canister_id)
+    setControllers canister_id $ S.fromList $ [principalToEntityId (r .! #new_controller)]
+    bumpCanisterVersion canister_id
+
 icStartCanister :: (ICM m, CanReject m) => ICManagement m .! "start_canister"
 icStartCanister r = do
     let canister_id = principalToEntityId (r .! #canister_id)
@@ -1220,9 +1280,13 @@ icCanisterStatus r = do
     hash <- module_hash <$> getCanister canister_id
     cycles <- getBalance canister_id
     idle_cycles_burned_per_day <- idle_cycles_burned_per_day <$> getCanister canister_id
+    let single_controller = case S.toList (controllers can_state) of [] -> cDEFAULT_PRINCIPAL_ZERO_CONTROLLERS
+                                                                     [c] -> entityIdToPrincipal c
+                                                                     _ -> cDEFAULT_PRINCIPAL_MULTIPLE_CONTROLLERS
     return $ R.empty
       .+ #status .== s
       .+ #settings .== (R.empty
+        .+ #controller .== single_controller
         .+ #controllers .== Vec.fromList (map entityIdToPrincipal (S.toList (controllers can_state)))
         .+ #memory_allocation .== memory_allocation can_state
         .+ #compute_allocation .== compute_allocation can_state
@@ -1274,9 +1338,7 @@ runRandIC a = state $ \ic ->
 
 icEcdsaPublicKey :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "ecdsa_public_key"
 icEcdsaPublicKey caller r = do
-    let cid = case r .! #canister_id of
-                Just cid -> principalToEntityId cid
-                Nothing -> caller
+    let cid = fetchCanisterIdfromMaybe caller r
     canisterMustExist cid
     let key = getCanisterRootKey cid
     case Bitcoin.derivePublicKey key (r .! #derivation_path) of
@@ -1339,10 +1401,24 @@ invokeEntry ctxt_id wasm_state can_mod env entry = do
         | Just f <- M.lookup method (query_methods can_mod)  = Just (asUpdate f)
         | otherwise = Nothing
 
-newCall :: ICM m => CallId -> MethodCall -> m ()
+icSetupInitialDKG :: (ICM m, CanReject m) => ICManagement m .! "setup_initial_dkg"
+icSetupInitialDKG r = do
+  let node_ids = Vec.toList $ r .! #node_ids
+  if node_ids == nub node_ids then return ()
+  else reject RC_CANISTER_ERROR "Expected a set of NodeIds. Some NodeId is repeated." (Just EC_INVALID_ARGUMENT)
+
+newCall :: (ICM m, CanReject m) => CallId -> MethodCall -> m ()
 newCall from_ctxt_id call = do
+  caller <- calleeOfCallID from_ctxt_id
+  caller_subnet_id <- getSubnetFromCanisterId caller
+  let target = call_callee call
+  target_subnet_id <- getSubnetFromSubnetId target
+  unless (isRootSubnet caller_subnet_id) $ do
+    case target_subnet_id of
+      Nothing -> return ()
+      Just _ -> reject RC_DESTINATION_INVALID "Only NNS canisters can call a subnet ID directly." (Just EC_CANISTER_NOT_FOUND)
   new_ctxt_id <- newCallContext $ CallContext
-    { canister = call_callee call
+    { canister = target
     , origin = FromCanister from_ctxt_id (call_callback call)
     , needs_to_respond = NeedsToRespond True
     , deleted = False
