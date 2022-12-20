@@ -148,6 +148,7 @@ work subnets systemTaskPeriod msg_file = do
               withRefConfig conf $ callManagement store (EntityId ecid) user_id #provisional_create_canister_with_cycles $ empty
                 .+ #settings .== Nothing
                 .+ #amount .== Nothing
+                .+ #specified_id .== Nothing
             Install cid filename arg -> do
               wasm <- liftIO $ B.readFile filename
               withRefConfig conf $ callManagement store (EntityId cid) user_id #install_code $ empty

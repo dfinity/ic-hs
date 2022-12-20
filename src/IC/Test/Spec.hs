@@ -45,7 +45,7 @@ import Data.Maybe
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
 
-import IC.Management (HttpResponse, HttpHeader)
+import IC.Management (HttpResponse, HttpHeader, entityIdToPrincipal)
 import IC.Types (EntityId(..))
 import IC.HTTP.GenR
 import IC.HTTP.RequestId
@@ -530,16 +530,16 @@ canister_http_calls sub =
   ]
 
 -- * The test suite (see below for helper functions)
-
 icTests :: TestSubnetConfig -> TestSubnetConfig -> AgentConfig -> TestTree
 icTests my_sub other_sub =
-  let (_, my_type, _, ((ecid_as_word64, _):_)) = my_sub in
+  let (_, my_type, _, ((ecid_as_word64, last_canister_id_as_word64):_)) = my_sub in
   let ecid = rawEntityId $ wordToId ecid_as_word64 in
+  let last_canister_id = rawEntityId $ wordToId last_canister_id_as_word64 in
   let initial_cycles = case my_type of System -> 0
                                        _ -> (2^(60::Int)) in
   withAgentConfig $ testGroup "Interface Spec acceptance tests" $
   let install_with_cycles ecid cycles prog = do
-        cid <- ic_provisional_create ic00 ecid (Just cycles) empty
+        cid <- ic_provisional_create ic00 ecid Nothing (Just cycles) empty
         installAt cid prog
         return cid in
   [ testCase "NNS canisters" $ do
@@ -588,6 +588,20 @@ icTests my_sub other_sub =
   , testCase "create_canister necessary" $
       ic_install'' defaultUser (enum #install) doesn'tExist trivialWasmModule ""
           >>= isErrOrReject [3,5]
+
+  , testGroup "provisional_create_canister_with_cycles"
+    [ testCase "specified_id" $ do
+        let specified_id = entityIdToPrincipal $ EntityId last_canister_id
+        ic_provisional_create ic00 ecid (Just specified_id) (Just (2^(60::Int))) empty >>= is last_canister_id
+
+    , simpleTestCase "specified_id already taken" ecid $ \cid -> do
+        let specified_id = entityIdToPrincipal $ EntityId cid
+        ic_provisional_create' ic00 ecid (Just specified_id) (Just (2^(60::Int))) empty >>= isReject [3]
+
+    , testCase "specified_id does not belong to the subnet's canister ranges" $ do
+        let specified_id = entityIdToPrincipal $ EntityId doesn'tExist
+        ic_provisional_create' ic00 ecid (Just specified_id) (Just (2^(60::Int))) empty >>= isReject [4]
+    ]
 
   , testCaseSteps "management requests" $ \step -> do
       step "Create (provisional)"
@@ -862,7 +876,7 @@ icTests my_sub other_sub =
     cid2 <- install ecid noop
 
     step "Create"
-    can_id <- ic_provisional_create (ic00via cid) ecid Nothing empty
+    can_id <- ic_provisional_create (ic00via cid) ecid Nothing Nothing empty
 
     step "Install"
     ic_install (ic00via cid) (enum #install) can_id trivialWasmModule ""
@@ -895,14 +909,14 @@ icTests my_sub other_sub =
     ic_install (ic00via cid2) (enum #reinstall) can_id trivialWasmModule ""
 
     step "Create"
-    can_id2 <- ic_provisional_create (ic00via cid) ecid Nothing empty
+    can_id2 <- ic_provisional_create (ic00via cid) ecid Nothing Nothing empty
 
     step "Reinstall on empty"
     ic_install (ic00via cid) (enum #reinstall) can_id2 trivialWasmModule ""
 
   , simpleTestCase "aaaaa-aa (inter-canister, large)" ecid $ \cid -> do
     universal_wasm <- getTestWasm "universal-canister"
-    can_id <- ic_provisional_create (ic00via cid) ecid Nothing empty
+    can_id <- ic_provisional_create (ic00via cid) ecid Nothing Nothing empty
     ic_install (ic00via cid) (enum #install) can_id universal_wasm ""
     do call can_id $ replyData "Hi"
       >>= is "Hi"
@@ -996,7 +1010,7 @@ icTests my_sub other_sub =
     [ testGroup "Controllers"
         [testCase "Multiple controllers (provisional)" $ do
         let controllers = [Principal defaultUser, Principal otherUser]
-        cid <- ic_provisional_create ic00 ecid Nothing (#controllers .== Vec.fromList controllers)
+        cid <- ic_provisional_create ic00 ecid Nothing Nothing (#controllers .== Vec.fromList controllers)
         universal_wasm <- getTestWasm "universal-canister"
         ic_install ic00 (enum #install) cid universal_wasm ""
 
@@ -1072,7 +1086,7 @@ icTests my_sub other_sub =
 
     , testCase "Duplicate controllers" $ do
         let controllers = [Principal defaultUser, Principal defaultUser, Principal otherUser]
-        cid <- ic_provisional_create ic00 ecid Nothing (#controllers .== Vec.fromList controllers)
+        cid <- ic_provisional_create ic00 ecid Nothing Nothing (#controllers .== Vec.fromList controllers)
         cs <- ic_canister_status (ic00as defaultUser) cid
         Vec.toList (cs .! #settings .! #controllers) `isSet` controllers
     ]
@@ -1089,13 +1103,13 @@ icTests my_sub other_sub =
 
     , testGroup "via provisional_create_canister_with_cycles:"
         [ testCase "Invalid compute allocation (101)" $ do
-            ic_provisional_create' ic00 ecid Nothing (#compute_allocation .== 101)
+            ic_provisional_create' ic00 ecid Nothing Nothing (#compute_allocation .== 101)
                >>= isReject [5]
         , testCase "Invalid memory allocation (2^48+1)" $ do
-            ic_provisional_create' ic00 ecid Nothing (#memory_allocation .== (2^(48::Int)+1))
+            ic_provisional_create' ic00 ecid Nothing Nothing (#memory_allocation .== (2^(48::Int)+1))
                >>= isReject [5]
         , testCase "Invalid freezing threshold (2^64)" $ do
-            ic_provisional_create' ic00 ecid Nothing (#freezing_threshold .== 2^(64::Int))
+            ic_provisional_create' ic00 ecid Nothing Nothing (#freezing_threshold .== 2^(64::Int))
                >>= isReject [5]
         ]
     , testGroup "via create_canister:"
@@ -2339,12 +2353,12 @@ icTests my_sub other_sub =
         certValue @Blob cert ["canister", cid, "controllers"] >>= asCBORBlobList >>= isSet [defaultUser]
 
     , testCase "multiple controllers of installed canister" $ do
-        cid <- ic_provisional_create ic00 ecid Nothing (#controllers .== Vec.fromList [Principal defaultUser, Principal otherUser])
+        cid <- ic_provisional_create ic00 ecid Nothing Nothing (#controllers .== Vec.fromList [Principal defaultUser, Principal otherUser])
         cert <- getStateCert defaultUser cid [["canister", cid, "controllers"]]
         certValue @Blob cert ["canister", cid, "controllers"] >>= asCBORBlobList >>= isSet [defaultUser, otherUser]
 
     , testCase "zero controllers of installed canister" $ do
-        cid <- ic_provisional_create ic00 ecid Nothing (#controllers .== Vec.fromList [])
+        cid <- ic_provisional_create ic00 ecid Nothing Nothing (#controllers .== Vec.fromList [])
         cert <- getStateCert defaultUser cid [["canister", cid, "controllers"]]
         certValue @Blob cert ["canister", cid, "controllers"] >>= asCBORBlobList >>= isSet []
 
@@ -2548,7 +2562,7 @@ icTests my_sub other_sub =
            (abs (fromIntegral exp - fromIntegral act) < eps)
 
         create prog = do
-          cid <- ic_provisional_create ic00 ecid (Just (fromIntegral def_cycles)) empty
+          cid <- ic_provisional_create ic00 ecid Nothing (Just (fromIntegral def_cycles)) empty
           installAt cid prog
           return cid
         create_via cid initial_cycles = do
@@ -2604,13 +2618,13 @@ icTests my_sub other_sub =
         queryBalance cid >>= isRoughly def_cycles
 
       , testCaseSteps "default (i.e. max) balance" $ \step -> do
-        cid <- ic_provisional_create ic00 ecid Nothing empty
+        cid <- ic_provisional_create ic00 ecid Nothing Nothing empty
         installAt cid noop
         cycles <- queryBalance128 cid
         step $ "Cycle balance now at " ++ show cycles
 
       , testCaseSteps "> 2^128 succeeds" $ \step -> do
-        cid <- ic_provisional_create ic00 ecid (Just (10 * 2^(128::Int))) empty
+        cid <- ic_provisional_create ic00 ecid Nothing (Just (10 * 2^(128::Int))) empty
         installAt cid noop
         cycles <- queryBalance128 cid
         step $ "Cycle balance now at " ++ show cycles

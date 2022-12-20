@@ -63,7 +63,7 @@ service ic : {
   http_request : (record {
     url : text;
     max_response_bytes: opt nat64;
-    method : variant { get; post; head };
+    method : variant { get; head; post };
     headers: vec http_header;
     body : opt blob;
     transform : opt record {
@@ -87,7 +87,8 @@ service ic : {
   // provisional interfaces for the pre-ledger world
   provisional_create_canister_with_cycles : (record {
     amount: opt nat;
-    settings : opt canister_settings
+    settings : opt canister_settings;
+    specified_id: opt canister_id;
   }) -> (record {canister_id : canister_id});
   provisional_top_up_canister :
     (record { canister_id: canister_id; amount: nat }) -> ();
