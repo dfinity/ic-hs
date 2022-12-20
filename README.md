@@ -285,3 +285,7 @@ Also, the `cabal.project.freeze` file, which exists for the benefit of people bu
 Don't worry if you forget to update the `default.nix` file, the CI job
 `check-generated` checks if these files are in sync and fails with a diff if
 they aren't.
+
+## Contributing
+
+This repository accepts external contributions, conditioned on acceptance of the [https://github.com/dfinity/cla/](Contributor Lincense Agreement).
