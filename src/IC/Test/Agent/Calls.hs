@@ -43,6 +43,7 @@ module IC.Test.Agent.Calls
       ic_provisional_create,
       ic_provisional_create',
       ic_raw_rand'',
+      ic_raw_rand',
       ic_raw_rand,
       ic_set_controllers'',
       ic_set_controllers',
@@ -279,6 +280,10 @@ ic_delete_canister' :: HasAgentConfig => IC00 -> Blob -> IO ReqResponse
 ic_delete_canister' ic00 canister_id = do
   callIC' ic00 canister_id #delete_canister $ empty
     .+ #canister_id .== Principal canister_id
+
+ic_raw_rand' :: HasAgentConfig => IC00 -> Blob -> IO ReqResponse
+ic_raw_rand' ic00 ecid =
+  callIC' ic00 ecid #raw_rand ()
 
 ic_deposit_cycles' :: HasAgentConfig => IC00 -> Blob -> IO ReqResponse
 ic_deposit_cycles' ic00 canister_id = do

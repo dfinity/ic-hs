@@ -905,7 +905,7 @@ invokeManagementCanister ::
   forall m. (CanReject m, ICM m, MonadIO m) => EntityId -> Maybe Subnet -> CallId -> EntryPoint -> m ()
 invokeManagementCanister caller maybeSubnet ctxt_id (Public method_name arg) =
   case method_name of
-      "create_canister" -> atomic $ noSubnet caller maybeSubnet $ icCreateCanister caller ctxt_id
+      "create_canister" -> atomic $ noSubnet caller maybeSubnet $ icCreateCanister caller maybeSubnet ctxt_id
       "install_code" -> atomic $ onlyControllerOrSelf method_name False caller $ checkSubnet fetchCanisterId maybeSubnet $ icInstallCode caller
       "uninstall_code" -> atomic $ onlyControllerOrSelf method_name False caller $ checkSubnet fetchCanisterId maybeSubnet $ icUninstallCode
       "update_settings" -> atomic $ onlyControllerOrSelf method_name False caller $ checkSubnet fetchCanisterId maybeSubnet icUpdateCanisterSettings
@@ -914,7 +914,7 @@ invokeManagementCanister caller maybeSubnet ctxt_id (Public method_name arg) =
       "canister_status" -> atomic $ onlyControllerOrSelf method_name True caller $ checkSubnet fetchCanisterId maybeSubnet icCanisterStatus
       "delete_canister" -> atomic $ onlyControllerOrSelf method_name False caller $ checkSubnet fetchCanisterId maybeSubnet icDeleteCanister
       "deposit_cycles" -> atomic $ checkSubnet fetchCanisterId maybeSubnet $ icDepositCycles ctxt_id
-      "provisional_create_canister_with_cycles" -> atomic $ icCreateCanisterWithCycles caller ctxt_id
+      "provisional_create_canister_with_cycles" -> atomic $ icCreateCanisterWithCycles caller maybeSubnet ctxt_id
       "provisional_top_up_canister" -> atomic $ checkSubnet fetchCanisterId maybeSubnet icTopUpCanister
       "raw_rand" -> atomic $ noSubnet caller maybeSubnet icRawRand
       "http_request" -> atomic $ noSubnet caller maybeSubnet $ icHttpRequest caller ctxt_id
@@ -1027,27 +1027,30 @@ icHttpRequest caller ctxt_id r = do
                                 return resp
                           _ -> reject RC_CANISTER_ERROR "transform did not return a response properly" (Just EC_CANISTER_DID_NOT_REPLY)
 
-icCreateCanister :: (ICM m, CanReject m) => EntityId -> CallId -> ICManagement m .! "create_canister"
-icCreateCanister caller ctxt_id r = do
+icCreateCanister :: (ICM m, CanReject m) => EntityId -> Maybe Subnet -> CallId -> ICManagement m .! "create_canister"
+icCreateCanister caller maybe_subnet ctxt_id r = do
     forM_ (r .! #settings) validateSettings
     available <- getCallContextCycles ctxt_id
     setCallContextCycles ctxt_id 0
-    (_, _, _, _, ranges) <- getSubnetFromCanisterId caller
-    cid <- icCreateCanisterCommon ranges Nothing caller available
+    cid <- icCreateCanisterCommon caller maybe_subnet Nothing caller available
     forM_ (r .! #settings) $ applySettings cid
     return (#canister_id .== entityIdToPrincipal cid)
 
-icCreateCanisterWithCycles :: (ICM m, CanReject m) => EntityId -> CallId -> ICManagement m .! "provisional_create_canister_with_cycles"
-icCreateCanisterWithCycles caller ctxt_id r = do
+icCreateCanisterWithCycles :: (ICM m, CanReject m) => EntityId -> Maybe Subnet -> CallId -> ICManagement m .! "provisional_create_canister_with_cycles"
+icCreateCanisterWithCycles caller maybe_subnet ctxt_id r = do
     forM_ (r .! #settings) validateSettings
     ecid <- ecidOfCallID ctxt_id
-    (_, _, _, _, ranges) <- getSubnetFromCanisterId ecid
-    cid <- icCreateCanisterCommon ranges (principalToEntityId <$> r .! #specified_id) caller (fromMaybe cDEFAULT_PROVISIONAL_CYCLES_BALANCE (r .! #amount))
+    cid <- icCreateCanisterCommon ecid maybe_subnet (principalToEntityId <$> r .! #specified_id) caller (fromMaybe cDEFAULT_PROVISIONAL_CYCLES_BALANCE (r .! #amount))
     forM_ (r .! #settings) $ applySettings cid
     return (#canister_id .== entityIdToPrincipal cid)
 
-icCreateCanisterCommon :: (ICM m, CanReject m) => [(W.Word64, W.Word64)] -> Maybe EntityId -> EntityId -> Natural -> m EntityId
-icCreateCanisterCommon ranges specified_id controller amount = do
+icCreateCanisterCommon :: (ICM m, CanReject m) => EntityId -> Maybe Subnet -> Maybe EntityId -> EntityId -> Natural -> m EntityId
+icCreateCanisterCommon ecid maybe_subnet specified_id controller amount = do
+    ranges <- case maybe_subnet of
+          Nothing -> do
+            (_, _, _, _, ranges) <- getSubnetFromCanisterId ecid
+            return ranges
+          Just (_, _, _, _, ranges) -> return ranges
     taken <- gets (M.keys . canisters)
     new_id <- case specified_id of
                 Nothing -> do
