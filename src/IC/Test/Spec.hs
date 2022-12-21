@@ -62,7 +62,7 @@ import IC.Hash
 import IC.Test.Agent
 import IC.Test.Agent.Calls
 import IC.Test.Spec.Utils
-import IC.Types(TestSubnetConfig)
+import IC.Types(TestSubnetConfig, SubnetType(..))
 import IC.Utils
 import qualified IC.Test.Spec.TECDSA
 
@@ -533,13 +533,15 @@ canister_http_calls sub =
 
 icTests :: TestSubnetConfig -> TestSubnetConfig -> AgentConfig -> TestTree
 icTests my_sub other_sub =
-  let (my_subnet_id_as_entity, _, _, ((ecid_as_word64, last_canister_id_as_word64):_)) = my_sub in
+  let (my_subnet_id_as_entity, my_type, _, ((ecid_as_word64, last_canister_id_as_word64):_)) = my_sub in
   let (other_subnet_id_as_entity, _, _, _) = other_sub in
   let my_subnet_id = rawEntityId my_subnet_id_as_entity in
   let other_subnet_id = rawEntityId other_subnet_id_as_entity in
   let my_is_root = isRootTestSubnet my_sub in
   let ecid = rawEntityId $ wordToId ecid_as_word64 in
   let last_canister_id = rawEntityId $ wordToId last_canister_id_as_word64 in
+  let initial_cycles = case my_type of System -> 0
+                                       _ -> (2^(60::Int)) in
   withAgentConfig $ testGroup "Interface Spec acceptance tests" $
   let test_subnet_msg subnet_id subnet_id' cid = do
         cid2 <- ic_create (ic00viaWithCyclesSubnet subnet_id cid 20_000_000_000_000) ecid empty
@@ -558,6 +560,50 @@ icTests my_sub other_sub =
         ic_install' (ic00viaWithCyclesSubnet' subnet_id cid 0) (enum #install) cid2 trivialWasmModule "" >>= isReject [3]
         ic_http_get_request' (ic00viaWithCyclesSubnet' subnet_id cid) my_sub "https://" ("equal_bytes/8") Nothing Nothing cid >>= isReject [3]
         ic_raw_rand' (ic00viaWithCyclesSubnet' subnet_id cid 0) ecid >>= isReject [3] in
+  let install_with_cycles ecid cycles prog = do
+        cid <- ic_provisional_create ic00 ecid Nothing (Just cycles) empty
+        installAt cid prog
+        return cid in
+  [ testCase "NNS canisters" $ do
+      registry <- install_with_cycles ecid initial_cycles noop
+      governance <- install_with_cycles ecid initial_cycles noop
+      ledger <- install_with_cycles ecid initial_cycles noop
+      root <- install_with_cycles ecid initial_cycles noop
+      cmc <- install_with_cycles ecid initial_cycles noop
+      lifeline <- install_with_cycles ecid initial_cycles noop
+      genesis <- install_with_cycles ecid initial_cycles noop
+      sns <- install_with_cycles ecid initial_cycles noop
+      identity <- install_with_cycles ecid initial_cycles noop
+      ui <- install_with_cycles ecid initial_cycles noop
+
+      cid <- install_with_cycles ecid initial_cycles noop
+
+      let mint = replyData . i64tob . mintCycles . int64
+      call' root (mint 0) >>= isReject [5]
+
+      let transfer_args cycles =
+            defArgs{
+              other_side = (replyData $ i64tob $ acceptCycles $ int64 cycles),
+              cycles = cycles
+            }
+      let mint_and_transfer cycles =
+            ((ignore $ mintCycles $ int64 cycles) >>>
+             (inter_update cid (transfer_args cycles)))
+
+      when (isRootTestSubnet my_sub) $ do
+        assertBool "registry canister ID" $ EntityId registry == wordToId 0
+        assertBool "governance canister ID" $ EntityId governance == wordToId 1
+        assertBool "ledger canister ID" $ EntityId ledger == wordToId 2
+        assertBool "root canister ID" $ EntityId root == wordToId 3
+        assertBool "cmc canister ID" $ EntityId cmc == wordToId 4
+        assertBool "lifeline canister ID" $ EntityId lifeline == wordToId 5
+        assertBool "genesis canister ID" $ EntityId genesis == wordToId 6
+        assertBool "sns canister ID" $ EntityId sns == wordToId 7
+        assertBool "identity canister ID" $ EntityId identity == wordToId 8
+        assertBool "ui canister ID" $ EntityId ui == wordToId 9
+        let transfer_cycles = (2^(61::Int))
+        call cmc (mint_and_transfer transfer_cycles) >>= isRelay >>= isReply >>= asWord64 >>= is transfer_cycles
+  ] ++ [ after AllFinish "($0 ~ /NNS canisters/)" $ testGroup "regular canisters"
   [ simpleTestCase "create and install" ecid $ \_ ->
       return ()
 
@@ -3212,4 +3258,4 @@ icTests my_sub other_sub =
       postQueryCBOR cid env >>= okCBOR >>= queryResponse >>= isReply >>= is "It works!"
 
     ]
-  ]
+  ]]
