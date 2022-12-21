@@ -47,6 +47,7 @@ import IC.Types
 import IC.Wasm.Winter
 import IC.Wasm.Imports
 import IC.Canister.StableMemory as Mem
+import IC.Id.Fresh
 import IC.Utils
 
 {-
@@ -176,6 +177,7 @@ data ExecutionState s = ExecutionState
   -- now the mutable parts
   , cycles_available :: Maybe Cycles
   , cycles_accepted :: Cycles
+  , cycles_minted :: Cycles
   , balance :: Cycles
   , needs_to_respond :: NeedsToRespond
   , response :: Maybe Response
@@ -199,6 +201,7 @@ initialExecutionState inst stableMem env needs_to_respond ctxt = ExecutionState
   , cycles_available = Nothing
   , balance = env_balance env
   , cycles_accepted = 0
+  , cycles_minted = 0
   , needs_to_respond
   , response = Nothing
   , reply_data = mempty
@@ -275,6 +278,10 @@ addBalance esref f = modES esref $ \es ->
 addAccepted :: ESRef s -> Cycles -> HostM s ()
 addAccepted esref f = modES esref $ \es ->
   es { cycles_accepted = cycles_accepted es + f }
+
+addMinted :: ESRef s -> Cycles -> HostM s ()
+addMinted esref f = modES esref $ \es ->
+  es { cycles_minted = cycles_minted es + f }
 
 subtractBalance :: ESRef s -> Cycles -> HostM s ()
 subtractBalance esref f = do
@@ -354,6 +361,8 @@ systemAPI esref =
 
   , toImport' "ic0" "debug_print" star debug_print
   , toImport' "ic0" "trap" star explicit_trap
+
+  , toImport' "ic0" "mint_cycles" [EXC_U, EXC_Ry, EXC_Rt, EXC_T] mint_cycles
   ]
   where
     -- Utilities
@@ -738,6 +747,15 @@ systemAPI esref =
       let msg = BSU.toString bytes
       throwError $ "canister trapped explicitly: " ++ msg
 
+    mint_cycles :: Word64 -> HostM s Word64
+    mint_cycles amount = do
+      self <- gets (env_self . env)
+      let cmc = wordToId 4
+      unless (self == cmc) $ throwError $ "ic0.mint_cycles can only be executed on Cycles Minting Canister: " ++ show self ++ " != " ++ show cmc
+      addBalance esref $ fromIntegral amount
+      addMinted esref $ fromIntegral amount
+      return amount
+
 -- The state of an instance, consisting of
 --  * the underlying Wasm state,
 --  * additional remembered information like the CanisterId
@@ -912,7 +930,7 @@ rawUpdate method caller env needs_to_respond cycles_available dat (ImpState esre
   case result of
     Left  err -> return $ Trap err
     Right (_, es') -> return $ Return
-        ( CallActions (calls es') (cycles_accepted es') (response es')
+        ( CallActions (calls es') (cycles_accepted es') (cycles_minted es') (response es')
         , canisterActions es'
         )
 
@@ -940,7 +958,7 @@ rawCallback callback env needs_to_respond cycles_available res refund (ImpState 
   case result of
     Left  err -> return $ Trap err
     Right (_, es') -> return $ Return
-        ( CallActions (calls es') (cycles_accepted es') (response es')
+        ( CallActions (calls es') (cycles_accepted es') (cycles_minted es') (response es')
         , canisterActions es'
         )
 

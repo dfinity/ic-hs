@@ -857,9 +857,9 @@ processMessage m = case m of
             , entry = Closure callback response refunded_cycles
             }
 
-performCallActions :: ICM m => CallId -> CallActions -> m ()
+performCallActions :: (ICM m, CanReject m) => CallId -> CallActions -> m ()
 performCallActions ctxt_id ca = do
-  updateBalances ctxt_id (ca_new_calls ca) (ca_accept ca)
+  updateBalances ctxt_id (ca_new_calls ca) (ca_accept ca) (ca_mint ca)
   mapM_ (newCall ctxt_id) (ca_new_calls ca)
   mapM_ (respondCallContext ctxt_id) (ca_response ca)
 
@@ -869,8 +869,8 @@ performCanisterActions cid ca = do
   mapM_ (setCertifiedData cid) (set_certified_data ca)
   mapM_ (setCanisterGlobalTimer cid) (set_global_timer ca)
 
-updateBalances :: ICM m => CallId -> [MethodCall] -> Cycles -> m ()
-updateBalances ctxt_id new_calls accepted = do
+updateBalances :: ICM m => CallId -> [MethodCall] -> Cycles -> Cycles -> m ()
+updateBalances ctxt_id new_calls accepted minted = do
   cid <- calleeOfCallID ctxt_id
 
   -- Eventually update when we track cycle consumption
@@ -881,12 +881,13 @@ updateBalances ctxt_id new_calls accepted = do
   available <- getCallContextCycles ctxt_id
   if accepted <= available
   then do
-    let to_spend = prev_balance + accepted - max_cycles
+    let to_spend = prev_balance + accepted + minted - max_cycles
     let transferred = sum [ call_transferred_cycles c | c <- new_calls]
     if transferred <= to_spend
     then do
       setBalance cid $ prev_balance
         + accepted
+        + minted
         - cycles_consumed
         - transferred
       setCallContextCycles ctxt_id $ available - accepted
