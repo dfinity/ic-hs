@@ -860,9 +860,9 @@ processMessage m = case m of
             , entry = Closure callback response refunded_cycles
             }
 
-performCallActions :: (ICM m, CanReject m) => CallId -> CallActions -> m ()
+performCallActions :: ICM m => CallId -> CallActions -> m ()
 performCallActions ctxt_id ca = do
-  updateBalances ctxt_id (ca_new_calls ca) (ca_accept ca) (ca_mint ca)
+  updateBalances ctxt_id (ca_new_calls ca) (ca_accept ca)
   mapM_ (newCall ctxt_id) (ca_new_calls ca)
   mapM_ (respondCallContext ctxt_id) (ca_response ca)
 
@@ -872,8 +872,8 @@ performCanisterActions cid ca = do
   mapM_ (setCertifiedData cid) (set_certified_data ca)
   mapM_ (setCanisterGlobalTimer cid) (set_global_timer ca)
 
-updateBalances :: ICM m => CallId -> [MethodCall] -> Cycles -> Cycles -> m ()
-updateBalances ctxt_id new_calls accepted minted = do
+updateBalances :: ICM m => CallId -> [MethodCall] -> Cycles -> m ()
+updateBalances ctxt_id new_calls accepted = do
   cid <- calleeOfCallID ctxt_id
 
   -- Eventually update when we track cycle consumption
@@ -884,13 +884,12 @@ updateBalances ctxt_id new_calls accepted minted = do
   available <- getCallContextCycles ctxt_id
   if accepted <= available
   then do
-    let to_spend = prev_balance + accepted + minted - max_cycles
+    let to_spend = prev_balance + accepted - max_cycles
     let transferred = sum [ call_transferred_cycles c | c <- new_calls]
     if transferred <= to_spend
     then do
       setBalance cid $ prev_balance
         + accepted
-        + minted
         - cycles_consumed
         - transferred
       setCallContextCycles ctxt_id $ available - accepted
@@ -1081,14 +1080,11 @@ validateSettings r = do
         unless (n < 2^(64::Int)) $
             reject RC_CANISTER_ERROR "Freezing threshold not < 2^64" (Just EC_CANISTER_CONTRACT_VIOLATION)
     forM_ (r .! #controllers) $ \n -> do
-        forM_ (r .! #controller) $ \_ -> do
-            reject RC_CANISTER_ERROR "The fields 'controller' and 'controllers' must not be set simultaneously." (Just EC_CANISTER_CONTRACT_VIOLATION)
         unless (length n <= 10) $
             reject RC_CANISTER_ERROR "Controllers cannot be > 10" (Just EC_CANISTER_CONTRACT_VIOLATION)
 
 applySettings :: ICM m => EntityId -> Settings -> m ()
 applySettings cid r = do
-    forM_ (r .! #controller) $ setControllers cid . S.fromList . map principalToEntityId . singleton
     forM_ (r .! #controllers) $ setControllers cid . S.fromList . map principalToEntityId . Vec.toList
     forM_ (r .! #compute_allocation) $ setComputeAllocation cid
     forM_ (r .! #memory_allocation) $ setMemoryAllocation cid
@@ -1227,12 +1223,6 @@ icUpdateCanisterSettings r = do
     applySettings canister_id (r .! #settings)
     bumpCanisterVersion canister_id
 
-icSetController :: (ICM m, CanReject m) => ICManagement m .! "set_controller"
-icSetController r = do
-    let canister_id = principalToEntityId (r .! #canister_id)
-    setControllers canister_id $ S.fromList $ [principalToEntityId (r .! #new_controller)]
-    bumpCanisterVersion canister_id
-
 icStartCanister :: (ICM m, CanReject m) => ICManagement m .! "start_canister"
 icStartCanister r = do
     let canister_id = principalToEntityId (r .! #canister_id)
@@ -1280,13 +1270,9 @@ icCanisterStatus r = do
     hash <- module_hash <$> getCanister canister_id
     cycles <- getBalance canister_id
     idle_cycles_burned_per_day <- idle_cycles_burned_per_day <$> getCanister canister_id
-    let single_controller = case S.toList (controllers can_state) of [] -> cDEFAULT_PRINCIPAL_ZERO_CONTROLLERS
-                                                                     [c] -> entityIdToPrincipal c
-                                                                     _ -> cDEFAULT_PRINCIPAL_MULTIPLE_CONTROLLERS
     return $ R.empty
       .+ #status .== s
       .+ #settings .== (R.empty
-        .+ #controller .== single_controller
         .+ #controllers .== Vec.fromList (map entityIdToPrincipal (S.toList (controllers can_state)))
         .+ #memory_allocation .== memory_allocation can_state
         .+ #compute_allocation .== compute_allocation can_state
@@ -1400,12 +1386,6 @@ invokeEntry ctxt_id wasm_state can_mod env entry = do
         | Just f <- M.lookup method (update_methods can_mod) = Just f
         | Just f <- M.lookup method (query_methods can_mod)  = Just (asUpdate f)
         | otherwise = Nothing
-
-icSetupInitialDKG :: (ICM m, CanReject m) => ICManagement m .! "setup_initial_dkg"
-icSetupInitialDKG r = do
-  let node_ids = Vec.toList $ r .! #node_ids
-  if node_ids == nub node_ids then return ()
-  else reject RC_CANISTER_ERROR "Expected a set of NodeIds. Some NodeId is repeated." (Just EC_INVALID_ARGUMENT)
 
 newCall :: (ICM m, CanReject m) => CallId -> MethodCall -> m ()
 newCall from_ctxt_id call = do
