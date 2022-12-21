@@ -541,11 +541,13 @@ icTests my_sub other_sub =
   let ecid = rawEntityId $ wordToId ecid_as_word64 in
   let last_canister_id = rawEntityId $ wordToId last_canister_id_as_word64 in
   withAgentConfig $ testGroup "Interface Spec acceptance tests" $
-  let test_subnet_msg subnet_id cid = do
+  let test_subnet_msg subnet_id subnet_id' cid = do
         cid2 <- ic_create (ic00viaWithCyclesSubnet subnet_id cid 20_000_000_000_000) ecid empty
         ic_install (ic00viaWithCyclesSubnet subnet_id cid 0) (enum #install) cid2 trivialWasmModule ""
         cid3 <- ic_provisional_create (ic00viaWithCyclesSubnet subnet_id cid 20_000_000_000_000) ecid Nothing Nothing empty
         ic_install (ic00viaWithCyclesSubnet subnet_id cid 0) (enum #install) cid3 trivialWasmModule ""
+        ic_install (ic00viaWithCyclesSubnet subnet_id cid 0) (enum #reinstall) cid3 trivialWasmModule ""
+        ic_install' (ic00viaWithCyclesSubnet' subnet_id' cid 0) (enum #reinstall) cid3 trivialWasmModule "" >>= isReject [5]
         _ <- ic_http_get_request (ic00viaWithCyclesSubnet subnet_id cid) my_sub ("equal_bytes/8") Nothing Nothing cid
         _ <- ic_raw_rand (ic00viaWithCyclesSubnet subnet_id cid 0) ecid
         return () in
@@ -578,12 +580,12 @@ icTests my_sub other_sub =
 
     , testCase "as canister to own subnet" $ do
         cid <- install ecid noop
-        if my_is_root then test_subnet_msg my_subnet_id cid
+        if my_is_root then test_subnet_msg my_subnet_id other_subnet_id cid
         else test_subnet_msg' my_subnet_id cid
 
     , testCase "as canister to other subnet" $ do
         cid <- install ecid noop
-        if my_is_root then test_subnet_msg other_subnet_id cid
+        if my_is_root then test_subnet_msg other_subnet_id my_subnet_id cid
         else test_subnet_msg' other_subnet_id cid
     ]
 
