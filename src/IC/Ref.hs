@@ -1129,7 +1129,7 @@ checkSubnet c (Just (subnet_id, _, _, _, _)) act r = do
     (subnet_id', _, _, _, _) <- getSubnetFromCanisterId canister_id
     if subnet_id == subnet_id'
     then act r
-    else reject RC_CANISTER_ERROR (
+    else reject RC_DESTINATION_INVALID (
         prettyID canister_id <> " does not belong to subnet " <>
         prettyID subnet_id)
         (Just EC_INVALID_ARGUMENT)

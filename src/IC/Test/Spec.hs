@@ -549,7 +549,7 @@ icTests my_sub other_sub =
         cid3 <- ic_provisional_create (ic00viaWithCyclesSubnet subnet_id cid 20_000_000_000_000) ecid Nothing Nothing empty
         ic_install (ic00viaWithCyclesSubnet subnet_id cid 0) (enum #install) cid3 trivialWasmModule ""
         ic_install (ic00viaWithCyclesSubnet subnet_id cid 0) (enum #reinstall) cid3 trivialWasmModule ""
-        ic_install' (ic00viaWithCyclesSubnet' subnet_id' cid 0) (enum #reinstall) cid3 trivialWasmModule "" >>= isReject [5]
+        ic_install' (ic00viaWithCyclesSubnet' subnet_id' cid 0) (enum #reinstall) cid3 trivialWasmModule "" >>= isReject [3]
         _ <- ic_http_get_request (ic00viaWithCyclesSubnet subnet_id cid) my_sub ("equal_bytes/8") Nothing Nothing cid
         _ <- ic_raw_rand (ic00viaWithCyclesSubnet subnet_id cid 0) ecid
         return () in
