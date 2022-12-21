@@ -860,7 +860,7 @@ processMessage m = case m of
             , entry = Closure callback response refunded_cycles
             }
 
-performCallActions :: ICM m => CallId -> CallActions -> m ()
+performCallActions :: (ICM m, CanReject m) => CallId -> CallActions -> m ()
 performCallActions ctxt_id ca = do
   updateBalances ctxt_id (ca_new_calls ca) (ca_accept ca)
   mapM_ (newCall ctxt_id) (ca_new_calls ca)
@@ -909,7 +909,6 @@ invokeManagementCanister caller maybeSubnet ctxt_id (Public method_name arg) =
       "install_code" -> atomic $ onlyControllerOrSelf method_name False caller $ checkSubnet fetchCanisterId maybeSubnet $ icInstallCode caller
       "uninstall_code" -> atomic $ onlyControllerOrSelf method_name False caller $ checkSubnet fetchCanisterId maybeSubnet $ icUninstallCode
       "update_settings" -> atomic $ onlyControllerOrSelf method_name False caller $ checkSubnet fetchCanisterId maybeSubnet icUpdateCanisterSettings
-      "set_controller" -> atomic $ onlyControllerOrSelf method_name False caller $ checkSubnet fetchCanisterId maybeSubnet icSetController
       "start_canister" -> atomic $ onlyControllerOrSelf method_name False caller $ checkSubnet fetchCanisterId maybeSubnet icStartCanister
       "stop_canister" -> deferred $ onlyControllerOrSelf method_name False caller $ checkSubnet fetchCanisterId maybeSubnet $ icStopCanister ctxt_id
       "canister_status" -> atomic $ onlyControllerOrSelf method_name True caller $ checkSubnet fetchCanisterId maybeSubnet icCanisterStatus
@@ -921,7 +920,6 @@ invokeManagementCanister caller maybeSubnet ctxt_id (Public method_name arg) =
       "http_request" -> atomic $ noSubnet caller maybeSubnet $ icHttpRequest caller ctxt_id
       "ecdsa_public_key" -> atomic $ checkSubnet (fetchCanisterIdfromMaybe caller) maybeSubnet $ icEcdsaPublicKey caller
       "sign_with_ecdsa" -> atomic $ noSubnet caller maybeSubnet $ icSignWithEcdsa caller
-      "setup_initial_dkg" -> atomic $ noSubnet caller maybeSubnet $ icSetupInitialDKG
       _ -> reject RC_DESTINATION_INVALID ("Unsupported management function " ++ method_name) (Just EC_METHOD_NOT_FOUND)
   where
     -- always responds
