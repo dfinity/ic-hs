@@ -3,7 +3,6 @@ type user_id = principal;
 type wasm_module = blob;
 
 type canister_settings = record {
-  controller : opt principal;
   controllers : opt vec principal;
   compute_allocation : opt nat;
   memory_allocation : opt nat;
@@ -11,7 +10,6 @@ type canister_settings = record {
 };
 
 type definite_canister_settings = record {
-  controller : principal;
   controllers : vec principal;
   compute_allocation : nat;
   memory_allocation : nat;
@@ -35,10 +33,6 @@ service ic : {
   update_settings : (record {
     canister_id : principal;
     settings : canister_settings
-  }) -> ();
-  set_controller: (record {
-    canister_id : principal;
-    new_controller : principal;
   }) -> ();
   install_code : (record {
     mode : variant {install; reinstall; upgrade};
@@ -92,10 +86,4 @@ service ic : {
   }) -> (record {canister_id : canister_id});
   provisional_top_up_canister :
     (record { canister_id: canister_id; amount: nat }) -> ();
-
-  // internal methods
-  setup_initial_dkg : (record {
-    node_ids: vec principal;
-    registry_version: nat64;
-  }) -> ();
 }
