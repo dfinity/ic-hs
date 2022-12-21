@@ -530,6 +530,7 @@ canister_http_calls sub =
   ]
 
 -- * The test suite (see below for helper functions)
+
 icTests :: TestSubnetConfig -> TestSubnetConfig -> AgentConfig -> TestTree
 icTests my_sub other_sub =
   let (_, my_type, _, ((ecid_as_word64, last_canister_id_as_word64):_)) = my_sub in
