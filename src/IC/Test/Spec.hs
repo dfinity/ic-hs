@@ -1257,7 +1257,7 @@ icTests my_sub _other_sub =
             cid <- install ecid (onInspectMessage (callback (prog >>> acceptMessage)))
             call'' cid reply
           )
-        , "H" =: boolTest (\prog -> do
+        , "T" =: boolTest (\prog -> do
             cid <- install ecid (onHeartbeat (callback (prog >>> setGlobal "Did not trap")))
             call_ cid reply -- This assumes that after one update call returned, a heartbeat
                             -- should have happened. Also see heartbeat tests below.
@@ -1284,7 +1284,7 @@ icTests my_sub _other_sub =
         ]
         where s = S.fromList (T.words trapping)
 
-      star = "I G U Q Ry Rt C F H"
+      star = "I G U Q Ry Rt C F T"
       never = ""
 
     in concat
@@ -1305,34 +1305,34 @@ icTests my_sub _other_sub =
     , t "canister_self"                star          $ ignore self
     , t "canister_cycle_balance"       star          $ ignore getBalance
     , t "canister_cycle_balance128"    star          $ ignore getBalance128
-    , t "call_new_call_perform"        "U Rt Ry H"   $
+    , t "call_new_call_perform"        "U Rt Ry T"   $
         callNew "foo" "bar" "baz" "quux" >>>
         callDataAppend "foo" >>>
         callCyclesAdd (int64 0) >>>
         callPerform
-    , t "call_set_cleanup"             never           $ callOnCleanup (callback noop)
-    , t "call_data_append"             never           $ callDataAppend "foo"
-    , t "call_cycles_add"              never           $ callCyclesAdd (int64 0)
-    , t "call_cycles_add128"           never           $ callCyclesAdd128 (int64 0) (int64 0)
-    , t "call_perform"                 never             callPerform
-    , t "stable_size"                  star            $ ignore stableSize
-    , t "stable_grow"                  star            $ ignore $ stableGrow (int 1)
-    , t "stable_write"                 star            $ stableWrite (int 0) ""
-    , t "stable_read"                  star            $ ignore $ stableRead (int 0) (int 0)
-    , t "stable64_size"                star            $ ignore stable64Size
-    , t "stable64_grow"                star            $ ignore $ stable64Grow (int64 1)
-    , t "stable64_write"               star            $ stable64Write (int64 0) ""
-    , t "stable64_read"                star            $ ignore $ stable64Read (int64 0) (int64 0)
-    , t "certified_data_set"           "I G U Ry Rt H" $ setCertifiedData "foo"
-    , t "data_certificate_present"     star            $ ignore getCertificatePresent
-    , t "msg_method_name"              "F"             $ ignore methodName
-    , t "accept_message"               never             acceptMessage -- due to double accept
-    , t "time"                         star            $ ignore getTime
-    , t "performance_counter"          star            $ ignore $ performanceCounter (int 0)
-    , t "canister_version"             star            $ ignore $ canisterVersion
-    , t "global_timer_set"             "I U Ry Rt C H" $ ignore $ apiGlobalTimerSet (int64 0)
-    , t "debug_print"                  star            $ debugPrint "hello"
-    , t "trap"                         never           $ trap "this better traps"
+    , t "call_set_cleanup"             never             $ callOnCleanup (callback noop)
+    , t "call_data_append"             never             $ callDataAppend "foo"
+    , t "call_cycles_add"              never             $ callCyclesAdd (int64 0)
+    , t "call_cycles_add128"           never             $ callCyclesAdd128 (int64 0) (int64 0)
+    , t "call_perform"                 never               callPerform
+    , t "stable_size"                  star              $ ignore stableSize
+    , t "stable_grow"                  star              $ ignore $ stableGrow (int 1)
+    , t "stable_write"                 star              $ stableWrite (int 0) ""
+    , t "stable_read"                  star              $ ignore $ stableRead (int 0) (int 0)
+    , t "stable64_size"                star              $ ignore stable64Size
+    , t "stable64_grow"                star              $ ignore $ stable64Grow (int64 1)
+    , t "stable64_write"               star              $ stable64Write (int64 0) ""
+    , t "stable64_read"                star              $ ignore $ stable64Read (int64 0) (int64 0)
+    , t "certified_data_set"           "I G U Ry Rt T"   $ setCertifiedData "foo"
+    , t "data_certificate_present"     star              $ ignore getCertificatePresent
+    , t "msg_method_name"              "F"               $ ignore methodName
+    , t "accept_message"               never               acceptMessage -- due to double accept
+    , t "time"                         star              $ ignore getTime
+    , t "performance_counter"          star              $ ignore $ performanceCounter (int 0)
+    , t "canister_version"             star              $ ignore $ canisterVersion
+    , t "global_timer_set"             "I G U Ry Rt C T" $ ignore $ apiGlobalTimerSet (int64 0)
+    , t "debug_print"                  star              $ debugPrint "hello"
+    , t "trap"                         never             $ trap "this better traps"
     ]
 
   , simpleTestCase "self" ecid $ \cid ->
