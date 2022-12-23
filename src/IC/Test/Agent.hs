@@ -78,6 +78,7 @@ module IC.Test.Agent
       ic00,
       ic00as,
       ic00',
+      ic00WithSubnetas',
       ingressDelay,
       is2xx,
       isErrOrReject,
@@ -114,6 +115,7 @@ module IC.Test.Agent
       callIC,
       callIC',
       callIC'',
+      callICWithSubnet'',
       callIC''',
       agentConfig,
     )
@@ -760,14 +762,17 @@ ic00 :: HasAgentConfig => IC00
 ic00 = ic00as defaultUser
 
 -- A variant that allows non-200 responses to submit
-ic00as' :: HasAgentConfig => Blob -> Blob -> T.Text -> Blob -> IO (HTTPErrOr ReqResponse)
-ic00as' user cid method_name arg = awaitCall' cid $ rec
+ic00WithSubnetas' :: HasAgentConfig => Blob -> Blob -> Blob -> T.Text -> Blob -> IO (HTTPErrOr ReqResponse)
+ic00WithSubnetas' subnet_id user ecid method_name arg = awaitCall' ecid $ rec
       [ "request_type" =: GText "call"
       , "sender" =: GBlob user
-      , "canister_id" =: GBlob ""
+      , "canister_id" =: GBlob subnet_id
       , "method_name" =: GText method_name
       , "arg" =: GBlob arg
       ]
+
+ic00as' :: HasAgentConfig => Blob -> Blob -> T.Text -> Blob -> IO (HTTPErrOr ReqResponse)
+ic00as' = ic00WithSubnetas' ""
 
 ic00' :: HasAgentConfig => IC00'
 ic00' = ic00as' defaultUser
@@ -800,13 +805,21 @@ callIC' ic00 ecid l x = ic00 ecid (T.pack (symbolVal l)) (Candid.encode x)
 -- not a generic ic00 thing), and return the HTTP error code or the response
 -- (reply or reject)
 
+callICWithSubnet'' :: forall s a b.
+  HasAgentConfig =>
+  KnownSymbol s =>
+  (a -> IO b) ~ (ICManagement IO .! s) =>
+  Candid.CandidArg a =>
+  Blob -> Blob -> Blob -> Label s -> a -> IO (HTTPErrOr ReqResponse)
+callICWithSubnet'' subnet_id user ecid l x = ic00WithSubnetas' subnet_id user ecid (T.pack (symbolVal l)) (Candid.encode x)
+
 callIC'' :: forall s a b.
   HasAgentConfig =>
   KnownSymbol s =>
   (a -> IO b) ~ (ICManagement IO .! s) =>
   Candid.CandidArg a =>
   Blob -> Blob -> Label s -> a -> IO (HTTPErrOr ReqResponse)
-callIC'' user ecid l x = ic00as' user ecid (T.pack (symbolVal l)) (Candid.encode x)
+callIC'' = callICWithSubnet'' ""
 
 -- Triple primed variants return the response (reply or reject) and allow HTTP errors
 callIC''' :: forall s a b.

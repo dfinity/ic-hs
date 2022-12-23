@@ -532,13 +532,34 @@ canister_http_calls sub =
 -- * The test suite (see below for helper functions)
 
 icTests :: TestSubnetConfig -> TestSubnetConfig -> AgentConfig -> TestTree
-icTests my_sub _other_sub =
-  let (_, my_type, _, ((ecid_as_word64, last_canister_id_as_word64):_)) = my_sub in
+icTests my_sub other_sub =
+  let (my_subnet_id_as_entity, my_type, _, ((ecid_as_word64, last_canister_id_as_word64):_)) = my_sub in
+  let (other_subnet_id_as_entity, _, _, _) = other_sub in
+  let my_subnet_id = rawEntityId my_subnet_id_as_entity in
+  let other_subnet_id = rawEntityId other_subnet_id_as_entity in
+  let my_is_root = isRootTestSubnet my_sub in
   let ecid = rawEntityId $ wordToId ecid_as_word64 in
   let last_canister_id = rawEntityId $ wordToId last_canister_id_as_word64 in
   let initial_cycles = case my_type of System -> 0
                                        _ -> (2^(60::Int)) in
   withAgentConfig $ testGroup "Interface Spec acceptance tests" $
+  let test_subnet_msg subnet_id subnet_id' cid = do
+        cid2 <- ic_create (ic00viaWithCyclesSubnet subnet_id cid 20_000_000_000_000) ecid empty
+        ic_install (ic00viaWithCyclesSubnet subnet_id cid 0) (enum #install) cid2 trivialWasmModule ""
+        cid3 <- ic_provisional_create (ic00viaWithCyclesSubnet subnet_id cid 20_000_000_000_000) ecid Nothing Nothing empty
+        ic_install (ic00viaWithCyclesSubnet subnet_id cid 0) (enum #install) cid3 trivialWasmModule ""
+        ic_install (ic00viaWithCyclesSubnet subnet_id cid 0) (enum #reinstall) cid3 trivialWasmModule ""
+        ic_install' (ic00viaWithCyclesSubnet' subnet_id' cid 0) (enum #reinstall) cid3 trivialWasmModule "" >>= isReject [3]
+        _ <- ic_http_get_request (ic00viaWithCyclesSubnet subnet_id cid) my_sub ("equal_bytes/8") Nothing Nothing cid
+        _ <- ic_raw_rand (ic00viaWithCyclesSubnet subnet_id cid 0) ecid
+        return () in
+  let test_subnet_msg' subnet_id cid = do
+        ic_create' (ic00viaWithCyclesSubnet' subnet_id cid 20_000_000_000_000) ecid empty >>= isReject [3]
+        ic_provisional_create' (ic00viaWithCyclesSubnet' subnet_id cid 20_000_000_000_000) ecid Nothing Nothing empty >>= isReject [3]
+        cid2 <- ic_create (ic00viaWithCycles cid 20_000_000_000_000) ecid empty
+        ic_install' (ic00viaWithCyclesSubnet' subnet_id cid 0) (enum #install) cid2 trivialWasmModule "" >>= isReject [3]
+        ic_http_get_request' (ic00viaWithCyclesSubnet' subnet_id cid) my_sub "https://" ("equal_bytes/8") Nothing Nothing cid >>= isReject [3]
+        ic_raw_rand' (ic00viaWithCyclesSubnet' subnet_id cid 0) ecid >>= isReject [3] in
   let install_with_cycles ecid cycles prog = do
         cid <- ic_provisional_create ic00 ecid Nothing (Just cycles) empty
         installAt cid prog
@@ -589,6 +610,30 @@ icTests my_sub _other_sub =
   , testCase "create_canister necessary" $
       ic_install'' defaultUser (enum #install) doesn'tExist trivialWasmModule ""
           >>= isErrOrReject [3,5]
+
+  , testGroup "calls to a subnet ID"
+    [
+      let ic_install_subnet'' user subnet_id mode canister_id wasm_module arg = callICWithSubnet'' subnet_id user canister_id #install_code $ empty
+            .+ #mode .== mode
+            .+ #canister_id .== Principal canister_id
+            .+ #wasm_module .== wasm_module
+            .+ #arg .== arg in
+
+      testCase "as user" $ do
+        cid <- create ecid
+        ic_install_subnet'' defaultUser my_subnet_id (enum #install) cid trivialWasmModule "" >>= isErrOrReject []
+        ic_install_subnet'' defaultUser other_subnet_id (enum #install) cid trivialWasmModule "" >>= isErrOrReject []
+
+    , testCase "as canister to own subnet" $ do
+        cid <- install ecid noop
+        if my_is_root then test_subnet_msg my_subnet_id other_subnet_id cid
+        else test_subnet_msg' my_subnet_id cid
+
+    , testCase "as canister to other subnet" $ do
+        cid <- install ecid noop
+        if my_is_root then test_subnet_msg other_subnet_id my_subnet_id cid
+        else test_subnet_msg' other_subnet_id cid
+    ]
 
   , testGroup "provisional_create_canister_with_cycles"
     [ testCase "specified_id" $ do
