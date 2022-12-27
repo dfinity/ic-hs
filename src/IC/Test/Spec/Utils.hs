@@ -154,25 +154,46 @@ cborToBlobPair r = assertFailure $ "Expected list of pairs, got: " <> show r
 
 -- Interaction with aaaaa-aa via the universal canister
 
+ic00viaWithCyclesSubnetImpl' :: HasAgentConfig => Prog -> Prog -> Blob -> Blob -> IC00WithCycles
+ic00viaWithCyclesSubnetImpl' relayReply relayReject subnet_id cid cycles _ecid method_name arg = do
+  resp <- call' cid $
+      callNew
+        (bytes subnet_id) (bytes (BS.fromStrict (T.encodeUtf8 method_name))) -- aaaaa-aa
+        (callback relayReply) (callback relayReject) >>>
+      callDataAppend (bytes arg) >>>
+      callCyclesAdd (int64 cycles) >>>
+      callPerform
+  case resp of Reply r -> isRelay r
+               _ -> return resp
+
+ic00viaWithCyclesSubnet' :: HasAgentConfig => Blob -> Blob -> IC00WithCycles
+ic00viaWithCyclesSubnet' = ic00viaWithCyclesSubnetImpl' relayReply relayReject
+
 ic00via :: HasAgentConfig => Blob -> IC00
 ic00via cid = ic00viaWithCycles cid 0
 
-ic00viaWithCyclesImpl :: HasAgentConfig => Prog -> Prog -> Blob -> IC00WithCycles
-ic00viaWithCyclesImpl relayReply relayReject cid cycles _ecid method_name arg =
+ic00viaWithCyclesSubnetImpl :: HasAgentConfig => Prog -> Prog -> Blob -> Blob -> IC00WithCycles
+ic00viaWithCyclesSubnetImpl relayReply relayReject subnet_id cid cycles _ecid method_name arg =
   do call' cid $
       callNew
-        (bytes "") (bytes (BS.fromStrict (T.encodeUtf8 method_name))) -- aaaaa-aa
+        (bytes subnet_id) (bytes (BS.fromStrict (T.encodeUtf8 method_name))) -- aaaaa-aa
         (callback relayReply) (callback relayReject) >>>
       callDataAppend (bytes arg) >>>
       callCyclesAdd (int64 cycles) >>>
       callPerform
    >>= isReply >>= isRelay
 
+ic00viaWithCyclesSubnet :: HasAgentConfig => Blob -> Blob -> IC00WithCycles
+ic00viaWithCyclesSubnet = ic00viaWithCyclesSubnetImpl relayReply relayReject
+
 ic00viaWithCycles :: HasAgentConfig => Blob -> IC00WithCycles
-ic00viaWithCycles = ic00viaWithCyclesImpl relayReply relayReject
+ic00viaWithCycles = ic00viaWithCyclesSubnetImpl relayReply relayReject ""
+
+ic00viaWithCyclesRefundSubnet :: HasAgentConfig => Word64 -> Blob -> Blob -> IC00WithCycles
+ic00viaWithCyclesRefundSubnet amount = ic00viaWithCyclesSubnetImpl (relayReplyRefund amount) (relayRejectRefund amount)
 
 ic00viaWithCyclesRefund :: HasAgentConfig => Word64 -> Blob -> IC00WithCycles
-ic00viaWithCyclesRefund amount = ic00viaWithCyclesImpl (relayReplyRefund amount) (relayRejectRefund amount)
+ic00viaWithCyclesRefund amount = ic00viaWithCyclesSubnetImpl (relayReplyRefund amount) (relayRejectRefund amount) ""
 
 -- * Interacting with the universal canister
 
