@@ -543,22 +543,22 @@ icTests my_sub other_sub =
   let initial_cycles = case my_type of System -> 0
                                        _ -> (2^(60::Int)) in
   withAgentConfig $ testGroup "Interface Spec acceptance tests" $
-  let test_subnet_msg subnet_id subnet_id' cid = do
+  let test_subnet_msg sub subnet_id subnet_id' cid = do
         cid2 <- ic_create (ic00viaWithCyclesSubnet subnet_id cid 20_000_000_000_000) ecid empty
         ic_install (ic00viaWithCyclesSubnet subnet_id cid 0) (enum #install) cid2 trivialWasmModule ""
         cid3 <- ic_provisional_create (ic00viaWithCyclesSubnet subnet_id cid 20_000_000_000_000) ecid Nothing Nothing empty
         ic_install (ic00viaWithCyclesSubnet subnet_id cid 0) (enum #install) cid3 trivialWasmModule ""
         ic_install (ic00viaWithCyclesSubnet subnet_id cid 0) (enum #reinstall) cid3 trivialWasmModule ""
         ic_install' (ic00viaWithCyclesSubnet' subnet_id' cid 0) (enum #reinstall) cid3 trivialWasmModule "" >>= isReject [3]
-        _ <- ic_http_get_request (ic00viaWithCyclesSubnet subnet_id cid) my_sub ("equal_bytes/8") Nothing Nothing cid
+        _ <- ic_http_get_request (ic00viaWithCyclesSubnet subnet_id cid) sub ("equal_bytes/8") Nothing Nothing cid
         _ <- ic_raw_rand (ic00viaWithCyclesSubnet subnet_id cid 0) ecid
         return () in
-  let test_subnet_msg' subnet_id cid = do
+  let test_subnet_msg' sub subnet_id cid = do
         ic_create' (ic00viaWithCyclesSubnet' subnet_id cid 20_000_000_000_000) ecid empty >>= isReject [3]
         ic_provisional_create' (ic00viaWithCyclesSubnet' subnet_id cid 20_000_000_000_000) ecid Nothing Nothing empty >>= isReject [3]
         cid2 <- ic_create (ic00viaWithCycles cid 20_000_000_000_000) ecid empty
         ic_install' (ic00viaWithCyclesSubnet' subnet_id cid 0) (enum #install) cid2 trivialWasmModule "" >>= isReject [3]
-        ic_http_get_request' (ic00viaWithCyclesSubnet' subnet_id cid) my_sub "https://" ("equal_bytes/8") Nothing Nothing cid >>= isReject [3]
+        ic_http_get_request' (ic00viaWithCyclesSubnet' subnet_id cid) sub "https://" ("equal_bytes/8") Nothing Nothing cid >>= isReject [3]
         ic_raw_rand' (ic00viaWithCyclesSubnet' subnet_id cid 0) ecid >>= isReject [3] in
   let install_with_cycles ecid cycles prog = do
         cid <- ic_provisional_create ic00 ecid Nothing (Just cycles) empty
@@ -626,13 +626,13 @@ icTests my_sub other_sub =
 
     , testCase "as canister to own subnet" $ do
         cid <- install ecid noop
-        if my_is_root then test_subnet_msg my_subnet_id other_subnet_id cid
-        else test_subnet_msg' my_subnet_id cid
+        if my_is_root then test_subnet_msg my_sub my_subnet_id other_subnet_id cid
+        else test_subnet_msg' my_sub my_subnet_id cid
 
     , testCase "as canister to other subnet" $ do
         cid <- install ecid noop
-        if my_is_root then test_subnet_msg other_subnet_id my_subnet_id cid
-        else test_subnet_msg' other_subnet_id cid
+        if my_is_root then test_subnet_msg other_sub other_subnet_id my_subnet_id cid
+        else test_subnet_msg' other_sub other_subnet_id cid
     ]
 
   , testGroup "provisional_create_canister_with_cycles"
