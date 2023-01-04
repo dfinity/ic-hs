@@ -21,7 +21,6 @@ import qualified Data.Map.Lazy as M
 import qualified Data.Set as S
 import qualified Data.Vector as Vec
 import qualified Data.ByteString.Lazy.UTF8 as BLU
-import Data.Text.Encoding.Base64(encodeBase64)
 import Data.ByteString.Builder
 import Numeric.Natural
 import Data.List
@@ -159,9 +158,8 @@ canister_http_calls sub =
     -- "Currently, the GET, HEAD, and POST methods are supported for HTTP requests."
 
     simpleTestCase "GET call" ecid $ \cid -> do
-      let s = "Hello world!"
-      let enc = T.unpack $ encodeBase64 $ T.pack s
-      resp <- ic_http_get_request (ic00viaWithCyclesRefund 0 cid) sub ("base64/" ++ enc) (Just 666) Nothing cid
+      let s = "hello_world"
+      resp <- ic_http_get_request (ic00viaWithCyclesRefund 0 cid) sub ("ascii/" ++ s) (Just 666) Nothing cid
       (resp .! #status) @?= 200
       (resp .! #body) @?= BLU.fromString s
       check_http_response resp
@@ -190,9 +188,9 @@ canister_http_calls sub =
     -- "For security reasons, only HTTPS connections are allowed (URLs must start with https://)."
 
     , testCase "url must start with https://" $ do
-      let enc = T.unpack $ encodeBase64 $ T.pack "Hello world!"
+      let s = "hello_world"
       cid <- install ecid noop
-      ic_http_get_request' (ic00viaWithCyclesRefund 0 cid) sub "http://" ("base64/" ++ enc) Nothing Nothing cid >>= isReject [1]
+      ic_http_get_request' (ic00viaWithCyclesRefund 0 cid) sub "http://" ("ascii/" ++ s) Nothing Nothing cid >>= isReject [1]
 
     -- "The size of an HTTP request from the canister is the total number of bytes representing the names and values of HTTP headers and the HTTP body. The maximal size for the request from the canister is 2MB (2,000,000B)."
 
@@ -215,8 +213,7 @@ canister_http_calls sub =
     -- "The size of an HTTP response from the remote server is the total number of bytes representing the names and values of HTTP headers and the HTTP body. Each request can specify a maximal size for the response from the remote HTTP server."
 
     , simpleTestCase "small maximum possible response size" ecid $ \cid -> do
-      let s = "Hello world!"
-      let enc = T.unpack $ encodeBase64 $ T.pack s
+      let s = "hello_world"
       {- Response headers (size: 136)
           Connection: keep-alive
           Content-Type: text/html; charset=utf-8
@@ -225,14 +222,13 @@ canister_http_calls sub =
           Access-Control-Allow-Credentials: true
       -}
       let header_size = 136
-      resp <- ic_http_get_request (ic00viaWithCyclesRefund 0 cid) sub ("base64/" ++ enc) (Just $ fromIntegral $ length s + header_size) Nothing cid
+      resp <- ic_http_get_request (ic00viaWithCyclesRefund 0 cid) sub ("ascii/" ++ s) (Just $ fromIntegral $ length s + header_size) Nothing cid
       (resp .! #status) @?= 200
       (resp .! #body) @?= BLU.fromString s
       check_http_response resp
 
     , simpleTestCase "small maximum possible response size exceeded" ecid $ \cid -> do
-      let s = "Hello world!"
-      let enc = T.unpack $ encodeBase64 $ T.pack s
+      let s = "hello_world"
       {- Response headers (size: 136)
           Connection: keep-alive
           Content-Type: text/html; charset=utf-8
@@ -241,7 +237,7 @@ canister_http_calls sub =
           Access-Control-Allow-Credentials: true
       -}
       let header_size = 136
-      ic_http_get_request' (ic00viaWithCyclesRefund 0 cid) sub "https://" ("base64/" ++ enc) (Just $ fromIntegral $ length s + header_size - 1) Nothing cid >>= isReject [1]
+      ic_http_get_request' (ic00viaWithCyclesRefund 0 cid) sub "https://" ("ascii/" ++ s) (Just $ fromIntegral $ length s + header_size - 1) Nothing cid >>= isReject [1]
 
     , simpleTestCase "small maximum possible response size (only headers)" ecid $ \cid -> do
       {- Response headers (size: 136)
@@ -314,16 +310,15 @@ canister_http_calls sub =
     -- "max_response_bytes - If provided, the value must not exceed 2MB (2,000,000B)."
 
     , simpleTestCase "maximum possible value of max_response_bytes" ecid $ \cid -> do
-      let s = "Hello world!"
-      let enc = T.unpack $ encodeBase64 $ T.pack s
-      resp <- ic_http_get_request (ic00viaWithCyclesRefund 0 cid) sub ("base64/" ++ enc) (Just max_response_bytes_limit) Nothing cid
+      let s = "hello_world"
+      resp <- ic_http_get_request (ic00viaWithCyclesRefund 0 cid) sub ("ascii/" ++ s) (Just max_response_bytes_limit) Nothing cid
       (resp .! #status) @?= 200
       (resp .! #body) @?= BLU.fromString s
       check_http_response resp
 
     , simpleTestCase "maximum possible value of max_response_bytes exceeded" ecid $ \cid -> do
-      let enc = T.unpack $ encodeBase64 $ T.pack "Hello world!"
-      ic_http_get_request' (\fee -> ic00viaWithCyclesRefund fee cid fee) sub "https://" ("base64/" ++ enc) (Just $ max_response_bytes_limit + 1) Nothing cid >>= isReject [4]
+      let s = "hello_world"
+      ic_http_get_request' (\fee -> ic00viaWithCyclesRefund fee cid fee) sub "https://" ("ascii/" ++ s) (Just $ max_response_bytes_limit + 1) Nothing cid >>= isReject [4]
 
     -- "transform - an optional record that includes a function that transforms raw responses to sanitized responses, and a byte-encoded context that is provided to the function upon invocation, along with the response to be sanitized."
 
@@ -337,24 +332,24 @@ canister_http_calls sub =
       check_http_response resp
 
     , testCase "reflect transform context" $ do
-      let enc = T.unpack $ encodeBase64 $ T.pack "Hello world!"
+      let s = "hello_world"
       cid <- install ecid (onTransform (callback (replyData (getHttpReplyWithBody (getHttpTransformContext argData)))))
-      resp <- ic_http_get_request (ic00viaWithCyclesRefund 0 cid) sub ("base64/" ++ enc) Nothing (Just ("transform", "asdf")) cid
+      resp <- ic_http_get_request (ic00viaWithCyclesRefund 0 cid) sub ("ascii/" ++ s) Nothing (Just ("transform", "asdf")) cid
       (resp .! #status) @?= 200
       (resp .! #body) @?= "asdf"
 
     -- "If provided, the calling canister itself must export this (transform) function."
 
     , testCase "non-existent transform function" $ do
-      let enc = T.unpack $ encodeBase64 $ T.pack "Hello world!"
+      let s = "hello_world"
       cid <- install ecid noop
-      ic_http_get_request' (ic00viaWithCyclesRefund 0 cid) sub "https://" ("base64/" ++ enc) Nothing (Just ("nonExistent", "")) cid >>= isReject [3]
+      ic_http_get_request' (ic00viaWithCyclesRefund 0 cid) sub "https://" ("ascii/" ++ s) Nothing (Just ("nonExistent", "")) cid >>= isReject [3]
 
     , testCase "reference to a transform function exposed by another canister" $ do
-      let enc = T.unpack $ encodeBase64 $ T.pack "Hello world!"
+      let s = "hello_world"
       cid <- install ecid noop
       cid2 <- install ecid (onTransform (callback (replyData (bytes (Candid.encode dummyResponse)))))
-      ic_http_get_request' (\fee -> ic00viaWithCyclesRefund fee cid fee) sub "https://" ("base64/" ++ enc) Nothing (Just ("transform", "")) cid2 >>= isReject [4]
+      ic_http_get_request' (\fee -> ic00viaWithCyclesRefund fee cid fee) sub "https://" ("ascii/" ++ s) Nothing (Just ("transform", "")) cid2 >>= isReject [4]
 
     -- "The maximal number of bytes representing the response produced by the transform function is 2MB (2,000,000B)."
 
@@ -393,9 +388,9 @@ canister_http_calls sub =
     -- "When the transform function is invoked by the system due to a canister HTTP request, the caller's identity is the principal of the management canister."
 
     , testCase "check caller of transform" $ do
-      let enc = T.unpack $ encodeBase64 $ T.pack "Hello world!"
+      let s = "hello_world"
       cid <- install ecid (onTransform (callback (replyData (getHttpReplyWithBody (parsePrincipal caller)))))
-      resp <- ic_http_get_request (ic00viaWithCyclesRefund 0 cid) sub ("base64/" ++ enc) Nothing (Just ("transform", "caller")) cid
+      resp <- ic_http_get_request (ic00viaWithCyclesRefund 0 cid) sub ("ascii/" ++ s) Nothing (Just ("transform", "caller")) cid
       (resp .! #status) @?= 200
       (resp .! #body) @?= "aaaaa-aa"
 
@@ -543,22 +538,22 @@ icTests my_sub other_sub =
   let initial_cycles = case my_type of System -> 0
                                        _ -> (2^(60::Int)) in
   withAgentConfig $ testGroup "Interface Spec acceptance tests" $
-  let test_subnet_msg subnet_id subnet_id' cid = do
+  let test_subnet_msg sub subnet_id subnet_id' cid = do
         cid2 <- ic_create (ic00viaWithCyclesSubnet subnet_id cid 20_000_000_000_000) ecid empty
         ic_install (ic00viaWithCyclesSubnet subnet_id cid 0) (enum #install) cid2 trivialWasmModule ""
         cid3 <- ic_provisional_create (ic00viaWithCyclesSubnet subnet_id cid 20_000_000_000_000) ecid Nothing Nothing empty
         ic_install (ic00viaWithCyclesSubnet subnet_id cid 0) (enum #install) cid3 trivialWasmModule ""
         ic_install (ic00viaWithCyclesSubnet subnet_id cid 0) (enum #reinstall) cid3 trivialWasmModule ""
         ic_install' (ic00viaWithCyclesSubnet' subnet_id' cid 0) (enum #reinstall) cid3 trivialWasmModule "" >>= isReject [3]
-        _ <- ic_http_get_request (ic00viaWithCyclesSubnet subnet_id cid) my_sub ("equal_bytes/8") Nothing Nothing cid
+        _ <- ic_http_get_request (ic00viaWithCyclesSubnet subnet_id cid) sub ("equal_bytes/8") Nothing Nothing cid
         _ <- ic_raw_rand (ic00viaWithCyclesSubnet subnet_id cid 0) ecid
         return () in
-  let test_subnet_msg' subnet_id cid = do
+  let test_subnet_msg' sub subnet_id cid = do
         ic_create' (ic00viaWithCyclesSubnet' subnet_id cid 20_000_000_000_000) ecid empty >>= isReject [3]
         ic_provisional_create' (ic00viaWithCyclesSubnet' subnet_id cid 20_000_000_000_000) ecid Nothing Nothing empty >>= isReject [3]
         cid2 <- ic_create (ic00viaWithCycles cid 20_000_000_000_000) ecid empty
         ic_install' (ic00viaWithCyclesSubnet' subnet_id cid 0) (enum #install) cid2 trivialWasmModule "" >>= isReject [3]
-        ic_http_get_request' (ic00viaWithCyclesSubnet' subnet_id cid) my_sub "https://" ("equal_bytes/8") Nothing Nothing cid >>= isReject [3]
+        ic_http_get_request' (ic00viaWithCyclesSubnet' subnet_id cid) sub "https://" ("equal_bytes/8") Nothing Nothing cid >>= isReject [3]
         ic_raw_rand' (ic00viaWithCyclesSubnet' subnet_id cid 0) ecid >>= isReject [3] in
   let install_with_cycles ecid cycles prog = do
         cid <- ic_provisional_create ic00 ecid Nothing (Just cycles) empty
@@ -626,13 +621,13 @@ icTests my_sub other_sub =
 
     , testCase "as canister to own subnet" $ do
         cid <- install ecid noop
-        if my_is_root then test_subnet_msg my_subnet_id other_subnet_id cid
-        else test_subnet_msg' my_subnet_id cid
+        if my_is_root then test_subnet_msg my_sub my_subnet_id other_subnet_id cid
+        else test_subnet_msg' my_sub my_subnet_id cid
 
     , testCase "as canister to other subnet" $ do
         cid <- install ecid noop
-        if my_is_root then test_subnet_msg other_subnet_id my_subnet_id cid
-        else test_subnet_msg' other_subnet_id cid
+        if my_is_root then test_subnet_msg other_sub other_subnet_id my_subnet_id cid
+        else test_subnet_msg' other_sub other_subnet_id cid
     ]
 
   , testGroup "provisional_create_canister_with_cycles"
