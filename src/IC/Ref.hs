@@ -918,7 +918,7 @@ invokeManagementCanister caller maybeSubnet ctxt_id (Public method_name arg) =
       "provisional_create_canister_with_cycles" -> atomic $ icCreateCanisterWithCycles caller maybeSubnet ctxt_id
       "provisional_top_up_canister" -> atomic $ checkSubnet fetchCanisterId maybeSubnet icTopUpCanister
       "raw_rand" -> atomic $ noSubnet caller maybeSubnet icRawRand
-      "http_request" -> atomic $ noSubnet caller maybeSubnet $ icHttpRequest caller ctxt_id
+      "http_request" -> atomic $ noSubnet caller maybeSubnet $ icHttpRequest caller maybeSubnet ctxt_id
       "ecdsa_public_key" -> atomic $ checkSubnet (fetchCanisterIdfromMaybe caller) maybeSubnet $ icEcdsaPublicKey caller
       "sign_with_ecdsa" -> atomic $ noSubnet caller maybeSubnet $ icSignWithEcdsa caller
       _ -> reject RC_DESTINATION_INVALID ("Unsupported management function " ++ method_name) (Just EC_METHOD_NOT_FOUND)
@@ -945,10 +945,12 @@ invokeManagementCanister _ _ _ Closure{} = error "closure invoked on management 
 invokeManagementCanister _ _ _ Heartbeat = error "heartbeat invoked on management canister"
 invokeManagementCanister _ _ _ GlobalTimer = error "global timer invoked on management canister"
 
-icHttpRequest :: (ICM m, CanReject m) => EntityId -> CallId -> ICManagement m .! "http_request"
-icHttpRequest caller ctxt_id r = do
+icHttpRequest :: (ICM m, CanReject m) => EntityId -> Maybe Subnet -> CallId -> ICManagement m .! "http_request"
+icHttpRequest caller maybe_subnet ctxt_id r = do
   available <- getCallContextCycles ctxt_id
-  (_, subnet_type, subnet_size, _, _) <- getSubnetFromCanisterId caller
+  (_, subnet_type, subnet_size, _, _) <- case maybe_subnet of
+      Nothing -> getSubnetFromCanisterId caller
+      Just subnet -> return subnet
   let fee = fromIntegral $ http_request_fee r (subnet_type, subnet_size)
   let url = T.unpack $ r .! #url
   let max_resp_size = max_response_size r
