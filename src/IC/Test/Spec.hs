@@ -1795,6 +1795,23 @@ icTests my_sub other_sub =
       timer1 @?= blob 0
       timer2 @?= blob 0
       timer3 @?= blob far_far_future_time
+    , testCase "in post-upgrade and run" $ do
+      cid <- install_canister_with_global_timer (1::Int)
+      _ <- reset_global cid
+      far_future_time <- get_far_future_time
+      timer1 <- set_timer cid far_future_time
+      past_time <- get_far_past_time
+      universal_wasm <- getTestWasm "universal-canister"
+      _ <- ic_stop_canister ic00 cid
+      waitFor $ do
+        cs <- ic_canister_status ic00 cid
+        return $ cs .! #status == enum #stopped
+      _ <- ic_install ic00 (enum #upgrade) cid universal_wasm (run $ (setGlobal $ i64tob $ int64 42) >>> on_timer_prog (2::Int) >>> set_timer_prog past_time)
+      _ <- ic_start_canister ic00 cid
+      wait_for_timer cid 2
+      timer2 <- set_timer cid far_future_time
+      timer1 @?= blob 0
+      timer2 @?= blob 0
     , testCase "in timer callback" $ do
       past_time <- get_far_past_time
       far_future_time <- get_far_future_time
