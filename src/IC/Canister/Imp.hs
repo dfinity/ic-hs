@@ -115,7 +115,7 @@ ic0.data_certificate_size : () -> i32;                                      // *
 ic0.data_certificate_copy : (dst: i32, offset: i32, size: i32) -> ();       // *
 
 ic0.time : () -> (timestamp : i64);                                         // *
-ic0.global_timer_set : (timestamp : i64) -> i64;                            // I U Ry Rt C T
+ic0.global_timer_set : (timestamp : i64) -> i64;                            // I G U Ry Rt C T
 ic0.performance_counter : (counter_type : i32) -> (counter : i64);          // * s
 
 ic0.debug_print : (src : i32, size : i32) -> ();                            // * s
@@ -356,7 +356,7 @@ systemAPI esref =
   , toImport' "ic0" "accept_message" [EXC_F] accept_message
   , toImport' "ic0" "time" star get_time
   , toImport' "ic0" "performance_counter" star performance_counter
-  , toImport' "ic0" "global_timer_set" [EXC_I, EXC_U, EXC_Ry, EXC_Rt, EXC_C, EXC_T] global_timer_set
+  , toImport' "ic0" "global_timer_set" [EXC_I, EXC_G, EXC_U, EXC_Ry, EXC_Rt, EXC_C, EXC_T] global_timer_set
   , toImport' "ic0" "canister_version" star get_canister_version
 
   , toImport' "ic0" "debug_print" star debug_print

@@ -1297,7 +1297,7 @@ icTests my_sub other_sub =
             cid <- install ecid (onInspectMessage (callback (prog >>> acceptMessage)))
             call'' cid reply
           )
-        , "H" =: boolTest (\prog -> do
+        , "T" =: boolTest (\prog -> do
             cid <- install ecid (onHeartbeat (callback (prog >>> setGlobal "Did not trap")))
             call_ cid reply -- This assumes that after one update call returned, a heartbeat
                             -- should have happened. Also see heartbeat tests below.
@@ -1324,7 +1324,7 @@ icTests my_sub other_sub =
         ]
         where s = S.fromList (T.words trapping)
 
-      star = "I G U Q Ry Rt C F H"
+      star = "I G U Q Ry Rt C F T"
       never = ""
 
     in concat
@@ -1345,34 +1345,34 @@ icTests my_sub other_sub =
     , t "canister_self"                star          $ ignore self
     , t "canister_cycle_balance"       star          $ ignore getBalance
     , t "canister_cycle_balance128"    star          $ ignore getBalance128
-    , t "call_new_call_perform"        "U Rt Ry H"   $
+    , t "call_new_call_perform"        "U Rt Ry T"   $
         callNew "foo" "bar" "baz" "quux" >>>
         callDataAppend "foo" >>>
         callCyclesAdd (int64 0) >>>
         callPerform
-    , t "call_set_cleanup"             never           $ callOnCleanup (callback noop)
-    , t "call_data_append"             never           $ callDataAppend "foo"
-    , t "call_cycles_add"              never           $ callCyclesAdd (int64 0)
-    , t "call_cycles_add128"           never           $ callCyclesAdd128 (int64 0) (int64 0)
-    , t "call_perform"                 never             callPerform
-    , t "stable_size"                  star            $ ignore stableSize
-    , t "stable_grow"                  star            $ ignore $ stableGrow (int 1)
-    , t "stable_write"                 star            $ stableWrite (int 0) ""
-    , t "stable_read"                  star            $ ignore $ stableRead (int 0) (int 0)
-    , t "stable64_size"                star            $ ignore stable64Size
-    , t "stable64_grow"                star            $ ignore $ stable64Grow (int64 1)
-    , t "stable64_write"               star            $ stable64Write (int64 0) ""
-    , t "stable64_read"                star            $ ignore $ stable64Read (int64 0) (int64 0)
-    , t "certified_data_set"           "I G U Ry Rt H" $ setCertifiedData "foo"
-    , t "data_certificate_present"     star            $ ignore getCertificatePresent
-    , t "msg_method_name"              "F"             $ ignore methodName
-    , t "accept_message"               never             acceptMessage -- due to double accept
-    , t "time"                         star            $ ignore getTime
-    , t "performance_counter"          star            $ ignore $ performanceCounter (int 0)
-    , t "canister_version"             star            $ ignore $ canisterVersion
-    , t "global_timer_set"             "I U Ry Rt C H" $ ignore $ apiGlobalTimerSet (int64 0)
-    , t "debug_print"                  star            $ debugPrint "hello"
-    , t "trap"                         never           $ trap "this better traps"
+    , t "call_set_cleanup"             never             $ callOnCleanup (callback noop)
+    , t "call_data_append"             never             $ callDataAppend "foo"
+    , t "call_cycles_add"              never             $ callCyclesAdd (int64 0)
+    , t "call_cycles_add128"           never             $ callCyclesAdd128 (int64 0) (int64 0)
+    , t "call_perform"                 never               callPerform
+    , t "stable_size"                  star              $ ignore stableSize
+    , t "stable_grow"                  star              $ ignore $ stableGrow (int 1)
+    , t "stable_write"                 star              $ stableWrite (int 0) ""
+    , t "stable_read"                  star              $ ignore $ stableRead (int 0) (int 0)
+    , t "stable64_size"                star              $ ignore stable64Size
+    , t "stable64_grow"                star              $ ignore $ stable64Grow (int64 1)
+    , t "stable64_write"               star              $ stable64Write (int64 0) ""
+    , t "stable64_read"                star              $ ignore $ stable64Read (int64 0) (int64 0)
+    , t "certified_data_set"           "I G U Ry Rt T"   $ setCertifiedData "foo"
+    , t "data_certificate_present"     star              $ ignore getCertificatePresent
+    , t "msg_method_name"              "F"               $ ignore methodName
+    , t "accept_message"               never               acceptMessage -- due to double accept
+    , t "time"                         star              $ ignore getTime
+    , t "performance_counter"          star              $ ignore $ performanceCounter (int 0)
+    , t "canister_version"             star              $ ignore $ canisterVersion
+    , t "global_timer_set"             "I G U Ry Rt C T" $ ignore $ apiGlobalTimerSet (int64 0)
+    , t "debug_print"                  star              $ debugPrint "hello"
+    , t "trap"                         never             $ trap "this better traps"
     ]
 
   , simpleTestCase "self" ecid $ \cid ->
@@ -1753,44 +1753,55 @@ icTests my_sub other_sub =
     ]
 
   , testGroup "canister global timer" $
-    let on_timer_prog n = onGlobalTimer $ callback (setGlobal $ i64tob $ int64 $ fromIntegral n) in
-    let set_timer_prog time = setGlobal $ i64tob $ apiGlobalTimerSet $ int64 time in
+    let on_timer_prog n = onGlobalTimer $ callback ((ignore $ stableGrow $ int 1) >>> (stableWrite (int 0) $ i64tob $ int64 $ fromIntegral n)) in
+    let set_timer_prog time = ((ignore $ stableGrow $ int 1) >>> (stableWrite (int 0) $ i64tob $ apiGlobalTimerSet $ int64 time)) in
     let install_canister_with_global_timer n = install ecid $ on_timer_prog n in
-    let reset_global cid = call cid ((setGlobal $ i64tob $ int64 42) >>> replyData "") in
-    let get_global cid = call cid (replyData $ getGlobal) in
+    let reset_stable cid = call cid ((ignore $ stableGrow $ int 1) >>> (stableWrite (int 0) $ i64tob $ int64 42) >>> replyData "") in
+    let get_stable cid = call cid (replyData $ stableRead (int 0) (int 8)) in
     let get_far_past_time = return 1 in
     let get_current_time = floor . (* 1e9) <$> getPOSIXTime in
     let get_far_future_time = floor . (* 1e9) <$> (+) 100000 <$> getPOSIXTime in
     let get_far_far_future_time = floor . (* 1e9) <$> (+) 1000000 <$> getPOSIXTime in
     let set_timer cid time = call cid (replyData $ i64tob $ apiGlobalTimerSet $ int64 time) in
     let blob = toLazyByteString . word64LE . fromIntegral in
-    let wait_for_timer cid n = waitFor $ (blob n ==) <$> get_global cid in
+    let wait_for_timer cid n = waitFor $ (blob n ==) <$> get_stable cid in
     [ testCase "in update" $ do
-      cid <- install_canister_with_global_timer (1::Int)
-      _ <- reset_global cid
+      cid <- install_canister_with_global_timer (2::Int)
+      _ <- reset_stable cid
       far_future_time <- get_far_future_time
       timer1 <- set_timer cid far_future_time
       timer2 <- set_timer cid far_future_time
-      ctr <- get_global cid
+      ctr <- get_stable cid
       timer1 @?= blob 0
       timer2 @?= blob far_future_time
       ctr @?= blob 42
     , testCase "in init" $ do
       far_future_time <- get_far_future_time
-      cid <- install ecid $ on_timer_prog (1::Int) >>> set_timer_prog far_future_time
-      timer1 <- get_global cid
+      cid <- install ecid $ on_timer_prog (2::Int) >>> set_timer_prog far_future_time
+      timer1 <- get_stable cid
       timer2 <- set_timer cid far_future_time
       timer1 @?= blob 0
       timer2 @?= blob far_future_time
+    , testCase "in pre-upgrade" $ do
+      far_past_time <- get_far_past_time
+      far_future_time <- get_far_future_time
+      cid <- install ecid $ (on_timer_prog (2::Int) >>> onPreUpgrade (callback $ ((ignore $ stableGrow $ int 1) >>> (stableWrite (int 0) $ i64tob $ apiGlobalTimerSet $ int64 far_past_time))))
+      _ <- reset_stable cid
+      universal_wasm <- getTestWasm "universal-canister"
+      _ <- ic_install ic00 (enum #upgrade) cid universal_wasm (run noop)
+      timer1 <- get_stable cid
+      timer2 <- set_timer cid far_future_time
+      timer1 @?= blob 0
+      timer2 @?= blob 0
     , testCase "in post-upgrade" $ do
-      cid <- install_canister_with_global_timer (1::Int)
-      _ <- reset_global cid
+      cid <- install_canister_with_global_timer (2::Int)
+      _ <- reset_stable cid
       far_future_time <- get_far_future_time
       timer1 <- set_timer cid far_future_time
       far_far_future_time <- get_far_far_future_time
       universal_wasm <- getTestWasm "universal-canister"
       _ <- ic_install ic00 (enum #upgrade) cid universal_wasm (run $ set_timer_prog far_far_future_time)
-      timer2 <- get_global cid
+      timer2 <- get_stable cid
       timer3 <- set_timer cid far_future_time
       timer1 @?= blob 0
       timer2 @?= blob 0
@@ -1815,92 +1826,92 @@ icTests my_sub other_sub =
     , testCase "in timer callback" $ do
       past_time <- get_far_past_time
       far_future_time <- get_far_future_time
-      cid <- install ecid $ onGlobalTimer $ callback $ set_timer_prog far_future_time -- the timer callback sets timer to far_future_time and assigns the previous value of timer to global variable
-      _ <- reset_global cid -- sets global variable to 42
+      cid <- install ecid $ onGlobalTimer $ callback $ set_timer_prog far_future_time -- the timer callback sets timer to far_future_time and stores the previous value of timer to stable memory
+      _ <- reset_stable cid -- stores 42 to stable memory
       timer1 <- set_timer cid past_time -- sets timer to 1 and returns previous value of timer (0)
-      wait_for_timer cid 0 -- wait until global variable becomes 0 (previous value of timer assigned to global variable by the timer callback)
+      wait_for_timer cid 0 -- wait until stable memory stores 0 (previous value of timer assigned to stable memory by the timer callback)
       timer2 <- set_timer cid far_future_time -- sets timer to far_future_time and returns previous value of timer (far_future_time set by the timer callback)
       timer1 @?= blob 0
       timer2 @?= blob far_future_time
     , testCase "deactivate timer" $ do
-      cid <- install_canister_with_global_timer (1::Int)
-      _ <- reset_global cid
+      cid <- install_canister_with_global_timer (2::Int)
+      _ <- reset_stable cid
       far_future_time <- get_far_future_time
       timer1 <- set_timer cid far_future_time
       timer2 <- set_timer cid 0
       timer3 <- set_timer cid far_future_time
-      ctr <- get_global cid
+      ctr <- get_stable cid
       timer1 @?= blob 0
       timer2 @?= blob far_future_time
       timer3 @?= blob 0
       ctr @?= blob 42
     , testCase "set timer far in the past" $ do
-      cid <- install_canister_with_global_timer (1::Int)
-      _ <- reset_global cid
+      cid <- install_canister_with_global_timer (2::Int)
+      _ <- reset_stable cid
       past_time <- get_far_past_time
       timer1 <- set_timer cid past_time
-      wait_for_timer cid 1
+      wait_for_timer cid 2
       future_time <- get_far_future_time
       timer2 <- set_timer cid future_time
       timer1 @?= blob 0
       timer2 @?= blob 0
     , testCase "set timer at current time" $ do
-      cid <- install_canister_with_global_timer (1::Int)
-      _ <- reset_global cid
+      cid <- install_canister_with_global_timer (2::Int)
+      _ <- reset_stable cid
       current_time <- get_current_time
       timer1 <- set_timer cid current_time
-      wait_for_timer cid 1
+      wait_for_timer cid 2
       future_time <- get_far_future_time
       timer2 <- set_timer cid future_time
       timer1 @?= blob 0
       timer2 @?= blob 0
     , testCase "stop and start canister" $ do
-      cid <- install_canister_with_global_timer (1::Int)
-      _ <- reset_global cid
+      cid <- install_canister_with_global_timer (2::Int)
+      _ <- reset_stable cid
       far_future_time <- get_far_future_time
       timer1 <- set_timer cid far_future_time
       timer2 <- set_timer cid far_future_time
       _ <- ic_stop_canister ic00 cid
       _ <- ic_start_canister ic00 cid
       timer3 <- set_timer cid far_future_time
-      ctr <- get_global cid
+      ctr <- get_stable cid
       timer1 @?= blob 0
       timer2 @?= blob far_future_time
       timer3 @?= blob far_future_time
       ctr @?= blob 42
     , testCase "uninstall and install canister" $ do
-      cid <- install_canister_with_global_timer (1::Int)
-      _ <- reset_global cid
+      cid <- install_canister_with_global_timer (2::Int)
+      _ <- reset_stable cid
       far_future_time <- get_far_future_time
       timer1 <- set_timer cid far_future_time
       timer2 <- set_timer cid far_future_time
       universal_wasm <- getTestWasm "universal-canister"
       _ <- ic_uninstall ic00 cid
-      _ <- ic_install ic00 (enum #install) cid universal_wasm (run $ on_timer_prog (1::Int))
+      _ <- ic_install ic00 (enum #install) cid universal_wasm (run $ on_timer_prog (2::Int))
       timer3 <- set_timer cid far_future_time
       timer1 @?= blob 0
       timer2 @?= blob far_future_time
       timer3 @?= blob 0
     , testCase "upgrade canister" $ do
-      cid <- install_canister_with_global_timer (1::Int)
-      _ <- reset_global cid
+      cid <- install_canister_with_global_timer (2::Int)
+      _ <- reset_stable cid
       far_future_time <- get_far_future_time
       timer1 <- set_timer cid far_future_time
       timer2 <- set_timer cid far_future_time
       universal_wasm <- getTestWasm "universal-canister"
-      _ <- ic_install ic00 (enum #upgrade) cid universal_wasm (run $ on_timer_prog (1::Int))
+      _ <- ic_install ic00 (enum #upgrade) cid universal_wasm (run $ on_timer_prog (2::Int))
       timer3 <- set_timer cid far_future_time
       timer1 @?= blob 0
       timer2 @?= blob far_future_time
       timer3 @?= blob 0
     , testCase "reinstall canister" $ do
-      cid <- install_canister_with_global_timer (1::Int)
-      _ <- reset_global cid
+      cid <- install_canister_with_global_timer (2::Int)
+      _ <- reset_stable cid
       far_future_time <- get_far_future_time
       timer1 <- set_timer cid far_future_time
       timer2 <- set_timer cid far_future_time
       universal_wasm <- getTestWasm "universal-canister"
-      _ <- ic_install ic00 (enum #reinstall) cid universal_wasm (run $ on_timer_prog (1::Int))
+      _ <- ic_install ic00 (enum #reinstall) cid universal_wasm (run $ on_timer_prog (2::Int))
       timer3 <- set_timer cid far_future_time
       timer1 @?= blob 0
       timer2 @?= blob far_future_time
