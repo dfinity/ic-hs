@@ -1785,7 +1785,7 @@ icTests my_sub other_sub =
     , testCase "in pre-upgrade" $ do
       far_past_time <- get_far_past_time
       far_future_time <- get_far_future_time
-      cid <- install ecid $ (on_timer_prog (2::Int) >>> onPreUpgrade (callback $ ((ignore $ stableGrow $ int 1) >>> (stableWrite (int 0) $ i64tob $ apiGlobalTimerSet $ int64 far_past_time))))
+      cid <- install ecid $ (on_timer_prog (2::Int) >>> onPreUpgrade (callback $ (set_timer_prog far_past_time)))
       _ <- reset_stable cid
       universal_wasm <- getTestWasm "universal-canister"
       _ <- ic_install ic00 (enum #upgrade) cid universal_wasm (run noop)
@@ -1806,9 +1806,9 @@ icTests my_sub other_sub =
       timer1 @?= blob 0
       timer2 @?= blob 0
       timer3 @?= blob far_far_future_time
-    , testCase "in post-upgrade and run" $ do
-      cid <- install_canister_with_global_timer (1::Int)
-      _ <- reset_global cid
+    , testCase "in post-upgrade on stopped canister" $ do
+      cid <- install_canister_with_global_timer (2::Int)
+      _ <- reset_stable cid
       far_future_time <- get_far_future_time
       timer1 <- set_timer cid far_future_time
       past_time <- get_far_past_time
@@ -1817,7 +1817,7 @@ icTests my_sub other_sub =
       waitFor $ do
         cs <- ic_canister_status ic00 cid
         return $ cs .! #status == enum #stopped
-      _ <- ic_install ic00 (enum #upgrade) cid universal_wasm (run $ (setGlobal $ i64tob $ int64 42) >>> on_timer_prog (2::Int) >>> set_timer_prog past_time)
+      _ <- ic_install ic00 (enum #upgrade) cid universal_wasm (run $ on_timer_prog (2::Int) >>> set_timer_prog past_time)
       _ <- ic_start_canister ic00 cid
       wait_for_timer cid 2
       timer2 <- set_timer cid far_future_time
