@@ -509,10 +509,10 @@ validateDelegation cid (Just del) = do
 
 convRange :: HasCallStack => (Blob, Blob) -> IO (Word64, Word64)
 convRange (a, b) = do
-  assertBool "canister IDs must be opaque" $ isOpaqueId a
-  assertBool "canister IDs must be opaque" $ isOpaqueId b
-  a' <- asWord64 $ fromOpaqueId a
-  b' <- asWord64 $ fromOpaqueId b
+  assertBool "Canister IDs must be opaque." $ isOpaqueId a
+  assertBool "Canister IDs must be opaque." $ isOpaqueId b
+  a' <- asWord64BE $ fromOpaqueId a
+  b' <- asWord64BE $ fromOpaqueId b
   return (a', b')
 
 validateStateCert' :: (HasCallStack, HasAgentConfig) => String -> Blob -> Certificate -> IO ()
@@ -700,6 +700,9 @@ asWord32 = runGet Get.getWord32le
 
 asWord64 :: HasCallStack => Blob -> IO Word64
 asWord64 = runGet Get.getWord64le
+
+asWord64BE :: HasCallStack => Blob -> IO Word64
+asWord64BE = runGet Get.getWord64be
 
 as2Word64 :: HasCallStack => Blob -> IO (Word64, Word64)
 as2Word64 = runGet $ (,) <$> Get.getWord64le <*> Get.getWord64le
