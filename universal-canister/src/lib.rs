@@ -25,7 +25,7 @@ macro_rules! try_from_u8 {
 }
 
 try_from_u8!(
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, Eq, PartialEq)]
     pub enum Ops {
         Noop = 0,
         Drop = 1,
@@ -36,7 +36,7 @@ try_from_u8!(
         Self_ = 6,
         Reject = 7,
         Caller = 8,
-        // = 9,
+        InstructionCounterIsAtLeast = 9,
         RejectMessage = 10,
         RejectCode = 11,
         IntToBlob = 12,
@@ -103,5 +103,6 @@ try_from_u8!(
         CanisterVersion = 73,
         TrapIfNeq = 74,
         MintCycles = 75,
+        OneWayCallNew = 76,
     }
 );
