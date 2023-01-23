@@ -601,6 +601,7 @@ icTests my_sub other_sub =
   ] ++ [ after AllFinish "($0 ~ /NNS canisters/)" $ testGroup "regular canisters"
   [ simpleTestCase "create and install" ecid $ \_ ->
       return ()
+
   , testCase "create_canister necessary" $
       ic_install'' defaultUser (enum #install) doesn'tExist trivialWasmModule ""
           >>= isErrOrReject [3,5]
