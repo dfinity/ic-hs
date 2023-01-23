@@ -1,7 +1,7 @@
 module IC.Id.Fresh where
 
 import IC.Types
-import IC.Id.Forms
+import IC.Id.Forms hiding (Blob)
 
 import Data.ByteString.Builder
 import Data.List
@@ -19,6 +19,9 @@ wordToId = EntityId . mkOpaqueId . toLazyByteString . word64BE
 
 checkCanisterIdInRanges :: [(Word64, Word64)] -> CanisterId -> Bool
 checkCanisterIdInRanges ranges cid = find (\(a, b) -> wordToId a <= cid && cid <= wordToId b) ranges /= Nothing
+
+checkCanisterIdInRanges' :: [(Word64, Word64)] -> Blob -> Bool
+checkCanisterIdInRanges' ranges cid = checkCanisterIdInRanges ranges (EntityId cid)
 
 isRootTestSubnet :: TestSubnetConfig -> Bool
 isRootTestSubnet (_, _, _, ranges) = checkCanisterIdInRanges ranges nns_canister_id

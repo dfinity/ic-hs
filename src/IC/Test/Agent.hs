@@ -166,11 +166,14 @@ import IC.Crypto
 import qualified IC.Crypto.DER as DER
 import qualified IC.Crypto.DER_BLS as DER_BLS
 import IC.Id.Forms
+import IC.Id.Fresh
 import IC.Test.Options
 import IC.HashTree hiding (Blob, Label)
 import IC.Certificate
 import IC.Certificate.Value
 import IC.Certificate.CBOR
+import IC.CBOR.Parser(decodeWithTag)
+import IC.CBOR.Utils
 
 -- * Agent configuration
 
@@ -451,6 +454,7 @@ getStateCert'' sender ecid paths = do
       gr <- okCBOR response
       b <- asExceptT $ record (field blob "certificate") gr
       cert <- decodeCert' b
+      validateStateCert ecid cert
 
       case wellFormed (cert_tree cert) of
           Left err -> assertFailure $ "Hash tree not well formed: " ++ err
@@ -486,23 +490,37 @@ verboseVerify what domain_sep pk msg sig =
             ]
         Right () -> return ()
 
-validateDelegation :: (HasCallStack, HasAgentConfig) => Maybe Delegation -> IO Blob
-validateDelegation Nothing = return (tc_root_key agentConfig)
-validateDelegation (Just del) = do
+validateDelegation :: (HasCallStack, HasAgentConfig) => Blob -> Maybe Delegation -> IO Blob
+validateDelegation _ Nothing = return (tc_root_key agentConfig)
+validateDelegation cid (Just del) = do
     cert <- decodeCert' (del_certificate del)
     case wellFormed (cert_tree cert) of
         Left err -> assertFailure $ "Hash tree not well formed: " ++ err
         Right () -> return ()
-    validateStateCert' "certificate delegation" cert
+    validateStateCert' "certificate delegation" cid cert
+
+    tagged_ranges <- certValue cert ["subnet", del_subnet_id del, "canister_ranges"]
+    ranges <- case decodeWithTag tagged_ranges >>= parseCanisterRanges of
+        Left err -> assertFailure $ "Canister ranges not well formed: " ++ T.unpack err
+        Right ranges -> mapM convRange ranges
+    assertBool "Effective canister id must belong to the canister ranges of the subnet's delegation." $ checkCanisterIdInRanges' ranges cid
 
     certValue cert ["subnet", del_subnet_id del, "public_key"]
 
-validateStateCert' :: (HasCallStack, HasAgentConfig) => String -> Certificate -> IO ()
-validateStateCert' what cert = do
-    pk <- validateDelegation (cert_delegation cert)
+convRange :: HasCallStack => (Blob, Blob) -> IO (Word64, Word64)
+convRange (a, b) = do
+  assertBool "canister IDs must be opaque" $ isOpaqueId a
+  assertBool "canister IDs must be opaque" $ isOpaqueId b
+  a' <- asWord64 $ fromOpaqueId a
+  b' <- asWord64 $ fromOpaqueId b
+  return (a', b')
+
+validateStateCert' :: (HasCallStack, HasAgentConfig) => String -> Blob -> Certificate -> IO ()
+validateStateCert' what cid cert = do
+    pk <- validateDelegation cid (cert_delegation cert)
     verboseVerify what "ic-state-root" pk (reconstruct (cert_tree cert)) (cert_sig cert)
 
-validateStateCert :: (HasCallStack, HasAgentConfig) => Certificate -> IO ()
+validateStateCert :: (HasCallStack, HasAgentConfig) => Blob -> Certificate -> IO ()
 validateStateCert = validateStateCert' "certificate"
 
 data ReqResponse = Reply Blob | Reject Natural T.Text (Maybe T.Text)

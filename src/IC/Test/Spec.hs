@@ -2357,7 +2357,7 @@ icTests my_sub other_sub =
 
     , simpleTestCase "certificate validates" ecid $ \cid -> do
         cert <- getStateCert defaultUser cid []
-        validateStateCert cert
+        validateStateCert cid cert
 
     , testCaseSteps "time is present" $ \step -> do
         cid <- create ecid
@@ -2523,7 +2523,7 @@ icTests my_sub other_sub =
       query cid (replyData getCertificate) >>= extractCertData cid >>= is ""
     , simpleTestCase "validates" ecid $ \cid -> do
       query cid (replyData getCertificate)
-        >>= decodeCert' >>= validateStateCert
+        >>= decodeCert' >>= validateStateCert cid
     , simpleTestCase "present in query method (query call)" ecid $ \cid -> do
       query cid (replyData (i2b getCertificatePresent))
         >>= is "\1\0\0\0"
@@ -3152,7 +3152,7 @@ icTests my_sub other_sub =
           -- Get certificate
           cert <- query cid (replyData getCertificate) >>= decodeCert'
           -- double check it certifies
-          validateStateCert cert
+          validateStateCert cid cert
           certValue cert ["canister", cid, "certified_data"] >>= is (reconstruct tree)
 
           return $ CanisterSig.genSig cert tree

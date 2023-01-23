@@ -15,7 +15,10 @@ mkOpaqueId b =
     b <> BS.singleton 1 <> BS.singleton 1
 
 isOpaqueId :: Blob -> Bool
-isOpaqueId b = BS.drop (BS.length b - 1) b == BS.singleton 1
+isOpaqueId b = BS.drop (BS.length b - 2) b == BS.singleton 1 <> BS.singleton 1
+
+fromOpaqueId :: Blob -> Blob
+fromOpaqueId b = BS.take (BS.length b - 2) b
 
 mkSelfAuthenticatingId :: Blob -> Blob
 mkSelfAuthenticatingId pubkey =
