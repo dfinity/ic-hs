@@ -502,18 +502,10 @@ validateDelegation cid (Just del) = do
     tagged_ranges <- certValue cert ["subnet", del_subnet_id del, "canister_ranges"]
     ranges <- case decodeWithTag tagged_ranges >>= parseCanisterRanges of
         Left err -> assertFailure $ "Canister ranges not well formed: " ++ T.unpack err
-        Right ranges -> mapM convRange ranges
+        Right ranges -> return ranges
     assertBool "Effective canister id must belong to the canister ranges of the subnet's delegation." $ checkCanisterIdInRanges' ranges cid
 
     certValue cert ["subnet", del_subnet_id del, "public_key"]
-
-convRange :: HasCallStack => (Blob, Blob) -> IO (Word64, Word64)
-convRange (a, b) = do
-  assertBool "Canister IDs must be opaque." $ isOpaqueId a
-  assertBool "Canister IDs must be opaque." $ isOpaqueId b
-  a' <- asWord64BE $ fromOpaqueId a
-  b' <- asWord64BE $ fromOpaqueId b
-  return (a', b')
 
 validateStateCert' :: (HasCallStack, HasAgentConfig) => String -> Blob -> Certificate -> IO ()
 validateStateCert' what cid cert = do
@@ -700,9 +692,6 @@ asWord32 = runGet Get.getWord32le
 
 asWord64 :: HasCallStack => Blob -> IO Word64
 asWord64 = runGet Get.getWord64le
-
-asWord64BE :: HasCallStack => Blob -> IO Word64
-asWord64BE = runGet Get.getWord64be
 
 as2Word64 :: HasCallStack => Blob -> IO (Word64, Word64)
 as2Word64 = runGet $ (,) <$> Get.getWord64le <*> Get.getWord64le
