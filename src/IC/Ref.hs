@@ -425,7 +425,7 @@ authReadStateRequest t ecid ev (ReadStateRequest user_id paths) = do
     valid_for ev user_id
     -- Implement ACL for read requests here
     forM_ paths $ \case
-      ["time"] -> return ()
+      ("time":_) -> return ()
       ("subnet":_) -> return ()
       ("canister":cid:"module_hash":_) ->
         assertEffectiveCanisterId ecid (EntityId cid)
