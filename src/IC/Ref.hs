@@ -448,8 +448,8 @@ authReadStateRequest t ecid ev (ReadStateRequest user_id paths) = do
       ("request_status":rid: _) | BS.length rid /= 32 -> throwError "Request IDs must be 32 bytes in length."
       ("request_status":rid: _) ->                            
         gets (findRequest rid) >>= \case
-          Just (ar@(CallRequest cid _ meth arg),_) -> do
-            checkEffectiveCanisterID ecid cid meth arg
+          Just (ar, (_, ecid')) -> do
+            assertEffectiveCanisterId ecid ecid'
             unless (user_id == callerOfCallRequest ar) $
               throwError "User is not authorized to read this request status"
             valid_where ev (calleeOfCallRequest ar)
@@ -511,7 +511,7 @@ checkEffectiveCanisterID :: RequestValidation m => CanisterId -> CanisterId -> M
 checkEffectiveCanisterID ecid cid method arg
   | cid == managementCanisterId =
     if | method == "provisional_create_canister_with_cycles" -> pure ()
-       | method `elem` ["raw_rand", "http_request", "ecdsa_public_key", "sign_with_ecdsa"] -> 
+       | method `elem` ["create_canister", "raw_rand", "http_request", "ecdsa_public_key", "sign_with_ecdsa"] ->
          throwError $ T.pack method <>  " cannot be invoked via ingress calls"
        | otherwise -> case Codec.Candid.decode @(R.Rec ("canister_id" R..== Principal)) arg of
                         Left err ->
