@@ -2358,7 +2358,7 @@ icTests my_sub other_sub =
 
     , simpleTestCase "certificate does not validate if canister range check fails" ecid $ \cid -> do
         unless my_is_root $ do
-          cert <- getStateCert defaultUser cid [["time"]]
+          cert <- getStateCert defaultUser cid []
           result <- try (validateStateCert other_ecid cert) :: IO (Either DelegationCanisterRangeCheck ())
           assertBool "certificate should not validate" $ isLeft result
 
