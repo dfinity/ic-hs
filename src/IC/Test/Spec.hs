@@ -44,7 +44,7 @@ import Data.Maybe
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
 
-import IC.Management (HttpResponse, HttpHeader, entityIdToPrincipal)
+import IC.Management (HttpResponse, HttpHeader, entityIdToPrincipal, Settings)
 import IC.Types (EntityId(..))
 import IC.HTTP.GenR
 import IC.HTTP.RequestId
@@ -2343,6 +2343,24 @@ icTests my_sub other_sub =
           getRequestStatus user cid (requestId req) >>= is (Responded (Reply "\xff\xff"))
 
           return (requestId req)
+        ensure_provisional_create_canister_request_exists user = do
+          let arg = empty
+                    .+ #amount .== (Just initial_cycles :: Maybe Natural)
+                    .+ #settings .== (Nothing :: Maybe Settings)
+                    .+ #specified_id .== (Nothing :: Maybe Principal)
+          req <- addNonce >=> addExpiry $ rec
+            [ "request_type" =: GText "call"
+            , "sender" =: GBlob user
+            , "canister_id" =: GBlob ""
+            , "method_name" =: GText "provisional_create_canister_with_cycles"
+            , "arg" =: GBlob (Candid.encode arg)
+            ]
+          _ <- awaitCall ecid req >>= isReply
+
+          -- check that the request is there
+          getRequestStatus user ecid (requestId req) >>= isResponded
+
+          return (requestId req)
         canister_id_in_canister_ranges cid (Just del) = do
             del_cert <- decodeCert' (del_certificate del)
             ranges <- certValue @Blob del_cert ["subnet", del_subnet_id del, "canister_ranges"] >>= asCBORBlobPairList
@@ -2448,6 +2466,10 @@ icTests my_sub other_sub =
         rid1 <- ensure_request_exists cid defaultUser
         rid2 <- ensure_request_exists cid2 defaultUser
         getStateCert' defaultUser cid [["request_status", rid1], ["request_status", rid2]] >>= code4xx
+
+    , testCase "access denied with different effective canister id" $ do
+        rid <- ensure_provisional_create_canister_request_exists defaultUser
+        getStateCert' defaultUser doesn'tExist [["request_status", rid]] >>= code4xx
 
     , simpleTestCase "access denied for bogus path" ecid $ \cid -> do
         getStateCert' otherUser cid [["hello", "world"]] >>= code4xx
