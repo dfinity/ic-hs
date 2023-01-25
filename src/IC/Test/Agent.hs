@@ -572,7 +572,7 @@ getRequestStatus sender cid rid = getRequestStatus' sender cid rid >>= is2xx
 
 isResponded :: ReqStatus -> Assertion
 isResponded (Responded _) = return ()
-isResponded _ = assertFailure "Request must be replied"
+isResponded _ = assertFailure "Request must be responded"
 
 loop' :: (HasCallStack, HasAgentConfig) => IO (HTTPErrOr (Maybe a)) -> IO (HTTPErrOr a)
 loop' act = getCurrentTime >>= go
