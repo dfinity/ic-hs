@@ -2343,7 +2343,7 @@ icTests my_sub other_sub =
           getRequestStatus user cid (requestId req) >>= is (Responded (Reply "\xff\xff"))
 
           return (requestId req)
-        ensure_provisional_create_canister_request_exists user = do
+        ensure_provisional_create_canister_request_exists ecid user = do
           let arg = empty
                     .+ #amount .== (Just initial_cycles :: Maybe Natural)
                     .+ #settings .== (Nothing :: Maybe Settings)
@@ -2467,9 +2467,10 @@ icTests my_sub other_sub =
         rid2 <- ensure_request_exists cid2 defaultUser
         getStateCert' defaultUser cid [["request_status", rid1], ["request_status", rid2]] >>= code4xx
 
-    , testCase "access denied with different effective canister id" $ do
-        rid <- ensure_provisional_create_canister_request_exists defaultUser
-        getStateCert' defaultUser doesn'tExist [["request_status", rid]] >>= code4xx
+    , simpleTestCase "access denied with different effective canister id" ecid $ \cid -> do
+        cid2 <- install ecid noop
+        rid <- ensure_provisional_create_canister_request_exists cid defaultUser
+        getStateCert' defaultUser cid2 [["request_status", rid]] >>= code4xx
 
     , simpleTestCase "access denied for bogus path" ecid $ \cid -> do
         getStateCert' otherUser cid [["hello", "world"]] >>= code4xx
