@@ -21,6 +21,8 @@ import qualified Data.Map.Lazy as M
 import qualified Data.Set as S
 import qualified Data.Vector as Vec
 import qualified Data.ByteString.Lazy.UTF8 as BLU
+import Control.Exception(try)
+import Data.Either(isLeft)
 import Data.ByteString.Builder
 import Numeric.Natural
 import Data.List
@@ -529,11 +531,12 @@ canister_http_calls sub =
 icTests :: TestSubnetConfig -> TestSubnetConfig -> AgentConfig -> TestTree
 icTests my_sub other_sub =
   let (my_subnet_id_as_entity, my_type, _, ((ecid_as_word64, last_canister_id_as_word64):_)) = my_sub in
-  let (other_subnet_id_as_entity, _, _, _) = other_sub in
+  let (other_subnet_id_as_entity, _, _, ((other_ecid_as_word64, _):_)) = other_sub in
   let my_subnet_id = rawEntityId my_subnet_id_as_entity in
   let other_subnet_id = rawEntityId other_subnet_id_as_entity in
   let my_is_root = isRootTestSubnet my_sub in
   let ecid = rawEntityId $ wordToId ecid_as_word64 in
+  let other_ecid = rawEntityId $ wordToId other_ecid_as_word64 in
   let last_canister_id = rawEntityId $ wordToId last_canister_id_as_word64 in
   let initial_cycles = case my_type of System -> 0
                                        _ -> (2^(60::Int)) in
@@ -2343,12 +2346,6 @@ icTests my_sub other_sub =
           getRequestStatus user cid (requestId req) >>= is (Responded (Reply "\xff\xff"))
 
           return (requestId req)
-        canister_id_in_canister_ranges cid (Just del) = do
-            del_cert <- decodeCert' (del_certificate del)
-            ranges <- certValue @Blob del_cert ["subnet", del_subnet_id del, "canister_ranges"] >>= asCBORBlobPairList
-            cid `isContainedIn` ranges
-            canister_id_in_canister_ranges cid (cert_delegation del_cert)
-        canister_id_in_canister_ranges _ Nothing = return ()
     in
     [ testGroup "required fields" $
         omitFields readStateEmpty $ \req -> do
@@ -2358,6 +2355,12 @@ icTests my_sub other_sub =
     , simpleTestCase "certificate validates" ecid $ \cid -> do
         cert <- getStateCert defaultUser cid []
         validateStateCert cid cert
+
+    , simpleTestCase "certificate does not validate if canister range check fails" ecid $ \cid -> do
+        unless my_is_root $ do
+          cert <- getStateCert defaultUser cid [["time"]]
+          result <- try (validateStateCert other_ecid cert) :: IO (Either DelegationCanisterRangeCheck ())
+          assertBool "certificate should not validate" $ isLeft result
 
     , testCaseSteps "time is present" $ \step -> do
         cid <- create ecid
@@ -2374,11 +2377,6 @@ icTests my_sub other_sub =
         cid <- create ecid
         cert <- getStateCert defaultUser cid [["canister", cid, "controllers"]]
         certValue @Blob cert ["canister", cid, "controllers"] >>= asCBORBlobList >>= isSet [defaultUser]
-
-    , testCase "canister_id included in canister_ranges" $ do
-        cid <- create ecid
-        cert <- getStateCert defaultUser cid [["subnet"]]
-        canister_id_in_canister_ranges cid (cert_delegation cert)
 
     , testCase "module_hash of empty canister" $ do
         cid <- create ecid

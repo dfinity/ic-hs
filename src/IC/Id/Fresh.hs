@@ -4,7 +4,6 @@ import IC.Types
 import IC.Id.Forms hiding (Blob)
 
 import Data.ByteString.Builder
-import Data.List
 import Data.Word
 
 -- Not particulary efficent, but this is a reference implementation, right?
@@ -21,7 +20,7 @@ wordToId :: Word64 -> EntityId
 wordToId = EntityId . wordToId'
 
 checkCanisterIdInRanges' :: [(Blob, Blob)] -> Blob -> Bool
-checkCanisterIdInRanges' ranges cid = find (\(a, b) -> a <= cid && cid <= b) ranges /= Nothing
+checkCanisterIdInRanges' ranges cid = any (\(a, b) -> a <= cid && cid <= b) ranges
 
 checkCanisterIdInRanges :: [(Word64, Word64)] -> CanisterId -> Bool
 checkCanisterIdInRanges ranges cid = checkCanisterIdInRanges' (map (\(a, b) -> (wordToId' a, wordToId' b)) ranges) (rawEntityId cid)

@@ -27,6 +27,7 @@ This module can also be used in a REPL; see 'connect'.
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DeriveAnyClass #-}
 module IC.Test.Agent
     (
       HTTPErrOr,
@@ -37,6 +38,7 @@ module IC.Test.Agent
       ReqResponse(..),
       ReqStatus(..),
       AgentConfig(..),
+      DelegationCanisterRangeCheck(..),
       addExpiry,
       addNonce,
       addNonceExpiryEnv,
@@ -137,7 +139,7 @@ import Test.Tasty.HUnit
 import Test.Tasty.Options
 import Control.Monad.Except
 import Control.Concurrent
-import Control.Exception (catch)
+import Control.Exception (catch, throw, Exception)
 import Data.Traversable
 import Data.Word
 import Data.WideWord.Word128
@@ -172,8 +174,25 @@ import IC.HashTree hiding (Blob, Label)
 import IC.Certificate
 import IC.Certificate.Value
 import IC.Certificate.CBOR
-import IC.CBOR.Parser(decodeWithTag)
-import IC.CBOR.Utils
+
+-- * Exceptions
+
+data DelegationCanisterRangeCheck = DelegationCanisterRangeCheck [(Blob, Blob)] Blob
+  deriving (Show, Exception)
+
+-- * CBOR decoding
+
+asCBORBlobPairList :: Blob -> IO [(Blob, Blob)]
+asCBORBlobPairList blob = do
+    decoded <- asRight $ decode blob
+    case decoded of
+        GList list -> do
+            mapM cborToBlobPair list
+        _ -> assertFailure $ "Failed to decode as CBOR encoded list of blob pairs: " <> show decoded
+
+cborToBlobPair :: GenR -> IO (Blob, Blob)
+cborToBlobPair (GList [GBlob x, GBlob y]) = return (x, y)
+cborToBlobPair r = assertFailure $ "Expected list of pairs, got: " <> show r
 
 -- * Agent configuration
 
@@ -499,11 +518,8 @@ validateDelegation cid (Just del) = do
         Right () -> return ()
     validateStateCert' "certificate delegation" cid cert
 
-    tagged_ranges <- certValue cert ["subnet", del_subnet_id del, "canister_ranges"]
-    ranges <- case decodeWithTag tagged_ranges >>= parseCanisterRanges of
-        Left err -> assertFailure $ "Canister ranges not well formed: " ++ T.unpack err
-        Right ranges -> return ranges
-    assertBool "Effective canister id must belong to the canister ranges of the subnet's delegation." $ checkCanisterIdInRanges' ranges cid
+    ranges <- certValue @Blob cert ["subnet", del_subnet_id del, "canister_ranges"] >>= asCBORBlobPairList
+    unless (checkCanisterIdInRanges' ranges cid) $ throw (DelegationCanisterRangeCheck ranges cid)
 
     certValue cert ["subnet", del_subnet_id del, "public_key"]
 
