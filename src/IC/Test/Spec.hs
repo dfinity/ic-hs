@@ -46,7 +46,7 @@ import Data.Maybe
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
 
-import IC.Management (HttpResponse, HttpHeader, entityIdToPrincipal)
+import IC.Management (HttpResponse, HttpHeader, entityIdToPrincipal, InstallMode)
 import IC.Types (EntityId(..))
 import IC.HTTP.GenR
 import IC.HTTP.RequestId
@@ -1788,7 +1788,7 @@ icTests my_sub other_sub =
     , testCase "in pre-upgrade" $ do
       far_past_time <- get_far_past_time
       far_future_time <- get_far_future_time
-      cid <- install ecid $ (on_timer_prog (2::Int) >>> onPreUpgrade (callback $ ((ignore $ stableGrow $ int 1) >>> (stableWrite (int 0) $ i64tob $ apiGlobalTimerSet $ int64 far_past_time))))
+      cid <- install ecid $ (on_timer_prog (2::Int) >>> onPreUpgrade (callback $ set_timer_prog far_past_time))
       _ <- reset_stable cid
       universal_wasm <- getTestWasm "universal-canister"
       _ <- ic_install ic00 (enum #upgrade) cid universal_wasm (run noop)
@@ -1809,6 +1809,51 @@ icTests my_sub other_sub =
       timer1 @?= blob 0
       timer2 @?= blob 0
       timer3 @?= blob far_far_future_time
+    , testCase "in post-upgrade on stopped canister" $ do
+      cid <- install_canister_with_global_timer (2::Int)
+      _ <- reset_stable cid
+      far_future_time <- get_far_future_time
+      timer1 <- set_timer cid far_future_time
+      past_time <- get_far_past_time
+      universal_wasm <- getTestWasm "universal-canister"
+      _ <- ic_stop_canister ic00 cid
+      waitFor $ do
+        cs <- ic_canister_status ic00 cid
+        return $ cs .! #status == enum #stopped
+      _ <- ic_install ic00 (enum #upgrade) cid universal_wasm (run $ on_timer_prog (2::Int) >>> set_timer_prog past_time)
+      _ <- ic_start_canister ic00 cid
+      wait_for_timer cid 2
+      timer2 <- set_timer cid far_future_time
+      timer1 @?= blob 0
+      timer2 @?= blob 0
+    , testCase "in post-upgrade on stopping canister" $ do
+      cid <- install_canister_with_global_timer (2::Int)
+      _ <- reset_stable cid
+      far_future_time <- get_far_future_time
+      timer1 <- set_timer cid far_future_time
+      cid2 <- install ecid noop
+      ic_set_controllers ic00 cid [defaultUser, cid2]
+      universal_wasm <- getTestWasm "universal-canister"
+      past_time <- get_far_past_time
+      let upgrade = update_call "" "install_code" $ defUpdateArgs {
+              uc_arg = Candid.encode $ empty
+                .+ #mode .== ((enum #upgrade) :: InstallMode)
+                .+ #canister_id .== Principal cid
+                .+ #wasm_module .== universal_wasm
+                .+ #arg .== (run $ on_timer_prog (2::Int) >>> set_timer_prog past_time)
+            }
+      let stop_and_upgrade = (oneway_call "" "stop_canister" $ defOneWayArgs {
+              ow_arg = Candid.encode $ empty .+ #canister_id .== Principal cid
+            }) >>> upgrade
+      let relay = oneway_call cid2 "update" $ defOneWayArgs {
+              ow_arg = run stop_and_upgrade
+            }
+      call' cid relay >>= isReject [5] -- we get an error here because, to keep the canister stopping, we cannot reply after performing the one-way call
+      ic_start_canister ic00 cid
+      wait_for_timer cid 2
+      timer2 <- set_timer cid far_future_time
+      timer1 @?= blob 0
+      timer2 @?= blob 0
     , testCase "in timer callback" $ do
       past_time <- get_far_past_time
       far_future_time <- get_far_future_time
