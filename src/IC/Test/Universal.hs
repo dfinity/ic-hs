@@ -272,6 +272,9 @@ trapIfNeq = op 74
 mintCycles :: Exp 'I64 -> Exp 'I64
 mintCycles = op 75
 
+oneWayCallNew :: Exp 'B -> Exp 'B -> Prog
+oneWayCallNew = op 76
+
 -- Some convenience combinators
 
 -- This allows us to write byte expressions as plain string literals
@@ -286,6 +289,37 @@ replyData a = replyDataAppend a >>> reply
 
 -- Convenient inter-canister calling
 
+data OneWayCallArgs = OneWayCallArgs
+    { ow_arg :: BS.ByteString
+    , ow_cycles :: Word64
+    , ow_icpts :: Word64
+    }
+
+oneway_call :: BS.ByteString -> BS.ByteString -> OneWayCallArgs -> Prog
+oneway_call callee method_name ca =
+    oneWayCallNew (bytes callee) (bytes method_name) >>>
+    callDataAppend (bytes $ ow_arg ca) >>>
+    (if ow_cycles ca > 0 then callCyclesAdd (int64 (ow_cycles ca)) else noop) >>>
+    callPerform
+
+data UpdateCallArgs = UpdateCallArgs
+    { uc_on_reply :: Prog
+    , uc_on_reject :: Prog
+    , uc_on_cleanup :: Maybe Prog
+    , uc_arg :: BS.ByteString
+    , uc_cycles :: Word64
+    , uc_icpts :: Word64
+    }
+
+update_call :: BS.ByteString -> BS.ByteString -> UpdateCallArgs -> Prog
+update_call callee method_name ca =
+    callNew (bytes callee) (bytes method_name)
+            (callback (uc_on_reply ca)) (callback (uc_on_reject ca)) >>>
+    maybe noop (callOnCleanup . callback) (uc_on_cleanup ca) >>>
+    callDataAppend (bytes $ uc_arg ca) >>>
+    (if uc_cycles ca > 0 then callCyclesAdd (int64 (uc_cycles ca)) else noop) >>>
+    callPerform
+
 data CallArgs = CallArgs
     { on_reply :: Prog
     , on_reject :: Prog
@@ -297,12 +331,8 @@ data CallArgs = CallArgs
 
 inter_call :: BS.ByteString -> BS.ByteString -> CallArgs -> Prog
 inter_call callee method_name ca =
-    callNew (bytes callee) (bytes method_name)
-            (callback (on_reply ca)) (callback (on_reject ca)) >>>
-    maybe noop (callOnCleanup . callback) (on_cleanup ca) >>>
-    callDataAppend (callback (other_side ca)) >>>
-    (if cycles ca > 0 then callCyclesAdd (int64 (cycles ca)) else noop) >>>
-    callPerform
+    let uca = UpdateCallArgs (on_reply ca) (on_reject ca) (on_cleanup ca) (run (other_side ca)) (cycles ca) (icpts ca) in
+    update_call callee method_name uca
 
 inter_update :: BS.ByteString -> CallArgs -> Prog
 inter_update callee = inter_call callee "update"
@@ -312,6 +342,23 @@ inter_query callee = inter_call callee "query"
 
 -- | By default, the other side responds with some text
 -- indicating caller and callee, and the callbacks reply with the response.
+defOneWayArgs :: OneWayCallArgs
+defOneWayArgs = OneWayCallArgs
+    { ow_arg = ""
+    , ow_cycles = 0
+    , ow_icpts = 0
+    }
+
+defUpdateArgs :: UpdateCallArgs
+defUpdateArgs = UpdateCallArgs
+    { uc_on_reply = relayReply
+    , uc_on_reject = relayReject
+    , uc_on_cleanup = Nothing
+    , uc_arg = ""
+    , uc_cycles = 0
+    , uc_icpts = 0
+    }
+
 defArgs :: CallArgs
 defArgs = CallArgs
     { on_reply = relayReply

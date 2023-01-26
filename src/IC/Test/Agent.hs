@@ -27,6 +27,7 @@ This module can also be used in a REPL; see 'connect'.
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DeriveAnyClass #-}
 module IC.Test.Agent
     (
       HTTPErrOr,
@@ -37,6 +38,7 @@ module IC.Test.Agent
       ReqResponse(..),
       ReqStatus(..),
       AgentConfig(..),
+      DelegationCanisterRangeCheck(..),
       addExpiry,
       addNonce,
       addNonceExpiryEnv,
@@ -138,7 +140,7 @@ import Test.Tasty.HUnit
 import Test.Tasty.Options
 import Control.Monad.Except
 import Control.Concurrent
-import Control.Exception (catch)
+import Control.Exception (catch, throw, Exception)
 import Data.Traversable
 import Data.Word
 import Data.WideWord.Word128
@@ -167,11 +169,31 @@ import IC.Crypto
 import qualified IC.Crypto.DER as DER
 import qualified IC.Crypto.DER_BLS as DER_BLS
 import IC.Id.Forms
+import IC.Id.Fresh
 import IC.Test.Options
 import IC.HashTree hiding (Blob, Label)
 import IC.Certificate
 import IC.Certificate.Value
 import IC.Certificate.CBOR
+
+-- * Exceptions
+
+data DelegationCanisterRangeCheck = DelegationCanisterRangeCheck [(Blob, Blob)] Blob
+  deriving (Show, Exception)
+
+-- * CBOR decoding
+
+asCBORBlobPairList :: Blob -> IO [(Blob, Blob)]
+asCBORBlobPairList blob = do
+    decoded <- asRight $ decode blob
+    case decoded of
+        GList list -> do
+            mapM cborToBlobPair list
+        _ -> assertFailure $ "Failed to decode as CBOR encoded list of blob pairs: " <> show decoded
+
+cborToBlobPair :: GenR -> IO (Blob, Blob)
+cborToBlobPair (GList [GBlob x, GBlob y]) = return (x, y)
+cborToBlobPair r = assertFailure $ "Expected list of pairs, got: " <> show r
 
 -- * Agent configuration
 
@@ -452,6 +474,7 @@ getStateCert'' sender ecid paths = do
       gr <- okCBOR response
       b <- asExceptT $ record (field blob "certificate") gr
       cert <- decodeCert' b
+      validateStateCert ecid cert
 
       case wellFormed (cert_tree cert) of
           Left err -> assertFailure $ "Hash tree not well formed: " ++ err
@@ -487,23 +510,26 @@ verboseVerify what domain_sep pk msg sig =
             ]
         Right () -> return ()
 
-validateDelegation :: (HasCallStack, HasAgentConfig) => Maybe Delegation -> IO Blob
-validateDelegation Nothing = return (tc_root_key agentConfig)
-validateDelegation (Just del) = do
+validateDelegation :: (HasCallStack, HasAgentConfig) => Blob -> Maybe Delegation -> IO Blob
+validateDelegation _ Nothing = return (tc_root_key agentConfig)
+validateDelegation cid (Just del) = do
     cert <- decodeCert' (del_certificate del)
     case wellFormed (cert_tree cert) of
         Left err -> assertFailure $ "Hash tree not well formed: " ++ err
         Right () -> return ()
-    validateStateCert' "certificate delegation" cert
+    validateStateCert' "certificate delegation" cid cert
+
+    ranges <- certValue @Blob cert ["subnet", del_subnet_id del, "canister_ranges"] >>= asCBORBlobPairList
+    unless (checkCanisterIdInRanges' ranges cid) $ throw (DelegationCanisterRangeCheck ranges cid)
 
     certValue cert ["subnet", del_subnet_id del, "public_key"]
 
-validateStateCert' :: (HasCallStack, HasAgentConfig) => String -> Certificate -> IO ()
-validateStateCert' what cert = do
-    pk <- validateDelegation (cert_delegation cert)
+validateStateCert' :: (HasCallStack, HasAgentConfig) => String -> Blob -> Certificate -> IO ()
+validateStateCert' what cid cert = do
+    pk <- validateDelegation cid (cert_delegation cert)
     verboseVerify what "ic-state-root" pk (reconstruct (cert_tree cert)) (cert_sig cert)
 
-validateStateCert :: (HasCallStack, HasAgentConfig) => Certificate -> IO ()
+validateStateCert :: (HasCallStack, HasAgentConfig) => Blob -> Certificate -> IO ()
 validateStateCert = validateStateCert' "certificate"
 
 data ReqResponse = Reply Blob | Reject Natural T.Text (Maybe T.Text)

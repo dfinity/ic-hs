@@ -4,6 +4,8 @@ use universal_canister::Ops;
 
 mod api;
 
+const ONE_WAY_CALL: u32 = u32::MAX;
+
 // Canister http_request types
 
 #[derive(CandidType, Deserialize)]
@@ -25,11 +27,11 @@ pub struct TransformArg {
     pub context: Vec<u8>,
 }
 
-fn http_reply_with_body(body: &Vec<u8>) -> Vec<u8> {
+fn http_reply_with_body(body: &[u8]) -> Vec<u8> {
     Encode!(&HttpResponse {
-        status: 200 as u128,
+        status: 200_u128,
         headers: vec![],
-        body: body.clone(),
+        body: body.to_vec(),
     })
     .unwrap()
 }
@@ -147,6 +149,10 @@ fn eval(ops_bytes: OpsBytes) {
             Ops::Self_ => stack.push_blob(api::id()),
             Ops::Reject => api::reject(&stack.pop_blob()),
             Ops::Caller => stack.push_blob(api::caller()),
+            Ops::InstructionCounterIsAtLeast => {
+                let amount = stack.pop_int64();
+                while api::performance_counter(0) < amount {}
+            }
             Ops::RejectMessage => stack.push_blob(api::reject_message()),
             Ops::RejectCode => stack.push_int(api::reject_code()),
             Ops::IntToBlob => {
@@ -344,6 +350,20 @@ fn eval(ops_bytes: OpsBytes) {
                 let amount = stack.pop_int64();
                 stack.push_int64(api::mint_cycles(amount));
             }
+            Ops::OneWayCallNew => {
+                // pop in reverse order!
+                let method = stack.pop_blob();
+                let callee = stack.pop_blob();
+
+                api::call_new(
+                    &callee,
+                    &method,
+                    callback,
+                    ONE_WAY_CALL,
+                    callback,
+                    ONE_WAY_CALL,
+                );
+            }
         }
     }
 }
@@ -507,7 +527,9 @@ fn get_callback(idx: u32) -> Vec<u8> {
 }
 
 fn callback(env: u32) {
-    eval(&get_callback(env));
+    if env != ONE_WAY_CALL {
+        eval(&get_callback(env));
+    }
 }
 
 /* Panic setup */

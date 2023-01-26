@@ -21,6 +21,8 @@ import qualified Data.Map.Lazy as M
 import qualified Data.Set as S
 import qualified Data.Vector as Vec
 import qualified Data.ByteString.Lazy.UTF8 as BLU
+import Control.Exception(try)
+import Data.Either(isLeft)
 import Data.ByteString.Builder
 import Numeric.Natural
 import Data.List
@@ -44,7 +46,7 @@ import Data.Maybe
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
 
-import IC.Management (HttpResponse, HttpHeader, entityIdToPrincipal, Settings)
+import IC.Management (HttpResponse, HttpHeader, entityIdToPrincipal, InstallMode, Settings)
 import IC.Types (EntityId(..))
 import IC.HTTP.GenR
 import IC.HTTP.RequestId
@@ -529,11 +531,12 @@ canister_http_calls sub =
 icTests :: TestSubnetConfig -> TestSubnetConfig -> AgentConfig -> TestTree
 icTests my_sub other_sub =
   let (my_subnet_id_as_entity, my_type, _, ((ecid_as_word64, last_canister_id_as_word64):_)) = my_sub in
-  let (other_subnet_id_as_entity, _, _, _) = other_sub in
+  let (other_subnet_id_as_entity, _, _, ((other_ecid_as_word64, _):_)) = other_sub in
   let my_subnet_id = rawEntityId my_subnet_id_as_entity in
   let other_subnet_id = rawEntityId other_subnet_id_as_entity in
   let my_is_root = isRootTestSubnet my_sub in
   let ecid = rawEntityId $ wordToId ecid_as_word64 in
+  let other_ecid = rawEntityId $ wordToId other_ecid_as_word64 in
   let last_canister_id = rawEntityId $ wordToId last_canister_id_as_word64 in
   let initial_cycles = case my_type of System -> 0
                                        _ -> (2^(60::Int)) in
@@ -1785,7 +1788,7 @@ icTests my_sub other_sub =
     , testCase "in pre-upgrade" $ do
       far_past_time <- get_far_past_time
       far_future_time <- get_far_future_time
-      cid <- install ecid $ (on_timer_prog (2::Int) >>> onPreUpgrade (callback $ ((ignore $ stableGrow $ int 1) >>> (stableWrite (int 0) $ i64tob $ apiGlobalTimerSet $ int64 far_past_time))))
+      cid <- install ecid $ (on_timer_prog (2::Int) >>> onPreUpgrade (callback $ set_timer_prog far_past_time))
       _ <- reset_stable cid
       universal_wasm <- getTestWasm "universal-canister"
       _ <- ic_install ic00 (enum #upgrade) cid universal_wasm (run noop)
@@ -1806,6 +1809,51 @@ icTests my_sub other_sub =
       timer1 @?= blob 0
       timer2 @?= blob 0
       timer3 @?= blob far_far_future_time
+    , testCase "in post-upgrade on stopped canister" $ do
+      cid <- install_canister_with_global_timer (2::Int)
+      _ <- reset_stable cid
+      far_future_time <- get_far_future_time
+      timer1 <- set_timer cid far_future_time
+      past_time <- get_far_past_time
+      universal_wasm <- getTestWasm "universal-canister"
+      _ <- ic_stop_canister ic00 cid
+      waitFor $ do
+        cs <- ic_canister_status ic00 cid
+        return $ cs .! #status == enum #stopped
+      _ <- ic_install ic00 (enum #upgrade) cid universal_wasm (run $ on_timer_prog (2::Int) >>> set_timer_prog past_time)
+      _ <- ic_start_canister ic00 cid
+      wait_for_timer cid 2
+      timer2 <- set_timer cid far_future_time
+      timer1 @?= blob 0
+      timer2 @?= blob 0
+    , testCase "in post-upgrade on stopping canister" $ do
+      cid <- install_canister_with_global_timer (2::Int)
+      _ <- reset_stable cid
+      far_future_time <- get_far_future_time
+      timer1 <- set_timer cid far_future_time
+      cid2 <- install ecid noop
+      ic_set_controllers ic00 cid [defaultUser, cid2]
+      universal_wasm <- getTestWasm "universal-canister"
+      past_time <- get_far_past_time
+      let upgrade = update_call "" "install_code" $ defUpdateArgs {
+              uc_arg = Candid.encode $ empty
+                .+ #mode .== ((enum #upgrade) :: InstallMode)
+                .+ #canister_id .== Principal cid
+                .+ #wasm_module .== universal_wasm
+                .+ #arg .== (run $ on_timer_prog (2::Int) >>> set_timer_prog past_time)
+            }
+      let stop_and_upgrade = (oneway_call "" "stop_canister" $ defOneWayArgs {
+              ow_arg = Candid.encode $ empty .+ #canister_id .== Principal cid
+            }) >>> upgrade
+      let relay = oneway_call cid2 "update" $ defOneWayArgs {
+              ow_arg = run stop_and_upgrade
+            }
+      call' cid relay >>= isReject [5] -- we get an error here because, to keep the canister stopping, we cannot reply after performing the one-way call
+      ic_start_canister ic00 cid
+      wait_for_timer cid 2
+      timer2 <- set_timer cid far_future_time
+      timer1 @?= blob 0
+      timer2 @?= blob 0
     , testCase "in timer callback" $ do
       past_time <- get_far_past_time
       far_future_time <- get_far_future_time
@@ -2361,12 +2409,6 @@ icTests my_sub other_sub =
           getRequestStatus user ecid (requestId req) >>= isResponded
 
           return (requestId req)
-        canister_id_in_canister_ranges cid (Just del) = do
-            del_cert <- decodeCert' (del_certificate del)
-            ranges <- certValue @Blob del_cert ["subnet", del_subnet_id del, "canister_ranges"] >>= asCBORBlobPairList
-            cid `isContainedIn` ranges
-            canister_id_in_canister_ranges cid (cert_delegation del_cert)
-        canister_id_in_canister_ranges _ Nothing = return ()
     in
     [ testGroup "required fields" $
         omitFields readStateEmpty $ \req -> do
@@ -2375,7 +2417,13 @@ icTests my_sub other_sub =
 
     , simpleTestCase "certificate validates" ecid $ \cid -> do
         cert <- getStateCert defaultUser cid []
-        validateStateCert cert
+        validateStateCert cid cert
+
+    , simpleTestCase "certificate does not validate if canister range check fails" ecid $ \cid -> do
+        unless my_is_root $ do
+          cert <- getStateCert defaultUser cid []
+          result <- try (validateStateCert other_ecid cert) :: IO (Either DelegationCanisterRangeCheck ())
+          assertBool "certificate should not validate" $ isLeft result
 
     , testCaseSteps "time is present" $ \step -> do
         cid <- create ecid
@@ -2392,11 +2440,6 @@ icTests my_sub other_sub =
         cid <- create ecid
         cert <- getStateCert defaultUser cid [["canister", cid, "controllers"]]
         certValue @Blob cert ["canister", cid, "controllers"] >>= asCBORBlobList >>= isSet [defaultUser]
-
-    , testCase "canister_id included in canister_ranges" $ do
-        cid <- create ecid
-        cert <- getStateCert defaultUser cid [["subnet"]]
-        canister_id_in_canister_ranges cid (cert_delegation cert)
 
     , testCase "module_hash of empty canister" $ do
         cid <- create ecid
@@ -2546,7 +2589,7 @@ icTests my_sub other_sub =
       query cid (replyData getCertificate) >>= extractCertData cid >>= is ""
     , simpleTestCase "validates" ecid $ \cid -> do
       query cid (replyData getCertificate)
-        >>= decodeCert' >>= validateStateCert
+        >>= decodeCert' >>= validateStateCert cid
     , simpleTestCase "present in query method (query call)" ecid $ \cid -> do
       query cid (replyData (i2b getCertificatePresent))
         >>= is "\1\0\0\0"
@@ -3175,7 +3218,7 @@ icTests my_sub other_sub =
           -- Get certificate
           cert <- query cid (replyData getCertificate) >>= decodeCert'
           -- double check it certifies
-          validateStateCert cert
+          validateStateCert cid cert
           certValue cert ["canister", cid, "certified_data"] >>= is (reconstruct tree)
 
           return $ CanisterSig.genSig cert tree
