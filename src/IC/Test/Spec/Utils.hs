@@ -140,18 +140,6 @@ cborToBlob :: GenR -> IO Blob
 cborToBlob (GBlob blob) = return blob
 cborToBlob r = assertFailure $ "Expected blob, got " <> show r
 
-asCBORBlobPairList :: Blob -> IO [(Blob, Blob)]
-asCBORBlobPairList blob = do
-    decoded <- asRight $ CBOR.decode blob
-    case decoded of
-        GList list -> do
-            mapM cborToBlobPair list
-        _ -> assertFailure $ "Failed to decode as CBOR encoded list of blob pairs: " <> show decoded
-
-cborToBlobPair :: GenR -> IO (Blob, Blob)
-cborToBlobPair (GList [GBlob x, GBlob y]) = return (x, y)
-cborToBlobPair r = assertFailure $ "Expected list of pairs, got: " <> show r
-
 -- Interaction with aaaaa-aa via the universal canister
 
 ic00viaWithCyclesSubnetImpl' :: HasAgentConfig => Prog -> Prog -> Blob -> Blob -> IC00WithCycles
