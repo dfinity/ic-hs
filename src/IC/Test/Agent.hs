@@ -87,6 +87,7 @@ module IC.Test.Agent
       isPendingOrProcessing,
       isReject,
       isReply,
+      isResponded,
       okCBOR,
       otherSK,
       otherUser,
@@ -594,6 +595,10 @@ getRequestStatus' sender cid rid = do
 
 getRequestStatus :: (HasCallStack, HasAgentConfig) => Blob -> Blob -> Blob -> IO ReqStatus
 getRequestStatus sender cid rid = getRequestStatus' sender cid rid >>= is2xx
+
+isResponded :: ReqStatus -> Assertion
+isResponded (Responded _) = return ()
+isResponded _ = assertFailure "Request must be responded"
 
 loop' :: (HasCallStack, HasAgentConfig) => IO (HTTPErrOr (Maybe a)) -> IO (HTTPErrOr a)
 loop' act = getCurrentTime >>= go
