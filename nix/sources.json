@@ -33,7 +33,7 @@
         "owner": "nix-community",
         "repo": "naersk",
         "rev": "d998160d6a076cfe8f9741e56aeec7e267e3e114",
-        "sha256": "ef2a36a7b13e04a829d350b42ecaa06141ed12f5f2ba41474bf366ad21ed0ddc",
+        "sha256": "sha256-ezQCsNgmpUHdZANDCILm3RvtO1xH8uujk/+EqNvzIOg=",
         "type": "tarball",
         "url": "https://github.com/nix-community/naersk/archive/d998160d6a076cfe8f9741e56aeec7e267e3e114.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
