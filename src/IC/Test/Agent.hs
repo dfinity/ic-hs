@@ -66,7 +66,6 @@ module IC.Test.Agent
       defaultSK,
       defaultUser,
       delegationEnv,
-      doesn'tExist,
       ecdsaSK,
       ecdsaUser,
       enum,
@@ -268,9 +267,6 @@ agentManager :: HasAgentConfig => Manager
 agentManager = tc_manager agentConfig
 
 -- * Test data for some hardcoded user names
-
-doesn'tExist :: Blob
-doesn'tExist = "\xDE\xAD\xBE\xEF" -- hopefully no such canister/user exists
 
 defaultSK :: SecretKey
 defaultSK = createSecretKeyEd25519 "fixed32byteseedfortesting"

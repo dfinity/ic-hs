@@ -538,6 +538,7 @@ icTests my_sub other_sub =
   let ecid = rawEntityId $ wordToId ecid_as_word64 in
   let other_ecid = rawEntityId $ wordToId other_ecid_as_word64 in
   let last_canister_id = rawEntityId $ wordToId last_canister_id_as_word64 in
+  let doesn'tExist = rawEntityId $ wordToId (last_canister_id_as_word64 - 1) in
   let initial_cycles = case my_type of System -> 0
                                        _ -> (2^(60::Int)) in
   withAgentConfig $ testGroup "Interface Spec acceptance tests" $
@@ -2361,7 +2362,7 @@ icTests my_sub other_sub =
     [ testGroup "required fields" $ do
         -- TODO: Begin with a succeeding request to a real canister, to rule
         -- out other causes of failure than missing fields
-        omitFields queryToNonExistant $ \req -> do
+        omitFields (queryToNonExistant doesn'tExist) $ \req -> do
           cid <- create ecid
           addExpiry req >>= envelope defaultSK >>= postQueryCBOR cid >>= code4xx
 
