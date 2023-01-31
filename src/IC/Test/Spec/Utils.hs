@@ -62,11 +62,11 @@ trivialWasmModule = "\0asm\1\0\0\0"
 
 -- * Some test data related to standard requests
 
-queryToNonExistant :: Blob -> GenR
-queryToNonExistant cid = rec
+queryToNonExistant :: GenR
+queryToNonExistant = rec
     [ "request_type" =: GText "query"
     , "sender" =: GBlob anonymousUser
-    , "canister_id" =: GBlob cid
+    , "canister_id" =: GBlob doesn'tExist
     , "method_name" =: GText "foo"
     , "arg" =: GBlob "nothing to see here"
     ]
