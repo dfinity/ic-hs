@@ -34,6 +34,11 @@ let
           # nixpkgs + naersk, in particular no dependency on internal repositories.
           # But rename this so that we do not rebuilt unrelated tools written in rust.
           rustc-wasm = super.rustc.overrideAttrs (old: {
+            src = builtins.fetchurl {
+                url = "https://static.rust-lang.org/dist/rustc-1.66.0-src.tar.gz";
+                sha256 = "sha256:0j2sjdrafx910n2d6y7bv5v1a0hn9jsz0d8bbpknd8l2bbmd6g1v";
+            };
+            version = "1.66.0";
             configureFlags = self.lib.lists.forEach old.configureFlags (flag:
               if self.lib.strings.hasPrefix "--target=" flag
               then flag + ",wasm32-unknown-unknown"
