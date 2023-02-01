@@ -537,7 +537,8 @@ icTests my_sub other_sub =
   let my_is_root = isRootTestSubnet my_sub in
   let ecid = rawEntityId $ wordToId ecid_as_word64 in
   let other_ecid = rawEntityId $ wordToId other_ecid_as_word64 in
-  let last_canister_id = rawEntityId $ wordToId last_canister_id_as_word64 in
+  let specified_canister_id = rawEntityId $ wordToId last_canister_id_as_word64 in
+  let unused_canister_id = rawEntityId $ wordToId (last_canister_id_as_word64 - 1) in
   let initial_cycles = case my_type of System -> 0
                                        _ -> (2^(60::Int)) in
   withAgentConfig $ testGroup "Interface Spec acceptance tests" $
@@ -635,8 +636,8 @@ icTests my_sub other_sub =
 
   , testGroup "provisional_create_canister_with_cycles"
     [ testCase "specified_id" $ do
-        let specified_id = entityIdToPrincipal $ EntityId last_canister_id
-        ic_provisional_create ic00 ecid (Just specified_id) (Just (2^(60::Int))) empty >>= is last_canister_id
+        let specified_id = entityIdToPrincipal $ EntityId specified_canister_id
+        ic_provisional_create ic00 ecid (Just specified_id) (Just (2^(60::Int))) empty >>= is specified_canister_id
 
     , simpleTestCase "specified_id already taken" ecid $ \cid -> do
         let specified_id = entityIdToPrincipal $ EntityId cid
@@ -2935,7 +2936,7 @@ icTests my_sub other_sub =
         cycles <- queryBalance128 cid
         step $ "Cycle balance now at " ++ show cycles
       , testCase "nonexisting canister" $ do
-        ic_top_up''' ic00' doesn'tExist (fromIntegral def_cycles)
+        ic_top_up''' ic00' unused_canister_id (fromIntegral def_cycles)
           >>= isErrOrReject [3,5]
       ]
     ]
