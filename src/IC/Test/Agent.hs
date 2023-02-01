@@ -428,7 +428,7 @@ submitCall' cid req = do
      assertBool "Response body not empty" (BS.null (responseBody res))
      pure $ Right (getRequestStatus' (senderOf req) cid (requestId req))
   else do
-    let msg = T.unpack (T.decodeUtf8With T.lenientDecode (BS.toStrict (BS.take 200 (responseBody res))))
+    let msg = T.unpack (T.decodeUtf8With T.lenientDecode (BS.toStrict (BS.take 1000 (responseBody res))))
     pure $ Left (code, msg)
 
 submitCall :: (HasCallStack, HasAgentConfig) => Blob -> GenR -> IO (IO (HTTPErrOr ReqStatus))
