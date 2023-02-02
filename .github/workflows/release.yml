@@ -25,7 +25,7 @@ jobs:
       with:
         nix_conf: experimental-features = nix-command
     - if: matrix.os == 'ubuntu-latest' && env.SSH_KEY_FOR_NIXBUILD != ''
-      uses: nixbuild/nixbuild-action@v10
+      uses: nixbuild/nixbuild-action@v15
       with:
         nixbuild_ssh_key: ${{ secrets.SSH_KEY_FOR_NIXBUILD }}
     - run: nix-env -iA nix-build-uncached -f nix/
