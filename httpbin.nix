@@ -19,7 +19,6 @@ buildPythonPackage rec {
   format = "setuptools";
 
   src = fetchFromGitHub {
-    name = "httpbin";
     owner = "mraszyk";
     repo = "httpbin";
     rev = "c6f2830f366635ed0afef1e6f5d5c48428950d36";
@@ -28,7 +27,7 @@ buildPythonPackage rec {
 
   patches = [
     (fetchpatch {
-      # Replaces BaseResponse class with Response class for Werkezug 2.1.0 compatibility
+      # Replaces BaseResponse class with Response class for Werkzeug 2.1.0 compatibility
       # https://github.com/postmanlabs/httpbin/pull/674
       url = "https://github.com/postmanlabs/httpbin/commit/5cc81ce87a3c447a127e4a1a707faf9f3b1c9b6b.patch";
       hash = "sha256-SbEWjiqayMFYrbgAPZtSsXqSyCDUz3z127XgcKOcrkE=";
