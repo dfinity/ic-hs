@@ -12,6 +12,12 @@
         "url": "https://github.com/nomeata/haskell-candid/archive/87a4f01eb9cb93c827a0a7f5f29af0ee19135308.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
+    "http-client": {
+        "branch": "mraszyk/nix",
+        "sha256": "0jm9klh5a1gvzyxxinj0yylij2rgxqlprlgin6hfrby1xvwkdps7",
+        "type": "tarball",
+        "url": "https://github.com/mraszyk/http-client/raw/mraszyk/nix/http-client.tar.gz"
+    },
     "leb128-cereal": {
         "branch": "master",
         "builtin": false,
@@ -39,16 +45,16 @@
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "nixpkgs": {
-        "branch": "release-22.05",
+        "branch": "release-22.11",
         "builtin": true,
         "description": "Nixpkgs/NixOS branches that track the Nixpkgs/NixOS channels",
         "homepage": null,
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "e0fa35aeeba8af9c6f8c93bee6fe5626b746ca73",
-        "sha256": "0lqn48pccjrxkyc6x03rgxayljrscyf85my89amdirvxjpl1wb92",
+        "rev": "f696f72a73467defc6996a72546626f1872716a9",
+        "sha256": "1cawvpq3jh3lns3lhpbc5k43v8ajqii337z21n32yrhkcjjry7k8",
         "type": "tarball",
-        "url": "https://github.com/NixOS/nixpkgs/archive/e0fa35aeeba8af9c6f8c93bee6fe5626b746ca73.tar.gz",
+        "url": "https://github.com/NixOS/nixpkgs/archive/f696f72a73467defc6996a72546626f1872716a9.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "winter": {
@@ -63,11 +69,5 @@
         "type": "tarball",
         "url": "https://github.com/dfinity-side-projects/winter/archive/530d5e395bb9919187d47d3966c4d526e668b62a.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
-    },
-    "http-client": {
-        "branch": "mraszyk/nix",
-        "url": "https://github.com/mraszyk/http-client/raw/mraszyk/nix/http-client.tar.gz",
-        "sha256": "0jm9klh5a1gvzyxxinj0yylij2rgxqlprlgin6hfrby1xvwkdps7",
-        "type": "tarball"
     }
 }
