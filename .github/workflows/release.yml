@@ -17,7 +17,7 @@ jobs:
     env:
       SSH_KEY_FOR_NIXBUILD: ${{ secrets.SSH_KEY_FOR_NIXBUILD }}
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     - if: matrix.os == 'macos-latest'
       uses: cachix/install-nix-action@v18
     - if: matrix.os == 'ubuntu-latest'
@@ -63,7 +63,7 @@ jobs:
     env:
       SSH_KEY_FOR_NIXBUILD: ${{ secrets.SSH_KEY_FOR_NIXBUILD }}
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     - if: matrix.os == 'macos-latest'
       uses: cachix/install-nix-action@v18
     - if: matrix.os == 'ubuntu-latest'
