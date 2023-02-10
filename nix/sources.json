@@ -51,23 +51,23 @@
         "homepage": null,
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "b908fbad316293fcf293f3725115507e4353eafc",
-        "sha256": "sha256:1bdiz7wkzfhqf4nchc1grva7a090745mirvrynsa8gs5s16pvjc2",
+        "rev": "c3b54dfa96108c85f967fa4fa6e8181debf13d6c",
+        "sha256": "sha256:1m61ymmhv3bsq9m08i9lcsc5ifkfs2jgxkrc73f279y6savdzsmx",
         "type": "tarball",
-        "url": "https://github.com/NixOS/nixpkgs/archive/b908fbad316293fcf293f3725115507e4353eafc.tar.gz",
+        "url": "https://github.com/NixOS/nixpkgs/archive/c3b54dfa96108c85f967fa4fa6e8181debf13d6c.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "winter": {
         "branch": "master",
         "builtin": false,
         "description": "Haskell port of the WebAssembly OCaml reference interpreter",
-        "homepage": "https://github.com/dfinity-side-projects/winter",
+        "homepage": "https://github.com/mraszyk/winter",
         "owner": "dfinity-side-projects",
         "repo": "winter",
-        "rev": "530d5e395bb9919187d47d3966c4d526e668b62a",
-        "sha256": "1mnyhmkilald48p4gl29hq8qqs605nv5z97ps3vln1gn901s2f9c",
+        "rev": "71a37a26cab19b6a12c6f9c9c394415d203629d2",
+        "sha256": "sha256-dQLHy/gzd1Fjfh7hEpjGwNztYrizZ7IGiQt3aY4XQ/U=",
         "type": "tarball",
-        "url": "https://github.com/dfinity-side-projects/winter/archive/530d5e395bb9919187d47d3966c4d526e668b62a.tar.gz",
+        "url": "https://github.com/mraszyk/winter/archive/71a37a26cab19b6a12c6f9c9c394415d203629d2.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     }
 }
