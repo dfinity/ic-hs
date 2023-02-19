@@ -16,6 +16,12 @@ cDEFAULT_PROVISIONAL_CYCLES_BALANCE = 100_000_000_000_000
 
 -- Subnets
 
+canister_ids_per_subnet :: W.Word64
+canister_ids_per_subnet = 1_048_576
+
+nth_canister_range :: W.Word64 -> (W.Word64, W.Word64)
+nth_canister_range n = (n * canister_ids_per_subnet, (n + 1) * canister_ids_per_subnet - 1)
+
 -- reference_subnet_size is used for scaling cycle cost
 -- and must never be set to zero!
 reference_subnet_size :: W.Word64

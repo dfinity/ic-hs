@@ -140,39 +140,48 @@ cborToBlob :: GenR -> IO Blob
 cborToBlob (GBlob blob) = return blob
 cborToBlob r = assertFailure $ "Expected blob, got " <> show r
 
-asCBORBlobPairList :: Blob -> IO [(Blob, Blob)]
-asCBORBlobPairList blob = do
-    decoded <- asRight $ CBOR.decode blob
-    case decoded of
-        GList list -> do
-            mapM cborToBlobPair list
-        _ -> assertFailure $ "Failed to decode as CBOR encoded list of blob pairs: " <> show decoded
-
-cborToBlobPair :: GenR -> IO (Blob, Blob)
-cborToBlobPair (GList [GBlob x, GBlob y]) = return (x, y)
-cborToBlobPair r = assertFailure $ "Expected list of pairs, got: " <> show r
-
 -- Interaction with aaaaa-aa via the universal canister
+
+ic00viaWithCyclesSubnetImpl' :: HasAgentConfig => Prog -> Prog -> Blob -> Blob -> IC00WithCycles
+ic00viaWithCyclesSubnetImpl' relayReply relayReject subnet_id cid cycles _ecid method_name arg = do
+  resp <- call' cid $
+      callNew
+        (bytes subnet_id) (bytes (BS.fromStrict (T.encodeUtf8 method_name))) -- aaaaa-aa
+        (callback relayReply) (callback relayReject) >>>
+      callDataAppend (bytes arg) >>>
+      callCyclesAdd (int64 cycles) >>>
+      callPerform
+  case resp of Reply r -> isRelay r
+               _ -> return resp
+
+ic00viaWithCyclesSubnet' :: HasAgentConfig => Blob -> Blob -> IC00WithCycles
+ic00viaWithCyclesSubnet' = ic00viaWithCyclesSubnetImpl' relayReply relayReject
 
 ic00via :: HasAgentConfig => Blob -> IC00
 ic00via cid = ic00viaWithCycles cid 0
 
-ic00viaWithCyclesImpl :: HasAgentConfig => Prog -> Prog -> Blob -> IC00WithCycles
-ic00viaWithCyclesImpl relayReply relayReject cid cycles _ecid method_name arg =
+ic00viaWithCyclesSubnetImpl :: HasAgentConfig => Prog -> Prog -> Blob -> Blob -> IC00WithCycles
+ic00viaWithCyclesSubnetImpl relayReply relayReject subnet_id cid cycles _ecid method_name arg =
   do call' cid $
       callNew
-        (bytes "") (bytes (BS.fromStrict (T.encodeUtf8 method_name))) -- aaaaa-aa
+        (bytes subnet_id) (bytes (BS.fromStrict (T.encodeUtf8 method_name))) -- aaaaa-aa
         (callback relayReply) (callback relayReject) >>>
       callDataAppend (bytes arg) >>>
       callCyclesAdd (int64 cycles) >>>
       callPerform
    >>= isReply >>= isRelay
 
+ic00viaWithCyclesSubnet :: HasAgentConfig => Blob -> Blob -> IC00WithCycles
+ic00viaWithCyclesSubnet = ic00viaWithCyclesSubnetImpl relayReply relayReject
+
 ic00viaWithCycles :: HasAgentConfig => Blob -> IC00WithCycles
-ic00viaWithCycles = ic00viaWithCyclesImpl relayReply relayReject
+ic00viaWithCycles = ic00viaWithCyclesSubnetImpl relayReply relayReject ""
+
+ic00viaWithCyclesRefundSubnet :: HasAgentConfig => Word64 -> Blob -> Blob -> IC00WithCycles
+ic00viaWithCyclesRefundSubnet amount = ic00viaWithCyclesSubnetImpl (relayReplyRefund amount) (relayRejectRefund amount)
 
 ic00viaWithCyclesRefund :: HasAgentConfig => Word64 -> Blob -> IC00WithCycles
-ic00viaWithCyclesRefund amount = ic00viaWithCyclesImpl (relayReplyRefund amount) (relayRejectRefund amount)
+ic00viaWithCyclesRefund amount = ic00viaWithCyclesSubnetImpl (relayReplyRefund amount) (relayRejectRefund amount) ""
 
 -- * Interacting with the universal canister
 
@@ -192,14 +201,14 @@ installAt cid prog = do
   ic_install ic00 (enum #install) cid universal_wasm (run prog)
 
 -- Also calls create, used default 'ic00'
-install :: (HasCallStack, HasAgentConfig) => Prog -> IO Blob
-install prog = do
-    cid <- create
+install :: (HasCallStack, HasAgentConfig) => Blob -> Prog -> IO Blob
+install ecid prog = do
+    cid <- create ecid
     installAt cid prog
     return cid
 
-create :: (HasCallStack, HasAgentConfig) => IO Blob
-create = ic_provisional_create ic00 (Just (2^(60::Int))) empty
+create :: (HasCallStack, HasAgentConfig) => Blob -> IO Blob
+create ecid = ic_provisional_create ic00 ecid Nothing (Just (2^(60::Int))) empty
 
 upgrade' :: (HasCallStack, HasAgentConfig) => Blob -> Prog -> IO ReqResponse
 upgrade' cid prog = do
@@ -304,8 +313,8 @@ isRelay = runGet $ Get.getWord32le >>= \case
 
 
 -- Shortcut for test cases that just need one canister.
-simpleTestCase :: (HasCallStack, HasAgentConfig) => String -> (Blob -> IO ()) -> TestTree
-simpleTestCase name act = testCase name $ install noop >>= act
+simpleTestCase :: (HasCallStack, HasAgentConfig) => String -> Blob -> (Blob -> IO ()) -> TestTree
+simpleTestCase name ecid act = testCase name $ install ecid noop >>= act
 
 -- * Programmatic test generation
 
@@ -384,9 +393,9 @@ barrier cids = do
 -- Returns a program to be executed by any canister, which will cause this
 -- canister to send a message that will not be responded to, until the given
 -- IO action is performed.
-createMessageHold :: HasAgentConfig => IO (Prog, IO ())
-createMessageHold = do
-  cid <- install noop
+createMessageHold :: HasAgentConfig => Blob -> IO (Prog, IO ())
+createMessageHold ecid = do
+  cid <- install ecid noop
   ic_set_controllers ic00 cid [defaultUser, cid]
   let holdMessage = inter_update cid defArgs
         { other_side =
