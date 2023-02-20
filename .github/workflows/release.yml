@@ -19,7 +19,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - if: matrix.os == 'macos-latest'
-      uses: cachix/install-nix-action@v16
+      uses: cachix/install-nix-action@v19
     - if: matrix.os == 'ubuntu-latest'
       uses: nixbuild/nix-quick-install-action@v21
       with:
@@ -29,7 +29,7 @@ jobs:
       with:
         nixbuild_ssh_key: ${{ secrets.SSH_KEY_FOR_NIXBUILD }}
     - run: nix-env -iA nix-build-uncached -f nix/
-    - uses: cachix/cachix-action@v10
+    - uses: cachix/cachix-action@v12
       with:
         name: ic-hs-test
         authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
@@ -65,7 +65,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - if: matrix.os == 'macos-latest'
-      uses: cachix/install-nix-action@v16
+      uses: cachix/install-nix-action@v19
     - if: matrix.os == 'ubuntu-latest'
       uses: nixbuild/nix-quick-install-action@v21
       with:
@@ -74,7 +74,7 @@ jobs:
       uses: nixbuild/nixbuild-action@v15
       with:
         nixbuild_ssh_key: ${{ secrets.SSH_KEY_FOR_NIXBUILD }}
-    - uses: cachix/cachix-action@v10
+    - uses: cachix/cachix-action@v12
       with:
         name: ic-hs-test
         authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
