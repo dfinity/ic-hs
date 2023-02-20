@@ -17,7 +17,7 @@ jobs:
     env:
       SSH_KEY_FOR_NIXBUILD: ${{ secrets.SSH_KEY_FOR_NIXBUILD }}
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     - if: matrix.os == 'macos-latest'
       uses: cachix/install-nix-action@v19
     - if: matrix.os == 'ubuntu-latest'
@@ -63,7 +63,7 @@ jobs:
     env:
       SSH_KEY_FOR_NIXBUILD: ${{ secrets.SSH_KEY_FOR_NIXBUILD }}
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     - if: matrix.os == 'macos-latest'
       uses: cachix/install-nix-action@v19
     - if: matrix.os == 'ubuntu-latest'
@@ -78,7 +78,7 @@ jobs:
       with:
         name: ic-hs-test
         authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
-    - run: nix-env -f 'channel:nixos-21.05' -iA awscli
+    - run: nix-env -f 'channel:nixos-22.11' -iA awscli
 
     - id: get_version
       run: |
