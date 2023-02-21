@@ -50,7 +50,7 @@ let
         pkgs.lib.sourceByRegex (pkgs.subpath "/")
           ["^src.*" "^ic-hs.cabal" "^cbits.*" "^LICENSE" "^ic.did"]
       '';
-      extraCabal2nixOptions =  "--no-check -frelease";
+      extraCabal2nixOptions = "--no-check";
     };
 
     winter = haskellSrc2nixWithDoc {
