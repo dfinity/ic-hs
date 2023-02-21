@@ -80,7 +80,7 @@
 mkDerivation {
   pname = "ic-hs";
   version = "0.0.1";
-  src = pkgs.lib.sourceByRegex (pkgs.subpath "/") [ "^src.*" "^ic-hs.cabal" "^cbits.*" "^LICENSE" "^ic.did" ];
+  src = pkgs.lib.sourceByRegex (pkgs.subpath "/") [ "^src.*" "^bin.*" "^tests.*" "^ic-hs.cabal" "^cbits.*" "^LICENSE" "^ic.did" ];
   isLibrary = true;
   isExecutable = true;
   libraryHaskellDepends = [
