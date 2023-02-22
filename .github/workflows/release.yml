@@ -45,7 +45,6 @@ jobs:
     - run: nix-build-uncached -A ic-ref-dist
     - run: nix-build-uncached -A ic-ref-test
     - run: nix-build-uncached -A ic-hs-shell
-    - run: nix-build-uncached -A check-cabal-freeze
     # now the rest
     - run: nix-build-uncached
 
