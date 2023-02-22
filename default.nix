@@ -219,15 +219,28 @@ rec {
       sleep 1
       test -e port
       sleep 1
-      LANG=C.UTF8 ic-ref-test --test-subnet-config "(\"bn26o-3iapb-njhsq-6mjum-ssjtx-lcwrs-id2x6-2z7ce-yaweh-xamz5-7qe\",system,1,[(0,1048575)])" --peer-subnet-config "(\"jdzfx-2szde-tnkmk-2m5zt-t6gga-pnl22-v36hx-hz5zg-r6mei-tw3q4-nae\",application,1,[(1048576,2097151)])" --endpoint "http://127.0.0.1:$(cat port)/" --httpbin "127.0.0.1:8003"
-      LANG=C.UTF8 ic-ref-test --test-subnet-config "(\"jdzfx-2szde-tnkmk-2m5zt-t6gga-pnl22-v36hx-hz5zg-r6mei-tw3q4-nae\",application,1,[(1048576,2097151)])" --peer-subnet-config "(\"bn26o-3iapb-njhsq-6mjum-ssjtx-lcwrs-id2x6-2z7ce-yaweh-xamz5-7qe\",system,1,[(0,1048575)])" --endpoint "http://127.0.0.1:$(cat port)/" --httpbin "127.0.0.1:8003"
+      LANG=C.UTF8 ic-ref-test \
+        --test-subnet-config "(\"bn26o-3iapb-njhsq-6mjum-ssjtx-lcwrs-id2x6-2z7ce-yaweh-xamz5-7qe\",system,1,[(0,1048575)])" \
+        --peer-subnet-config "(\"jdzfx-2szde-tnkmk-2m5zt-t6gga-pnl22-v36hx-hz5zg-r6mei-tw3q4-nae\",application,1,[(1048576,2097151)])" \
+        --endpoint "http://127.0.0.1:$(cat port)/" \
+        --httpbin "127.0.0.1:8003"
+      LANG=C.UTF8 ic-ref-test \
+        --test-subnet-config "(\"jdzfx-2szde-tnkmk-2m5zt-t6gga-pnl22-v36hx-hz5zg-r6mei-tw3q4-nae\",application,1,[(1048576,2097151)])" \
+        --peer-subnet-config "(\"bn26o-3iapb-njhsq-6mjum-ssjtx-lcwrs-id2x6-2z7ce-yaweh-xamz5-7qe\",system,1,[(0,1048575)])" \
+        --endpoint "http://127.0.0.1:$(cat port)/" \
+        --httpbin "127.0.0.1:8003"
       pids="$(jobs -p)"
       kill -INT $pids
       trap - EXIT PIPE
       sleep 5 # wait for ic-ref.tix to be written
 
       find
-      LANG=C.UTF8 hpc markup ic-ref.tix --hpcdir=${ic-hs-coverage}/share/hpc/vanilla/mix/ic-ref --srcdir=$srcdir  --destdir $out
+      LANG=C.UTF8 hpc markup \
+        ic-ref.tix \
+        --hpcdir=${ic-hs-coverage}/share/hpc/vanilla/mix \
+        ic-ref.tix \
+        --srcdir=$srcdir \
+        --destdir $out
 
       mkdir -p $out/nix-support
       echo "report coverage $out hpc_index.html" >> $out/nix-support/hydra-build-products
