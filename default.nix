@@ -236,11 +236,11 @@ rec {
 
       find
       LANG=C.UTF8 hpc markup \
-        ic-ref.tix \
-        --hpcdir=${ic-hs-coverage}/share/hpc/vanilla/mix \
-        ic-ref.tix \
         --srcdir=$srcdir \
-        --destdir $out
+        --destdir $out \
+        --hpcdir=${ic-hs-coverage}/share/hpc/vanilla/mix/ic-hs-0.0.1 \
+        --hpcdir=${ic-hs-coverage}/share/hpc/vanilla/mix/ic-ref \
+        ic-ref.tix
 
       mkdir -p $out/nix-support
       echo "report coverage $out hpc_index.html" >> $out/nix-support/hydra-build-products
