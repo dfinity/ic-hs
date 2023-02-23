@@ -206,7 +206,7 @@ rec {
       nativeBuildInputs = [ haskellPackages.ghc ic-hs-coverage ];
       # Prevent rebuilds whenever non-Haskell related files (like .nix) change.
       srcdir = nixpkgs.lib.sourceByRegex (nixpkgs.subpath ./.)
-        [ "^src.*" "^ic-hs.cabal" "^cbits.*" "^LICENSE" "^ic.did" ];
+        [ "^src.*" "^bin.*" "^tests.*" "^ic-hs.cabal" "^cbits.*" "^LICENSE" "^ic.did" ];
     } ''
       function kill_jobs () {
         pids="$(jobs -p)"
@@ -219,57 +219,31 @@ rec {
       sleep 1
       test -e port
       sleep 1
-      LANG=C.UTF8 ic-ref-test --test-subnet-config "(\"bn26o-3iapb-njhsq-6mjum-ssjtx-lcwrs-id2x6-2z7ce-yaweh-xamz5-7qe\",system,1,[(0,1048575)])" --peer-subnet-config "(\"jdzfx-2szde-tnkmk-2m5zt-t6gga-pnl22-v36hx-hz5zg-r6mei-tw3q4-nae\",application,1,[(1048576,2097151)])" --endpoint "http://127.0.0.1:$(cat port)/" --httpbin "127.0.0.1:8003"
-      LANG=C.UTF8 ic-ref-test --test-subnet-config "(\"jdzfx-2szde-tnkmk-2m5zt-t6gga-pnl22-v36hx-hz5zg-r6mei-tw3q4-nae\",application,1,[(1048576,2097151)])" --peer-subnet-config "(\"bn26o-3iapb-njhsq-6mjum-ssjtx-lcwrs-id2x6-2z7ce-yaweh-xamz5-7qe\",system,1,[(0,1048575)])" --endpoint "http://127.0.0.1:$(cat port)/" --httpbin "127.0.0.1:8003"
+      LANG=C.UTF8 ic-ref-test \
+        --test-subnet-config "(\"bn26o-3iapb-njhsq-6mjum-ssjtx-lcwrs-id2x6-2z7ce-yaweh-xamz5-7qe\",system,1,[(0,1048575)])" \
+        --peer-subnet-config "(\"jdzfx-2szde-tnkmk-2m5zt-t6gga-pnl22-v36hx-hz5zg-r6mei-tw3q4-nae\",application,1,[(1048576,2097151)])" \
+        --endpoint "http://127.0.0.1:$(cat port)/" \
+        --httpbin "127.0.0.1:8003"
+      LANG=C.UTF8 ic-ref-test \
+        --test-subnet-config "(\"jdzfx-2szde-tnkmk-2m5zt-t6gga-pnl22-v36hx-hz5zg-r6mei-tw3q4-nae\",application,1,[(1048576,2097151)])" \
+        --peer-subnet-config "(\"bn26o-3iapb-njhsq-6mjum-ssjtx-lcwrs-id2x6-2z7ce-yaweh-xamz5-7qe\",system,1,[(0,1048575)])" \
+        --endpoint "http://127.0.0.1:$(cat port)/" \
+        --httpbin "127.0.0.1:8003"
       pids="$(jobs -p)"
       kill -INT $pids
       trap - EXIT PIPE
       sleep 5 # wait for ic-ref.tix to be written
 
       find
-      LANG=C.UTF8 hpc markup ic-ref.tix --hpcdir=${ic-hs-coverage}/share/hpc/vanilla/mix/ic-ref --srcdir=$srcdir  --destdir $out
+      LANG=C.UTF8 hpc markup \
+        --srcdir=$srcdir \
+        --destdir $out \
+        --hpcdir=${ic-hs-coverage}/share/hpc/vanilla/mix/ic-hs-0.0.1 \
+        --hpcdir=${ic-hs-coverage}/share/hpc/vanilla/mix/ic-ref \
+        ic-ref.tix
 
       mkdir -p $out/nix-support
       echo "report coverage $out hpc_index.html" >> $out/nix-support/hydra-build-products
-    '';
-
-  # The following two derivations keep the cabal.products.freeze files
-  # up to date. It is quite hacky to get the package data base for the ic-hs
-  # derivation, and then convince Cabal to use that...
-  cabal-freeze = (nixpkgs.haskell.lib.doCheck haskellPackages.ic-hs).overrideAttrs(old: {
-      nativeBuildInputs = (old.nativeBuildInputs or []) ++ [ nixpkgs.cabal-install ];
-      phases = [ "unpackPhase" "setupCompilerEnvironmentPhase" "buildPhase" "installPhase" ];
-      buildPhase = ''
-        rm -f cabal.project.freeze cabal.project
-        unset GHC_PACKAGE_PATH
-        mkdir .cabal
-        touch .cabal/config # empty, no repository
-        HOME=$PWD cabal v2-freeze --ghc-pkg-options="-f $packageConfDir" --offline --enable-tests || true
-      '';
-      outputs = ["out"]; # no docs
-      installPhase = ''
-        mkdir -p $out
-        echo "-- Run nix-shell . -A check-cabal-freeze to update this file" > $out/cabal.project.freeze
-        cat cabal.project.freeze |grep -v active-repositories >> $out/cabal.project.freeze
-      '';
-    });
-
-  check-cabal-freeze = nixpkgs.runCommandNoCC "check-cabal-freeze" {
-      nativeBuildInputs = [ nixpkgs.diffutils ];
-      expected = cabal-freeze + /cabal.project.freeze;
-      actual = ./cabal.project.freeze;
-      cmd = "nix-shell . -A check-cabal-freeze";
-      shellHook = ''
-        dest=${toString ./cabal.project.freeze}
-        rm -f $dest
-        cp -v $expected $dest
-        chmod u-w $dest
-        exit 0
-      '';
-    } ''
-      diff -r -U 3 $actual $expected ||
-        { echo "To update, please run"; echo "nix-shell . -A check-cabal-freeze"; exit 1; }
-      touch $out
     '';
 
   check-generated = nixpkgs.runCommandNoCC "check-generated" {

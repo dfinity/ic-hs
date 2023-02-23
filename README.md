@@ -278,10 +278,6 @@ automatically generate, run
 
 to update.
 
-Also, the `cabal.project.freeze` file, which exists for the benefit of people building `ic-ref` with plain `cabal` (no nix), can be updated via
-
-     nix-shell . -A check-cabal-freeze
-
 Don't worry if you forget to update the `default.nix` file, the CI job
 `check-generated` checks if these files are in sync and fails with a diff if
 they aren't.
