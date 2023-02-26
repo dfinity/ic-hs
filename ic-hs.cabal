@@ -88,6 +88,8 @@ library
   exposed-modules: IC.Test.Options
   exposed-modules: IC.Test.Secp256k1
   exposed-modules: IC.Test.Spec
+  exposed-modules: IC.Test.Spec.HTTP
+  exposed-modules: IC.Test.Spec.Timer
   exposed-modules: IC.Test.Spec.TECDSA
   exposed-modules: IC.Test.Spec.Utils
   exposed-modules: IC.Test.StableMemory
