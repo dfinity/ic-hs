@@ -50,8 +50,7 @@ jobs:
     - if: matrix.os == 'ubuntu-latest'
       run: nix-build-uncached -A ic-ref-test
     - run: nix-build-uncached -A ic-hs-shell
-    # now the rest
-    - run: nix-build-uncached
+    - run: nix-build-uncached -A license-check
 
   release:
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
