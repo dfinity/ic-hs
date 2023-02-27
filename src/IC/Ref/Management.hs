@@ -21,13 +21,10 @@ This module implements the management canister logic of the Internet Computer.
 module IC.Ref.Management (invokeManagementCanister)
 where
 
-import qualified Data.CaseInsensitive as CI
 import qualified Data.Map as M
 import qualified Data.Row as R
 import qualified Data.Row.Variants as V
 import qualified Data.ByteString.Lazy as BS
-import qualified Data.Text as T
-import qualified Data.Text.Encoding as T
 import qualified Data.Vector as Vec
 import qualified Data.Set as S
 import Data.List
@@ -38,16 +35,13 @@ import Control.Monad.Except
 import Control.Monad.Random.Lazy
 import Codec.Candid
 import Data.Row ((.==), (.+), (.!), type (.!))
-import Network.URI (parseURI)
 
 import IC.Types
 import IC.Constants
 import IC.Canister
 import IC.Id.Fresh
-import IC.Utils
 import IC.Management
 import IC.Crypto.Bitcoin as Bitcoin
-import IC.Ref.IO (sendHttpRequest)
 import IC.Ref.HTTP
 import IC.Ref.Types
 
