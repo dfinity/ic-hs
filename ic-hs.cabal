@@ -78,6 +78,9 @@ library
   exposed-modules: IC.Purify
   exposed-modules: IC.Ref
   exposed-modules: IC.Ref.IO
+  exposed-modules: IC.Ref.HTTP
+  exposed-modules: IC.Ref.Management
+  exposed-modules: IC.Ref.Types
   exposed-modules: IC.Serialise
   exposed-modules: IC.StateFile
   exposed-modules: IC.Test.Agent
