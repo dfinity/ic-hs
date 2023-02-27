@@ -38,7 +38,8 @@ import IC.Crypto
 import IC.Test.Universal
 import IC.Utils
 import IC.Test.Agent
-import IC.Test.Agent.Calls
+import IC.Test.Agent.UnsafeCalls
+import IC.Test.Agent.SafeCalls
 import IC.Management (HttpResponse, HttpHeader)
 
 type Blob = BS.ByteString

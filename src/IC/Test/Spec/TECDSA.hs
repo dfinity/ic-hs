@@ -12,7 +12,8 @@ import Test.Tasty
 import qualified Data.Vector as Vec
 import IC.Test.Spec.Utils
 import IC.Test.Agent
-import IC.Test.Agent.Calls
+import IC.Test.Agent.UnsafeCalls
+import IC.Test.Agent.SafeCalls
 import Data.Row as R
 import Test.Tasty.HUnit
 import IC.Test.Universal (noop)
