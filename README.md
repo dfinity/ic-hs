@@ -284,4 +284,4 @@ they aren't.
 
 ## Contributing
 
-This repository accepts external contributions, conditioned on acceptance of the [https://github.com/dfinity/cla/](Contributor Lincense Agreement).
+This repository accepts external contributions, conditioned on acceptance of the [Contributor Lincense Agreement](https://github.com/dfinity/cla).
