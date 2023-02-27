@@ -85,6 +85,9 @@ library
   exposed-modules: IC.StateFile
   exposed-modules: IC.Test.Agent
   exposed-modules: IC.Test.Agent.Calls
+  exposed-modules: IC.Test.Agent.UnsafeCalls
+  exposed-modules: IC.Test.Agent.SafeCalls
+  exposed-modules: IC.Test.Agent.UserCalls
   exposed-modules: IC.Test.BLS
   exposed-modules: IC.Test.ECDSA
   exposed-modules: IC.Test.HashTree
