@@ -28,7 +28,7 @@ import System.Timeout
 import IC.Management (InstallMode)
 import IC.Test.Universal
 import IC.Test.Agent
-import IC.Test.Agent.Calls
+import IC.Test.Agent.UnsafeCalls
 import IC.Test.Spec.Utils
 
 -- * Helpers

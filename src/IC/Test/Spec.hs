@@ -50,7 +50,9 @@ import IC.HashTree hiding (Blob, Label)
 import IC.Certificate
 import IC.Hash
 import IC.Test.Agent
-import IC.Test.Agent.Calls
+import IC.Test.Agent.UnsafeCalls
+import IC.Test.Agent.SafeCalls
+import IC.Test.Agent.UserCalls
 import IC.Test.Spec.Utils
 import IC.Types(TestSubnetConfig, SubnetType(..))
 import IC.Test.Spec.HTTP

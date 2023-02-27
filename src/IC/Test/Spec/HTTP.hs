@@ -37,7 +37,8 @@ import IC.Constants
 import IC.Id.Fresh
 import IC.Test.Universal
 import IC.Test.Agent
-import IC.Test.Agent.Calls
+import IC.Test.Agent.UnsafeCalls
+import IC.Test.Agent.SafeCalls
 import IC.Test.Spec.Utils
 import IC.Types(TestSubnetConfig)
 import IC.Utils
