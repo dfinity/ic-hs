@@ -39,15 +39,18 @@ jobs:
     # run a few targets explicitly, to get easier signal in the CI view
     - run: nix-build-uncached -A universal-canister
     - run: nix-build-uncached -A ic-hs
-    - run: cp -r "$(nix-build -A ic-hs.doc)"/share/doc/*/html gh-page
-    - run: nix-build-uncached -A ic-hs-coverage
-    - run: nix-build-uncached -A coverage
+    - if: matrix.os == 'ubuntu-latest'
+      run: cp -r "$(nix-build -A ic-hs.doc)"/share/doc/*/html gh-page
+    - if: matrix.os == 'ubuntu-latest'
+      run: nix-build-uncached -A ic-hs-coverage
+    - if: matrix.os == 'ubuntu-latest'
+      run: nix-build-uncached -A coverage
     - run: nix-build-uncached -A check-generated
     - run: nix-build-uncached -A ic-ref-dist
-    - run: nix-build-uncached -A ic-ref-test
+    - if: matrix.os == 'ubuntu-latest'
+      run: nix-build-uncached -A ic-ref-test
     - run: nix-build-uncached -A ic-hs-shell
-    # now the rest
-    - run: nix-build-uncached
+    - run: nix-build-uncached -A license-check
 
   release:
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
