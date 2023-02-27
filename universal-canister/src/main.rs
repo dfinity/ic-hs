@@ -1,5 +1,7 @@
 use candid::{CandidType, Decode, Deserialize, Encode, Principal};
 use std::convert::TryInto;
+// Requires rust 1.66.0.
+// use std::hint::black_box;
 use universal_canister::Ops;
 
 mod api;
@@ -98,7 +100,7 @@ type OpsBytes<'a> = &'a [u8];
 
 fn read_bytes<'a>(ops_bytes: &mut OpsBytes<'a>, len: usize) -> &'a [u8] {
     if len < ops_bytes.len() {
-        let (bytes, rest) = ops_bytes.split_at(len as usize);
+        let (bytes, rest) = ops_bytes.split_at(len);
         *ops_bytes = rest;
         bytes
     } else {
@@ -118,6 +120,14 @@ fn read_int(ops_bytes: &mut OpsBytes) -> u32 {
 fn read_int64(ops_bytes: &mut OpsBytes) -> u64 {
     let bytes = read_bytes(ops_bytes, std::mem::size_of::<u64>());
     u64::from_le_bytes(bytes.try_into().unwrap())
+}
+
+fn delay(value: u64) {
+    for _ in 0..value {
+        // Using `black_box` to make sure this no-op cycle is not removed by the compiler optimization.
+        // Requires rust 1.66.0.
+        // black_box(0);
+    }
 }
 
 fn eval(ops_bytes: OpsBytes) {
@@ -151,7 +161,27 @@ fn eval(ops_bytes: OpsBytes) {
             Ops::Caller => stack.push_blob(api::caller()),
             Ops::InstructionCounterIsAtLeast => {
                 let amount = stack.pop_int64();
-                while api::performance_counter(0) < amount {}
+                // Perform a no-op delay for high instruction counter values
+                // to reduce the overhead of charging for performance_counter system call.
+                // Delay values are based on experiment to satisfy conditions:
+                //  - instructions used should be low enough, eg. 3_700...5_000
+                //  - execution CPU complexity should not be too high comparing to instructions used.
+                // Initially using only 16.5*B instructions would hit a 20*B message complexity limit,
+                // 18% which is too far off.
+                if amount < 1_000_000 {
+                    // Approx. instruction tolerance: 3_700.
+                    while api::performance_counter(0) < amount {}
+                } else if amount < 100_000_000 {
+                    // Approx. instruction tolerance: 4_300.
+                    while api::performance_counter(0) < amount {
+                        delay(10);
+                    }
+                } else {
+                    // Approx. instruction tolerance: 4_900.
+                    while api::performance_counter(0) < amount {
+                        delay(100);
+                    }
+                }
             }
             Ops::RejectMessage => stack.push_blob(api::reject_message()),
             Ops::RejectCode => stack.push_int(api::reject_code()),

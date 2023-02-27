@@ -148,27 +148,19 @@ let
   ic-hs-coverage = nixpkgs.haskell.lib.doCheck (nixpkgs.haskell.lib.doCoverage ic-hs);
 in
 
-let
-  httpbin =
-    let
-      my-python-package = ps: ps.callPackage ./httpbin.nix {};
-      python-with-my-packages = nixpkgs.python3.withPackages(ps: with ps; [
-        (my-python-package ps) ps.gunicorn ps.gevent
-      ]);
-      openssl = nixpkgs.openssl;
-    in "${openssl}/bin/openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -sha256 -nodes -subj '/C=CH/ST=Zurich/L=Zurich/O=DFINITY/CN=127.0.0.1';
-        echo \"import gunicorn.http.wsgi
-from six import wraps
-
-def wrap_default_headers(func):
-    @wraps(func)
-    def default_headers(*args, **kwargs):
-        return [header for header in func(*args, **kwargs) if not header.startswith('Server: ') and not header.startswith('Date: ')]
-    return default_headers
-
-gunicorn.http.wsgi.Response.default_headers = wrap_default_headers(gunicorn.http.wsgi.Response.default_headers)\" > conf.py;
-        ${python-with-my-packages}/bin/gunicorn -b 127.0.0.1:8003 --limit-request-line 0 --limit-request-field_size 0 --certfile cert.pem --keyfile key.pem httpbin:app -k gevent -c conf.py";
-in
+  let httpbin = (naersk.buildPackage rec {
+    name = "httpbin-rs";
+    root = ./httpbin-rs;
+    doCheck = false;
+    release = true;
+    nativeBuildInputs = with nixpkgs; [ pkg-config ];
+    buildInputs = with nixpkgs; [ openssl ];
+}).overrideAttrs (old: {
+    postFixup = (old.postFixup or "") + ''
+      mv $out/bin/httpbin-rs $out/httpbin-rs
+      rmdir $out/bin
+    '';
+}); in
 
 rec {
   inherit ic-hs;
@@ -177,6 +169,8 @@ rec {
   inherit ic-hs-coverage;
   inherit universal-canister;
 
+  openssl = nixpkgs.openssl;
+
   ic-ref-test = nixpkgs.runCommandNoCC "ic-ref-test" {
       nativeBuildInputs = [ ic-hs ];
     } ''
@@ -184,7 +178,8 @@ rec {
         pids="$(jobs -p)"
         kill $pids
       }
-      ${httpbin} &
+      ${openssl}/bin/openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -sha256 -nodes -subj '/C=CH/ST=Zurich/L=Zurich/O=DFINITY/CN=127.0.0.1'
+      ${httpbin}/httpbin-rs --port 8003 --cert-file cert.pem --key-file key.pem &
       sleep 1
       ic-ref --pick-port --write-port-to port --cert-path "cert.pem" &
       trap kill_jobs EXIT PIPE
@@ -212,7 +207,8 @@ rec {
         pids="$(jobs -p)"
         kill $pids
       }
-      ${httpbin} &
+      ${openssl}/bin/openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -sha256 -nodes -subj '/C=CH/ST=Zurich/L=Zurich/O=DFINITY/CN=127.0.0.1'
+      ${httpbin}/httpbin-rs --port 8003 --cert-file cert.pem --key-file key.pem &
       sleep 1
       ic-ref --pick-port --write-port-to port --cert-path "cert.pem" &
       trap kill_jobs EXIT PIPE

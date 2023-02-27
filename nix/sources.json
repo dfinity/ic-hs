@@ -12,6 +12,12 @@
         "url": "https://github.com/nomeata/haskell-candid/archive/87a4f01eb9cb93c827a0a7f5f29af0ee19135308.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
+    "http-client": {
+        "branch": "mraszyk/nix",
+        "sha256": "0jm9klh5a1gvzyxxinj0yylij2rgxqlprlgin6hfrby1xvwkdps7",
+        "type": "tarball",
+        "url": "https://github.com/mraszyk/http-client/raw/mraszyk/nix/http-client.tar.gz"
+    },
     "leb128-cereal": {
         "branch": "master",
         "builtin": false,
@@ -30,25 +36,25 @@
         "builtin": false,
         "description": "Build rust crates in Nix. No configuration, no code generation, no IFD. Sandbox friendly.",
         "homepage": "",
-        "owner": "nmattia",
+        "owner": "nix-community",
         "repo": "naersk",
-        "rev": "69daaceebe12c070cd5ae69ba38f277bbf033695",
-        "sha256": "1ip749p9g0prmrwiz0845x9n4j9b39sdrzpi60s4yygy6qgc7262",
+        "rev": "d998160d6a076cfe8f9741e56aeec7e267e3e114",
+        "sha256": "sha256-ezQCsNgmpUHdZANDCILm3RvtO1xH8uujk/+EqNvzIOg=",
         "type": "tarball",
-        "url": "https://github.com/nmattia/naersk/archive/69daaceebe12c070cd5ae69ba38f277bbf033695.tar.gz",
+        "url": "https://github.com/nix-community/naersk/archive/d998160d6a076cfe8f9741e56aeec7e267e3e114.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "nixpkgs": {
-        "branch": "release-22.05",
+        "branch": "release-22.11",
         "builtin": true,
         "description": "Nixpkgs/NixOS branches that track the Nixpkgs/NixOS channels",
         "homepage": null,
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "e0fa35aeeba8af9c6f8c93bee6fe5626b746ca73",
-        "sha256": "0lqn48pccjrxkyc6x03rgxayljrscyf85my89amdirvxjpl1wb92",
+        "rev": "6047d0269b0006756103db57bd5e47b8c4b6381b",
+        "sha256": "0hsvb1z8nx9alrhix16bcdjnsa6bv39n691vw8bd1ikvbri4r8yv",
         "type": "tarball",
-        "url": "https://github.com/NixOS/nixpkgs/archive/e0fa35aeeba8af9c6f8c93bee6fe5626b746ca73.tar.gz",
+        "url": "https://github.com/NixOS/nixpkgs/archive/6047d0269b0006756103db57bd5e47b8c4b6381b.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "winter": {
@@ -63,11 +69,5 @@
         "type": "tarball",
         "url": "https://github.com/dfinity-side-projects/winter/archive/530d5e395bb9919187d47d3966c4d526e668b62a.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
-    },
-    "http-client": {
-        "branch": "mraszyk/nix",
-        "url": "https://github.com/mraszyk/http-client/raw/mraszyk/nix/http-client.tar.gz",
-        "sha256": "0jm9klh5a1gvzyxxinj0yylij2rgxqlprlgin6hfrby1xvwkdps7",
-        "type": "tarball"
     }
 }

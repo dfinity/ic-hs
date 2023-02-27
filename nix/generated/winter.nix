@@ -106,4 +106,5 @@ mkDerivation {
   homepage = "https://github.com/dfinity/winter";
   description = "Haskell port of the WebAssembly OCaml reference interpreter";
   license = lib.licenses.mit;
+  mainProgram = "wasm-invoke";
 }
