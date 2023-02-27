@@ -1,3 +1,4 @@
+{-# LANGUAGE StrictData #-}
 module IC.Certificate where
 
 import IC.HashTree

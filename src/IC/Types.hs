@@ -5,6 +5,7 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE StrictData #-}
 module IC.Types where
 
 import qualified Data.ByteString.Lazy.Char8 as BS

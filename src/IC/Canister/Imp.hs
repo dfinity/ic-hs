@@ -6,6 +6,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE NumericUnderscores #-}
+{-# LANGUAGE StrictData #-}
 
 {-|
 The canister interface, presented imperatively (or impurely), i.e. without rollback

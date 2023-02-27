@@ -28,6 +28,7 @@ This module can also be used in a REPL; see 'connect'.
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE StrictData #-}
 module IC.Test.Agent
     (
       HTTPErrOr,

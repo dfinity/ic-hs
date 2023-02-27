@@ -39,16 +39,21 @@ let staticHaskellPackages = nixpkgs.pkgsStatic.haskellPackages.override {
 }; in
 
 let
-  ic-hs = nixpkgs.haskell.lib.dontCheck (
-    haskellPackages.ic-hs.overrideAttrs (old: {
+  ic-hs =
+    let
+      ic-hs-pkg =
+        nixpkgs.haskell.lib.disableLibraryProfiling
+          (nixpkgs.haskell.lib.disableExecutableProfiling
+            (nixpkgs.haskell.lib.dontCheck haskellPackages.ic-hs));
+    in
+    ic-hs-pkg.overrideAttrs (old: {
       installPhase = (old.installPhase or "") + ''
         mkdir $out/test-data
         cp ${universal-canister}/universal-canister.wasm $out/test-data
       '';
       # variant of justStaticExecutables that retains propagatedBuildInputs
       postFixup = "rm -rf $out/lib $out/share/doc";
-    })
-  );
+    });
 
   # Alias, to be replaced with a derivation that just copies bin/ic-ref
   ic-ref = ic-hs;

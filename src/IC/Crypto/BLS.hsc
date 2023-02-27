@@ -1,5 +1,6 @@
 {-# OPTIONS_GHC -fno-warn-unused-imports -Wno-unused-top-binds #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE StrictData #-}
 #include <bls_BLS12381.h>
 module IC.Crypto.BLS
  ( init

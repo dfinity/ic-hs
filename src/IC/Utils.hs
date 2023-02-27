@@ -7,6 +7,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE StrictData #-}
 {- |
 Generic utilities related to standard or imported data structures that we do
 don’t want to see in non-plumbing code.
