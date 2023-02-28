@@ -573,27 +573,21 @@ icTests my_sub other_sub =
 
   , testGroup "Settings"
     [ testGroup "Controllers"
-        [testCase "Multiple controllers (provisional)" $ do
+        [testCase "A canister can request its own status if it does not control itself" $ do
         let controllers = [Principal defaultUser, Principal otherUser]
         cid <- ic_provisional_create ic00 ecid Nothing Nothing (#controllers .== Vec.fromList controllers)
         universal_wasm <- getTestWasm "universal-canister"
         ic_install ic00 (enum #install) cid universal_wasm ""
 
-        -- Controllers should be able to fetch the canister status.
-        cs <- ic_canister_status (ic00as defaultUser) cid
-        Vec.toList (cs .! #settings .! #controllers) `isSet` controllers
-        cs <- ic_canister_status (ic00as otherUser) cid
-        Vec.toList (cs .! #settings .! #controllers) `isSet` controllers
-
-        -- A canister can request its own status if it does not control itself
         cs <- ic_canister_status (ic00via cid) cid
         assertBool "canister should not control itself in this test" $ not $ elem (Principal cid) controllers
         Vec.toList (cs .! #settings .! #controllers) `isSet` controllers
 
-        -- Non-controllers cannot fetch the canister status
-        ic_canister_status'' ecdsaUser cid >>= isErrOrReject [3, 5]
-        ic_canister_status'' anonymousUser cid >>= isErrOrReject [3, 5]
-        ic_canister_status'' secp256k1User cid >>= isErrOrReject [3, 5]
+    , testCase "Changing controllers" $ do
+        let controllers = [Principal defaultUser, Principal otherUser]
+        cid <- ic_provisional_create ic00 ecid Nothing Nothing (#controllers .== Vec.fromList controllers)
+        universal_wasm <- getTestWasm "universal-canister"
+        ic_install ic00 (enum #install) cid universal_wasm ""
 
         -- Set new controller
         ic_set_controllers (ic00as defaultUser) cid [ecdsaUser]
@@ -605,6 +599,23 @@ icTests my_sub other_sub =
         ic_canister_status'' secp256k1User cid >>= isErrOrReject [3, 5]
         cs <- ic_canister_status (ic00as ecdsaUser) cid
         cs .! #settings .! #controllers @?= Vec.fromList [Principal ecdsaUser]
+
+    , testCase "Multiple controllers (provisional)" $ do
+        let controllers = [Principal defaultUser, Principal otherUser]
+        cid <- ic_provisional_create ic00 ecid Nothing Nothing (#controllers .== Vec.fromList controllers)
+        universal_wasm <- getTestWasm "universal-canister"
+        ic_install ic00 (enum #install) cid universal_wasm ""
+
+        -- Controllers should be able to fetch the canister status.
+        cs <- ic_canister_status (ic00as defaultUser) cid
+        Vec.toList (cs .! #settings .! #controllers) `isSet` controllers
+        cs <- ic_canister_status (ic00as otherUser) cid
+        Vec.toList (cs .! #settings .! #controllers) `isSet` controllers
+
+        -- Non-controllers cannot fetch the canister status
+        ic_canister_status'' ecdsaUser cid >>= isErrOrReject [3, 5]
+        ic_canister_status'' anonymousUser cid >>= isErrOrReject [3, 5]
+        ic_canister_status'' secp256k1User cid >>= isErrOrReject [3, 5]
 
     , simpleTestCase "Multiple controllers (aaaaa-aa)" ecid $ \cid -> do
         let controllers = [Principal cid, Principal otherUser]
@@ -618,19 +629,10 @@ icTests my_sub other_sub =
         cs <- ic_canister_status (ic00as otherUser) cid2
         Vec.toList (cs .! #settings .! #controllers) `isSet` controllers
 
-        -- A canister can request its own status if it does not control itself
-        cs <- ic_canister_status (ic00via cid2) cid2
-        assertBool "canister should not control itself in this test" $ not $ elem (Principal cid2) controllers
-        Vec.toList (cs .! #settings .! #controllers) `isSet` controllers
-
-        -- Set new controller
-        ic_set_controllers (ic00via cid) cid2 [ecdsaUser]
-
-        -- Only that controller can get canister status
-        ic_canister_status'' defaultUser cid2 >>= isErrOrReject [3, 5]
-        ic_canister_status'' otherUser cid2 >>= isErrOrReject [3, 5]
-        cs <- ic_canister_status (ic00as ecdsaUser) cid2
-        cs .! #settings .! #controllers @?= Vec.fromList [Principal ecdsaUser]
+        -- Non-controllers cannot fetch the canister status
+        ic_canister_status'' ecdsaUser cid >>= isErrOrReject [3, 5]
+        ic_canister_status'' anonymousUser cid >>= isErrOrReject [3, 5]
+        ic_canister_status'' secp256k1User cid >>= isErrOrReject [3, 5]
 
     , simpleTestCase "> 10 controllers" ecid $ \cid -> do
         ic_create' (ic00viaWithCycles cid 20_000_000_000_000) ecid (#controllers .== Vec.fromList (replicate 11 (Principal cid)))
