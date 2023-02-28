@@ -24,31 +24,42 @@ let universal-canister = (naersk.buildPackage rec {
 }); in
 
 let haskellOverrides = self: super:
-    let generated = import nix/generated/all.nix self super; in
+    let generated = import nix/generated/all.nix self super;
+        inherit (nixpkgs.haskell.lib) doJailbreak;
+    in
     generated //
     {
+      wide-word = super.callHackage "wide-word" "0.1.5.0" {};
       haskoin-core = nixpkgs.haskell.lib.dontCheck (nixpkgs.haskell.lib.markUnbroken super.haskoin-core);
+      microlens-platform = doJailbreak super.microlens-platform;
+      base16 = doJailbreak super.base16;
+      base32 = doJailbreak super.base32;
+      candid = doJailbreak generated.candid;
     }; in
 
-let haskellPackages = nixpkgs.haskellPackages.override {
+let haskellPackages = nixpkgs.haskell.packages.ghc943.override {
   overrides = haskellOverrides;
 }; in
 
-let staticHaskellPackages = nixpkgs.pkgsStatic.haskellPackages.override {
+let staticHaskellPackages = nixpkgs.pkgsStatic.haskell.packages.ghc943.override {
   overrides = haskellOverrides;
 }; in
 
 let
-  ic-hs = nixpkgs.haskell.lib.dontCheck (
-    haskellPackages.ic-hs.overrideAttrs (old: {
+  ic-hs =
+    let
+      ic-hs-pkg =
+        nixpkgs.haskell.lib.disableLibraryProfiling
+          (nixpkgs.haskell.lib.dontCheck haskellPackages.ic-hs);
+    in
+    ic-hs-pkg.overrideAttrs (old: {
       installPhase = (old.installPhase or "") + ''
         mkdir $out/test-data
         cp ${universal-canister}/universal-canister.wasm $out/test-data
       '';
       # variant of justStaticExecutables that retains propagatedBuildInputs
       postFixup = "rm -rf $out/lib $out/share/doc";
-    })
-  );
+    });
 
   # Alias, to be replaced with a derivation that just copies bin/ic-ref
   ic-ref = ic-hs;

@@ -63,8 +63,10 @@ import qualified IC.Test.Spec.TECDSA
 
 icTests :: TestSubnetConfig -> TestSubnetConfig -> AgentConfig -> TestTree
 icTests my_sub other_sub =
-  let (my_subnet_id_as_entity, my_type, _, ((ecid_as_word64, last_canister_id_as_word64):_)) = my_sub in
-  let (other_subnet_id_as_entity, _, _, ((other_ecid_as_word64, _):_)) = other_sub in
+  let (my_subnet_id_as_entity, my_type, _, my_ranges) = my_sub in
+  let (ecid_as_word64, last_canister_id_as_word64) = head my_ranges in
+  let (other_subnet_id_as_entity, _, _, other_ranges) = other_sub in
+  let (other_ecid_as_word64, _) = head other_ranges in
   let my_subnet_id = rawEntityId my_subnet_id_as_entity in
   let other_subnet_id = rawEntityId other_subnet_id_as_entity in
   let my_is_root = isRootTestSubnet my_sub in

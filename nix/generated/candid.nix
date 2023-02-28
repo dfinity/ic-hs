@@ -40,7 +40,7 @@
 }:
 mkDerivation {
   pname = "candid";
-  version = "0.4";
+  version = "0.4.0.1";
   src = pkgs.sources.haskell-candid;
   isLibrary = true;
   isExecutable = true;

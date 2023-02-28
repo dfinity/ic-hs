@@ -29,7 +29,7 @@ instance SnapshotAble ImpState where
         Stable.imp (isStableMem rs) pmem
         return rs
       where
-        trapToFail (Trap err) = fail $ "replay failed: " ++ show err
+        trapToFail (Trap err) = error $ "replay failed: " ++ show err
         trapToFail (Return x) = return x
 
 deriving
