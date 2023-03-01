@@ -19,6 +19,8 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - run: |
+        mkdir "$HOME/.ssh"
+        chmod 600 "$HOME/.ssh"
         cat << EOF > "$HOME/.ssh/config"
         Host *
           ServerAliveInterval 300
