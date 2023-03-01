@@ -18,7 +18,8 @@ jobs:
       SSH_KEY_FOR_NIXBUILD: ${{ secrets.SSH_KEY_FOR_NIXBUILD }}
     steps:
     - uses: actions/checkout@v3
-    - run: |
+    - if: matrix.os == 'ubuntu-latest'
+      run: |
         mkdir "$HOME/.ssh"
         chmod 700 "$HOME/.ssh"
         cat << EOF > "$HOME/.ssh/config"
