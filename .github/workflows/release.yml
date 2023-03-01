@@ -18,6 +18,13 @@ jobs:
       SSH_KEY_FOR_NIXBUILD: ${{ secrets.SSH_KEY_FOR_NIXBUILD }}
     steps:
     - uses: actions/checkout@v3
+    - run: |
+        cat << EOF > "$HOME/.ssh/config"
+        Host *
+          ServerAliveInterval 300
+          ServerAliveCountMax 2
+        EOF
+        chmod 600 "$HOME/.ssh/config"
     - if: matrix.os == 'macos-latest'
       uses: cachix/install-nix-action@v19
     - if: matrix.os == 'ubuntu-latest'
@@ -34,30 +41,28 @@ jobs:
         authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
     # until https://github.com/cachix/cachix-action/issues/86 is fixed:
     - run: cachix watch-store ic-hs-test &
-    - run: nix-instantiate
-
     # Use Remote Store Builds.
     # See: https://blog.nixbuild.net/posts/2022-03-16-lightning-fast-ci-with-nixbuild-net.html
     - if: matrix.os == 'ubuntu-latest'
-      run: nix build -f default.nix --eval-store auto --store ssh-ng://eu.nixbuild.net --no-link universal-canister
+      run: nix build -f default.nix --eval-store auto --store ssh-ng://eu.nixbuild.net --builders "" --max-jobs 2 --no-link universal-canister
     - if: matrix.os == 'ubuntu-latest'
-      run: nix build -f default.nix --eval-store auto --store ssh-ng://eu.nixbuild.net --no-link ic-hs
+      run: nix build -f default.nix --eval-store auto --store ssh-ng://eu.nixbuild.net --builders "" --max-jobs 2 --no-link ic-hs
     - if: matrix.os == 'ubuntu-latest'
       run: cp -r "$(nix-build -A ic-hs.doc)"/share/doc/*/html gh-page
     - if: matrix.os == 'ubuntu-latest'
-      run: nix build -f default.nix --eval-store auto --store ssh-ng://eu.nixbuild.net --no-link ic-hs-coverage
+      run: nix build -f default.nix --eval-store auto --store ssh-ng://eu.nixbuild.net --builders "" --max-jobs 2 --no-link ic-hs-coverage
     - if: matrix.os == 'ubuntu-latest'
-      run: nix build -f default.nix --eval-store auto --store ssh-ng://eu.nixbuild.net --no-link coverage
+      run: nix build -f default.nix --eval-store auto --store ssh-ng://eu.nixbuild.net --builders "" --max-jobs 2 --no-link coverage
     - if: matrix.os == 'ubuntu-latest'
-      run: nix build -f default.nix --eval-store auto --store ssh-ng://eu.nixbuild.net --no-link check-generated
+      run: nix build -f default.nix --eval-store auto --store ssh-ng://eu.nixbuild.net --builders "" --max-jobs 2 --no-link check-generated
     - if: matrix.os == 'ubuntu-latest'
-      run: nix build -f default.nix --eval-store auto --store ssh-ng://eu.nixbuild.net --no-link ic-ref-dist
+      run: nix build -f default.nix --eval-store auto --store ssh-ng://eu.nixbuild.net --builders "" --max-jobs 2 --no-link ic-ref-dist
     - if: matrix.os == 'ubuntu-latest'
-      run: nix build -f default.nix --eval-store auto --store ssh-ng://eu.nixbuild.net --no-link ic-ref-test
+      run: nix build -f default.nix --eval-store auto --store ssh-ng://eu.nixbuild.net --builders "" --max-jobs 2 --no-link ic-ref-test
     - if: matrix.os == 'ubuntu-latest'
-      run: nix build -f default.nix --eval-store auto --store ssh-ng://eu.nixbuild.net --no-link ic-hs-shell
+      run: nix build -f default.nix --eval-store auto --store ssh-ng://eu.nixbuild.net --builders "" --max-jobs 2 --no-link ic-hs-shell
     - if: matrix.os == 'ubuntu-latest'
-      run: nix build -f default.nix --eval-store auto --store ssh-ng://eu.nixbuild.net --no-link license-check
+      run: nix build -f default.nix --eval-store auto --store ssh-ng://eu.nixbuild.net --builders "" --max-jobs 2 --no-link license-check
 
     - if: matrix.os == 'macos-latest'
       run: nix-env -iA nix-build-uncached -f nix/
