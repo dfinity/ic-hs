@@ -24,7 +24,7 @@ jobs:
         cat << EOF > "$HOME/.ssh/config"
         Host *
           ServerAliveInterval 300
-          ServerAliveCountMax 2
+          ServerAliveCountMax 0
         EOF
         chmod 600 "$HOME/.ssh/config"
     - if: matrix.os == 'macos-latest'
