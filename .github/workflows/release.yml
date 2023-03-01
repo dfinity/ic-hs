@@ -23,7 +23,7 @@ jobs:
         chmod 700 "$HOME/.ssh"
         cat << EOF > "$HOME/.ssh/config"
         Host *
-          ServerAliveInterval 300
+          ServerAliveInterval 0
           ServerAliveCountMax 0
         EOF
         chmod 600 "$HOME/.ssh/config"
