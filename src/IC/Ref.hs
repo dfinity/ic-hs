@@ -138,6 +138,9 @@ authReadStateRequest :: RequestValidation m => Timestamp -> CanisterId -> EnvVal
 authReadStateRequest t ecid ev (ReadStateRequest user_id paths) = do
     valid_when ev t
     valid_for ev user_id
+    let num_request_status_paths = sum $ map is_request_status paths
+    unless (num_request_status_paths <= 1) $
+      throwError "Can only request up to 1 path for request_status."
     -- Implement ACL for read requests here
     forM_ paths $ \case
       ("time":_) -> return ()
@@ -170,6 +173,10 @@ authReadStateRequest t ecid ev (ReadStateRequest user_id paths) = do
             valid_where ev (calleeOfCallRequest ar)
           Nothing -> return ()
       _ -> throwError "User is not authorized to read unspecified state paths"
+  where
+    is_request_status :: Path -> Integer
+    is_request_status ("request_status":_) = 1
+    is_request_status _ = 0
 
 -- Synchronous requests
 
