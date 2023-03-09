@@ -1,7 +1,7 @@
 module IC.Id.Fresh where
 
 import IC.Types
-import IC.Id.Forms
+import IC.Id.Forms hiding (Blob)
 
 import Data.ByteString.Builder
 import Data.Word
@@ -13,5 +13,19 @@ freshId ranges ids =
       [] -> Nothing
       (x:_) -> Just x
 
+wordToId' :: Word64 -> Blob
+wordToId' = mkOpaqueId . toLazyByteString . word64BE
+
 wordToId :: Word64 -> EntityId
-wordToId = EntityId . mkOpaqueId . toLazyByteString . word64BE
+wordToId = EntityId . wordToId'
+
+checkCanisterIdInRanges' :: [(Blob, Blob)] -> Blob -> Bool
+checkCanisterIdInRanges' ranges cid = any (\(a, b) -> a <= cid && cid <= b) ranges
+
+checkCanisterIdInRanges :: [(Word64, Word64)] -> CanisterId -> Bool
+checkCanisterIdInRanges ranges cid = checkCanisterIdInRanges' (map (\(a, b) -> (wordToId' a, wordToId' b)) ranges) (rawEntityId cid)
+
+isRootTestSubnet :: TestSubnetConfig -> Bool
+isRootTestSubnet (_, _, _, ranges) = checkCanisterIdInRanges ranges nns_canister_id
+  where
+    nns_canister_id = wordToId 0

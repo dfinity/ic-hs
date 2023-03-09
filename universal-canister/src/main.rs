@@ -1,8 +1,12 @@
 use candid::{CandidType, Decode, Deserialize, Encode, Principal};
 use std::convert::TryInto;
+// Requires rust 1.66.0.
+// use std::hint::black_box;
 use universal_canister::Ops;
 
 mod api;
+
+const ONE_WAY_CALL: u32 = u32::MAX;
 
 // Canister http_request types
 
@@ -25,11 +29,11 @@ pub struct TransformArg {
     pub context: Vec<u8>,
 }
 
-fn http_reply_with_body(body: &Vec<u8>) -> Vec<u8> {
+fn http_reply_with_body(body: &[u8]) -> Vec<u8> {
     Encode!(&HttpResponse {
-        status: 200 as u128,
+        status: 200_u128,
         headers: vec![],
-        body: body.clone(),
+        body: body.to_vec(),
     })
     .unwrap()
 }
@@ -96,7 +100,7 @@ type OpsBytes<'a> = &'a [u8];
 
 fn read_bytes<'a>(ops_bytes: &mut OpsBytes<'a>, len: usize) -> &'a [u8] {
     if len < ops_bytes.len() {
-        let (bytes, rest) = ops_bytes.split_at(len as usize);
+        let (bytes, rest) = ops_bytes.split_at(len);
         *ops_bytes = rest;
         bytes
     } else {
@@ -116,6 +120,14 @@ fn read_int(ops_bytes: &mut OpsBytes) -> u32 {
 fn read_int64(ops_bytes: &mut OpsBytes) -> u64 {
     let bytes = read_bytes(ops_bytes, std::mem::size_of::<u64>());
     u64::from_le_bytes(bytes.try_into().unwrap())
+}
+
+fn delay(value: u64) {
+    for _ in 0..value {
+        // Using `black_box` to make sure this no-op cycle is not removed by the compiler optimization.
+        // Requires rust 1.66.0.
+        // black_box(0);
+    }
 }
 
 fn eval(ops_bytes: OpsBytes) {
@@ -147,6 +159,30 @@ fn eval(ops_bytes: OpsBytes) {
             Ops::Self_ => stack.push_blob(api::id()),
             Ops::Reject => api::reject(&stack.pop_blob()),
             Ops::Caller => stack.push_blob(api::caller()),
+            Ops::InstructionCounterIsAtLeast => {
+                let amount = stack.pop_int64();
+                // Perform a no-op delay for high instruction counter values
+                // to reduce the overhead of charging for performance_counter system call.
+                // Delay values are based on experiment to satisfy conditions:
+                //  - instructions used should be low enough, eg. 3_700...5_000
+                //  - execution CPU complexity should not be too high comparing to instructions used.
+                // Initially using only 16.5*B instructions would hit a 20*B message complexity limit,
+                // 18% which is too far off.
+                if amount < 1_000_000 {
+                    // Approx. instruction tolerance: 3_700.
+                    while api::performance_counter(0) < amount {}
+                } else if amount < 100_000_000 {
+                    // Approx. instruction tolerance: 4_300.
+                    while api::performance_counter(0) < amount {
+                        delay(10);
+                    }
+                } else {
+                    // Approx. instruction tolerance: 4_900.
+                    while api::performance_counter(0) < amount {
+                        delay(100);
+                    }
+                }
+            }
             Ops::RejectMessage => stack.push_blob(api::reject_message()),
             Ops::RejectCode => stack.push_int(api::reject_code()),
             Ops::IntToBlob => {
@@ -340,6 +376,24 @@ fn eval(ops_bytes: OpsBytes) {
                     api::trap_with_blob(&c)
                 }
             }
+            Ops::MintCycles => {
+                let amount = stack.pop_int64();
+                stack.push_int64(api::mint_cycles(amount));
+            }
+            Ops::OneWayCallNew => {
+                // pop in reverse order!
+                let method = stack.pop_blob();
+                let callee = stack.pop_blob();
+
+                api::call_new(
+                    &callee,
+                    &method,
+                    callback,
+                    ONE_WAY_CALL,
+                    callback,
+                    ONE_WAY_CALL,
+                );
+            }
         }
     }
 }
@@ -503,7 +557,9 @@ fn get_callback(idx: u32) -> Vec<u8> {
 }
 
 fn callback(env: u32) {
-    eval(&get_callback(env));
+    if env != ONE_WAY_CALL {
+        eval(&get_callback(env));
+    }
 }
 
 /* Panic setup */

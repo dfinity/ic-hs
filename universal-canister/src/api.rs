@@ -64,9 +64,11 @@ mod ic0 {
         pub fn data_certificate_copy(dst: u32, offset: u32, size: u32) -> ();
 
         pub fn time() -> u64;
-        pub fn performance_counter(_type: u32) -> u64;
+        pub fn performance_counter(counter_type: u32) -> u64;
         pub fn global_timer_set(timestamp: u64) -> u64;
         pub fn canister_version() -> u64;
+
+        pub fn mint_cycles(amount: u64) -> u64;
     }
 }
 
@@ -94,9 +96,9 @@ pub fn call_new(
             method.as_ptr() as u32,
             method.len() as u32,
             reply_fun as u32,
-            reply_env as u32,
+            reply_env,
             reject_fun as u32,
-            reject_env as u32,
+            reject_env,
         )
     }
 }
@@ -104,7 +106,7 @@ pub fn call_new(
 pub fn call_on_cleanup(fun: fn(u32) -> (), env: u32) {
     #[allow(clippy::fn_to_numeric_cast_with_truncation)]
     unsafe {
-        ic0::call_on_cleanup(fun as u32, env as u32)
+        ic0::call_on_cleanup(fun as u32, env)
     }
 }
 
@@ -334,8 +336,8 @@ pub fn time() -> u64 {
     unsafe { ic0::time() }
 }
 
-pub fn performance_counter(_type: u32) -> u64 {
-    unsafe { ic0::performance_counter(_type) }
+pub fn performance_counter(counter_type: u32) -> u64 {
+    unsafe { ic0::performance_counter(counter_type) }
 }
 
 pub fn method_name() -> Vec<u8> {
@@ -379,6 +381,11 @@ pub fn trap_with(message: &str) -> ! {
     unsafe {
         ic0::trap(message.as_ptr() as u32, message.len() as u32);
     }
+}
+
+/// Mint cycles (only works on CMC).
+pub fn mint_cycles(amount: u64) -> u64 {
+    unsafe { ic0::mint_cycles(amount) }
 }
 
 use std::panic;

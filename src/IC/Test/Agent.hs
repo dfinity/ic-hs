@@ -27,6 +27,7 @@ This module can also be used in a REPL; see 'connect'.
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DeriveAnyClass #-}
 module IC.Test.Agent
     (
       HTTPErrOr,
@@ -37,10 +38,10 @@ module IC.Test.Agent
       ReqResponse(..),
       ReqStatus(..),
       AgentConfig(..),
+      DelegationCanisterRangeCheck(..),
       addExpiry,
       addNonce,
       addNonceExpiryEnv,
-      agentEcid,
       anonymousUser,
       as2Word64,
       asWord64Word128,
@@ -79,12 +80,14 @@ module IC.Test.Agent
       ic00,
       ic00as,
       ic00',
+      ic00WithSubnetas',
       ingressDelay,
       is2xx,
       isErrOrReject,
       isPendingOrProcessing,
       isReject,
       isReply,
+      isResponded,
       okCBOR,
       otherSK,
       otherUser,
@@ -115,6 +118,7 @@ module IC.Test.Agent
       callIC,
       callIC',
       callIC'',
+      callICWithSubnet'',
       callIC''',
       agentConfig,
     )
@@ -136,7 +140,7 @@ import Test.Tasty.HUnit
 import Test.Tasty.Options
 import Control.Monad.Except
 import Control.Concurrent
-import Control.Exception (catch)
+import Control.Exception (catch, throw, Exception)
 import Data.Traversable
 import Data.Word
 import Data.WideWord.Word128
@@ -165,12 +169,31 @@ import IC.Crypto
 import qualified IC.Crypto.DER as DER
 import qualified IC.Crypto.DER_BLS as DER_BLS
 import IC.Id.Forms
+import IC.Id.Fresh
 import IC.Test.Options
-import IC.Types(CanisterId, rawEntityId)
 import IC.HashTree hiding (Blob, Label)
 import IC.Certificate
 import IC.Certificate.Value
 import IC.Certificate.CBOR
+
+-- * Exceptions
+
+data DelegationCanisterRangeCheck = DelegationCanisterRangeCheck [(Blob, Blob)] Blob
+  deriving (Show, Exception)
+
+-- * CBOR decoding
+
+asCBORBlobPairList :: Blob -> IO [(Blob, Blob)]
+asCBORBlobPairList blob = do
+    decoded <- asRight $ decode blob
+    case decoded of
+        GList list -> do
+            mapM cborToBlobPair list
+        _ -> assertFailure $ "Failed to decode as CBOR encoded list of blob pairs: " <> show decoded
+
+cborToBlobPair :: GenR -> IO (Blob, Blob)
+cborToBlobPair (GList [GBlob x, GBlob y]) = return (x, y)
+cborToBlobPair r = assertFailure $ "Expected list of pairs, got: " <> show r
 
 -- * Agent configuration
 
@@ -178,13 +201,12 @@ data AgentConfig = AgentConfig
     { tc_root_key :: Blob
     , tc_manager :: Manager
     , tc_endPoint :: String
-    , tc_ecid :: CanisterId
     , tc_httpbin :: String
     , tc_timeout :: Int
     }
 
-makeAgentConfig :: String -> CanisterId -> String -> Int -> IO AgentConfig
-makeAgentConfig ep' ecid httpbin' to = do
+makeAgentConfig :: String -> String -> Int -> IO AgentConfig
+makeAgentConfig ep' httpbin' to = do
     manager <- newTlsManagerWith $ tlsManagerSettings
       { managerResponseTimeout = responseTimeoutMicro 60_000_000 -- 60s
       }
@@ -200,7 +222,6 @@ makeAgentConfig ep' ecid httpbin' to = do
         { tc_root_key = status_root_key s
         , tc_manager = manager
         , tc_endPoint = ep
-        , tc_ecid = ecid
         , tc_httpbin = httpbin
         , tc_timeout = to
         }
@@ -216,18 +237,17 @@ makeAgentConfig ep' ecid httpbin' to = do
 preFlight :: OptionSet -> IO AgentConfig
 preFlight os = do
     let Endpoint ep = lookupOption os
-    let ECID ecid = lookupOption os
     let Httpbin httpbin = lookupOption os
     let PollTimeout to = lookupOption os
-    makeAgentConfig ep ecid httpbin to
+    makeAgentConfig ep httpbin to
 
 
 newtype ReplWrapper = R (forall a. (HasAgentConfig => a) -> a)
 
 -- |  This is for use from the Haskell REPL, see README.md
-connect :: String -> CanisterId -> String -> Int -> IO ReplWrapper
-connect ep ecid httpbin to = do
-    agentConfig <- makeAgentConfig ep ecid httpbin to
+connect :: String -> String -> Int -> IO ReplWrapper
+connect ep httpbin to = do
+    agentConfig <- makeAgentConfig ep httpbin to
     let ?agentConfig = agentConfig
     return (R $ \x -> x)
 
@@ -243,9 +263,6 @@ agentConfig = ?agentConfig
 
 endPoint :: HasAgentConfig => String
 endPoint = tc_endPoint agentConfig
-
-agentEcid :: HasAgentConfig => Blob
-agentEcid = rawEntityId $ tc_ecid agentConfig
 
 agentManager :: HasAgentConfig => Manager
 agentManager = tc_manager agentConfig
@@ -411,7 +428,7 @@ submitCall' cid req = do
      assertBool "Response body not empty" (BS.null (responseBody res))
      pure $ Right (getRequestStatus' (senderOf req) cid (requestId req))
   else do
-    let msg = T.unpack (T.decodeUtf8With T.lenientDecode (BS.toStrict (BS.take 200 (responseBody res))))
+    let msg = T.unpack (T.decodeUtf8With T.lenientDecode (BS.toStrict (BS.take 1000 (responseBody res))))
     pure $ Left (code, msg)
 
 submitCall :: (HasCallStack, HasAgentConfig) => Blob -> GenR -> IO (IO (HTTPErrOr ReqStatus))
@@ -457,6 +474,7 @@ getStateCert'' sender ecid paths = do
       gr <- okCBOR response
       b <- asExceptT $ record (field blob "certificate") gr
       cert <- decodeCert' b
+      validateStateCert ecid cert
 
       case wellFormed (cert_tree cert) of
           Left err -> assertFailure $ "Hash tree not well formed: " ++ err
@@ -492,23 +510,26 @@ verboseVerify what domain_sep pk msg sig =
             ]
         Right () -> return ()
 
-validateDelegation :: (HasCallStack, HasAgentConfig) => Maybe Delegation -> IO Blob
-validateDelegation Nothing = return (tc_root_key agentConfig)
-validateDelegation (Just del) = do
+validateDelegation :: (HasCallStack, HasAgentConfig) => Blob -> Maybe Delegation -> IO Blob
+validateDelegation _ Nothing = return (tc_root_key agentConfig)
+validateDelegation cid (Just del) = do
     cert <- decodeCert' (del_certificate del)
     case wellFormed (cert_tree cert) of
         Left err -> assertFailure $ "Hash tree not well formed: " ++ err
         Right () -> return ()
-    validateStateCert' "certificate delegation" cert
+    validateStateCert' "certificate delegation" cid cert
+
+    ranges <- certValue @Blob cert ["subnet", del_subnet_id del, "canister_ranges"] >>= asCBORBlobPairList
+    unless (checkCanisterIdInRanges' ranges cid) $ throw (DelegationCanisterRangeCheck ranges cid)
 
     certValue cert ["subnet", del_subnet_id del, "public_key"]
 
-validateStateCert' :: (HasCallStack, HasAgentConfig) => String -> Certificate -> IO ()
-validateStateCert' what cert = do
-    pk <- validateDelegation (cert_delegation cert)
+validateStateCert' :: (HasCallStack, HasAgentConfig) => String -> Blob -> Certificate -> IO ()
+validateStateCert' what cid cert = do
+    pk <- validateDelegation cid (cert_delegation cert)
     verboseVerify what "ic-state-root" pk (reconstruct (cert_tree cert)) (cert_sig cert)
 
-validateStateCert :: (HasCallStack, HasAgentConfig) => Certificate -> IO ()
+validateStateCert :: (HasCallStack, HasAgentConfig) => Blob -> Certificate -> IO ()
 validateStateCert = validateStateCert' "certificate"
 
 data ReqResponse = Reply Blob | Reject Natural T.Text (Maybe T.Text)
@@ -574,6 +595,10 @@ getRequestStatus' sender cid rid = do
 
 getRequestStatus :: (HasCallStack, HasAgentConfig) => Blob -> Blob -> Blob -> IO ReqStatus
 getRequestStatus sender cid rid = getRequestStatus' sender cid rid >>= is2xx
+
+isResponded :: ReqStatus -> Assertion
+isResponded (Responded _) = return ()
+isResponded _ = assertFailure "Request must be responded"
 
 loop' :: (HasCallStack, HasAgentConfig) => IO (HTTPErrOr (Maybe a)) -> IO (HTTPErrOr a)
 loop' act = getCurrentTime >>= go
@@ -768,14 +793,17 @@ ic00 :: HasAgentConfig => IC00
 ic00 = ic00as defaultUser
 
 -- A variant that allows non-200 responses to submit
-ic00as' :: HasAgentConfig => Blob -> Blob -> T.Text -> Blob -> IO (HTTPErrOr ReqResponse)
-ic00as' user cid method_name arg = awaitCall' cid $ rec
+ic00WithSubnetas' :: HasAgentConfig => Blob -> Blob -> Blob -> T.Text -> Blob -> IO (HTTPErrOr ReqResponse)
+ic00WithSubnetas' subnet_id user ecid method_name arg = awaitCall' ecid $ rec
       [ "request_type" =: GText "call"
       , "sender" =: GBlob user
-      , "canister_id" =: GBlob ""
+      , "canister_id" =: GBlob subnet_id
       , "method_name" =: GText method_name
       , "arg" =: GBlob arg
       ]
+
+ic00as' :: HasAgentConfig => Blob -> Blob -> T.Text -> Blob -> IO (HTTPErrOr ReqResponse)
+ic00as' = ic00WithSubnetas' ""
 
 ic00' :: HasAgentConfig => IC00'
 ic00' = ic00as' defaultUser
@@ -808,13 +836,21 @@ callIC' ic00 ecid l x = ic00 ecid (T.pack (symbolVal l)) (Candid.encode x)
 -- not a generic ic00 thing), and return the HTTP error code or the response
 -- (reply or reject)
 
+callICWithSubnet'' :: forall s a b.
+  HasAgentConfig =>
+  KnownSymbol s =>
+  (a -> IO b) ~ (ICManagement IO .! s) =>
+  Candid.CandidArg a =>
+  Blob -> Blob -> Blob -> Label s -> a -> IO (HTTPErrOr ReqResponse)
+callICWithSubnet'' subnet_id user ecid l x = ic00WithSubnetas' subnet_id user ecid (T.pack (symbolVal l)) (Candid.encode x)
+
 callIC'' :: forall s a b.
   HasAgentConfig =>
   KnownSymbol s =>
   (a -> IO b) ~ (ICManagement IO .! s) =>
   Candid.CandidArg a =>
   Blob -> Blob -> Label s -> a -> IO (HTTPErrOr ReqResponse)
-callIC'' user ecid l x = ic00as' user ecid (T.pack (symbolVal l)) (Candid.encode x)
+callIC'' = callICWithSubnet'' ""
 
 -- Triple primed variants return the response (reply or reject) and allow HTTP errors
 callIC''' :: forall s a b.

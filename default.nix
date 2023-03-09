@@ -62,19 +62,19 @@ let
         buildInputs = [ nixpkgs.macdylibbundler nixpkgs.removeReferencesTo ];
         allowedRequisites = [];
       } ''
-        mkdir -p $out/bin
-        cp ${ic-ref}/bin/ic-ref $out/bin
-        cp ${ic-ref}/bin/ic-ref-test $out/bin
+        mkdir -p $out/build/libs
+        cp ${ic-ref}/bin/ic-ref $out/build
+        cp ${ic-ref}/bin/ic-ref-test $out/build
         mkdir -p $out/test-data
         cp ${ic-ref}/test-data/universal-canister.wasm $out/test-data/universal-canister.wasm
-        chmod u+w $out/bin/ic-ref
-        chmod u+w $out/bin/ic-ref-test
+        chmod u+w $out/build/ic-ref
+        chmod u+w $out/build/ic-ref-test
         dylibbundler \
           -b \
-          -x $out/bin/ic-ref \
-          -x $out/bin/ic-ref-test \
-          -d $out/bin \
-          -p '@executable_path' \
+          -x $out/build/ic-ref \
+          -x $out/build/ic-ref-test \
+          -d $out/build/libs \
+          -p '@executable_path/libs' \
           -i /usr/lib/system \
           -i ${nixpkgs.libiconv}/lib \
           -i ${nixpkgs.darwin.Libsystem}/lib
@@ -86,10 +86,10 @@ let
           -t ${nixpkgs.darwin.CF} \
           -t ${nixpkgs.libiconv} \
           -t ${staticHaskellPackages.tasty-html.data} \
-          $out/bin/*
+          $out/build/*
 
         # sanity check
-        $out/bin/ic-ref --version
+        $out/build/ic-ref --version
       ''
 
     # on Linux, build statically using musl
@@ -105,9 +105,9 @@ let
         allowedReferences = [];
         nativeBuildInputs = [ nixpkgs.removeReferencesTo ];
       } ''
-        mkdir -p $out/bin
-        cp ${ic-hs-static}/bin/ic-ref $out/bin
-        cp ${ic-hs-static}/bin/ic-ref-test $out/bin
+        mkdir -p $out/build
+        cp ${ic-hs-static}/bin/ic-ref $out/build
+        cp ${ic-hs-static}/bin/ic-ref-test $out/build
         mkdir -p $out/test-data
         cp ${ic-hs}/test-data/universal-canister.wasm $out/test-data/universal-canister.wasm
 
@@ -120,7 +120,7 @@ let
         #   warp_libexecdir"/nix/store/...-warp-static-x86_64-unknown-linux-musl-3.3.17/libexec/x86_64-linux-ghc-8.10.7/warp-3.3.17"
         #   warp_sysconfdir"/nix/store/...-warp-static-x86_64-unknown-linux-musl-3.3.17/etc"
         #
-        # These paths end up in the statically compiled $out/bin/ic-ref which
+        # These paths end up in the statically compiled $out/build/ic-ref which
         # will fail the `allowedReferences = []` check.
         #
         # Fortunatley warp doesn't use these `warp_*` paths:
@@ -134,11 +134,11 @@ let
         #   Network/Wai/Handler/Warp/Settings.hs:    , settingsServerName = C8.pack $ "Warp/" ++ showVersion Paths_warp.version
         #
         # So we can safely remove the references to warp:
-        remove-references-to -t ${staticHaskellPackages.warp} $out/bin/ic-ref
+        remove-references-to -t ${staticHaskellPackages.warp} $out/build/ic-ref
         remove-references-to \
           -t ${staticHaskellPackages.tasty-html} \
           -t ${staticHaskellPackages.tasty-html.data} \
-          $out/bin/ic-ref-test
+          $out/build/ic-ref-test
       '';
 
 
@@ -148,27 +148,19 @@ let
   ic-hs-coverage = nixpkgs.haskell.lib.doCheck (nixpkgs.haskell.lib.doCoverage ic-hs);
 in
 
-let
-  httpbin =
-    let
-      my-python-package = ps: ps.callPackage ./httpbin.nix {};
-      python-with-my-packages = nixpkgs.python3.withPackages(ps: with ps; [
-        (my-python-package ps) ps.gunicorn ps.gevent
-      ]);
-      openssl = nixpkgs.openssl;
-    in "${openssl}/bin/openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -sha256 -nodes -subj '/C=CH/ST=Zurich/L=Zurich/O=DFINITY/CN=127.0.0.1';
-        echo \"import gunicorn.http.wsgi
-from six import wraps
-
-def wrap_default_headers(func):
-    @wraps(func)
-    def default_headers(*args, **kwargs):
-        return [header for header in func(*args, **kwargs) if not header.startswith('Server: ') and not header.startswith('Date: ')]
-    return default_headers
-
-gunicorn.http.wsgi.Response.default_headers = wrap_default_headers(gunicorn.http.wsgi.Response.default_headers)\" > conf.py;
-        ${python-with-my-packages}/bin/gunicorn -b 127.0.0.1:8003 --limit-request-line 0 --limit-request-field_size 0 --certfile cert.pem --keyfile key.pem httpbin:app -k gevent -c conf.py";
-in
+  let httpbin = (naersk.buildPackage rec {
+    name = "httpbin-rs";
+    root = ./httpbin-rs;
+    doCheck = false;
+    release = true;
+    nativeBuildInputs = with nixpkgs; [ pkg-config ];
+    buildInputs = with nixpkgs; [ openssl ];
+}).overrideAttrs (old: {
+    postFixup = (old.postFixup or "") + ''
+      mv $out/bin/httpbin-rs $out/httpbin-rs
+      rmdir $out/bin
+    '';
+}); in
 
 rec {
   inherit ic-hs;
@@ -177,6 +169,8 @@ rec {
   inherit ic-hs-coverage;
   inherit universal-canister;
 
+  openssl = nixpkgs.openssl;
+
   ic-ref-test = nixpkgs.runCommandNoCC "ic-ref-test" {
       nativeBuildInputs = [ ic-hs ];
     } ''
@@ -184,7 +178,8 @@ rec {
         pids="$(jobs -p)"
         kill $pids
       }
-      ${httpbin} &
+      ${openssl}/bin/openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -sha256 -nodes -subj '/C=CH/ST=Zurich/L=Zurich/O=DFINITY/CN=127.0.0.1'
+      ${httpbin}/httpbin-rs --port 8003 --cert-file cert.pem --key-file key.pem &
       sleep 1
       ic-ref --pick-port --write-port-to port --cert-path "cert.pem" &
       trap kill_jobs EXIT PIPE
@@ -192,81 +187,59 @@ rec {
       test -e port
       mkdir -p $out
       sleep 1
-      LANG=C.UTF8 ic-ref-test --ecid 5v3p4-iyaaa-aaaaa-qaaaa-cai --endpoint "http://127.0.0.1:$(cat port)/" --httpbin "127.0.0.1:8003" --html $out/report.html
+      LANG=C.UTF8 ic-ref-test --test-subnet-config "(\"bn26o-3iapb-njhsq-6mjum-ssjtx-lcwrs-id2x6-2z7ce-yaweh-xamz5-7qe\",system,1,[(0,1048575)])" --peer-subnet-config "(\"jdzfx-2szde-tnkmk-2m5zt-t6gga-pnl22-v36hx-hz5zg-r6mei-tw3q4-nae\",application,1,[(1048576,2097151)])" --endpoint "http://127.0.0.1:$(cat port)/" --httpbin "127.0.0.1:8003" --html $out/report-1.html
+      LANG=C.UTF8 ic-ref-test --test-subnet-config "(\"jdzfx-2szde-tnkmk-2m5zt-t6gga-pnl22-v36hx-hz5zg-r6mei-tw3q4-nae\",application,1,[(1048576,2097151)])" --peer-subnet-config "(\"bn26o-3iapb-njhsq-6mjum-ssjtx-lcwrs-id2x6-2z7ce-yaweh-xamz5-7qe\",system,1,[(0,1048575)])" --endpoint "http://127.0.0.1:$(cat port)/" --httpbin "127.0.0.1:8003" --html $out/report-2.html
       pids="$(jobs -p)"
       kill -INT $pids
       trap - EXIT PIPE
       mkdir -p $out/nix-support
-      echo "report test-results $out report.html" >> $out/nix-support/hydra-build-products
+      echo "report test-results $out report-1.html" >> $out/nix-support/hydra-build-products
+      echo "report test-results $out report-2.html" >> $out/nix-support/hydra-build-products
     '';
 
   coverage = nixpkgs.runCommandNoCC "ic-ref-test" {
       nativeBuildInputs = [ haskellPackages.ghc ic-hs-coverage ];
       # Prevent rebuilds whenever non-Haskell related files (like .nix) change.
       srcdir = nixpkgs.lib.sourceByRegex (nixpkgs.subpath ./.)
-        [ "^src.*" "^ic-hs.cabal" "^cbits.*" "^LICENSE" "^ic.did" ];
+        [ "^src.*" "^bin.*" "^tests.*" "^ic-hs.cabal" "^cbits.*" "^LICENSE" "^ic.did" ];
     } ''
       function kill_jobs () {
         pids="$(jobs -p)"
         kill $pids
       }
-      ${httpbin} &
+      ${openssl}/bin/openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -sha256 -nodes -subj '/C=CH/ST=Zurich/L=Zurich/O=DFINITY/CN=127.0.0.1'
+      ${httpbin}/httpbin-rs --port 8003 --cert-file cert.pem --key-file key.pem &
       sleep 1
       ic-ref --pick-port --write-port-to port --cert-path "cert.pem" &
       trap kill_jobs EXIT PIPE
       sleep 1
       test -e port
       sleep 1
-      LANG=C.UTF8 ic-ref-test --ecid 5v3p4-iyaaa-aaaaa-qaaaa-cai --endpoint "http://127.0.0.1:$(cat port)/" --httpbin "127.0.0.1:8003"
+      LANG=C.UTF8 ic-ref-test \
+        --test-subnet-config "(\"bn26o-3iapb-njhsq-6mjum-ssjtx-lcwrs-id2x6-2z7ce-yaweh-xamz5-7qe\",system,1,[(0,1048575)])" \
+        --peer-subnet-config "(\"jdzfx-2szde-tnkmk-2m5zt-t6gga-pnl22-v36hx-hz5zg-r6mei-tw3q4-nae\",application,1,[(1048576,2097151)])" \
+        --endpoint "http://127.0.0.1:$(cat port)/" \
+        --httpbin "127.0.0.1:8003"
+      LANG=C.UTF8 ic-ref-test \
+        --test-subnet-config "(\"jdzfx-2szde-tnkmk-2m5zt-t6gga-pnl22-v36hx-hz5zg-r6mei-tw3q4-nae\",application,1,[(1048576,2097151)])" \
+        --peer-subnet-config "(\"bn26o-3iapb-njhsq-6mjum-ssjtx-lcwrs-id2x6-2z7ce-yaweh-xamz5-7qe\",system,1,[(0,1048575)])" \
+        --endpoint "http://127.0.0.1:$(cat port)/" \
+        --httpbin "127.0.0.1:8003"
       pids="$(jobs -p)"
       kill -INT $pids
       trap - EXIT PIPE
       sleep 5 # wait for ic-ref.tix to be written
 
       find
-      LANG=C.UTF8 hpc markup ic-ref.tix --hpcdir=${ic-hs-coverage}/share/hpc/vanilla/mix/ic-ref --srcdir=$srcdir  --destdir $out
+      LANG=C.UTF8 hpc markup \
+        --srcdir=$srcdir \
+        --destdir $out \
+        --hpcdir=${ic-hs-coverage}/share/hpc/vanilla/mix/ic-hs-0.0.1 \
+        --hpcdir=${ic-hs-coverage}/share/hpc/vanilla/mix/ic-ref \
+        ic-ref.tix
 
       mkdir -p $out/nix-support
       echo "report coverage $out hpc_index.html" >> $out/nix-support/hydra-build-products
-    '';
-
-  # The following two derivations keep the cabal.products.freeze files
-  # up to date. It is quite hacky to get the package data base for the ic-hs
-  # derivation, and then convince Cabal to use that...
-  cabal-freeze = (nixpkgs.haskell.lib.doCheck haskellPackages.ic-hs).overrideAttrs(old: {
-      nativeBuildInputs = (old.nativeBuildInputs or []) ++ [ nixpkgs.cabal-install ];
-      phases = [ "unpackPhase" "setupCompilerEnvironmentPhase" "buildPhase" "installPhase" ];
-      buildPhase = ''
-        rm -f cabal.project.freeze cabal.project
-        unset GHC_PACKAGE_PATH
-        mkdir .cabal
-        touch .cabal/config # empty, no repository
-        HOME=$PWD cabal v2-freeze --ghc-pkg-options="-f $packageConfDir" --offline --enable-tests || true
-      '';
-      outputs = ["out"]; # no docs
-      installPhase = ''
-        mkdir -p $out
-        echo "-- Run nix-shell . -A check-cabal-freeze to update this file" > $out/cabal.project.freeze
-        cat cabal.project.freeze |grep -v active-repositories >> $out/cabal.project.freeze
-      '';
-    });
-
-  check-cabal-freeze = nixpkgs.runCommandNoCC "check-cabal-freeze" {
-      nativeBuildInputs = [ nixpkgs.diffutils ];
-      expected = cabal-freeze + /cabal.project.freeze;
-      actual = ./cabal.project.freeze;
-      cmd = "nix-shell . -A check-cabal-freeze";
-      shellHook = ''
-        dest=${toString ./cabal.project.freeze}
-        rm -f $dest
-        cp -v $expected $dest
-        chmod u-w $dest
-        exit 0
-      '';
-    } ''
-      diff -r -U 3 $actual $expected ||
-        { echo "To update, please run"; echo "nix-shell . -A check-cabal-freeze"; exit 1; }
-      touch $out
     '';
 
   check-generated = nixpkgs.runCommandNoCC "check-generated" {

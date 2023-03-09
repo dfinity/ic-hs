@@ -100,4 +100,5 @@ mkDerivation {
   homepage = "https://github.com/nomeata/haskell-candid";
   description = "Candid integration";
   license = lib.licenses.asl20;
+  mainProgram = "hcandid";
 }

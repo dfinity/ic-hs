@@ -142,9 +142,12 @@ instance Show SubnetType where
 
 data SubnetConfig = SubnetConfig
     { subnet_type :: SubnetType
+    , subnet_size :: W.Word64
     , nonce :: String
     , canister_ranges :: [(W.Word64, W.Word64)]
     }
+
+type TestSubnetConfig = (EntityId, SubnetType, W.Word64, [(W.Word64, W.Word64)])
 
 -- Abstract canisters
 
@@ -206,11 +209,12 @@ noCanisterActions = CanisterActions Nothing Nothing
 data CallActions = CallActions
   { ca_new_calls :: [MethodCall]
   , ca_accept :: Cycles
+  , ca_mint :: Cycles
   , ca_response :: Maybe Response
   }
 
 noCallActions :: CallActions
-noCallActions = CallActions [] 0 Nothing
+noCallActions = CallActions [] 0 0 Nothing
 
 type UpdateResult = (CallActions, CanisterActions)
 
