@@ -111,16 +111,19 @@ To achieve these goals, the following design decisions are made:
 ### Usage
 
 The `ic-ref` program starts a webserver at `http://localhost:8080/` that implements the
-Internet Computer interface, and can be used with `dfx` by setting
+Internet Computer interface, and can be used with `dfx` by updating your dfx configuration:
+```console
+$ cat ~/.config/dfx/networks.json
+{
+  "local": {
+      "bind": "127.0.0.1:8080",
+      "type": "ephemeral",
+      "replica": {
+        "subnet_type": "system"
+      }
+  }
+}
 ```
-  "networks": {
-     "local": {
-       "bind": "localhost:8080",
-       "type": "ephemeral"
-     }
-   }
-```
-in `dfx.json`.
 
 If you point your browser to `http://localhost:8080/` you get the evolution of
 the IC state as JSON. We recommended to use Firefox, as it provides a nice UI for
