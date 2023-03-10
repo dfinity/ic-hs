@@ -110,8 +110,9 @@ To achieve these goals, the following design decisions are made:
 
 ### Usage
 
-The `ic-ref` program starts a webserver at `http://localhost:8080/` that implements the
-Internet Computer interface, and can be used with `dfx` by updating your dfx configuration:
+The `ic-ref` program (invoked with `--listen-port 8080`) starts a webserver
+at `http://localhost:8080/` that implements the Internet Computer interface,
+and can be used with `dfx` by updating your dfx configuration:
 ```console
 $ cat ~/.config/dfx/networks.json
 {
