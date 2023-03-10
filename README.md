@@ -151,10 +151,9 @@ functional tests against it.
 
 Before running `ic-ref-test`, make sure you have built the universal canister
 (using `nix-shell`):
-```
-  cd universal-canister
-  nix-shell --command 'cargo build --target wasm32-unknown-unknown --release'
-```
+```console
+$ cd universal-canister
+$ nix-shell --command 'cargo build --target wasm32-unknown-unknown --release'
 or reset the symbolic link in `test-data/universal_canister.wasm`
 to the universal canister's Wasm.
 
