@@ -186,7 +186,7 @@ calculates its request id.
 ic-hs: The library
 ------------------
 
-The modules of the above tools can be used for other purposes. In that sense, the whole project is one big Haskell library that can be used in quick experiments or as a libary to build other tools (e.g. a test framework for developer tools as [in the case of DFX](https://github.com/dfinity/sdk/blob/master/.github/workflows/e2e.yml).
+The modules of the above tools can be used for other purposes. In that sense, the whole project is one big Haskell library that can be used in quick experiments or as a libary to build other tools (e.g. a test framework for developer tools as [in the case of DFX](https://github.com/dfinity/sdk/blob/master/.github/workflows/e2e.yml)).
 
 Continuous Integration
 ----------------------
