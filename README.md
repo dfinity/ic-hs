@@ -194,7 +194,7 @@ Continuous Integration
 
 We use GitHub Actions to trigger builds of the jobs defined in `./default.nix`. However the builds themselves are run on the [nixbuild.net](https://nixbuild.net/) service since it provides more capacity and is more efficient than GitHub runners.
 
-Please use the artifacts produced by GitHub Actions and [nixbuild.net](https://nixbuild.net/) at your own risk or consider building independently from source.
+Please use the artifacts produced by GitHub Actions and [nixbuild.net](https://nixbuild.net/) at your own risk or consider building them independently from source.
 
 
 Running
