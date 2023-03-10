@@ -40,7 +40,7 @@
 }:
 mkDerivation {
   pname = "candid";
-  version = "0.3.1";
+  version = "0.4";
   src = pkgs.sources.haskell-candid;
   isLibrary = true;
   isExecutable = true;
@@ -100,4 +100,5 @@ mkDerivation {
   homepage = "https://github.com/nomeata/haskell-candid";
   description = "Candid integration";
   license = lib.licenses.asl20;
+  mainProgram = "hcandid";
 }

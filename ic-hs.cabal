@@ -7,33 +7,13 @@ license-file:        LICENSE
 build-type:          Simple
 extra-source-files:  cbits/*.h ic.did
 
-flag library
-  default: True
-  description: Build library (useful to disable in musl builds)
+common ghc-flags
+  default-language:    Haskell2010
+  ghc-options:         -Wall -Wno-name-shadowing
 
--- NB: It might look odd that we are replicating the module lists between
--- the various executables and the library.
---
--- The main reason is that if we have executables depending on (internal) libraries,
---
--- > ghcid -c "cabal new-repl"
---
--- cannot be used on all files, due to
---
--- > cabal: Cannot open a repl for multiple components at once.
---
--- The downside if of course lots of repetition here.
--- Some of it could be handled with common stanzas, but not easily between the
--- library (needing exposed-modules) and the executables (needing other-modules)
---
--- We could consider the alternative of putting everything, including Main modules
--- into one library; then `ghcid -T` would work again.
---
--- Eventually GHCi might support loading multiple components
--- (https://gitlab.haskell.org/ghc/ghc/-/merge_requests/3950). Then this can be
--- cleaned up.
+library
+  import: ghc-flags
 
-common cbits
   include-dirs: cbits
   c-sources: cbits/aes.c
   c-sources: cbits/rom_curve_BLS12381.c
@@ -56,519 +36,7 @@ common cbits
   c-sources: cbits/rand.c
   c-sources: cbits/share.c
 
-common ghc-flags
-  default-language:    Haskell2010
-  hs-source-dirs:      src
-  ghc-options:         -rtsopts
-  ghc-options:         -Wall -Wno-name-shadowing
-
-executable ic-ref
-  import: cbits, ghc-flags
-  main-is: ic-ref.hs
-  build-depends: aeson >=1.4.7
-  build-depends: asn1-encoding
-  build-depends: asn1-types
-  build-depends: atomic-write
-  build-depends: base32
-  build-depends: base >=4.12 && <5
-  build-depends: base64-bytestring >= 1.1
-  build-depends: binary
-  build-depends: bytestring
-  build-depends: candid
-  build-depends: case-insensitive
-  build-depends: cborg
-  build-depends: cereal
-  build-depends: containers
-  build-depends: crc
-  build-depends: cryptonite
-  build-depends: data-default-class
-  build-depends: directory
-  build-depends: ed25519
-  build-depends: filepath
-  build-depends: hashable
-  build-depends: haskoin-core
-  build-depends: hex-text
-  build-depends: http-client >= 0.7.11
-  build-depends: http-client-tls
-  build-depends: http-types
-  build-depends: leb128-cereal
-  build-depends: memory
-  build-depends: MonadRandom
-  build-depends: mtl
-  build-depends: optparse-applicative
-  build-depends: parallel
-  build-depends: prettyprinter
-  build-depends: primitive
-  build-depends: process
-  build-depends: random >= 1.2
-  build-depends: row-types
-  build-depends: serialise
-  build-depends: split
-  build-depends: splitmix
-  build-depends: template-haskell
-  build-depends: text
-  build-depends: time
-  build-depends: transformers
-  build-depends: unordered-containers
-  build-depends: utf8-string
-  build-depends: vector
-  build-depends: wai
-  build-depends: wai-cors
-  build-depends: wai-extra
-  build-depends: warp
-  build-depends: winter
-  build-depends: uglymemo
-  build-depends: warp
-  build-depends: zlib
-  build-depends: either
-  other-modules: IC.Canister
-  other-modules: IC.Canister.Imp
-  other-modules: IC.Canister.Snapshot
-  other-modules: IC.Canister.StableMemory
-  other-modules: IC.CBOR.Parser
-  other-modules: IC.CBOR.Patterns
-  other-modules: IC.CBOR.Utils
-  other-modules: IC.Certificate
-  other-modules: IC.Certificate.CBOR
-  other-modules: IC.Certificate.Validate
-  other-modules: IC.Certificate.Value
-  other-modules: IC.Constants
-  other-modules: IC.Crypto
-  other-modules: IC.Crypto.Bitcoin
-  other-modules: IC.Crypto.BLS
-  other-modules: IC.Crypto.CanisterSig
-  other-modules: IC.Crypto.DER
-  other-modules: IC.Crypto.DER_BLS
-  other-modules: IC.Crypto.DER.Decode
-  other-modules: IC.Crypto.ECDSA
-  other-modules: IC.Crypto.Ed25519
-  other-modules: IC.Crypto.Secp256k1
-  other-modules: IC.Crypto.WebAuthn
-  other-modules: IC.Debug.JSON
-  other-modules: IC.DRun.Parse
-  other-modules: IC.Hash
-  other-modules: IC.HashTree
-  other-modules: IC.HashTree.CBOR
-  other-modules: IC.HTTP
-  other-modules: IC.HTTP.CBOR
-  other-modules: IC.HTTP.GenR
-  other-modules: IC.HTTP.GenR.Parse
-  other-modules: IC.HTTP.Request
-  other-modules: IC.HTTP.RequestId
-  other-modules: IC.HTTP.Status
-  other-modules: IC.Id.Forms
-  other-modules: IC.Id.Fresh
-  other-modules: IC.Management
-  other-modules: IC.Purify
-  other-modules: IC.Ref
-  other-modules: IC.Ref.IO
-  other-modules: IC.Serialise
-  other-modules: IC.StateFile
-  other-modules: IC.Types
-  other-modules: IC.Utils
-  other-modules: IC.Version
-  other-modules: IC.Wasm.Imports
-  other-modules: IC.Wasm.Winter
-  other-modules: IC.Wasm.Winter.Persist
-  other-modules: SourceId
-
-executable ic-ref-run
-  import: cbits, ghc-flags
-  main-is: ic-ref-run.hs
-  build-depends: aeson >=1.4.7
-  build-depends: asn1-encoding
-  build-depends: asn1-types
-  build-depends: base32
-  build-depends: base >=4.12 && <5
-  build-depends: base64-bytestring >= 1.1
-  build-depends: binary
-  build-depends: bytestring
-  build-depends: candid
-  build-depends: case-insensitive
-  build-depends: cborg
-  build-depends: cereal
-  build-depends: containers
-  build-depends: crc
-  build-depends: cryptonite
-  build-depends: data-default-class
-  build-depends: ed25519
-  build-depends: filepath
-  build-depends: hashable
-  build-depends: haskoin-core
-  build-depends: hex-text
-  build-depends: http-client >= 0.7.11
-  build-depends: http-types
-  build-depends: leb128-cereal
-  build-depends: memory
-  build-depends: MonadRandom
-  build-depends: mtl
-  build-depends: optparse-applicative
-  build-depends: parallel
-  build-depends: prettyprinter
-  build-depends: primitive
-  build-depends: process
-  build-depends: row-types
-  build-depends: split
-  build-depends: template-haskell
-  build-depends: text
-  build-depends: time
-  build-depends: transformers
-  build-depends: unordered-containers
-  build-depends: utf8-string
-  build-depends: vector
-  build-depends: winter
-  build-depends: uglymemo
-  build-depends: zlib
-  build-depends: either
-  other-modules: IC.Canister
-  other-modules: IC.Canister.Imp
-  other-modules: IC.Canister.Snapshot
-  other-modules: IC.Canister.StableMemory
-  other-modules: IC.CBOR.Parser
-  other-modules: IC.CBOR.Patterns
-  other-modules: IC.CBOR.Utils
-  other-modules: IC.Certificate
-  other-modules: IC.Certificate.CBOR
-  other-modules: IC.Certificate.Validate
-  other-modules: IC.Certificate.Value
-  other-modules: IC.Constants
-  other-modules: IC.Crypto.Bitcoin
-  other-modules: IC.Crypto
-  other-modules: IC.Crypto.BLS
-  other-modules: IC.Crypto.CanisterSig
-  other-modules: IC.Crypto.DER
-  other-modules: IC.Crypto.DER_BLS
-  other-modules: IC.Crypto.DER.Decode
-  other-modules: IC.Crypto.ECDSA
-  other-modules: IC.Crypto.Ed25519
-  other-modules: IC.Crypto.Secp256k1
-  other-modules: IC.Crypto.WebAuthn
-  other-modules: IC.DRun.Parse
-  other-modules: IC.Hash
-  other-modules: IC.HashTree
-  other-modules: IC.HashTree.CBOR
-  other-modules: IC.HTTP.CBOR
-  other-modules: IC.HTTP.GenR
-  other-modules: IC.HTTP.GenR.Parse
-  other-modules: IC.HTTP.RequestId
-  other-modules: IC.Id.Forms
-  other-modules: IC.Id.Fresh
-  other-modules: IC.Management
-  other-modules: IC.Purify
-  other-modules: IC.Ref
-  other-modules: IC.Ref.IO
-  other-modules: IC.Types
-  other-modules: IC.Utils
-  other-modules: IC.Version
-  other-modules: IC.Wasm.Imports
-  other-modules: IC.Wasm.Winter
-  other-modules: IC.Wasm.Winter.Persist
-  other-modules: SourceId
-
-
-executable ic-ref-test
-  import: ghc-flags, cbits
-  main-is: ic-ref-test.hs
-  build-depends: aeson >=1.4.7
-  build-depends: asn1-encoding
-  build-depends: asn1-types
-  build-depends: base32
-  build-depends: base >=4.12 && <5
-  build-depends: base64-bytestring >= 1.1
-  build-depends: binary
-  build-depends: bytestring
-  build-depends: candid
-  build-depends: case-insensitive
-  build-depends: cborg
-  build-depends: cereal
-  build-depends: containers
-  build-depends: crc
-  build-depends: cryptonite
-  build-depends: directory
-  build-depends: ed25519
-  build-depends: filepath
-  build-depends: hashable
-  build-depends: haskoin-core
-  build-depends: hex-text
-  build-depends: http-client >= 0.7.11
-  build-depends: http-client-tls
-  build-depends: http-types
-  build-depends: leb128-cereal
-  build-depends: memory
-  build-depends: mtl
-  build-depends: optparse-applicative
-  build-depends: parallel
-  build-depends: process
-  build-depends: random
-  build-depends: row-types
-  build-depends: split
-  build-depends: tasty
-  build-depends: tasty-ant-xml
-  build-depends: tasty-html
-  build-depends: tasty-hunit
-  build-depends: tasty-rerun
-  build-depends: template-haskell
-  build-depends: text
-  build-depends: time
-  build-depends: transformers
-  build-depends: unordered-containers
-  build-depends: vector
-  build-depends: wai
-  build-depends: warp
-  build-depends: zlib
-  build-depends: either
-  other-modules: IC.CBOR.Parser
-  other-modules: IC.CBOR.Patterns
-  other-modules: IC.CBOR.Utils
-  other-modules: IC.Certificate
-  other-modules: IC.Certificate.CBOR
-  other-modules: IC.Certificate.Validate
-  other-modules: IC.Certificate.Value
-  other-modules: IC.Crypto.Bitcoin
-  other-modules: IC.Crypto
-  other-modules: IC.Crypto.BLS
-  other-modules: IC.Crypto.CanisterSig
-  other-modules: IC.Crypto.DER
-  other-modules: IC.Crypto.DER_BLS
-  other-modules: IC.Crypto.DER.Decode
-  other-modules: IC.Crypto.ECDSA
-  other-modules: IC.Crypto.Ed25519
-  other-modules: IC.Crypto.Secp256k1
-  other-modules: IC.Crypto.WebAuthn
-  other-modules: IC.Hash
-  other-modules: IC.HashTree
-  other-modules: IC.HashTree.CBOR
-  other-modules: IC.HTTP.CBOR
-  other-modules: IC.HTTP.GenR
-  other-modules: IC.HTTP.GenR.Parse
-  other-modules: IC.HTTP.RequestId
-  other-modules: IC.Id.Forms
-  other-modules: IC.Management
-  other-modules: IC.Ref.IO
-  other-modules: IC.Test.Agent
-  other-modules: IC.Test.Agent.Calls
-  other-modules: IC.Test.Options
-  other-modules: IC.Test.Spec
-  other-modules: IC.Test.Spec.TECDSA
-  other-modules: IC.Test.Spec.Utils
-  other-modules: IC.Test.Universal
-  other-modules: IC.Types
-  other-modules: IC.Version
-  other-modules: IC.Utils
-  other-modules: SourceId
-
-executable ic-request-id
-  import: ghc-flags
-  main-is: ic-request-id.hs
-  build-depends: base32
-  build-depends: base >=4.12 && <5
-  build-depends: bytestring
-  build-depends: cborg
-  build-depends: containers
-  build-depends: crc
-  build-depends: cryptonite
-  build-depends: hex-text
-  build-depends: leb128-cereal
-  build-depends: memory
-  build-depends: mtl
-  build-depends: optparse-applicative
-  build-depends: process
-  build-depends: split
-  build-depends: template-haskell
-  build-depends: text
-  build-depends: unordered-containers
-  build-depends: either
-  other-modules: IC.CBOR.Utils
-  other-modules: IC.Hash
-  other-modules: IC.HTTP.CBOR
-  other-modules: IC.HTTP.GenR
-  other-modules: IC.HTTP.GenR.Parse
-  other-modules: IC.HTTP.RequestId
-  other-modules: IC.Id.Forms
-  other-modules: IC.Types
-  other-modules: IC.Version
-  other-modules: IC.Utils
-  other-modules: SourceId
-
-test-suite unit-test
-  import: cbits, ghc-flags
-  type: exitcode-stdio-1.0
-  main-is: unit-tests.hs
-  build-depends: aeson >=1.4.7
-  build-depends: asn1-encoding
-  build-depends: asn1-types
-  build-depends: atomic-write
-  build-depends: base32
-  build-depends: base >=4.12 && <5
-  build-depends: base >= 4 && < 5
-  build-depends: base64-bytestring >= 1.1
-  build-depends: binary
-  build-depends: bytestring
-  build-depends: candid
-  build-depends: case-insensitive
-  build-depends: cborg
-  build-depends: cereal
-  build-depends: containers
-  build-depends: crc
-  build-depends: cryptonite
-  build-depends: data-default-class
-  build-depends: directory
-  build-depends: directory
-  build-depends: ed25519
-  build-depends: filepath
-  build-depends: hashable
-  build-depends: haskoin-core
-  build-depends: hex-text
-  build-depends: http-client >= 0.7.11
-  build-depends: http-types
-  build-depends: leb128-cereal
-  build-depends: memory
-  build-depends: MonadRandom
-  build-depends: mtl
-  build-depends: parallel
-  build-depends: primitive
-  build-depends: quickcheck-io
-  build-depends: random >= 1.2
-  build-depends: row-types
-  build-depends: serialise
-  build-depends: split
-  build-depends: splitmix
-  build-depends: tasty >= 0.7
-  build-depends: tasty-hunit
-  build-depends: tasty-quickcheck
-  build-depends: temporary
-  build-depends: text
-  build-depends: time
-  build-depends: transformers
-  build-depends: unordered-containers
-  build-depends: utf8-string
-  build-depends: vector
-  build-depends: winter
-  build-depends: uglymemo
-  build-depends: zlib
-  build-depends: either
-  other-modules: IC.Canister
-  other-modules: IC.Canister.Imp
-  other-modules: IC.Canister.Snapshot
-  other-modules: IC.Canister.StableMemory
-  other-modules: IC.CBOR.Parser
-  other-modules: IC.CBOR.Patterns
-  other-modules: IC.CBOR.Utils
-  other-modules: IC.Certificate
-  other-modules: IC.Certificate.CBOR
-  other-modules: IC.Certificate.Validate
-  other-modules: IC.Certificate.Value
-  other-modules: IC.Constants
-  other-modules: IC.Crypto
-  other-modules: IC.Crypto.Bitcoin
-  other-modules: IC.Crypto.BLS
-  other-modules: IC.Crypto.CanisterSig
-  other-modules: IC.Crypto.DER
-  other-modules: IC.Crypto.DER_BLS
-  other-modules: IC.Crypto.DER.Decode
-  other-modules: IC.Crypto.ECDSA
-  other-modules: IC.Crypto.Ed25519
-  other-modules: IC.Crypto.Secp256k1
-  other-modules: IC.Crypto.WebAuthn
-  other-modules: IC.Hash
-  other-modules: IC.HashTree
-  other-modules: IC.HashTree.CBOR
-  other-modules: IC.HTTP.CBOR
-  other-modules: IC.HTTP.GenR
-  other-modules: IC.HTTP.GenR.Parse
-  other-modules: IC.HTTP.RequestId
-  other-modules: IC.Id.Forms
-  other-modules: IC.Id.Fresh
-  other-modules: IC.Management
-  other-modules: IC.Purify
-  other-modules: IC.Ref
-  other-modules: IC.Ref.IO
-  other-modules: IC.Serialise
-  other-modules: IC.StateFile
-  other-modules: IC.Test.BLS
-  other-modules: IC.Test.ECDSA
-  other-modules: IC.Test.HashTree
-  other-modules: IC.Test.Secp256k1
-  other-modules: IC.Test.WebAuthn
-  other-modules: IC.Test.StableMemory
-  other-modules: IC.Types
-  other-modules: IC.Utils
-  other-modules: IC.Wasm.Imports
-  other-modules: IC.Wasm.Winter
-  other-modules: IC.Wasm.Winter.Persist
-
-library
-  import: cbits, ghc-flags
-
-  if !flag(library)
-    buildable: False
-
-  build-depends: aeson >=1.4.7
-  build-depends: asn1-encoding
-  build-depends: asn1-types
-  build-depends: atomic-write
-  build-depends: base32
-  build-depends: base >=4.12 && <5
-  build-depends: base >= 4 && < 5
-  build-depends: base64-bytestring >= 1.1
-  build-depends: binary
-  build-depends: bytestring
-  build-depends: candid
-  build-depends: case-insensitive
-  build-depends: cborg
-  build-depends: cereal
-  build-depends: containers
-  build-depends: crc
-  build-depends: cryptonite
-  build-depends: data-default-class
-  build-depends: directory
-  build-depends: ed25519
-  build-depends: filepath
-  build-depends: hashable
-  build-depends: haskoin-core
-  build-depends: hex-text
-  build-depends: http-client >= 0.7.11
-  build-depends: http-client-tls
-  build-depends: http-types
-  build-depends: leb128-cereal
-  build-depends: memory
-  build-depends: MonadRandom
-  build-depends: mtl
-  build-depends: optparse-applicative
-  build-depends: parallel
-  build-depends: prettyprinter
-  build-depends: primitive
-  build-depends: process
-  build-depends: quickcheck-io
-  build-depends: random
-  build-depends: random >= 1.2
-  build-depends: row-types
-  build-depends: serialise
-  build-depends: split
-  build-depends: splitmix
-  build-depends: tasty
-  build-depends: tasty >= 0.7
-  build-depends: tasty-ant-xml
-  build-depends: tasty-html
-  build-depends: tasty-hunit
-  build-depends: tasty-quickcheck
-  build-depends: tasty-rerun
-  build-depends: template-haskell
-  build-depends: temporary
-  build-depends: text
-  build-depends: time
-  build-depends: transformers
-  build-depends: unordered-containers
-  build-depends: utf8-string
-  build-depends: vector
-  build-depends: wai
-  build-depends: wai-cors
-  build-depends: wai-extra
-  build-depends: warp
-  build-depends: winter
-  build-depends: uglymemo
-  build-depends: zlib
-  build-depends: either
+  hs-source-dirs: src
   exposed-modules: IC.Canister
   exposed-modules: IC.Canister.Imp
   exposed-modules: IC.Canister.Snapshot
@@ -610,18 +78,27 @@ library
   exposed-modules: IC.Purify
   exposed-modules: IC.Ref
   exposed-modules: IC.Ref.IO
+  exposed-modules: IC.Ref.HTTP
+  exposed-modules: IC.Ref.Management
+  exposed-modules: IC.Ref.Types
   exposed-modules: IC.Serialise
   exposed-modules: IC.StateFile
   exposed-modules: IC.Test.Agent
   exposed-modules: IC.Test.Agent.Calls
+  exposed-modules: IC.Test.Agent.UnsafeCalls
+  exposed-modules: IC.Test.Agent.SafeCalls
+  exposed-modules: IC.Test.Agent.UserCalls
   exposed-modules: IC.Test.BLS
   exposed-modules: IC.Test.ECDSA
   exposed-modules: IC.Test.HashTree
   exposed-modules: IC.Test.Options
   exposed-modules: IC.Test.Secp256k1
   exposed-modules: IC.Test.Spec
+  exposed-modules: IC.Test.Spec.HTTP
+  exposed-modules: IC.Test.Spec.Timer
   exposed-modules: IC.Test.Spec.TECDSA
   exposed-modules: IC.Test.Spec.Utils
+  exposed-modules: IC.Test.StableMemory
   exposed-modules: IC.Test.Universal
   exposed-modules: IC.Test.WebAuthn
   exposed-modules: IC.Types
@@ -631,3 +108,162 @@ library
   exposed-modules: IC.Wasm.Winter
   exposed-modules: IC.Wasm.Winter.Persist
   exposed-modules: SourceId
+
+  build-depends: MonadRandom
+  build-depends: aeson >=1.4.7
+  build-depends: asn1-encoding
+  build-depends: asn1-types
+  build-depends: async
+  build-depends: atomic-write
+  build-depends: base >= 4 && < 5
+  build-depends: base >=4.12 && <5
+  build-depends: base32
+  build-depends: base64-bytestring >= 1.1
+  build-depends: binary
+  build-depends: bytestring
+  build-depends: candid
+  build-depends: case-insensitive
+  build-depends: cborg
+  build-depends: cereal
+  build-depends: connection >= 0.3.1
+  build-depends: containers
+  build-depends: crc
+  build-depends: cryptonite
+  build-depends: data-default-class
+  build-depends: directory
+  build-depends: ed25519
+  build-depends: either
+  build-depends: filepath
+  build-depends: hashable
+  build-depends: haskoin-core
+  build-depends: hex-text
+  build-depends: http-client >= 0.7.11
+  build-depends: http-client-tls
+  build-depends: http-types
+  build-depends: leb128-cereal
+  build-depends: memory
+  build-depends: mtl
+  build-depends: network-uri
+  build-depends: optparse-applicative
+  build-depends: parallel
+  build-depends: prettyprinter
+  build-depends: primitive
+  build-depends: process
+  build-depends: quickcheck-io
+  build-depends: random
+  build-depends: random >= 1.2
+  build-depends: row-types
+  build-depends: serialise
+  build-depends: split
+  build-depends: splitmix
+  build-depends: tasty
+  build-depends: tasty >= 0.7
+  build-depends: tasty-ant-xml
+  build-depends: tasty-html
+  build-depends: tasty-hunit
+  build-depends: tasty-quickcheck
+  build-depends: tasty-rerun
+  build-depends: template-haskell
+  build-depends: temporary
+  build-depends: text
+  build-depends: time
+  build-depends: tls
+  build-depends: transformers
+  build-depends: uglymemo
+  build-depends: unordered-containers
+  build-depends: utf8-string
+  build-depends: vector
+  build-depends: wai
+  build-depends: wai-cors
+  build-depends: wai-extra
+  build-depends: warp
+  build-depends: wide-word
+  build-depends: winter
+  build-depends: word8
+  build-depends: x509
+  build-depends: x509-store
+  build-depends: x509-validation
+  build-depends: zlib
+
+executable ic-ref
+  import: ghc-flags
+  ghc-options: -rtsopts
+
+  hs-source-dirs: bin
+  main-is: ic-ref.hs
+
+  build-depends: base >=4.12 && <5
+  build-depends: bytestring
+  build-depends: ic-hs
+  build-depends: optparse-applicative
+  build-depends: text
+  build-depends: wai-cors
+  build-depends: wai-extra
+  build-depends: warp
+  build-depends: x509-store
+
+executable ic-ref-run
+  import: ghc-flags
+  ghc-options: -rtsopts
+
+  hs-source-dirs: bin
+  main-is: ic-ref-run.hs
+
+  build-depends: MonadRandom
+  build-depends: async
+  build-depends: base >=4.12 && <5
+  build-depends: bytestring
+  build-depends: candid
+  build-depends: containers
+  build-depends: ic-hs
+  build-depends: mtl
+  build-depends: optparse-applicative
+  build-depends: prettyprinter
+  build-depends: row-types
+  build-depends: text
+  build-depends: time
+  build-depends: transformers
+
+executable ic-ref-test
+  import: ghc-flags
+  ghc-options: -rtsopts
+
+  hs-source-dirs: bin
+  main-is: ic-ref-test.hs
+
+  build-depends: base >=4.12 && <5
+  build-depends: ic-hs
+  build-depends: tasty
+  build-depends: tasty-ant-xml
+  build-depends: tasty-html
+  build-depends: tasty-rerun
+
+executable ic-request-id
+  import: ghc-flags
+  ghc-options: -rtsopts
+
+  hs-source-dirs: bin
+  main-is: ic-request-id.hs
+
+  build-depends: base >=4.12 && <5
+  build-depends: bytestring
+  build-depends: hex-text
+  build-depends: ic-hs
+  build-depends: optparse-applicative
+  build-depends: text
+  build-depends: unordered-containers
+
+test-suite unit-test
+  import: ghc-flags
+  type: exitcode-stdio-1.0
+
+  hs-source-dirs: tests
+  main-is: unit-tests.hs
+
+  build-depends: base >=4.12 && <5
+  build-depends: containers
+  build-depends: directory
+  build-depends: ic-hs
+  build-depends: tasty >= 0.7
+  build-depends: tasty-hunit
+  build-depends: temporary

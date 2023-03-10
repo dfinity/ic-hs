@@ -48,9 +48,9 @@ let
       # exclude some more files to avoid rebuilds
       src_subst = ''
         pkgs.lib.sourceByRegex (pkgs.subpath "/")
-          ["^src.*" "^ic-hs.cabal" "^cbits.*" "^LICENSE" "^ic.did"]
+          ["^src.*" "^bin.*" "^tests.*" "^ic-hs.cabal" "^cbits.*" "^LICENSE" "^ic.did"]
       '';
-      extraCabal2nixOptions =  "--no-check -frelease";
+      extraCabal2nixOptions = "--no-check";
     };
 
     winter = haskellSrc2nixWithDoc {
@@ -68,6 +68,11 @@ let
       name = "candid";
       src = pkgs.sources.haskell-candid;
       src_subst = "pkgs.sources.haskell-candid";
+    };
+    http-client = haskellSrc2nixWithDoc {
+      name = "http-client";
+      src = pkgs.sources.http-client;
+      src_subst = "pkgs.sources.http-client";
     };
   };
 

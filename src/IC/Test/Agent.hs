@@ -27,19 +27,24 @@ This module can also be used in a REPL; see 'connect'.
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DeriveAnyClass #-}
 module IC.Test.Agent
     (
       HTTPErrOr,
       HasAgentConfig,
       IC00,
+      IC00WithCycles,
+      IC00',
       ReqResponse(..),
       ReqStatus(..),
       AgentConfig(..),
+      DelegationCanisterRangeCheck(..),
       addExpiry,
       addNonce,
       addNonceExpiryEnv,
       anonymousUser,
       as2Word64,
+      asWord64Word128,
       asHex,
       asRight,
       asWord128,
@@ -47,6 +52,7 @@ module IC.Test.Agent
       asWord64,
       awaitCall',
       awaitCall,
+      awaitKnown,
       awaitStatus,
       bothSame,
       certValue,
@@ -67,17 +73,21 @@ module IC.Test.Agent
       envelope,
       envelopeFor,
       extractCertData,
+      getRequestStatus',
       getRequestStatus,
       getStateCert',
       getStateCert,
       ic00,
       ic00as,
+      ic00',
+      ic00WithSubnetas',
       ingressDelay,
       is2xx,
       isErrOrReject,
       isPendingOrProcessing,
       isReject,
       isReply,
+      isResponded,
       okCBOR,
       otherSK,
       otherUser,
@@ -108,6 +118,8 @@ module IC.Test.Agent
       callIC,
       callIC',
       callIC'',
+      callICWithSubnet'',
+      callIC''',
       agentConfig,
     )
     where
@@ -128,18 +140,19 @@ import Test.Tasty.HUnit
 import Test.Tasty.Options
 import Control.Monad.Except
 import Control.Concurrent
-import Control.Exception (catch)
+import Control.Exception (catch, throw, Exception)
 import Data.Traversable
 import Data.Word
+import Data.WideWord.Word128
 import GHC.TypeLits
 import System.Random
 import System.Exit
+import Data.Time.Clock
 import Data.Time.Clock.POSIX
 import Codec.Candid (Principal(..), prettyPrincipal)
 import qualified Data.Binary as Get
 import qualified Data.Binary.Get as Get
 import qualified Codec.Candid as Candid
-import Data.Bits
 import Data.Row
 import qualified Data.Row.Variants as V
 import qualified Haskoin.Crypto.Signature as Haskoin
@@ -156,11 +169,31 @@ import IC.Crypto
 import qualified IC.Crypto.DER as DER
 import qualified IC.Crypto.DER_BLS as DER_BLS
 import IC.Id.Forms
+import IC.Id.Fresh
 import IC.Test.Options
 import IC.HashTree hiding (Blob, Label)
 import IC.Certificate
 import IC.Certificate.Value
 import IC.Certificate.CBOR
+
+-- * Exceptions
+
+data DelegationCanisterRangeCheck = DelegationCanisterRangeCheck [(Blob, Blob)] Blob
+  deriving (Show, Exception)
+
+-- * CBOR decoding
+
+asCBORBlobPairList :: Blob -> IO [(Blob, Blob)]
+asCBORBlobPairList blob = do
+    decoded <- asRight $ decode blob
+    case decoded of
+        GList list -> do
+            mapM cborToBlobPair list
+        _ -> assertFailure $ "Failed to decode as CBOR encoded list of blob pairs: " <> show decoded
+
+cborToBlobPair :: GenR -> IO (Blob, Blob)
+cborToBlobPair (GList [GBlob x, GBlob y]) = return (x, y)
+cborToBlobPair r = assertFailure $ "Expected list of pairs, got: " <> show r
 
 -- * Agent configuration
 
@@ -168,11 +201,12 @@ data AgentConfig = AgentConfig
     { tc_root_key :: Blob
     , tc_manager :: Manager
     , tc_endPoint :: String
-    , tc_test_port :: Int
+    , tc_httpbin :: String
+    , tc_timeout :: Int
     }
 
-makeAgentConfig :: String -> Int -> IO AgentConfig
-makeAgentConfig ep' tp = do
+makeAgentConfig :: String -> String -> Int -> IO AgentConfig
+makeAgentConfig ep' httpbin' to = do
     manager <- newTlsManagerWith $ tlsManagerSettings
       { managerResponseTimeout = responseTimeoutMicro 60_000_000 -- 60s
       }
@@ -188,27 +222,32 @@ makeAgentConfig ep' tp = do
         { tc_root_key = status_root_key s
         , tc_manager = manager
         , tc_endPoint = ep
-        , tc_test_port = tp
+        , tc_httpbin = httpbin
+        , tc_timeout = to
         }
   where
     -- strip trailing slash
     ep | null ep'        = error "empty endpoint"
        | last ep' == '/' = init ep'
        | otherwise       = ep'
+    httpbin | null httpbin'        = error "empty httpbin"
+            | last httpbin' == '/' = init httpbin'
+            | otherwise            = httpbin'
 
 preFlight :: OptionSet -> IO AgentConfig
 preFlight os = do
     let Endpoint ep = lookupOption os
-    let TestPort tp = lookupOption os
-    makeAgentConfig ep tp
+    let Httpbin httpbin = lookupOption os
+    let PollTimeout to = lookupOption os
+    makeAgentConfig ep httpbin to
 
 
 newtype ReplWrapper = R (forall a. (HasAgentConfig => a) -> a)
 
 -- |  This is for use from the Haskell REPL, see README.md
-connect :: String -> Int -> IO ReplWrapper
-connect ep tp = do
-    agentConfig <- makeAgentConfig ep tp
+connect :: String -> String -> Int -> IO ReplWrapper
+connect ep httpbin to = do
+    agentConfig <- makeAgentConfig ep httpbin to
     let ?agentConfig = agentConfig
     return (R $ \x -> x)
 
@@ -378,7 +417,7 @@ type HTTPErrOr a = Either (Int,String) a
 -- | Add envelope to CBOR, and a nonce and expiry if not there, post to
 -- "submit". Returns either a HTTP Error code, or if the status is 2xx, the
 -- request id.
-submitCall' :: (HasCallStack, HasAgentConfig) => Blob -> GenR -> IO (HTTPErrOr (IO ReqStatus))
+submitCall' :: (HasCallStack, HasAgentConfig) => Blob -> GenR -> IO (HTTPErrOr (IO (HTTPErrOr ReqStatus)))
 submitCall' cid req = do
   req <- addNonce req
   req <- addExpiry req
@@ -387,12 +426,12 @@ submitCall' cid req = do
   if 200 <= code && code < 300
   then do
      assertBool "Response body not empty" (BS.null (responseBody res))
-     pure $ Right (getRequestStatus (senderOf req) cid (requestId req))
+     pure $ Right (getRequestStatus' (senderOf req) cid (requestId req))
   else do
-    let msg = T.unpack (T.decodeUtf8With T.lenientDecode (BS.toStrict (BS.take 200 (responseBody res))))
+    let msg = T.unpack (T.decodeUtf8With T.lenientDecode (BS.toStrict (BS.take 1000 (responseBody res))))
     pure $ Left (code, msg)
 
-submitCall :: (HasCallStack, HasAgentConfig) => Blob -> GenR -> IO (IO ReqStatus)
+submitCall :: (HasCallStack, HasAgentConfig) => Blob -> GenR -> IO (IO (HTTPErrOr ReqStatus))
 submitCall cid req = submitCall' cid req >>= is2xx
 
 -- | Add envelope to CBOR, and a nonce and expiry if not there, post to
@@ -402,7 +441,7 @@ awaitCall' :: (HasCallStack, HasAgentConfig) => Blob -> GenR -> IO (HTTPErrOr Re
 awaitCall' cid req = do
   submitCall' cid req >>= \case
     Left e -> pure (Left e)
-    Right getStatus -> Right <$> awaitStatus getStatus
+    Right getStatus -> awaitStatus' getStatus
 
 -- | Add envelope to CBOR, and a nonce and expiry if not there, post to
 -- "submit", poll for the request response, and return decoded CBOR
@@ -426,17 +465,25 @@ getStateCert' sender ecid paths = do
 decodeCert' :: HasCallStack => Blob -> IO Certificate
 decodeCert' b = either (assertFailure . T.unpack) return $ decodeCert b
 
+getStateCert'' :: (HasCallStack, HasAgentConfig) => Blob -> Blob -> [[Blob]] -> IO (HTTPErrOr Certificate)
+getStateCert'' sender ecid paths = do
+    response <- getStateCert' sender ecid paths
+    let c = statusCode (responseStatus response)
+    if not (200 <= c && c < 300) then return $ Left (c, "Read_state request failed.")
+    else do
+      gr <- okCBOR response
+      b <- asExceptT $ record (field blob "certificate") gr
+      cert <- decodeCert' b
+      validateStateCert ecid cert
+
+      case wellFormed (cert_tree cert) of
+          Left err -> assertFailure $ "Hash tree not well formed: " ++ err
+          Right () -> return ()
+
+      return $ Right cert
+
 getStateCert :: (HasCallStack, HasAgentConfig) => Blob -> Blob -> [[Blob]] -> IO Certificate
-getStateCert sender ecid paths = do
-    gr <- getStateCert' sender ecid paths >>= okCBOR
-    b <- asExceptT $ record (field blob "certificate") gr
-    cert <- decodeCert' b
-
-    case wellFormed (cert_tree cert) of
-        Left err -> assertFailure $ "Hash tree not well formed: " ++ err
-        Right () -> return ()
-
-    return cert
+getStateCert sender ecid paths = getStateCert'' sender ecid paths >>= is2xx
 
 extractCertData :: Blob -> Blob -> IO Blob
 extractCertData cid b = do
@@ -463,23 +510,26 @@ verboseVerify what domain_sep pk msg sig =
             ]
         Right () -> return ()
 
-validateDelegation :: (HasCallStack, HasAgentConfig) => Maybe Delegation -> IO Blob
-validateDelegation Nothing = return (tc_root_key agentConfig)
-validateDelegation (Just del) = do
+validateDelegation :: (HasCallStack, HasAgentConfig) => Blob -> Maybe Delegation -> IO Blob
+validateDelegation _ Nothing = return (tc_root_key agentConfig)
+validateDelegation cid (Just del) = do
     cert <- decodeCert' (del_certificate del)
     case wellFormed (cert_tree cert) of
         Left err -> assertFailure $ "Hash tree not well formed: " ++ err
         Right () -> return ()
-    validateStateCert' "certificate delegation" cert
+    validateStateCert' "certificate delegation" cid cert
+
+    ranges <- certValue @Blob cert ["subnet", del_subnet_id del, "canister_ranges"] >>= asCBORBlobPairList
+    unless (checkCanisterIdInRanges' ranges cid) $ throw (DelegationCanisterRangeCheck ranges cid)
 
     certValue cert ["subnet", del_subnet_id del, "public_key"]
 
-validateStateCert' :: (HasCallStack, HasAgentConfig) => String -> Certificate -> IO ()
-validateStateCert' what cert = do
-    pk <- validateDelegation (cert_delegation cert)
+validateStateCert' :: (HasCallStack, HasAgentConfig) => String -> Blob -> Certificate -> IO ()
+validateStateCert' what cid cert = do
+    pk <- validateDelegation cid (cert_delegation cert)
     verboseVerify what "ic-state-root" pk (reconstruct (cert_tree cert)) (cert_sig cert)
 
-validateStateCert :: (HasCallStack, HasAgentConfig) => Certificate -> IO ()
+validateStateCert :: (HasCallStack, HasAgentConfig) => Blob -> Certificate -> IO ()
 validateStateCert = validateStateCert' "certificate"
 
 data ReqResponse = Reply Blob | Reject Natural T.Text (Maybe T.Text)
@@ -515,43 +565,71 @@ certValueAbsent cert path = case lookupPath (cert_tree cert) path of
     Absent -> return ()
     x -> assertFailure $ "Path " ++ prettyPath path ++ " should be absent, but got " ++ show x
 
+getRequestStatus' :: (HasCallStack, HasAgentConfig) => Blob -> Blob -> Blob -> IO (HTTPErrOr ReqStatus)
+getRequestStatus' sender cid rid = do
+    response <- getStateCert'' sender cid [["request_status", rid]]
+    case response of
+      Left x -> return $ Left x
+      Right cert -> do
+
+        case lookupPath (cert_tree cert) ["request_status", rid, "status"] of
+          Absent -> return $ Right UnknownStatus
+          Found "processing" -> return $ Right Processing
+          Found "received" -> return $ Right Pending
+          Found "replied" -> do
+            b <- certValue cert ["request_status", rid, "reply"]
+            certValueAbsent cert ["request_status", rid, "reject_code"]
+            certValueAbsent cert ["request_status", rid, "reject_message"]
+            return $ Right $ Responded (Reply b)
+          Found "rejected" -> do
+            certValueAbsent cert ["request_status", rid, "reply"]
+            code <- certValue cert ["request_status", rid, "reject_code"]
+            msg <- certValue cert ["request_status", rid, "reject_message"]
+            errorCode <- maybeCertValue cert ["request_status", rid, "error_code"]
+            return $ Right $ Responded (Reject code msg errorCode)
+          Found s -> assertFailure $ "Unexpected status " ++ show s
+          -- This case should not happen with a compliant IC, but let
+          -- us be liberal here, and strict in a dedicated test
+          Unknown -> return $ Right UnknownStatus
+          x -> assertFailure $ "Unexpected request status, got " ++ show x
+
 getRequestStatus :: (HasCallStack, HasAgentConfig) => Blob -> Blob -> Blob -> IO ReqStatus
-getRequestStatus sender cid rid = do
-    cert <- getStateCert sender cid [["request_status", rid]]
+getRequestStatus sender cid rid = getRequestStatus' sender cid rid >>= is2xx
 
-    case lookupPath (cert_tree cert) ["request_status", rid, "status"] of
-      Absent -> return UnknownStatus
-      Found "processing" -> return Processing
-      Found "received" -> return Pending
-      Found "replied" -> do
-        b <- certValue cert ["request_status", rid, "reply"]
-        certValueAbsent cert ["request_status", rid, "reject_code"]
-        certValueAbsent cert ["request_status", rid, "reject_message"]
-        return $ Responded (Reply b)
-      Found "rejected" -> do
-        certValueAbsent cert ["request_status", rid, "reply"]
-        code <- certValue cert ["request_status", rid, "reject_code"]
-        msg <- certValue cert ["request_status", rid, "reject_message"]
-        errorCode <- maybeCertValue cert ["request_status", rid, "error_code"]
-        return $ Responded (Reject code msg errorCode)
-      Found s -> assertFailure $ "Unexpected status " ++ show s
-      -- This case should not happen with a compliant IC, but let
-      -- us be liberal here, and strict in a dedicated test
-      Unknown -> return UnknownStatus
-      x -> assertFailure $ "Unexpected request status, got " ++ show x
+isResponded :: ReqStatus -> Assertion
+isResponded (Responded _) = return ()
+isResponded _ = assertFailure "Request must be responded"
 
-awaitStatus :: HasAgentConfig => IO ReqStatus -> IO ReqResponse
-awaitStatus get_status = loop $ pollDelay >> get_status >>= \case
-    Responded x -> return $ Just x
-    _ -> return Nothing
+loop' :: (HasCallStack, HasAgentConfig) => IO (HTTPErrOr (Maybe a)) -> IO (HTTPErrOr a)
+loop' act = getCurrentTime >>= go
   where
-    loop :: HasCallStack => IO (Maybe a) -> IO a
-    loop act = go (0::Int)
-      where
-        go 10000 = assertFailure "Polling timed out"
-        go n = act >>= \case
-          Just r -> return r
-          Nothing -> go (n+1)
+    go init = act >>= \case
+      Left x -> return $ Left x
+      Right (Just r) -> return $ Right r
+      Right Nothing -> do
+        now <- getCurrentTime
+        if diffUTCTime now init > fromIntegral (tc_timeout agentConfig) then assertFailure "Polling timed out"
+        else go init
+
+awaitStatus' :: HasAgentConfig => IO (HTTPErrOr ReqStatus) -> IO (HTTPErrOr ReqResponse)
+awaitStatus' get_status = loop' $ pollDelay >> get_status >>= \case
+  Left x -> return $ Left x
+  Right (Responded x) -> return $ Right $ Just x
+  _ -> return $ Right Nothing
+
+awaitStatus :: HasAgentConfig => IO (HTTPErrOr ReqStatus) -> IO ReqResponse
+awaitStatus get_status = awaitStatus' get_status >>= is2xx
+
+-- Polls until status is not Unknown any more, and returns that status
+-- even if Pending or Processing
+awaitKnown' :: HasAgentConfig => IO (HTTPErrOr ReqStatus) -> IO (HTTPErrOr ReqStatus)
+awaitKnown' get_status = loop' $ pollDelay >> get_status >>= \case
+  Left x -> return $ Left x
+  Right UnknownStatus -> return $ Right Nothing
+  Right x -> return $ Right $ Just x
+
+awaitKnown :: HasAgentConfig => IO (HTTPErrOr ReqStatus) -> IO ReqStatus
+awaitKnown get_status = awaitKnown' get_status >>= is2xx
 
 isPendingOrProcessing :: ReqStatus -> IO ()
 isPendingOrProcessing Pending = return ()
@@ -575,7 +653,7 @@ codePred expt pred response = assertBool
     (pred c)
   where
     c = statusCode (responseStatus response)
-    msg = T.unpack (T.decodeUtf8With T.lenientDecode (BS.toStrict (BS.take 200 (responseBody response))))
+    msg = T.unpack (T.decodeUtf8With T.lenientDecode (BS.toStrict (BS.take 1000 (responseBody response))))
 
 code2xx, code202, code4xx, code202_or_4xx  :: HasCallStack => Response BS.ByteString -> IO ()
 code2xx = codePred "2xx" $ \c -> 200 <= c && c < 300
@@ -639,11 +717,18 @@ asWord64 = runGet Get.getWord64le
 as2Word64 :: HasCallStack => Blob -> IO (Word64, Word64)
 as2Word64 = runGet $ (,) <$> Get.getWord64le <*> Get.getWord64le
 
-asWord128 :: HasCallStack => Blob -> IO Natural
+asWord64Word128 :: HasCallStack => Blob -> IO (Word64, Word128)
+asWord64Word128 = runGet $ do
+    word64 <- Get.getWord64le
+    low <- Get.getWord64le
+    high <- Get.getWord64le
+    return (word64, Word128 high low)
+
+asWord128 :: HasCallStack => Blob -> IO Word128
 asWord128 = runGet $ do
     low <- Get.getWord64le
     high <- Get.getWord64le
-    return $ fromIntegral high `shiftL` 64 .|. fromIntegral low
+    return $ Word128 high low
 
 bothSame :: (Eq a, Show a) => (a, a) -> Assertion
 bothSame (x,y) = x @?= y
@@ -692,6 +777,8 @@ be refactored so that the test can declarative pick A, B and C separately.
 
 -- how to reach the management canister
 type IC00 = Blob -> T.Text -> Blob -> IO ReqResponse
+type IC00WithCycles = Word64 -> IC00
+type IC00' = Blob -> T.Text -> Blob -> IO (HTTPErrOr ReqResponse)
 
 ic00as :: (HasAgentConfig, HasCallStack) => Blob -> IC00
 ic00as user ecid method_name arg = awaitCall ecid $ rec
@@ -706,14 +793,20 @@ ic00 :: HasAgentConfig => IC00
 ic00 = ic00as defaultUser
 
 -- A variant that allows non-200 responses to submit
-ic00as' :: HasAgentConfig => Blob -> Blob -> T.Text -> Blob -> IO (HTTPErrOr ReqResponse)
-ic00as' user cid method_name arg = awaitCall' cid $ rec
+ic00WithSubnetas' :: HasAgentConfig => Blob -> Blob -> Blob -> T.Text -> Blob -> IO (HTTPErrOr ReqResponse)
+ic00WithSubnetas' subnet_id user ecid method_name arg = awaitCall' ecid $ rec
       [ "request_type" =: GText "call"
       , "sender" =: GBlob user
-      , "canister_id" =: GBlob ""
+      , "canister_id" =: GBlob subnet_id
       , "method_name" =: GText method_name
       , "arg" =: GBlob arg
       ]
+
+ic00as' :: HasAgentConfig => Blob -> Blob -> T.Text -> Blob -> IO (HTTPErrOr ReqResponse)
+ic00as' = ic00WithSubnetas' ""
+
+ic00' :: HasAgentConfig => IC00'
+ic00' = ic00as' defaultUser
 
 -- Now wrapping the concrete calls
 -- (using Candid.toCandidService is tricky because of all stuff like passing through the effective canister id)
@@ -743,13 +836,30 @@ callIC' ic00 ecid l x = ic00 ecid (T.pack (symbolVal l)) (Candid.encode x)
 -- not a generic ic00 thing), and return the HTTP error code or the response
 -- (reply or reject)
 
+callICWithSubnet'' :: forall s a b.
+  HasAgentConfig =>
+  KnownSymbol s =>
+  (a -> IO b) ~ (ICManagement IO .! s) =>
+  Candid.CandidArg a =>
+  Blob -> Blob -> Blob -> Label s -> a -> IO (HTTPErrOr ReqResponse)
+callICWithSubnet'' subnet_id user ecid l x = ic00WithSubnetas' subnet_id user ecid (T.pack (symbolVal l)) (Candid.encode x)
+
 callIC'' :: forall s a b.
   HasAgentConfig =>
   KnownSymbol s =>
   (a -> IO b) ~ (ICManagement IO .! s) =>
   Candid.CandidArg a =>
   Blob -> Blob -> Label s -> a -> IO (HTTPErrOr ReqResponse)
-callIC'' user ecid l x = ic00as' user ecid (T.pack (symbolVal l)) (Candid.encode x)
+callIC'' = callICWithSubnet'' ""
+
+-- Triple primed variants return the response (reply or reject) and allow HTTP errors
+callIC''' :: forall s a b.
+  HasAgentConfig =>
+  KnownSymbol s =>
+  (a -> IO b) ~ (ICManagement IO .! s) =>
+  Candid.CandidArg a =>
+  IC00' -> Blob -> Label s -> a -> IO (HTTPErrOr ReqResponse)
+callIC''' ic00' ecid l x = ic00' ecid (T.pack (symbolVal l)) (Candid.encode x)
 
 -- Convenience around Data.Row.Variants used as enums
 
@@ -765,7 +875,7 @@ textual :: Blob -> String
 textual = T.unpack . prettyPrincipal . Principal
 
 shorten :: Int -> String -> String
-shorten n s = a ++ (if null b then "" else "…")
+shorten n s = a ++ (if null b then "" else "...")
   where (a,b) = splitAt n s
 
 toHash256 :: Blob -> Haskoin.Hash256

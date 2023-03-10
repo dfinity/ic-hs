@@ -148,7 +148,7 @@ Before running `ic-ref-test`, make sure you have built the universal canister
 (using `nix-shell`):
 ```
   cd universal-canister
-  cargo build --target wasm32-unknown-unknown --release
+  nix-shell --command 'cargo build --target wasm32-unknown-unknown --release'
 ```
 or reset the symbolic link in `test-data/universal_canister.wasm`
 to the universal canister's Wasm.
@@ -244,13 +244,6 @@ Running `nix-shell` gives you an environment that allows you to build the
 project using `cabal build`. You can also run `cabal run ic-ref` etc. to run it
 directly from source.
 
-One possible workflow is to run
-
-    ghcid -c 'cabal repl ic-ref' -T Main.main
-
-which will run `ic-ref` and restart upon file changes.  Similarly
-
-
 You can now run the test suite from the top-level directory with
 
     cabal run ic-ref-test
@@ -291,10 +284,10 @@ automatically generate, run
 
 to update.
 
-Also, the `cabal.project.freeze` file, which exists for the benefit of people building `ic-ref` with plain `cabal` (no nix), can be updated via
-
-     nix-shell . -A check-cabal-freeze
-
 Don't worry if you forget to update the `default.nix` file, the CI job
 `check-generated` checks if these files are in sync and fails with a diff if
 they aren't.
+
+## Contributing
+
+This repository accepts external contributions, conditioned on acceptance of the [Contributor Lincense Agreement](https://github.com/dfinity/cla).

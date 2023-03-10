@@ -43,7 +43,7 @@ instance (SnapshotAble i, SnapshotOf i ~ a) => Purify i (Snapshot a) where
 
 newtype Replay i = Replay (forall s. ST s (i s))
 
-instance Show (Replay i) where show _ = "Replay …"
+instance Show (Replay i) where show _ = "Replay ..."
 
 instance Purify a (Replay a) where
   create = Replay

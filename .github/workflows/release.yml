@@ -17,19 +17,19 @@ jobs:
     env:
       SSH_KEY_FOR_NIXBUILD: ${{ secrets.SSH_KEY_FOR_NIXBUILD }}
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     - if: matrix.os == 'macos-latest'
-      uses: cachix/install-nix-action@v16
+      uses: cachix/install-nix-action@v20
     - if: matrix.os == 'ubuntu-latest'
-      uses: nixbuild/nix-quick-install-action@v13
+      uses: nixbuild/nix-quick-install-action@v21
       with:
         nix_conf: experimental-features = nix-command
     - if: matrix.os == 'ubuntu-latest' && env.SSH_KEY_FOR_NIXBUILD != ''
-      uses: nixbuild/nixbuild-action@v10
+      uses: nixbuild/nixbuild-action@v15
       with:
         nixbuild_ssh_key: ${{ secrets.SSH_KEY_FOR_NIXBUILD }}
     - run: nix-env -iA nix-build-uncached -f nix/
-    - uses: cachix/cachix-action@v10
+    - uses: cachix/cachix-action@v12
       with:
         name: ic-hs-test
         authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
@@ -39,15 +39,18 @@ jobs:
     # run a few targets explicitly, to get easier signal in the CI view
     - run: nix-build-uncached -A universal-canister
     - run: nix-build-uncached -A ic-hs
-    - run: nix-build-uncached -A ic-hs-coverage
-    - run: nix-build-uncached -A coverage
+    - if: matrix.os == 'ubuntu-latest'
+      run: cp -r "$(nix-build -A ic-hs.doc)"/share/doc/*/html gh-page
+    - if: matrix.os == 'ubuntu-latest'
+      run: nix-build-uncached -A ic-hs-coverage
+    - if: matrix.os == 'ubuntu-latest'
+      run: nix-build-uncached -A coverage
     - run: nix-build-uncached -A check-generated
     - run: nix-build-uncached -A ic-ref-dist
-    - run: nix-build-uncached -A ic-ref-test
+    - if: matrix.os == 'ubuntu-latest'
+      run: nix-build-uncached -A ic-ref-test
     - run: nix-build-uncached -A ic-hs-shell
-    - run: nix-build-uncached -A check-cabal-freeze
-    # now the rest
-    - run: nix-build-uncached
+    - run: nix-build-uncached -A license-check
 
   release:
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
@@ -63,22 +66,22 @@ jobs:
     env:
       SSH_KEY_FOR_NIXBUILD: ${{ secrets.SSH_KEY_FOR_NIXBUILD }}
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     - if: matrix.os == 'macos-latest'
-      uses: cachix/install-nix-action@v16
+      uses: cachix/install-nix-action@v20
     - if: matrix.os == 'ubuntu-latest'
-      uses: nixbuild/nix-quick-install-action@v13
+      uses: nixbuild/nix-quick-install-action@v21
       with:
         nix_conf: experimental-features = nix-command
     - if: matrix.os == 'ubuntu-latest' && env.SSH_KEY_FOR_NIXBUILD != ''
-      uses: nixbuild/nixbuild-action@v10
+      uses: nixbuild/nixbuild-action@v15
       with:
         nixbuild_ssh_key: ${{ secrets.SSH_KEY_FOR_NIXBUILD }}
-    - uses: cachix/cachix-action@v10
+    - uses: cachix/cachix-action@v12
       with:
         name: ic-hs-test
         authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
-    - run: nix-env -f 'channel:nixos-21.05' -iA awscli
+    - run: nix-env -f 'channel:nixos-22.11' -iA awscli
 
     - id: get_version
       run: |
@@ -91,13 +94,31 @@ jobs:
         echo "::set-output name=out::$out_path"
 
     - run: |
-        tar -C "${{ steps.buildit.outputs.out }}/bin" -czvf ic-ref.tar.gz .
+        if [[ -d "${{ steps.buildit.outputs.out }}/build/libs" ]]
+        then
+          tar -C "${{ steps.buildit.outputs.out }}/build" -czvf ic-ref.tar.gz ic-ref libs
+          tar -C "${{ steps.buildit.outputs.out }}" -czvf ic-ref-test.tar.gz build/ic-ref-test build/libs test-data
+        else
+          tar -C "${{ steps.buildit.outputs.out }}/build" -czvf ic-ref.tar.gz ic-ref
+          tar -C "${{ steps.buildit.outputs.out }}" -czvf ic-ref-test.tar.gz build/ic-ref-test test-data
+        fi
 
         ref_short="$(echo "$GITHUB_SHA" | cut -c1-8)"
         version="${{ steps.get_version.outputs.version }}-$ref_short"
 
         aws s3 cp ic-ref.tar.gz "s3://dfinity-download/ic-ref/ic-ref-$version-$SYSTEM.tar.gz"
+        aws s3 cp ic-ref-test.tar.gz "s3://dfinity-download/ic-ref/ic-ref-test-$version-$SYSTEM.tar.gz"
       env:
         SYSTEM: ${{ matrix.nix-system }}
         AWS_ACCESS_KEY_ID: '${{ secrets.AWS_ACCESS_KEY }}'
         AWS_SECRET_ACCESS_KEY: '${{ secrets.AWS_SECRET_KEY }}'
+
+    - if: matrix.os == 'ubuntu-latest'
+      run: cp -r "$(nix-build -A ic-hs.doc)"/share/doc/*/html gh-page
+    - if: matrix.os == 'ubuntu-latest'
+      name: Deploy to Github Pages
+      uses: JamesIves/github-pages-deploy-action@v4.4.1
+      with:
+        BRANCH: gh-pages
+        FOLDER: gh-page
+        SINGLE-COMMIT: true

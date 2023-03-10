@@ -3,23 +3,42 @@
 
 module IC.Ref.IO where
 
+import qualified Data.ByteString as BS
+import qualified Data.ByteString.Lazy as LBS
+import qualified Data.CaseInsensitive as CI
 import qualified Data.Row as R
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.Vector as Vec
+import qualified Data.X509 as C
+import qualified Data.X509.CertificateStore as C
+import qualified Data.X509.Validation as C
+import qualified Network.Connection as C
+import qualified Network.TLS as C
+import qualified Network.TLS.Extra.Cipher as C
 import qualified Network.HTTP.Client as C
+import qualified Network.HTTP.Client.TLS as C
 import Network.HTTP.Types.Status (statusCode)
 import Data.CaseInsensitive (original)
+import Data.Default.Class (def)
 import Data.Row ((.==), (.+))
 
 import IC.Management (HttpResponse)
 
-sendHttpRequest :: T.Text -> IO HttpResponse
-sendHttpRequest url = do
-    m <- C.newManager C.defaultManagerSettings
+sendHttpRequest :: [C.SignedCertificate] -> T.Text -> BS.ByteString -> [(CI.CI BS.ByteString, BS.ByteString)] -> LBS.ByteString -> IO HttpResponse
+sendHttpRequest certs url method headers body = do
+    let validate = \ca_store -> C.validateDefault (C.makeCertificateStore $ certs ++ (C.listCertificates ca_store))
+    let client_params = (C.defaultParamsClient "" BS.empty) {
+          C.clientHooks = def {C.onServerCertificate = validate}
+        , C.clientSupported = def { C.supportedCiphers = C.ciphersuite_default }
+        }
+    let manager_settings = C.mkManagerSettings (C.TLSSettings client_params) Nothing
+    m <- C.newTlsManagerWith manager_settings
     initReq <- C.parseRequest (T.unpack url)
     let req = initReq {
-      C.method = "GET"
+      C.method = method,
+      C.requestHeaders = headers,
+      C.requestBody = C.RequestBodyLBS body
     }
     toHttpResponse <$> C.httpLbs req m
   where

@@ -15,6 +15,7 @@ import qualified Data.ByteString.Lazy as BS
 import qualified Data.HashMap.Lazy as HM
 import qualified Data.Set as S
 import qualified Data.Vector as Vec
+import qualified Data.Word as W
 import Numeric.Natural
 import Data.List
 import Test.Tasty
@@ -37,8 +38,9 @@ import IC.Crypto
 import IC.Test.Universal
 import IC.Utils
 import IC.Test.Agent
-import IC.Test.Agent.Calls
-import IC.Management (HttpResponse)
+import IC.Test.Agent.UnsafeCalls
+import IC.Test.Agent.SafeCalls
+import IC.Management (HttpResponse, HttpHeader)
 
 type Blob = BS.ByteString
 
@@ -122,7 +124,7 @@ awaitCallTwice cid req = do
   res <- envelopeFor (senderOf req) req >>= postCallCBOR cid
   code202 res
   assertBool "Response body not empty" (BS.null (responseBody res))
-  awaitStatus (getRequestStatus (senderOf req) cid (requestId req))
+  awaitStatus (getRequestStatus' (senderOf req) cid (requestId req))
 
 
 
@@ -139,33 +141,48 @@ cborToBlob :: GenR -> IO Blob
 cborToBlob (GBlob blob) = return blob
 cborToBlob r = assertFailure $ "Expected blob, got " <> show r
 
-asCBORBlobPairList :: Blob -> IO [(Blob, Blob)]
-asCBORBlobPairList blob = do
-    decoded <- asRight $ CBOR.decode blob
-    case decoded of
-        GList list -> do
-            mapM cborToBlobPair list
-        _ -> assertFailure $ "Failed to decode as CBOR encoded list of blob pairs: " <> show decoded
-
-cborToBlobPair :: GenR -> IO (Blob, Blob)
-cborToBlobPair (GList [GBlob x, GBlob y]) = return (x, y)
-cborToBlobPair r = assertFailure $ "Expected list of pairs, got: " <> show r
-
 -- Interaction with aaaaa-aa via the universal canister
+
+ic00viaWithCyclesSubnetImpl' :: HasAgentConfig => Prog -> Prog -> Blob -> Blob -> IC00WithCycles
+ic00viaWithCyclesSubnetImpl' relayReply relayReject subnet_id cid cycles _ecid method_name arg = do
+  resp <- call' cid $
+      callNew
+        (bytes subnet_id) (bytes (BS.fromStrict (T.encodeUtf8 method_name))) -- aaaaa-aa
+        (callback relayReply) (callback relayReject) >>>
+      callDataAppend (bytes arg) >>>
+      callCyclesAdd (int64 cycles) >>>
+      callPerform
+  case resp of Reply r -> isRelay r
+               _ -> return resp
+
+ic00viaWithCyclesSubnet' :: HasAgentConfig => Blob -> Blob -> IC00WithCycles
+ic00viaWithCyclesSubnet' = ic00viaWithCyclesSubnetImpl' relayReply relayReject
 
 ic00via :: HasAgentConfig => Blob -> IC00
 ic00via cid = ic00viaWithCycles cid 0
 
-ic00viaWithCycles :: HasAgentConfig => Blob -> Word64 -> IC00
-ic00viaWithCycles cid cycles _ecid method_name arg =
+ic00viaWithCyclesSubnetImpl :: HasAgentConfig => Prog -> Prog -> Blob -> Blob -> IC00WithCycles
+ic00viaWithCyclesSubnetImpl relayReply relayReject subnet_id cid cycles _ecid method_name arg =
   do call' cid $
       callNew
-        (bytes "") (bytes (BS.fromStrict (T.encodeUtf8 method_name))) -- aaaaa-aa
+        (bytes subnet_id) (bytes (BS.fromStrict (T.encodeUtf8 method_name))) -- aaaaa-aa
         (callback relayReply) (callback relayReject) >>>
       callDataAppend (bytes arg) >>>
       callCyclesAdd (int64 cycles) >>>
       callPerform
    >>= isReply >>= isRelay
+
+ic00viaWithCyclesSubnet :: HasAgentConfig => Blob -> Blob -> IC00WithCycles
+ic00viaWithCyclesSubnet = ic00viaWithCyclesSubnetImpl relayReply relayReject
+
+ic00viaWithCycles :: HasAgentConfig => Blob -> IC00WithCycles
+ic00viaWithCycles = ic00viaWithCyclesSubnetImpl relayReply relayReject ""
+
+ic00viaWithCyclesRefundSubnet :: HasAgentConfig => Word64 -> Blob -> Blob -> IC00WithCycles
+ic00viaWithCyclesRefundSubnet amount = ic00viaWithCyclesSubnetImpl (relayReplyRefund amount) (relayRejectRefund amount)
+
+ic00viaWithCyclesRefund :: HasAgentConfig => Word64 -> Blob -> IC00WithCycles
+ic00viaWithCyclesRefund amount = ic00viaWithCyclesSubnetImpl (relayReplyRefund amount) (relayRejectRefund amount) ""
 
 -- * Interacting with the universal canister
 
@@ -176,42 +193,42 @@ ic00viaWithCycles cid cycles _ecid method_name arg =
 
 install' :: (HasCallStack, HasAgentConfig) => Blob -> Prog -> IO ReqResponse
 install' cid prog = do
-  universal_wasm <- getTestWasm "universal_canister"
+  universal_wasm <- getTestWasm "universal-canister"
   ic_install' ic00 (enum #install) cid universal_wasm (run prog)
 
 installAt :: (HasCallStack, HasAgentConfig) => Blob -> Prog -> IO ()
 installAt cid prog = do
-  universal_wasm <- getTestWasm "universal_canister"
+  universal_wasm <- getTestWasm "universal-canister"
   ic_install ic00 (enum #install) cid universal_wasm (run prog)
 
 -- Also calls create, used default 'ic00'
-install :: (HasCallStack, HasAgentConfig) => Prog -> IO Blob
-install prog = do
-    cid <- create
+install :: (HasCallStack, HasAgentConfig) => Blob -> Prog -> IO Blob
+install ecid prog = do
+    cid <- create ecid
     installAt cid prog
     return cid
 
-create :: (HasCallStack, HasAgentConfig) => IO Blob
-create = ic_provisional_create ic00 (Just (2^(60::Int))) empty
+create :: (HasCallStack, HasAgentConfig) => Blob -> IO Blob
+create ecid = ic_provisional_create ic00 ecid Nothing (Just (2^(60::Int))) empty
 
 upgrade' :: (HasCallStack, HasAgentConfig) => Blob -> Prog -> IO ReqResponse
 upgrade' cid prog = do
-  universal_wasm <- getTestWasm "universal_canister"
+  universal_wasm <- getTestWasm "universal-canister"
   ic_install' ic00 (enum #upgrade) cid universal_wasm (run prog)
 
 upgrade :: (HasCallStack, HasAgentConfig) => Blob -> Prog -> IO ()
 upgrade cid prog = do
-  universal_wasm <- getTestWasm "universal_canister"
+  universal_wasm <- getTestWasm "universal-canister"
   ic_install ic00 (enum #upgrade) cid universal_wasm (run prog)
 
 reinstall' :: (HasCallStack, HasAgentConfig) => Blob -> Prog -> IO ReqResponse
 reinstall' cid prog = do
-  universal_wasm <- getTestWasm "universal_canister"
+  universal_wasm <- getTestWasm "universal-canister"
   ic_install' ic00 (enum #reinstall) cid universal_wasm (run prog)
 
 reinstall :: (HasCallStack, HasAgentConfig) => Blob -> Prog -> IO ()
 reinstall cid prog = do
-  universal_wasm <- getTestWasm "universal_canister"
+  universal_wasm <- getTestWasm "universal-canister"
   ic_install ic00 (enum #reinstall) cid universal_wasm (run prog)
 
 callRequestAs :: (HasCallStack, HasAgentConfig) => Blob -> Blob -> Prog -> GenR
@@ -290,15 +307,15 @@ query_ cid prog = query cid prog >>= is ""
 isRelay :: HasCallStack => Blob -> IO ReqResponse
 isRelay = runGet $ Get.getWord32le >>= \case
     0 -> Reply <$> Get.getRemainingLazyByteString
-    0x4c444944 -> fail "Encountered Candid when expectin relayed data. Did you forget to use isRelay?"
+    0x4c444944 -> fail "Encountered Candid when expecting relayed data. Did you forget to use isRelay?"
     c -> do
       msg <- Get.getRemainingLazyByteString
       return $ Reject (fromIntegral c) (T.decodeUtf8With T.lenientDecode (BS.toStrict msg)) Nothing
 
 
 -- Shortcut for test cases that just need one canister.
-simpleTestCase :: (HasCallStack, HasAgentConfig) => String -> (Blob -> IO ()) -> TestTree
-simpleTestCase name act = testCase name $ install noop >>= act
+simpleTestCase :: (HasCallStack, HasAgentConfig) => String -> Blob -> (Blob -> IO ()) -> TestTree
+simpleTestCase name ecid act = testCase name $ install ecid noop >>= act
 
 -- * Programmatic test generation
 
@@ -377,9 +394,9 @@ barrier cids = do
 -- Returns a program to be executed by any canister, which will cause this
 -- canister to send a message that will not be responded to, until the given
 -- IO action is performed.
-createMessageHold :: HasAgentConfig => IO (Prog, IO ())
-createMessageHold = do
-  cid <- install noop
+createMessageHold :: HasAgentConfig => Blob -> IO (Prog, IO ())
+createMessageHold ecid = do
+  cid <- install ecid noop
   ic_set_controllers ic00 cid [defaultUser, cid]
   let holdMessage = inter_update cid defArgs
         { other_side =
@@ -391,8 +408,21 @@ createMessageHold = do
   let release = ic_start_canister ic00 cid
   return (holdMessage, release)
 
+vec_header_from_list_text :: [(T.Text, T.Text)] -> Vec.Vector HttpHeader
+vec_header_from_list_text = Vec.fromList . map aux
+  where
+    aux (a, b) = empty .+ #name .== a .+ #value .== b
+
 dummyResponse :: HttpResponse
 dummyResponse = R.empty
   .+ #status .== 202
-  .+ #headers .== Vec.empty
-  .+ #body .== (toUtf8 "Dummy!")
+  .+ #headers .== vec_header_from_list_text [(T.pack "Content-Length", T.pack $ show $ length s)]
+  .+ #body .== (toUtf8 $ T.pack s)
+  where s = "Dummy!" :: String
+
+bodyOfSize :: W.Word32 -> BS.ByteString
+bodyOfSize n = toUtf8 $ T.pack $ take (fromIntegral n) $ repeat 'x'
+
+-- maximum body size of HTTP response with status 200 and no headers such that the length of its Candid encoding does not exceed max_response_bytes_limit
+maximumSizeResponseBodySize :: W.Word32
+maximumSizeResponseBodySize = 1999950

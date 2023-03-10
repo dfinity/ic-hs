@@ -38,7 +38,7 @@ decode s =
     begin _ = Left "Expected CBOR request to begin with tag 55799"
 
     shorten :: Int -> T.Text -> T.Text
-    shorten n s = a <> (if T.null b then "" else "…")
+    shorten n s = a <> (if T.null b then "" else "...")
         where (a,b) = T.splitAt n s
 
     go (TInt n) | n < 0 = Left "Negative integer"
