@@ -2426,6 +2426,8 @@ icTests my_sub other_sub =
       withEd25519 = zip [createSecretKeyEd25519 (BS.singleton n) | n <- [0..]]
       withWebAuthnECDSA = zip [createSecretKeyWebAuthnECDSA (BS.singleton n) | n <- [0..]]
       withWebAuthnRSA = zip [createSecretKeyWebAuthnRSA (BS.singleton n) | n <- [0..]]
+      withSelfLoop = zip [createSecretKeyEd25519 (BS.singleton n) | n <- repeat 0]
+      withCycle = zip [createSecretKeyEd25519 (BS.singleton n) | n <- [y | _ <- [(0::Integer)..], y <- [0, 1]]]
 
     in
     [ goodTestCase "one delegation, singleton target" callReq $ \cid ->
@@ -2434,6 +2436,10 @@ icTests my_sub other_sub =
       withEd25519 [Just [doesn'tExist]]
     , goodTestCase "one delegation, two targets" callReq $ \cid ->
       withEd25519 [Just [cid, doesn'tExist]]
+    , goodTestCase "one delegation, many targets" callReq $ \cid ->
+      withEd25519 [Just (cid:map wordToId' [0..998])]
+    , badTestCase "one delegation, too many targets" callReq $ \cid ->
+      withEd25519 [Just (cid:map wordToId' [0..999])]
     , goodTestCase "two delegations, two targets, webauthn ECDSA" callReq $ \cid ->
       withWebAuthnECDSA [Just [cid, doesn'tExist], Just [cid, doesn'tExist]]
     , goodTestCase "two delegations, two targets, webauthn RSA" callReq $ \cid ->
@@ -2452,6 +2458,10 @@ icTests my_sub other_sub =
       withEd25519 [Just [], Just [cid]]
     , badTestCase "two delegations, second empty target set" callReq $ \cid ->
       withEd25519 [Just [cid], Just []]
+    , badTestCase "self-loop in delegations" callReq $ \cid ->
+      withSelfLoop [Just [cid], Just [cid]]
+    , badTestCase "cycle in delegations" callReq $ \cid ->
+      withCycle [Just [cid], Just [cid], Just [cid]]
     , goodTestCase "management canister: correct target" mgmtReq $ \_cid ->
       withEd25519 [Just [""]]
     , badTestCase "management canister: empty target set" mgmtReq $ \_cid ->

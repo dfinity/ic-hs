@@ -40,7 +40,7 @@ stripEnvelope root_key gr = runWriterT $ flip record gr $ do
                 throwError "Public key not authorized to sign for user"
 
             delegations <- optionalField (listOf delegationField) "sender_delegation"
-            pk' <- checkDelegations pk (fromMaybe [] delegations)
+            pk' <- checkDelegations pk [pk] (fromMaybe [] delegations)
 
             let rid = requestId content
             lift $ lift $
@@ -56,17 +56,19 @@ stripEnvelope root_key gr = runWriterT $ flip record gr $ do
     return content
 
     where
-      checkDelegations pk [] = return pk
-      checkDelegations pk ((pk', Timestamp expiry, targets, hash, sig):ds) = do
+      checkDelegations pk _ [] = return pk
+      checkDelegations pk pks ((pk', Timestamp expiry, targets, hash, sig):ds) = do
           lift $ lift $ verify root_key "ic-request-auth-delegation" pk hash sig
+          when (pk' `elem` pks) $ throwError "Every public key in the chain of delegations must appear exactly once"
           tell $ validWhen $ \(Timestamp t) ->
               unless (expiry > t) $
                 throwError $ "Delegation expiry is " <> T.pack (show ((t - expiry)`div`1000_000_000)) <> " seconds in the past"
+          unless (length (fromMaybe [] targets) <= 1000) $ throwError "Delegation can specify at most 1000 targets"
           for_ targets $ \ts ->
             tell $ validWhere $ \c ->
               unless (c `elem` ts) $
                 throwError "Delegation does not apply to this canister"
-          checkDelegations pk' ds
+          checkDelegations pk' (pk':pks) ds
 
 
       checkExpiry :: GenR -> RecordM (WriterT EnvValidity (Either T.Text)) ()
