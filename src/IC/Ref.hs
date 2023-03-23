@@ -60,6 +60,7 @@ import qualified Data.ByteString.Lazy as BS
 import qualified Data.Text as T
 import qualified Data.Set as S
 import qualified Data.Word as W
+import Data.List
 import Data.Maybe
 import Control.Monad.State.Class
 import Control.Monad.Except
@@ -138,9 +139,9 @@ authReadStateRequest :: RequestValidation m => Timestamp -> CanisterId -> EnvVal
 authReadStateRequest t ecid ev (ReadStateRequest user_id paths) = do
     valid_when ev t
     valid_for ev user_id
-    let num_request_status_paths = sum $ map is_request_status paths
-    unless (num_request_status_paths <= 1) $
-      throwError "Can only request up to 1 path for request_status."
+    let request_ids = nub $ concat $ map request_id paths
+    unless (length request_ids <= 1) $
+      throwError "Can only request one request ID in request_status paths."
     -- Implement ACL for read requests here
     forM_ paths $ \case
       ("time":_) -> return ()
@@ -174,9 +175,9 @@ authReadStateRequest t ecid ev (ReadStateRequest user_id paths) = do
           Nothing -> return ()
       _ -> throwError "User is not authorized to read unspecified state paths"
   where
-    is_request_status :: Path -> Integer
-    is_request_status ("request_status":_) = 1
-    is_request_status _ = 0
+    request_id :: Path -> [Label]
+    request_id ("request_status":rid:_) = [rid]
+    request_id _ = []
 
 -- Synchronous requests
 
