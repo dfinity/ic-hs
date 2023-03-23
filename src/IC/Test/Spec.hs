@@ -2482,6 +2482,10 @@ icTests my_sub other_sub =
       withEd25519 [Just [], Just [cid]]
     , badTestCase "two delegations, second empty target set" callReq $ \cid ->
       withEd25519 [Just [cid], Just []]
+    , goodTestCase "four delegations" callReq $ \cid ->
+      withEd25519 $ take 4 $ repeat $ Just [cid]
+    , badTestCase "too many delegations" callReq $ \cid ->
+      withEd25519 $ take 5 $ repeat $ Just [cid]
     , badTestCase "self-loop in delegations" callReq $ \cid ->
       withSelfLoop [Just [cid], Just [cid]]
     , badTestCase "cycle in delegations" callReq $ \cid ->
@@ -2510,7 +2514,7 @@ icTests my_sub other_sub =
       , ("empty delegations",  otherUser,         delEnv [])
       , ("three delegations",  otherUser,         delEnv [ed25519SK2, ed25519SK3])
       , ("four delegations",   otherUser,         delEnv [ed25519SK2, ed25519SK3, ed25519SK4])
-      , ("mixed delegations",  otherUser,         delEnv [defaultSK, webAuthnECDSASK, webAuthnRSASK, ecdsaSK, secp256k1SK])
+      , ("mixed delegations",  otherUser,         delEnv [defaultSK, webAuthnRSASK, ecdsaSK, secp256k1SK])
       ] $ \ (name, user, env) ->
     [ simpleTestCase (name ++ " in query") ecid $ \cid -> do
       req <- addExpiry $ rec
