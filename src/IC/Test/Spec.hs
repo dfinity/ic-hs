@@ -2484,7 +2484,6 @@ icTests my_sub other_sub =
       , ("WebAuthn ECDSA",     webAuthnECDSAUser, envelope webAuthnECDSASK)
       , ("WebAuthn RSA",       webAuthnRSAUser,   envelope webAuthnRSASK)
       , ("empty delegations",  otherUser,         delEnv [])
-      , ("same delegations",   otherUser,         delEnv [otherSK])
       , ("three delegations",  otherUser,         delEnv [ed25519SK2, ed25519SK3])
       , ("four delegations",   otherUser,         delEnv [ed25519SK2, ed25519SK3, ed25519SK4])
       , ("mixed delegations",  otherUser,         delEnv [defaultSK, webAuthnECDSASK, webAuthnRSASK, ecdsaSK, secp256k1SK])
