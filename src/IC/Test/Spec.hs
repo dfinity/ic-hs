@@ -1853,14 +1853,10 @@ icTests my_sub other_sub =
         | rid <- [ BS.replicate 32 0, BS.replicate 32 8, BS.replicate 32 255 ]
         ]
 
-    , simpleTestCase "can ask for portion of request status (status)" ecid $ \cid -> do
+    , simpleTestCase "can ask for portion of request status" ecid $ \cid -> do
         rid <- ensure_request_exists cid defaultUser
-        cert <- getStateCert defaultUser cid [["request_status", rid, "status"]]
+        cert <- getStateCert defaultUser cid [["request_status", rid, "status"], ["request_status", rid, "reply"]]
         void $ certValue @T.Text cert ["request_status", rid, "status"]
-
-    , simpleTestCase "can ask for portion of request status (reply)" ecid $ \cid -> do
-        rid <- ensure_request_exists cid defaultUser
-        cert <- getStateCert defaultUser cid [["request_status", rid, "reply"]]
         void $ certValue @Blob cert ["request_status", rid, "reply"]
 
     , simpleTestCase "access denied for other users request" ecid $ \cid -> do
@@ -1877,7 +1873,7 @@ icTests my_sub other_sub =
         rid2 <- ensure_request_exists cid otherUser
         getStateCert' defaultUser cid [["request_status", rid1], ["request_status", rid2]] >>= code4xx
 
-    , simpleTestCase "access denied two status to different canisters" ecid $ \cid -> do
+    , simpleTestCase "access denied for two statuses to different canisters" ecid $ \cid -> do
         cid2 <- install ecid noop
         rid1 <- ensure_request_exists cid defaultUser
         rid2 <- ensure_request_exists cid2 defaultUser
