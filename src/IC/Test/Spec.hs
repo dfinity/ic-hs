@@ -2518,7 +2518,7 @@ icTests my_sub other_sub =
       , ("empty delegations",  otherUser,         delEnv [])
       , ("three delegations",  otherUser,         delEnv [ed25519SK2, ed25519SK3])
       , ("four delegations",   otherUser,         delEnv [ed25519SK2, ed25519SK3, ed25519SK4])
-      , ("mixed delegations",  otherUser,         delEnv [defaultSK, webAuthnECDSASK, webAuthnRSASK, ecdsaSK, secp256k1SK])
+      , ("mixed delegations",  otherUser,         delEnv [defaultSK, webAuthnRSASK, ecdsaSK, secp256k1SK])
       ] $ \ (name, user, env) ->
     [ simpleTestCase (name ++ " in query") ecid $ \cid -> do
       req <- addExpiry $ rec
