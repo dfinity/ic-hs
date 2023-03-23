@@ -40,7 +40,9 @@ stripEnvelope root_key gr = runWriterT $ flip record gr $ do
                 throwError "Public key not authorized to sign for user"
 
             delegations <- optionalField (listOf delegationField) "sender_delegation"
-            pk' <- checkDelegations pk [pk] (fromMaybe [] delegations)
+            let dels = fromMaybe [] delegations
+            when (length dels > 4) $ throwError "sender_delegation must not contain more than four delegations"
+            pk' <- checkDelegations pk [pk] dels
 
             let rid = requestId content
             lift $ lift $

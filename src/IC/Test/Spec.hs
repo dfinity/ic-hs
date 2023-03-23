@@ -2486,6 +2486,10 @@ icTests my_sub other_sub =
       withEd25519 [Just [], Just [cid]]
     , badTestCase "two delegations, second empty target set" callReq $ \cid ->
       withEd25519 [Just [cid], Just []]
+    , goodTestCase "four delegations" callReq $ \cid ->
+      withEd25519 $ take 4 $ repeat $ Just [cid]
+    , badTestCase "too many delegations" callReq $ \cid ->
+      withEd25519 $ take 5 $ repeat $ Just [cid]
     , badTestCase "self-loop in delegations" callReq $ \cid ->
       withSelfLoop [Just [cid], Just [cid]]
     , badTestCase "cycle in delegations" callReq $ \cid ->
