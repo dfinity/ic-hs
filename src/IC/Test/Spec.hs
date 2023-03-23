@@ -378,6 +378,34 @@ icTests my_sub other_sub =
       step "Cannot call (query)?"
       query' cid reply >>= isReject [5]
 
+  , testCaseSteps "starting a stopping canister" $ \step -> do
+      cid <- install ecid noop
+
+      step "Create message hold"
+      (messageHold, _) <- createMessageHold ecid
+
+      step "Create long-running call"
+      grs1 <- submitCall cid $ callRequest cid messageHold
+      awaitKnown grs1 >>= isPendingOrProcessing
+
+      step "Normal call (to sync)"
+      call_ cid reply
+
+      step "Stop"
+      grs2 <- submitCall cid $ stopRequest cid
+      awaitKnown grs2 >>= isPendingOrProcessing
+
+      step "Is stopping (via management)?"
+      cs <- ic_canister_status ic00 cid
+      cs .! #status @?= enum #stopping
+
+      step "Restart"
+      ic_start_canister ic00 cid
+
+      step "Is running (via management)?"
+      cs <- ic_canister_status ic00 cid
+      cs .! #status @?= enum #running
+
   , testCaseSteps "canister deletion" $ \step -> do
       cid <- install ecid noop
 
