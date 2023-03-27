@@ -21,11 +21,11 @@ jobs:
     - if: matrix.os == 'macos-latest'
       uses: cachix/install-nix-action@v20
     - if: matrix.os == 'ubuntu-latest'
-      uses: nixbuild/nix-quick-install-action@v21
+      uses: nixbuild/nix-quick-install-action@v22
       with:
         nix_conf: experimental-features = nix-command
     - if: matrix.os == 'ubuntu-latest' && env.SSH_KEY_FOR_NIXBUILD != ''
-      uses: nixbuild/nixbuild-action@v15
+      uses: nixbuild/nixbuild-action@v16
       with:
         nixbuild_ssh_key: ${{ secrets.SSH_KEY_FOR_NIXBUILD }}
     - run: nix-env -iA nix-build-uncached -f nix/
@@ -70,11 +70,11 @@ jobs:
     - if: matrix.os == 'macos-latest'
       uses: cachix/install-nix-action@v20
     - if: matrix.os == 'ubuntu-latest'
-      uses: nixbuild/nix-quick-install-action@v21
+      uses: nixbuild/nix-quick-install-action@v22
       with:
         nix_conf: experimental-features = nix-command
     - if: matrix.os == 'ubuntu-latest' && env.SSH_KEY_FOR_NIXBUILD != ''
-      uses: nixbuild/nixbuild-action@v15
+      uses: nixbuild/nixbuild-action@v16
       with:
         nixbuild_ssh_key: ${{ secrets.SSH_KEY_FOR_NIXBUILD }}
     - uses: cachix/cachix-action@v12
