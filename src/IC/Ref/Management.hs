@@ -226,6 +226,7 @@ icInstallCode caller r = do
             }
         performCanisterActions canister_id ca
         bumpCanisterVersion canister_id
+        when (set_certified_data ca == Nothing) $ setCertifiedData canister_id ""
         when (set_global_timer ca == Nothing) $ setCanisterGlobalTimer canister_id 0
 
       install = do
