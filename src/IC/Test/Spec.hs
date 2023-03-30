@@ -2000,6 +2000,17 @@ icTests my_sub other_sub =
     , simpleTestCase "set in post-upgrade" ecid $ \cid -> do
       upgrade cid $ setCertifiedData "FOO"
       query cid (replyData getCertificate) >>= extractCertData cid >>= is "FOO"
+    , simpleTestCase "cleared in reinstall" ecid $ \cid -> do
+      call_ cid $ setCertifiedData "FOO" >>> reply
+      query cid (replyData getCertificate) >>= extractCertData cid >>= is "FOO"
+      reinstall cid noop
+      query cid (replyData getCertificate) >>= extractCertData cid >>= is ""
+    , simpleTestCase "cleared in uninstall" ecid $ \cid -> do
+      call_ cid $ setCertifiedData "FOO" >>> reply
+      query cid (replyData getCertificate) >>= extractCertData cid >>= is "FOO"
+      ic_uninstall ic00 cid
+      installAt cid noop
+      query cid (replyData getCertificate) >>= extractCertData cid >>= is ""
     ]
 
   , testGroup "cycles" $
