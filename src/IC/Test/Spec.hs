@@ -1323,6 +1323,8 @@ icTests my_sub other_sub =
 
   , testGroup "canister version" $
     let canister_version = i64tob canisterVersion in
+    let no_heartbeat = onHeartbeat (callback $ trap $ bytes "") in
+    let simpleTestCase name ecid act = testCase name $ install ecid no_heartbeat >>= act in
     [ simpleTestCase "in query" ecid $ \cid -> do
       ctr <- query cid (replyData canister_version) >>= asWord64
       ctr > 0 @? "Canister version must be positive."
@@ -1330,13 +1332,12 @@ icTests my_sub other_sub =
       ctr <- call cid (replyData canister_version) >>= asWord64
       ctr > 0 @? "Canister version must be positive."
     , testCase "in install" $ do
-      cid <- install ecid $ setGlobal canister_version
+      cid <- install ecid $ no_heartbeat >>> setGlobal canister_version
       ctr1 <- query cid (replyData getGlobal) >>= asWord64
       ctr2 <- query cid (replyData canister_version) >>= asWord64
       ctr1 > 0 @? "Canister version must be positive"
       ctr2 >= ctr1 @? "Canister version must be monotone"
-    , testCase "in reinstall" $ do
-      cid <- install ecid noop
+    , simpleTestCase "in reinstall" ecid $ \cid -> do
       ctr1 <- query cid (replyData canister_version) >>= asWord64
       _ <- reinstall cid $ setGlobal canister_version
       ctr2 <- query cid (replyData getGlobal) >>= asWord64
@@ -1346,6 +1347,7 @@ icTests my_sub other_sub =
       ctr3 >= ctr2 @? "Canister version must be monotone"
     , testCase "in pre_upgrade" $ do
       cid <- install ecid $
+        no_heartbeat >>>
         ignore (stableGrow (int 1)) >>>
         onPreUpgrade (callback $ stableWrite (int 0) canister_version)
       ctr1 <- query cid (replyData canister_version) >>= asWord64
@@ -1386,26 +1388,31 @@ icTests my_sub other_sub =
       ctr1 <- query cid (replyData canister_version) >>= asWord64
       _ <- ic_install' ic00 (enum #install) cid "" ""
       ctr2 <- query cid (replyData canister_version) >>= asWord64
+      ctr1 > 0 @? "Canister version must be positive"
       ctr1 @?= ctr2
     , simpleTestCase "after failed reinstall" ecid $ \cid -> do
       ctr1 <- query cid (replyData canister_version) >>= asWord64
       _ <- ic_install' ic00 (enum #reinstall) cid "" ""
       ctr2 <- query cid (replyData canister_version) >>= asWord64
+      ctr1 > 0 @? "Canister version must be positive"
       ctr1 @?= ctr2
     , simpleTestCase "after failed upgrade" ecid $ \cid -> do
       ctr1 <- query cid (replyData canister_version) >>= asWord64
       _ <- ic_install' ic00 (enum #upgrade) cid "" ""
       ctr2 <- query cid (replyData canister_version) >>= asWord64
+      ctr1 > 0 @? "Canister version must be positive"
       ctr1 @?= ctr2
     , simpleTestCase "after failed uninstall" ecid $ \cid -> do
       ctr1 <- query cid (replyData canister_version) >>= asWord64
       _ <- ic_uninstall'' otherUser cid
       ctr2 <- query cid (replyData canister_version) >>= asWord64
+      ctr1 > 0 @? "Canister version must be positive"
       ctr1 @?= ctr2
     , simpleTestCase "after failed change of settings" ecid $ \cid -> do
       ctr1 <- query cid (replyData canister_version) >>= asWord64
       _ <- ic_update_settings' ic00 cid (#freezing_threshold .== 2^(70::Int))
       ctr2 <- query cid (replyData canister_version) >>= asWord64
+      ctr1 > 0 @? "Canister version must be positive"
       ctr1 @?= ctr2
     ]
 
