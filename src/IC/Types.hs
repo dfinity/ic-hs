@@ -166,6 +166,16 @@ data Env = Env
 
 data TrapOr a = Trap String | Return a deriving Functor
 
+instance Applicative TrapOr where
+  pure = Return
+  (Trap y)   <*> _          = Trap y
+  _          <*> (Trap x)   = Trap x
+  (Return f) <*> (Return x) = Return (f x)
+
+instance Monad TrapOr where
+  Trap x     >>= _ = Trap x
+  (Return x) >>= f = f x
+
 data WasmClosure = WasmClosure
   { closure_idx :: Int32
   , closure_env :: Int32

@@ -101,11 +101,11 @@ parseCanister cid bytes = do
     , init_method = \caller env dat -> do
         inst <- instantiate cid wasm_mod
         case inst of Trap err -> return $ Trap err
-                     Return () -> invokeActions cid (RuntimeInitialize caller env dat)
+                     Return () -> invokeToCanisterActions cid (RuntimeInitialize caller env dat)
     , update_methods = M.fromList
       [ (m,
         \caller env needs_to_respond cycles_available dat ->
-        invokeUpdate cid (RuntimeUpdate m caller env needs_to_respond cycles_available dat))
+        invoke cid (RuntimeUpdate m caller env needs_to_respond cycles_available dat))
       | n <- exportedFunctions wasm_mod
       , Just m <- pure $ stripPrefix "canister_update " n
       ]
@@ -116,42 +116,42 @@ parseCanister cid bytes = do
       , Just m <- pure $ stripPrefix "canister_query " n
       ]
     , callbacks = \cb env needs_to_respond cycles_available res refund ->
-      invokeCallActions cid (RuntimeCallback cb env needs_to_respond cycles_available res refund)
+      invoke cid (RuntimeCallback cb env needs_to_respond cycles_available res refund)
     , cleanup = \cb env ->
-      invokeNoActions cid (RuntimeCleanup cb env)
+      invokeToUnit cid (RuntimeCleanup cb env)
     , pre_upgrade_method = \caller env ->
-          invokeActions cid (RuntimePreUpgrade caller env)
+          invokeToCanisterActions cid (RuntimePreUpgrade caller env)
     , post_upgrade_method = \caller env dat -> do
           inst <- instantiate cid wasm_mod
           case inst of Trap err -> return $ Trap err
-                       Return () -> invokeActions cid (RuntimePostUpgrade caller env dat)
+                       Return () -> invokeToCanisterActions cid (RuntimePostUpgrade caller env dat)
     , inspect_message = \method_name caller env arg ->
-          invokeNoActions cid (RuntimeInspectMessage method_name caller env arg)
-    , heartbeat = \env -> invokeCalls cid (RuntimeHeartbeat env)
-    , canister_global_timer = \env-> invokeCalls cid (RuntimeGlobalTimer env)
+          invokeToUnit cid (RuntimeInspectMessage method_name caller env arg)
+    , heartbeat = \env -> invokeToNoCyclesResponse cid (RuntimeHeartbeat env)
+    , canister_global_timer = \env-> invokeToNoCyclesResponse cid (RuntimeGlobalTimer env)
     , metadata = M.fromList metadata
     }
 
 instantiate :: CanisterId -> Module -> IO (TrapOr ())
 instantiate _ _wasm_mod = error "not implemented"
 
-invokeNoActions :: CanisterId -> EntryPoint -> IO (TrapOr ())
-invokeNoActions _ _ = error "not implemented"
+invoke :: CanisterId -> EntryPoint -> IO (TrapOr UpdateResult)
+invoke _ _ = error "not implemented"
 
-invokeActions :: CanisterId -> EntryPoint -> IO (TrapOr CanisterActions)
-invokeActions _ _ = error "not implemented"
+invokeToUnit :: CanisterId -> EntryPoint -> IO (TrapOr ())
+invokeToUnit cid ep = ((\_ -> ()) <$>) <$> invoke cid ep
 
-invokeCalls :: CanisterId -> EntryPoint -> IO (TrapOr ([MethodCall], CanisterActions))
-invokeCalls _ _ = error "not implemented"
+invokeToCanisterActions :: CanisterId -> EntryPoint -> IO (TrapOr CanisterActions)
+invokeToCanisterActions cid ep = (snd <$>) <$> invoke cid ep
 
-invokeCallActions :: CanisterId -> EntryPoint -> IO (TrapOr (CallActions, CanisterActions))
-invokeCallActions _ _ = error "not implemented"
-
-invokeUpdate :: CanisterId -> EntryPoint -> IO (TrapOr UpdateResult)
-invokeUpdate _ _ = error "not implemented"
+invokeToNoCyclesResponse :: CanisterId -> EntryPoint -> IO (TrapOr ([MethodCall], CanisterActions))
+invokeToNoCyclesResponse cid ep = ((\(a, b) -> (ca_new_calls a, b)) <$>) <$> invoke cid ep
 
 invokeQuery :: CanisterId -> EntryPoint -> IO (TrapOr Response)
-invokeQuery _ _ = error "not implemented"
+invokeQuery cid ep = (\res -> res >>= (response . ca_response . fst)) <$> invoke cid ep
+  where
+    response Nothing = Trap ""
+    response (Just r) = Return r
 
 -- | Turns a query function into an update function
 asUpdate ::
