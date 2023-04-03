@@ -82,7 +82,6 @@ data RunStatus
 
 data CanisterContent = CanisterContent
   { can_mod :: CanisterModule
-  , wasm_state :: WasmState
   }
   deriving (Show)
 
@@ -367,10 +366,6 @@ modCanisterContent cid f = do
     modCanister cid $ \c -> c { content = Just (f (fromMaybe err (content c))) }
   where err = error ("canister is empty: " ++ prettyID cid)
 
-setCanisterState :: ICM m => CanisterId -> WasmState -> m ()
-setCanisterState cid wasm_state = modCanisterContent cid $
-    \cs -> cs { wasm_state = wasm_state }
-
 getControllers :: ICM m => CanisterId -> m (S.Set EntityId)
 getControllers cid = controllers <$> getCanister cid
 
@@ -407,9 +402,6 @@ getRunStatus cid = run_status <$> getCanister cid
 setRunStatus :: ICM m => CanisterId -> RunStatus -> m ()
 setRunStatus cid run_status = modCanister cid $
     \cs -> cs { run_status = run_status }
-
-getCanisterState :: ICM m => CanisterId -> m WasmState
-getCanisterState cid = wasm_state . fromJust . content <$> getCanister cid
 
 getCanisterMod :: ICM m => CanisterId -> m CanisterModule
 getCanisterMod cid = can_mod . fromJust . content <$> getCanister cid

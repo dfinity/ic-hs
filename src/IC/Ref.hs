@@ -189,7 +189,6 @@ handleQuery time (QueryRequest canister_id user_id method arg) =
     when (not is_running) $ reject RC_CANISTER_ERROR "canister is stopped" (Just EC_CANISTER_STOPPED)
     empty <- isCanisterEmpty canister_id
     when empty $ reject RC_DESTINATION_INVALID "canister is empty" (Just EC_CANISTER_EMPTY)
-    wasm_state <- getCanisterState canister_id
     can_mod <- getCanisterMod canister_id
     certificate <- getDataCertificate time canister_id
     env0 <- canisterEnv canister_id
@@ -198,7 +197,8 @@ handleQuery time (QueryRequest canister_id user_id method arg) =
     f <- return (M.lookup method (query_methods can_mod))
       `orElse` reject RC_DESTINATION_INVALID "query method does not exist" (Just EC_METHOD_NOT_FOUND)
 
-    case f user_id env arg wasm_state of
+    res <- liftIO $ f user_id env arg
+    case res of
       Trap msg -> reject RC_CANISTER_ERROR ("canister trapped: " ++ msg) (Just EC_CANISTER_TRAPPED)
       Return (Reject (rc, rm)) -> reject rc rm (Just EC_CANISTER_REJECTED)
       Return (Reply res) -> return $ Replied res
@@ -251,11 +251,11 @@ inspectIngress (CallRequest canister_id user_id method arg)
         canisterMustExist canister_id
     empty <- isCanisterEmpty canister_id
     when empty $ throwError "canister is empty"
-    wasm_state <- getCanisterState canister_id
     can_mod <- getCanisterMod canister_id
     env <- canisterEnv canister_id
 
-    case inspect_message can_mod method user_id env arg wasm_state of
+    res <- liftIO $ inspect_message can_mod method user_id env arg
+    case res of
       Trap msg -> throwError $ "canister trapped in inspect_message: " <> T.pack msg
       Return () -> return ()
 
@@ -440,18 +440,16 @@ processMessage m = case m of
           _ -> reject RC_CANISTER_ERROR "canister is not running" (Just EC_CANISTER_NOT_RUNNING)
       empty <- isCanisterEmpty callee
       when empty $ reject RC_DESTINATION_INVALID "canister is empty" (Just EC_CANISTER_EMPTY) -- NB: An empty canister cannot receive a callback.
-      wasm_state <- getCanisterState callee
       can_mod <- getCanisterMod callee
       env <- canisterEnv callee
-      invokeEntry ctxt_id wasm_state can_mod env entry >>= \case
+      invokeEntry ctxt_id can_mod env entry >>= \case
         Trap msg -> do
           -- Eventually update cycle balance here
           rememberTrap ctxt_id msg
-        Return (new_state, (call_actions, canister_actions)) -> do
+        Return (call_actions, canister_actions) -> do
           modCanister callee $ \cs -> cs { last_action = Just entry }
           performCallActions ctxt_id call_actions
           performCanisterActions callee canister_actions
-          setCanisterState callee new_state
 
   ResponseMessage ctxt_id response refunded_cycles -> do
     ctxt <- getCallContext ctxt_id
@@ -522,41 +520,46 @@ actuallyStopCanister canister_id =
 
  
 invokeEntry :: ICM m =>
-    CallId -> WasmState -> CanisterModule -> Env -> EntryPoint ->
-    m (TrapOr (WasmState, UpdateResult))
-invokeEntry ctxt_id wasm_state can_mod env entry = do
+    CallId -> CanisterModule -> Env -> EntryPoint ->
+    m (TrapOr UpdateResult)
+invokeEntry ctxt_id can_mod env entry = do
     needs_to_respond <- needsToRespondCallID ctxt_id
     available <- getCallContextCycles ctxt_id
     case entry of
       Public method dat -> do
         caller <- callerOfCallID ctxt_id
         case lookupUpdate method can_mod of
-          Just f -> return $ f caller env needs_to_respond available dat wasm_state
+          Just f -> do
+            res <- liftIO $ f caller env needs_to_respond available dat
+            return res
           Nothing -> do
             let reject = Reject (RC_DESTINATION_INVALID, "method does not exist: " ++ method)
-            return $ Return (wasm_state, (noCallActions { ca_response = Just reject}, noCanisterActions))
+            return $ Return (noCallActions { ca_response = Just reject}, noCanisterActions)
       Closure cb r refund -> do
-        case callbacks can_mod cb env needs_to_respond available r refund wasm_state of
+        res <- liftIO $ callbacks can_mod cb env needs_to_respond available r refund
+        case res of
             Trap err -> do
               rememberTrap ctxt_id err
-              return $
-                  case cleanup_callback cb of
-                      Just closure -> case cleanup can_mod closure env wasm_state of
-                          Trap err' -> Trap err'
-                          Return (wasm_state', ()) ->
-                              Return (wasm_state', (noCallActions, noCanisterActions))
-                      Nothing -> Trap err
-            Return (wasm_state, actions) -> return $ Return (wasm_state, actions)
-      Heartbeat -> return $ do
-        case heartbeat can_mod env wasm_state of
-            Trap _ -> Return (wasm_state, (noCallActions, noCanisterActions))
-            Return (wasm_state, (calls, actions)) ->
-                Return (wasm_state, (noCallActions { ca_new_calls = calls }, actions))
-      GlobalTimer -> return $ do
-        case canister_global_timer can_mod env wasm_state of
-            Trap _ -> Return (wasm_state, (noCallActions, noCanisterActions))
-            Return (wasm_state, (calls, actions)) ->
-                Return (wasm_state, (noCallActions { ca_new_calls = calls }, actions))
+              case cleanup_callback cb of
+                  Just closure -> do
+                      res <- liftIO $ cleanup can_mod closure env
+                      case res of
+                          Trap err' -> return $ Trap err'
+                          Return () -> return $ Return (noCallActions, noCanisterActions)
+                  Nothing -> return $ Trap err
+            Return actions -> return $ Return actions
+      Heartbeat -> do
+        res <- liftIO $ heartbeat can_mod env
+        case res of
+            Trap _ -> return $ Return (noCallActions, noCanisterActions)
+            Return (calls, actions) ->
+                return $ Return (noCallActions { ca_new_calls = calls }, actions)
+      GlobalTimer -> do
+        res <- liftIO $ canister_global_timer can_mod env
+        case res of
+            Trap _ -> return $ Return (noCallActions, noCanisterActions)
+            Return (calls, actions) ->
+                return $ Return (noCallActions { ca_new_calls = calls }, actions)
   where
     lookupUpdate method can_mod
         | Just f <- M.lookup method (update_methods can_mod) = Just f

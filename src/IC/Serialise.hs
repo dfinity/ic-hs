@@ -29,7 +29,6 @@ import System.Random.SplitMix
 import IC.Types
 import IC.Wasm.Winter.Persist
 import IC.Purify
-import IC.Canister.Snapshot
 import IC.Canister
 import IC.Ref
 import IC.Crypto
@@ -105,22 +104,14 @@ instance Serialise EntryPoint where
 
 instance Serialise CanisterContent where
     encode cc = encode
-        ( raw_wasm (can_mod cc)
-        , wsInstances (wasm_state cc)
-        , wsStableMem (wasm_state cc)
+        ( raw_wasm (can_mod cc),
+          canister_id_mod (can_mod cc)
         )
     decode = do
-        (wasm, insts, sm) <- decode
-        can_mod <- either fail pure $ parseCanister wasm
-        -- There is some duplication here
-        wasm_mod <- either fail pure $ W.parseModule wasm
+        (wasm, cid) <- decode
+        can_mod <- either fail pure $ parseCanister cid wasm
         return $ CanisterContent
             { can_mod = can_mod
-            , wasm_state = CanisterSnapshot
-                { wsModule = wasm_mod
-                , wsInstances = insts
-                , wsStableMem = sm
-                }
             }
 
 deriving instance Serialise EntityId

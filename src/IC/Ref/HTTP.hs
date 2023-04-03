@@ -114,11 +114,12 @@ icHttpRequest caller maybe_subnet ctxt_id r = do
                             .+ #response .== resp
                             .+ #context .== t .! #context
                       can_mod <- getCanisterMod cid
-                      wasm_state <- getCanisterState cid
                       env <- canisterEnv cid
                       case M.lookup (T.unpack m) (query_methods can_mod) of
                         Nothing -> reject RC_DESTINATION_INVALID "transform function with a given name does not exist" (Just EC_METHOD_NOT_FOUND)
-                        Just f -> case f managementCanisterId env (Codec.Candid.encode arg) wasm_state of
+                        Just f -> do
+                         res <- liftIO $ f managementCanisterId env (Codec.Candid.encode arg)
+                         case res of
                           Return (Reply r) -> case Codec.Candid.decode @HttpResponse r of
                             Left _ -> reject RC_CANISTER_ERROR "could not decode the response" (Just EC_INVALID_ENCODING)
                             Right resp ->

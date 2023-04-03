@@ -210,7 +210,7 @@ icInstallCode :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "install_
 icInstallCode caller r = do
     let canister_id = principalToEntityId (r .! #canister_id)
     let arg = r .! #arg
-    new_can_mod <- return (parseCanister (r .! #wasm_module))
+    new_can_mod <- return (parseCanister canister_id (r .! #wasm_module))
       `onErr` (\err -> reject RC_CANISTER_ERROR ("Parsing failed: " ++ err) (Just EC_INVALID_MODULE))
     was_empty <- isCanisterEmpty canister_id
 
@@ -218,11 +218,11 @@ icInstallCode caller r = do
       reinstall = do
         env <- canisterEnv canister_id
         let env1 = env { env_canister_version = env_canister_version env + 1, env_global_timer = 0 }
-        (wasm_state, ca) <- return (init_method new_can_mod caller env1 arg)
+        res <- liftIO $ init_method new_can_mod caller env1 arg
+        ca <- return res
           `onTrap` (\msg -> reject RC_CANISTER_ERROR ("Initialization trapped: " ++ msg) (Just EC_CANISTER_TRAPPED))
         setCanisterContent canister_id $ CanisterContent
             { can_mod = new_can_mod
-            , wasm_state = wasm_state
             }
         performCanisterActions canister_id ca
         bumpCanisterVersion canister_id
@@ -237,21 +237,21 @@ icInstallCode caller r = do
       upgrade = do
         when was_empty $
           reject RC_CANISTER_ERROR "canister is empty during upgrade" (Just EC_CANISTER_EMPTY)
-        old_wasm_state <- getCanisterState canister_id
         old_can_mod <- getCanisterMod canister_id
         env <- canisterEnv canister_id
         let env1 = env
-        (ca1, mem) <- return (pre_upgrade_method old_can_mod old_wasm_state caller env1)
+        res <- liftIO $ pre_upgrade_method old_can_mod caller env1
+        ca1 <- return res
           `onTrap` (\msg -> reject RC_CANISTER_ERROR ("Pre-upgrade trapped: " ++ msg) (Just EC_CANISTER_TRAPPED))
         -- TODO: update balance in env based on ca1 here, once canister actions
         -- can change balances
         let env2 = env { env_canister_version = env_canister_version env + 1, env_global_timer = 0 }
-        (new_wasm_state, ca2) <- return (post_upgrade_method new_can_mod caller env2 mem arg)
+        res <- liftIO $ post_upgrade_method new_can_mod caller env2 arg
+        ca2 <- return res
           `onTrap` (\msg -> reject RC_CANISTER_ERROR ("Post-upgrade trapped: " ++ msg) (Just EC_CANISTER_TRAPPED))
 
         setCanisterContent canister_id $ CanisterContent
             { can_mod = new_can_mod
-            , wasm_state = new_wasm_state
             }
         performCanisterActions canister_id (ca1 { set_global_timer = Nothing } <> ca2)
         bumpCanisterVersion canister_id

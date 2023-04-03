@@ -5,8 +5,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module IC.Canister
-    ( WasmState
-    , parseCanister
+    ( parseCanister
     , CanisterModule(..)
     , InitFunc, UpdateFunc, QueryFunc
     , asUpdate
@@ -28,35 +27,29 @@ import IC.Types
 import IC.Wasm.Winter (parseModule, exportedFunctions, Module)
 import qualified Wasm.Syntax.AST as W
 
-import IC.Purify
-import IC.Canister.Snapshot
-import IC.Canister.Imp
 import IC.Hash
 import IC.Utils
 
--- Here we can swap out the purification machinery
-type WasmState = CanisterSnapshot
--- type WasmState = Replay ImpState
-
-type InitFunc = EntityId -> Env -> Blob -> TrapOr (WasmState, CanisterActions)
-type UpdateFunc = WasmState -> TrapOr (WasmState, UpdateResult)
-type QueryFunc = WasmState -> TrapOr Response
+type InitFunc = EntityId -> Env -> Blob -> IO (TrapOr CanisterActions)
+type UpdateFunc = IO (TrapOr UpdateResult)
+type QueryFunc = IO (TrapOr Response)
 
 type IsPublic = Bool
 
 data CanisterModule = CanisterModule
   { raw_wasm :: Blob
   , raw_wasm_hash :: Blob -- just caching, it’s worth it
+  , canister_id_mod :: CanisterId -- for runtime
   , init_method :: InitFunc
   , update_methods :: MethodName ↦ (EntityId -> Env -> NeedsToRespond -> Cycles -> Blob -> UpdateFunc)
   , query_methods :: MethodName ↦ (EntityId -> Env -> Blob -> QueryFunc)
   , callbacks :: Callback -> Env -> NeedsToRespond -> Cycles -> Response -> Cycles -> UpdateFunc
-  , cleanup :: WasmClosure -> Env -> WasmState -> TrapOr (WasmState, ())
-  , pre_upgrade_method :: WasmState -> EntityId -> Env -> TrapOr (CanisterActions, Blob)
-  , post_upgrade_method :: EntityId -> Env -> Blob -> Blob -> TrapOr (WasmState, CanisterActions)
-  , inspect_message :: MethodName -> EntityId -> Env -> Blob -> WasmState -> TrapOr ()
-  , heartbeat :: Env -> WasmState -> TrapOr (WasmState, ([MethodCall], CanisterActions))
-  , canister_global_timer :: Env -> WasmState -> TrapOr (WasmState, ([MethodCall], CanisterActions))
+  , cleanup :: WasmClosure -> Env -> IO (TrapOr ())
+  , pre_upgrade_method :: EntityId -> Env -> IO (TrapOr CanisterActions)
+  , post_upgrade_method :: EntityId -> Env -> Blob -> IO (TrapOr CanisterActions)
+  , inspect_message :: MethodName -> EntityId -> Env -> Blob -> IO (TrapOr ())
+  , heartbeat :: Env -> IO (TrapOr ([MethodCall], CanisterActions))
+  , canister_global_timer :: Env -> IO (TrapOr ([MethodCall], CanisterActions))
   , metadata :: T.Text ↦ (IsPublic, Blob)
   }
 
@@ -73,8 +66,19 @@ decodeModule bytes =
     asmMagic = asBytes [0x00, 0x61, 0x73, 0x6d]
     gzipMagic = asBytes [0x1f, 0x8b, 0x08]
 
-parseCanister :: Blob -> Either String CanisterModule
-parseCanister bytes = do
+data EntryPoint = RuntimeInitialize EntityId Env Blob
+  | RuntimeUpdate MethodName EntityId Env NeedsToRespond Cycles Blob
+  | RuntimeQuery MethodName EntityId Env Blob
+  | RuntimeCallback Callback Env NeedsToRespond Cycles Response Cycles
+  | RuntimeCleanup WasmClosure Env
+  | RuntimePreUpgrade EntityId Env
+  | RuntimePostUpgrade EntityId Env Blob
+  | RuntimeInspectMessage MethodName EntityId Env Blob
+  | RuntimeHeartbeat Env
+  | RuntimeGlobalTimer Env
+
+parseCanister :: CanisterId -> Blob -> Either String CanisterModule
+parseCanister cid bytes = do
   decodedModule <- decodeModule bytes
   wasm_mod <- either throwError pure (parseModule decodedModule)
   let icp_sections =
@@ -93,61 +97,68 @@ parseCanister bytes = do
   return $ CanisterModule
     { raw_wasm = bytes
     , raw_wasm_hash = sha256 bytes
-    , init_method = \caller env dat ->
-          case instantiate wasm_mod of
-            Trap err -> Trap err
-            Return wasm_state0 ->
-              invoke wasm_state0 (rawInitialize caller env dat)
+    , canister_id_mod = cid
+    , init_method = \caller env dat -> do
+        inst <- instantiate cid wasm_mod
+        case inst of Trap err -> return $ Trap err
+                     Return () -> invokeActions cid (RuntimeInitialize caller env dat)
     , update_methods = M.fromList
       [ (m,
-        \caller env needs_to_respond cycles_available dat wasm_state ->
-        invoke wasm_state (rawUpdate m caller env needs_to_respond cycles_available dat))
+        \caller env needs_to_respond cycles_available dat ->
+        invokeUpdate cid (RuntimeUpdate m caller env needs_to_respond cycles_available dat))
       | n <- exportedFunctions wasm_mod
       , Just m <- pure $ stripPrefix "canister_update " n
       ]
     , query_methods = M.fromList
-      [ (m, \caller env arg wasm_state ->
-          snd <$> invoke wasm_state (rawQuery m caller env arg))
+      [ (m, \caller env arg ->
+          invokeQuery cid (RuntimeQuery m caller env arg))
       | n <- exportedFunctions wasm_mod
       , Just m <- pure $ stripPrefix "canister_query " n
       ]
-    , callbacks = \cb env needs_to_respond cycles_available res refund wasm_state ->
-      invoke wasm_state (rawCallback cb env needs_to_respond cycles_available res refund)
-    , cleanup = \cb env wasm_state ->
-      invoke wasm_state (rawCleanup cb env)
-    , pre_upgrade_method = \wasm_state caller env ->
-          snd <$> invoke wasm_state (rawPreUpgrade caller env)
-    , post_upgrade_method = \caller env mem dat ->
-          case instantiate wasm_mod of
-            Trap err -> Trap err
-            Return wasm_state0 ->
-              invoke wasm_state0 (rawPostUpgrade caller env mem dat)
-    , inspect_message = \method_name caller env arg wasm_state ->
-          snd <$> invoke wasm_state (rawInspectMessage method_name caller env arg)
-    , heartbeat = \env wasm_state -> invoke wasm_state (rawHeartbeat env)
-    , canister_global_timer = \env wasm_state -> invoke wasm_state (rawGlobalTimer env)
+    , callbacks = \cb env needs_to_respond cycles_available res refund ->
+      invokeCallActions cid (RuntimeCallback cb env needs_to_respond cycles_available res refund)
+    , cleanup = \cb env ->
+      invokeNoActions cid (RuntimeCleanup cb env)
+    , pre_upgrade_method = \caller env ->
+          invokeActions cid (RuntimePreUpgrade caller env)
+    , post_upgrade_method = \caller env dat -> do
+          inst <- instantiate cid wasm_mod
+          case inst of Trap err -> return $ Trap err
+                       Return () -> invokeActions cid (RuntimePostUpgrade caller env dat)
+    , inspect_message = \method_name caller env arg ->
+          invokeNoActions cid (RuntimeInspectMessage method_name caller env arg)
+    , heartbeat = \env -> invokeCalls cid (RuntimeHeartbeat env)
+    , canister_global_timer = \env-> invokeCalls cid (RuntimeGlobalTimer env)
     , metadata = M.fromList metadata
     }
 
-instantiate :: Module -> TrapOr WasmState
-instantiate wasm_mod =
-  either Trap Return $ snd $ createMaybe $ do
-    rawInstantiate wasm_mod >>= \case
-      Trap err -> return ((), Left err)
-      Return rs -> return ((), Right rs)
+instantiate :: CanisterId -> Module -> IO (TrapOr ())
+instantiate _ _wasm_mod = error "not implemented"
 
-invoke :: WasmState -> CanisterEntryPoint (TrapOr r) -> TrapOr (WasmState, r)
-invoke s f =
-  case perform f s of
-    (_, Trap msg) -> Trap msg
-    (s', Return r) -> Return (s', r)
+invokeNoActions :: CanisterId -> EntryPoint -> IO (TrapOr ())
+invokeNoActions _ _ = error "not implemented"
+
+invokeActions :: CanisterId -> EntryPoint -> IO (TrapOr CanisterActions)
+invokeActions _ _ = error "not implemented"
+
+invokeCalls :: CanisterId -> EntryPoint -> IO (TrapOr ([MethodCall], CanisterActions))
+invokeCalls _ _ = error "not implemented"
+
+invokeCallActions :: CanisterId -> EntryPoint -> IO (TrapOr (CallActions, CanisterActions))
+invokeCallActions _ _ = error "not implemented"
+
+invokeUpdate :: CanisterId -> EntryPoint -> IO (TrapOr UpdateResult)
+invokeUpdate _ _ = error "not implemented"
+
+invokeQuery :: CanisterId -> EntryPoint -> IO (TrapOr Response)
+invokeQuery _ _ = error "not implemented"
 
 -- | Turns a query function into an update function
 asUpdate ::
   (EntityId -> Env -> Blob -> QueryFunc) ->
   (EntityId -> Env -> NeedsToRespond -> Cycles -> Blob -> UpdateFunc)
-asUpdate f caller env (NeedsToRespond needs_to_respond) _cycles_available dat wasm_state
+asUpdate f caller env (NeedsToRespond needs_to_respond) _cycles_available dat
   | not needs_to_respond = error "asUpdate: needs_to_respond == False"
   | otherwise =
-    (\res -> (wasm_state, (noCallActions { ca_response = Just res }, noCanisterActions))) <$>
-    f caller env dat wasm_state
+    (\res -> (\res -> (noCallActions { ca_response = Just res }, noCanisterActions)) <$> res) <$>
+    f caller env dat
