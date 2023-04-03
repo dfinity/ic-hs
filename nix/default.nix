@@ -44,8 +44,8 @@ let
           });
 
           all-cabal-hashes = self.fetchurl {
-            url = "https://github.com/commercialhaskell/all-cabal-hashes/archive/35f4996e28c5ba20a3a633346f21abe2072afeb6.tar.gz";
-            sha256 = "sha256-L/PmFUGlBOOd5rAx4NFxv+s2USI9q0YgOsfpdeRDyds=";
+            url = "https://github.com/commercialhaskell/all-cabal-hashes/archive/eddc2bddf45791cb743293d15ad8325fa0e050e4.tar.gz";
+            sha256 = "sha256-5+2pviyhfIeTr1yzbpG56dtP+BxMyEN/w3Tbwz9ePzw=";
           };
 
           # We override secp256k1 since the version in nixpkgs doesn't provide a

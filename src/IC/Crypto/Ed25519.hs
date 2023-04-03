@@ -6,6 +6,7 @@ module IC.Crypto.Ed25519
  , verify
  ) where
 
+import Data.Maybe (fromJust)
 import qualified Data.ByteString.Lazy as BS
 import qualified Crypto.Sign.Ed25519 as Ed25519
 
@@ -16,7 +17,7 @@ createKey seed | BS.length seed > 32 = error "Seed too long"
 createKey seed = sk
   where
     seed' = seed <> BS.replicate (32 - BS.length seed) 0x00
-    Just (_, sk) = Ed25519.createKeypairFromSeed_ (BS.toStrict seed')
+    (_, sk) = fromJust $ Ed25519.createKeypairFromSeed_ (BS.toStrict seed')
 
 toPublicKey :: SecretKey -> BS.ByteString
 toPublicKey = BS.fromStrict . Ed25519.unPublicKey . Ed25519.toPublicKey

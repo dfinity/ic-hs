@@ -3,6 +3,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TypeOperators #-}
 module IC.Purify where
 
 import Control.Monad.ST
@@ -58,4 +59,3 @@ instance Purify a (Replay a) where
       return (replay', x)
     where
       replay' = Replay $ do x <- replay; void (act x); return x
-

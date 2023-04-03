@@ -131,6 +131,7 @@ import qualified Text.Hex as H
 import qualified Data.ByteString.Lazy as BS
 import qualified Data.ByteString.Builder as BS
 import qualified Data.HashMap.Lazy as HM
+import Data.Maybe (fromJust)
 import Network.HTTP.Client
 import Network.HTTP.Client.TLS
 import Network.HTTP.Types
@@ -883,5 +884,5 @@ toHash256 = Get.runGet Get.get
 
 verifySignature :: Blob -> Blob -> Blob -> Bool
 verifySignature msg sig key = Haskoin.verifyHashSig (toHash256 msg) s pk
-  where Just pk = Haskoin.importPubKey $ BS.toStrict key
-        Just s  = Haskoin.decodeStrictSig $ BS.toStrict sig
+  where pk = fromJust $ Haskoin.importPubKey $ BS.toStrict key
+        s  = fromJust $ Haskoin.decodeStrictSig $ BS.toStrict sig
