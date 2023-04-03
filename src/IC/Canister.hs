@@ -22,6 +22,7 @@ import Control.Monad
 import Data.Foldable
 import Control.Monad.Except
 import Codec.Compression.GZip (decompress)
+import Foreign.C.String
 
 import IC.Types
 import IC.Wasm.Winter (parseModule, exportedFunctions, Module)
@@ -29,6 +30,8 @@ import qualified Wasm.Syntax.AST as W
 
 import IC.Hash
 import IC.Utils
+
+import qualified IC.Runtime as R (instantiate, invoke)
 
 type InitFunc = EntityId -> Env -> Blob -> IO (TrapOr CanisterActions)
 type UpdateFunc = IO (TrapOr UpdateResult)
@@ -133,10 +136,18 @@ parseCanister cid bytes = do
     }
 
 instantiate :: CanisterId -> Module -> IO (TrapOr ())
-instantiate _ _wasm_mod = error "not implemented"
+instantiate _ _wasm_mod = do
+  cres <- withCString "Martin" R.instantiate
+  res <- peekCString cres
+  putStrLn $ res
+  error "not implemented"
 
 invoke :: CanisterId -> EntryPoint -> IO (TrapOr UpdateResult)
-invoke _ _ = error "not implemented"
+invoke _ _ = do
+  cres <- withCString "Martin" R.invoke
+  res <- peekCString cres
+  putStrLn $ res
+  error "not implemented"
 
 invokeToUnit :: CanisterId -> EntryPoint -> IO (TrapOr ())
 invokeToUnit cid ep = ((\_ -> ()) <$>) <$> invoke cid ep
