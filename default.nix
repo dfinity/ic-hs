@@ -169,6 +169,8 @@ in
   let runtime = (naersk_1_66.buildPackage rec {
     name = "runtime";
     root = subpath ./.;
+    copyLibs = true;
+    copyBins = false;
     doCheck = false;
     release = true;
     nativeBuildInputs = with nixpkgs; [ pkg-config protobuf ];
