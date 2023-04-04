@@ -37,6 +37,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 use hs_bindgen::*;
 
+use serde_with::{serde_as, Bytes};
+use serde_cbor::from_slice;
+use serde::{Deserialize};
+
 const DEFAULT_NUM_INSTRUCTIONS: NumInstructions = NumInstructions::new(5_000_000_000);
 
 const COUNTER_WAT: &str = r#"
@@ -89,9 +93,36 @@ const COUNTER_WAT: &str = r#"
         (export "canister_init" (func $canister_init))
     )"#;
 
+#[serde_as]
+#[derive(Debug, Deserialize)]
+struct RuntimeInstantiate {
+  #[serde_as(deserialize_as = "Bytes")]
+  cid: Vec<u8>,
+  #[serde_as(deserialize_as = "Bytes")]
+  wasm: Vec<u8>,
+}
+
 #[hs_bindgen(instantiate :: CString -> IO CString)]
 pub fn instantiate(arg: &str) -> String {
-    format!("hoi: {}", arg)
+    let a = base64::decode(arg).unwrap();
+    let x: RuntimeInstantiate = from_slice(a.as_slice()).unwrap();
+    let controller = Arc::new(
+        SandboxedExecutionController::new(
+            &EmbeddersConfig::default(),
+            Arc::new(TestPageAllocatorFileDescriptorImpl::new()),
+        )
+        .unwrap(),
+    );
+    let canister_module = CanisterModule::new(x.wasm.clone());
+    let canister_id: CanisterId = x.cid.clone().try_into().unwrap();
+    let (wasm_binary, wasm_memory, stable_memory, exported_globals, _, _) = controller
+        .create_execution_state(
+            canister_module,
+            canister_id,
+            Arc::new(CompilationCache::default()),
+        )
+        .unwrap();
+    format!("hoi: {:?}", x)
 }
 
 #[hs_bindgen(invoke :: CString -> IO CString)]

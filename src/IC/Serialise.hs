@@ -114,8 +114,6 @@ instance Serialise CanisterContent where
             { can_mod = can_mod
             }
 
-deriving instance Serialise EntityId
-
 deriving instance Serialise StdGen
 
 instance Serialise Stable.Repr where

@@ -209,6 +209,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9e1b586273c5702936fe7b7d6896644d8be71e6314cfe09d3167c95f712589e8"
 
 [[package]]
+name = "base64"
+version = "0.21.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a4a4ddaa51a5bc52a6948f74c06d20aaaddb71924eab79b8c97a8c556e942d6a"
+
+[[package]]
 name = "beef"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2875,6 +2881,7 @@ checksum = "3582f63211428f83597b51b2ddb88e2a91a9d52d12831f9d08f5e624e8977422"
 name = "runtime"
 version = "0.1.0"
 dependencies = [
+ "base64 0.21.0",
  "hs-bindgen",
  "ic-base-types",
  "ic-canister-sandbox-backend-lib",
@@ -2892,7 +2899,10 @@ dependencies = [
  "libc",
  "once_cell",
  "regex",
+ "serde",
+ "serde_cbor",
  "serde_json",
+ "serde_with",
  "wat",
  "which",
 ]

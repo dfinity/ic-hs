@@ -3,6 +3,10 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 
 module IC.Canister
     ( parseCanister
@@ -25,12 +29,18 @@ import Codec.Compression.GZip (decompress)
 import Foreign.C.String
 
 import IC.Types
-import IC.Wasm.Winter (parseModule, exportedFunctions, Module)
+import IC.Wasm.Winter (parseModule, exportedFunctions)
 import qualified Wasm.Syntax.AST as W
 
 import IC.Hash
 import IC.Utils
 
+import Codec.Serialise
+import GHC.Generics
+
+import qualified Data.ByteString.UTF8 as BS
+import qualified Data.ByteString.Base64 as BS
+import qualified Codec.CBOR.Write as CB
 import qualified IC.Runtime as R (instantiate, invoke)
 
 type InitFunc = EntityId -> Env -> Blob -> IO (TrapOr CanisterActions)
@@ -102,7 +112,7 @@ parseCanister cid bytes = do
     , raw_wasm_hash = sha256 bytes
     , canister_id_mod = cid
     , init_method = \caller env dat -> do
-        inst <- instantiate cid wasm_mod
+        inst <- instantiate cid decodedModule
         case inst of Trap err -> return $ Trap err
                      Return () -> invokeToCanisterActions cid (RuntimeInitialize caller env dat)
     , update_methods = M.fromList
@@ -125,7 +135,7 @@ parseCanister cid bytes = do
     , pre_upgrade_method = \caller env ->
           invokeToCanisterActions cid (RuntimePreUpgrade caller env)
     , post_upgrade_method = \caller env dat -> do
-          inst <- instantiate cid wasm_mod
+          inst <- instantiate cid decodedModule
           case inst of Trap err -> return $ Trap err
                        Return () -> invokeToCanisterActions cid (RuntimePostUpgrade caller env dat)
     , inspect_message = \method_name caller env arg ->
@@ -135,9 +145,17 @@ parseCanister cid bytes = do
     , metadata = M.fromList metadata
     }
 
-instantiate :: CanisterId -> Module -> IO (TrapOr ())
-instantiate _ _wasm_mod = do
-  cres <- withCString "Martin" R.instantiate
+data RuntimeInstantiate = RuntimeInstantiate (CanisterId, Blob) deriving Show
+
+deriving instance Serialise EntityId
+
+deriving instance Generic RuntimeInstantiate
+instance Serialise RuntimeInstantiate where
+
+instantiate :: CanisterId -> Blob -> IO (TrapOr ())
+instantiate cid wasm_mod = do
+  let bytes = BS.toString $ BS.encode $ CB.toStrictByteString $ encode $ (cid, wasm_mod)
+  cres <- withCString bytes R.instantiate
   res <- peekCString cres
   putStrLn $ res
   error "not implemented"
