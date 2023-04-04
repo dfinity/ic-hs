@@ -43,6 +43,21 @@ let
               ];
           });
 
+          naersk_1_66 = super.callPackage self.sources.naersk {
+            inherit (self.rustPackages_1_66) cargo rustc;
+          };
+
+          runtime = (self.naersk_1_66.buildPackage rec {
+            name = "runtime";
+            root = self.subpath ../.;
+            copyLibs = true;
+            copyBins = false;
+            doCheck = false;
+            release = true;
+            nativeBuildInputs = with self; [ pkg-config protobuf ];
+            buildInputs = with self; [ openssl ];
+          });
+
           all-cabal-hashes = self.fetchurl {
             url = "https://github.com/commercialhaskell/all-cabal-hashes/archive/35f4996e28c5ba20a3a633346f21abe2072afeb6.tar.gz";
             sha256 = "sha256-L/PmFUGlBOOd5rAx4NFxv+s2USI9q0YgOsfpdeRDyds=";

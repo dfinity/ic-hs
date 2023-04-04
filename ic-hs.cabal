@@ -190,7 +190,7 @@ library
   build-depends: x509-validation
   build-depends: zlib
 
-  extra-bundled-libraries: runtime
+  extra-libraries: runtime
   extra-libraries: crypto
 
 executable ic-ref

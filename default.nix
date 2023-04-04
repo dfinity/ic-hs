@@ -6,11 +6,7 @@ let nixpkgs = import ./nix { inherit system; }; in
 let stdenv = nixpkgs.stdenv; in
 let subpath = nixpkgs.subpath; in
 
-let rustPackages = nixpkgs.rustPackages_1_66; in
 let naersk = nixpkgs.callPackage nixpkgs.sources.naersk { rustc = nixpkgs.rustc-wasm; }; in
-let naersk_1_66 = nixpkgs.callPackage nixpkgs.sources.naersk {
-      inherit (rustPackages) cargo rustc;
-    }; in
 let universal-canister = (naersk.buildPackage rec {
     name = "universal-canister";
     src = subpath ./universal-canister;
@@ -32,6 +28,8 @@ let haskellOverrides = self: super:
     generated //
     {
       haskoin-core = nixpkgs.haskell.lib.dontCheck (nixpkgs.haskell.lib.markUnbroken super.haskoin-core);
+
+      #ic-hs = nixpkgs.haskell.lib.addExtraLibrary generated.ic-hs runtime;
     }; in
 
 let haskellPackages = nixpkgs.haskellPackages.override {
@@ -166,19 +164,8 @@ in
     '';
 }); in
 
-  let runtime = (naersk_1_66.buildPackage rec {
-    name = "runtime";
-    root = subpath ./.;
-    copyLibs = true;
-    copyBins = false;
-    doCheck = false;
-    release = true;
-    nativeBuildInputs = with nixpkgs; [ pkg-config protobuf ];
-    buildInputs = [ nixpkgs.openssl ];
-  }); in
-
 rec {
-  inherit runtime;
+  inherit (nixpkgs) runtime;
 
   inherit ic-hs;
   inherit ic-ref;
