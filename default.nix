@@ -7,6 +7,7 @@ let stdenv = nixpkgs.stdenv; in
 let subpath = nixpkgs.subpath; in
 
 let naersk = nixpkgs.callPackage nixpkgs.sources.naersk { rustc = nixpkgs.rustc-wasm; }; in
+let rustPackages = nixpkgs.rustPackages_1_66; in
 let universal-canister = (naersk.buildPackage rec {
     name = "universal-canister";
     src = subpath ./universal-canister;
@@ -150,7 +151,7 @@ in
 
   let httpbin = (naersk.buildPackage rec {
     name = "httpbin-rs";
-    root = ./httpbin-rs;
+    root = subpath ./httpbin-rs;
     doCheck = false;
     release = true;
     nativeBuildInputs = with nixpkgs; [ pkg-config ];
@@ -162,7 +163,18 @@ in
     '';
 }); in
 
+  let runtime = (naersk.buildPackage rec {
+    name = "runtime";
+    root = subpath ./.;
+    inherit (rustPackages) cargo rustc;
+    doCheck = false;
+    release = true;
+    buildInputs = [ nixpkgs.openssl ];
+  }); in
+
 rec {
+  inherit runtime;
+
   inherit ic-hs;
   inherit ic-ref;
   inherit ic-ref-dist;
@@ -288,6 +300,7 @@ rec {
       buildInputs = [
         nixpkgs.cabal-install
         nixpkgs.ghcid
+        nixpkgs.cachix
         haskellPackages.haskell-language-server
       ];
     };

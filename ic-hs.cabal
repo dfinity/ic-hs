@@ -191,7 +191,7 @@ library
   build-depends: zlib
 
   extra-bundled-libraries: runtime
-  extra-bundled-libraries: crypto
+  extra-libraries: crypto
 
 executable ic-ref
   import: ghc-flags

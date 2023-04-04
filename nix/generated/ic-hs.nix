@@ -13,6 +13,7 @@
 , base64-bytestring
 , binary
 , bytestring
+, Cabal
 , candid
 , case-insensitive
 , cborg
@@ -38,6 +39,7 @@
 , MonadRandom
 , mtl
 , network-uri
+, openssl
 , optparse-applicative
 , parallel
 , prettyprinter
@@ -83,6 +85,7 @@ mkDerivation {
   src = pkgs.lib.sourceByRegex (pkgs.subpath "/") [ "^src.*" "^bin.*" "^tests.*" "^ic-hs.cabal" "^cbits.*" "^LICENSE" "^ic.did" ];
   isLibrary = true;
   isExecutable = true;
+  setupHaskellDepends = [ base Cabal directory process ];
   libraryHaskellDepends = [
     aeson
     asn1-encoding
@@ -157,6 +160,7 @@ mkDerivation {
     x509-validation
     zlib
   ];
+  librarySystemDepends = [ openssl ];
   executableHaskellDepends = [
     async
     base
