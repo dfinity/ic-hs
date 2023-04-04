@@ -178,7 +178,6 @@ in
   }); in
 
 rec {
-  inherit rustPackages;
   inherit runtime;
 
   inherit ic-hs;
