@@ -21,6 +21,7 @@ import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
 import qualified Data.ByteString.Lazy.Char8 as BS
 import Data.Char (chr)
+import Data.Either
 import Data.List
 import Control.Monad
 import Data.Foldable
@@ -38,8 +39,9 @@ import IC.Utils
 import Codec.Serialise
 import GHC.Generics
 
-import qualified Data.ByteString.UTF8 as BS
-import qualified Data.ByteString.Base64 as BS
+import qualified Data.ByteString.UTF8 as BSU
+import qualified Data.ByteString.Lazy.UTF8 as BSLU
+import qualified Data.ByteString.Base64 as BS64
 import qualified Codec.CBOR.Write as CB
 import qualified IC.Runtime as R (instantiate, invoke)
 
@@ -152,20 +154,53 @@ deriving instance Serialise EntityId
 deriving instance Generic RuntimeInstantiate
 instance Serialise RuntimeInstantiate where
 
+deriving instance Generic Timestamp
+instance Serialise Timestamp where
+
+deriving instance Generic Status
+instance Serialise Status where
+
+deriving instance Generic NeedsToRespond
+instance Serialise NeedsToRespond where
+
+deriving instance Generic Callback
+instance Serialise Callback where
+
+deriving instance Generic WasmClosure
+instance Serialise WasmClosure where
+
+deriving instance Generic Response
+instance Serialise Response where
+
+deriving instance Generic RejectCode
+instance Serialise RejectCode where
+
+deriving instance Generic Env
+instance Serialise Env where
+
+deriving instance Generic EntryPoint
+instance Serialise EntryPoint where
+
 instantiate :: CanisterId -> Blob -> IO (TrapOr ())
 instantiate cid wasm_mod = do
-  let bytes = BS.toString $ BS.encode $ CB.toStrictByteString $ encode $ (cid, wasm_mod)
+  let bytes = BSU.toString $ BS64.encode $ CB.toStrictByteString $ encode $ (cid, wasm_mod)
   cres <- withCString bytes R.instantiate
   res <- peekCString cres
   putStrLn $ res
-  error "not implemented"
+  return $ Return ()
 
 invoke :: CanisterId -> EntryPoint -> IO (TrapOr UpdateResult)
-invoke _ _ = do
-  cres <- withCString "Martin" R.invoke
+invoke cid ep = do
+  let bytes = BSU.toString $ BS64.encode $ CB.toStrictByteString $ encode (cid, ep)
+  cres <- withCString bytes R.invoke
   res <- peekCString cres
   putStrLn $ res
-  error "not implemented"
+  let prefix_reply = "ok: reply: "
+  let prefix_reject = "ok: reject: "
+  let resp = if isPrefixOf prefix_reply res then Just (Reply $ BS.fromStrict $ fromRight "" (BS64.decode (BS.toStrict $ BS.drop (fromIntegral $ length prefix_reply) (BSLU.fromString res))))
+             else if isPrefixOf prefix_reject res then Just (Reject (RC_CANISTER_REJECT, drop (length prefix_reject) res))
+             else Nothing
+  return $ Return (CallActions [] 0 0 resp, noCanisterActions)
 
 invokeToUnit :: CanisterId -> EntryPoint -> IO (TrapOr ())
 invokeToUnit cid ep = ((\_ -> ()) <$>) <$> invoke cid ep

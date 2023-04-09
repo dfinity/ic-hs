@@ -15,7 +15,9 @@ use ic_interfaces::execution_environment::{HypervisorError, HypervisorResult};
 use ic_replicated_state::canister_state::execution_state::{
     SandboxMemory, SandboxMemoryHandle, SandboxMemoryOwner, WasmBinary,
 };
-use ic_replicated_state::{EmbedderCache, Global, Memory, NumWasmPages, PageMap};
+use ic_replicated_state::{
+    EmbedderCache, ExportedFunctions, Global, Memory, NumWasmPages, PageMap,
+};
 use ic_types::ingress::WasmResult;
 use ic_types::{CanisterId, NumInstructions};
 use ic_wasm_types::CanisterModule;
@@ -277,7 +279,7 @@ pub struct SandboxedExecutionController {
 
 impl SandboxedExecutionController {
     pub fn execute(
-        self: Arc<Self>,
+        self: &Arc<Self>,
         WasmExecutionInput {
             api_type,
             sandbox_safe_system_state,
@@ -393,6 +395,7 @@ impl SandboxedExecutionController {
         Memory,
         Memory,
         Vec<Global>,
+        ExportedFunctions,
         NumInstructions,
         Option<CompilationResult>,
     )> {
@@ -502,6 +505,7 @@ impl SandboxedExecutionController {
             wasm_memory,
             stable_memory,
             exported_globals,
+            ExportedFunctions::new(serialized_module.exported_functions.clone()),
             serialized_module.compilation_cost,
             compilation_result,
         ))
@@ -668,7 +672,7 @@ impl SandboxedExecutionController {
 
     #[allow(clippy::too_many_arguments)]
     fn process_completion(
-        self: Arc<Self>,
+        self: &Arc<Self>,
         canister_id: CanisterId,
         wasm_memory: &Memory,
         stable_memory: &Memory,

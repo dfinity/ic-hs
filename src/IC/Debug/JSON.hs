@@ -65,17 +65,14 @@ instance ToJSON (Stable.Repr) where
 placeholder :: String -> a -> Value
 placeholder s = const (String (T.pack s))
 
-deriving instance Generic Timestamp
 instance ToJSON Timestamp where
     toJSON     = genericToJSON customOptions
     toEncoding = genericToEncoding customOptions
 
-deriving instance Generic NeedsToRespond
 instance ToJSON NeedsToRespond where
     toJSON     = genericToJSON customOptions
     toEncoding = genericToEncoding customOptions
 
-deriving instance Generic RejectCode
 instance ToJSON RejectCode where
     toJSON     = genericToJSON customOptions
     toEncoding = genericToEncoding customOptions
@@ -85,7 +82,6 @@ instance ToJSON ErrorCode where
     toJSON     = genericToJSON customOptions
     toEncoding = genericToEncoding customOptions
 
-deriving instance Generic Response
 instance ToJSON Response where
     toJSON     = genericToJSON customOptions
     toEncoding = genericToEncoding customOptions
@@ -95,12 +91,10 @@ instance ToJSON SubnetType where
     toJSON     = genericToJSON customOptions
     toEncoding = genericToEncoding customOptions
 
-deriving instance Generic WasmClosure
 instance ToJSON WasmClosure where
     toJSON     = genericToJSON customOptions
     toEncoding = genericToEncoding customOptions
 
-deriving instance Generic Callback
 instance ToJSON Callback where
     toJSON     = genericToJSON customOptions
     toEncoding = genericToEncoding customOptions

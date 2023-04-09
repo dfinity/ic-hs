@@ -6,18 +6,18 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-ic-canister-sandbox-common = { git = "https://github.com/dfinity/ic" }
-ic-canister-sandbox-backend-lib = { git = "https://github.com/dfinity/ic" }
-ic-cycles-account-manager = { git = "https://github.com/dfinity/ic" }
-ic-embedders = { git = "https://github.com/dfinity/ic" }
-ic-interfaces = { git = "https://github.com/dfinity/ic" }
-ic-config = { git = "https://github.com/dfinity/ic" }
-ic-replicated-state = { git = "https://github.com/dfinity/ic" }
-ic-registry-subnet-type = { git = "https://github.com/dfinity/ic" }
-ic-system-api = { git = "https://github.com/dfinity/ic" }
-ic-base-types = { git = "https://github.com/dfinity/ic" }
-ic-types = { git = "https://github.com/dfinity/ic" }
-ic-wasm-types = { git = "https://github.com/dfinity/ic" }
+ic-canister-sandbox-common = { git = "https://github.com/dfinity/ic", rev = "dca3091bc0a1a7f175c57464068c86ba19a556e6" }
+ic-canister-sandbox-backend-lib = { git = "https://github.com/dfinity/ic", rev = "dca3091bc0a1a7f175c57464068c86ba19a556e6" }
+ic-cycles-account-manager = { git = "https://github.com/dfinity/ic", rev = "dca3091bc0a1a7f175c57464068c86ba19a556e6" }
+ic-embedders = { git = "https://github.com/dfinity/ic", rev = "dca3091bc0a1a7f175c57464068c86ba19a556e6" }
+ic-interfaces = { git = "https://github.com/dfinity/ic", rev = "dca3091bc0a1a7f175c57464068c86ba19a556e6" }
+ic-config = { git = "https://github.com/dfinity/ic", rev = "dca3091bc0a1a7f175c57464068c86ba19a556e6" }
+ic-replicated-state = { git = "https://github.com/dfinity/ic", rev = "dca3091bc0a1a7f175c57464068c86ba19a556e6" }
+ic-registry-subnet-type = { git = "https://github.com/dfinity/ic", rev = "dca3091bc0a1a7f175c57464068c86ba19a556e6" }
+ic-system-api = { git = "https://github.com/dfinity/ic", rev = "dca3091bc0a1a7f175c57464068c86ba19a556e6" }
+ic-base-types = { git = "https://github.com/dfinity/ic", rev = "dca3091bc0a1a7f175c57464068c86ba19a556e6" }
+ic-types = { git = "https://github.com/dfinity/ic", rev = "dca3091bc0a1a7f175c57464068c86ba19a556e6" }
+ic-wasm-types = { git = "https://github.com/dfinity/ic", rev = "dca3091bc0a1a7f175c57464068c86ba19a556e6" }
 hs-bindgen = { version = "0.8.0", features = ["full"] }
 lazy_static = "1.4.0"
 serde_json = "1.0.54"
@@ -30,6 +30,7 @@ serde = { version = "1.0.99", features = ["derive"] }
 serde_cbor = "0.11.1"
 base64 = "0.21.0"
 serde_with = "1.10.0"
+hex="0.4.3"
 
 [lib]
 crate-type = ["staticlib"]
