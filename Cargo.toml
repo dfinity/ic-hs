@@ -1,5 +1,7 @@
 [workspace]
 
 members = [
-  "runtime"
+  "httpbin-rs",
+  "runtime",
+  "universal-canister"
 ]
