@@ -147,32 +147,36 @@ impl RuntimeState {
     }
 }
 
+#[derive(Debug, Deserialize, Serialize)]
+enum CanisterStatus {
+  Running,
+  Stopping,
+  Stopped
+}
+
 #[serde_as]
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct Env {
-    tag: u64,
     #[serde_as(deserialize_as = "Bytes")]
-    self_id: Vec<u8>,
-    time: (u64, u64),
+    canister_id: Vec<u8>,
+    time: u64,
     balance: u64,
-    status: Vec<u8>,
-    certificate: Vec<u8>,
+    status: CanisterStatus,
+    certificate: Option<Vec<u8>>,
     canister_version: u64,
     global_timer: u64,
 }
 
 #[serde_as]
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct RuntimeInstantiate {
-    tag: u64,
     #[serde_as(deserialize_as = "Bytes")]
     module: Vec<u8>,
 }
 
 #[serde_as]
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct RuntimeInitialize {
-    tag: u64,
     #[serde_as(deserialize_as = "Bytes")]
     caller: Vec<u8>,
     env: Env,
@@ -181,23 +185,21 @@ struct RuntimeInitialize {
 }
 
 #[serde_as]
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct RuntimeUpdate {
-    tag: u64,
     method: String,
     #[serde_as(deserialize_as = "Bytes")]
     caller: Vec<u8>,
     env: Env,
-    needs_to_respond: (u64, bool),
+    needs_to_respond: bool,
     cycles: u64,
     #[serde_as(deserialize_as = "Bytes")]
     arg: Vec<u8>,
 }
 
 #[serde_as]
-#[derive(Debug, Deserialize)]
-struct RuntimeInspect {
-    tag: u64,
+#[derive(Debug, Deserialize, Serialize)]
+struct RuntimeInspectMessage {
     method: String,
     #[serde_as(deserialize_as = "Bytes")]
     caller: Vec<u8>,
@@ -206,40 +208,38 @@ struct RuntimeInspect {
     arg: Vec<u8>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct RuntimeHeartbeat {
-    tag: u64,
     env: Env,
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
+#[derive(Debug, Deserialize, Serialize)]
 enum RuntimeInvokeEnum {
     RuntimeInstantiate(RuntimeInstantiate),
     RuntimeInitialize(RuntimeInitialize),
-    RuntimeInspect(RuntimeInspect),
     RuntimeUpdate(RuntimeUpdate),
+    RuntimeInspectMessage(RuntimeInspectMessage),
     RuntimeHeartbeat(RuntimeHeartbeat),
 }
 
 #[serde_as]
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct RuntimeInvoke {
     #[serde_as(deserialize_as = "Bytes")]
-    cid: Vec<u8>,
-    payload: RuntimeInvokeEnum,
+    canister_id: Vec<u8>,
+    entry_point: RuntimeInvokeEnum,
 }
 
 #[hs_bindgen(invoke :: CString -> IO CString)]
 pub fn invoke(arg: &str) -> String {
     let a = base64::decode(arg).unwrap();
-    let v: Value = from_slice(a.as_slice()).unwrap();
+    //let v: Value = from_slice(a.as_slice()).unwrap();
     let xx: RuntimeInvoke = from_slice(a.as_slice()).unwrap();
-    let canister_id: CanisterId = xx.cid.try_into().unwrap();
+    let canister_id: CanisterId = xx.canister_id.try_into().unwrap();
 
     let mut state_map = STATE.lock().unwrap();
 
-    match xx.payload {
+    match xx.entry_point {
         RuntimeInvokeEnum::RuntimeInstantiate(ref x) => {
     let controller = Arc::new(
         SandboxedExecutionController::new(
@@ -318,7 +318,7 @@ pub fn invoke(arg: &str) -> String {
     let subnet_available_memory: SubnetAvailableMemory =
         SubnetAvailableMemory::new(100000000, 100000000, 100000000);
 
-    let (method, api_type) = match xx.payload {
+    let (method, api_type) = match xx.entry_point {
         RuntimeInvokeEnum::RuntimeInstantiate(x) => (
             WasmMethod::System(SystemMethod::CanisterStart),
             Start {
@@ -333,7 +333,7 @@ pub fn invoke(arg: &str) -> String {
                 caller: x.caller.try_into().unwrap(),
             },
         ),
-        RuntimeInvokeEnum::RuntimeInspect(x) => {
+        RuntimeInvokeEnum::RuntimeInspectMessage(x) => {
             if !current_state
                 .exported_functions
                 .has_method(&WasmMethod::System(SystemMethod::CanisterInspectMessage))

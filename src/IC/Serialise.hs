@@ -28,7 +28,6 @@ import System.Random.SplitMix
 
 import IC.Types
 import IC.Wasm.Winter.Persist
-import IC.Purify
 import IC.Canister
 import IC.Ref
 import IC.Crypto
@@ -36,11 +35,29 @@ import qualified IC.Crypto.BLS as BLS
 
 instance Serialise W.Value
 
+deriving instance Generic Timestamp
+instance Serialise Timestamp where
+
+deriving instance Generic NeedsToRespond
+instance Serialise NeedsToRespond where
+
+deriving instance Generic RejectCode
+instance Serialise RejectCode where
+
 deriving instance Generic ErrorCode
 instance Serialise ErrorCode where
 
+deriving instance Generic Response
+instance Serialise Response where
+
 deriving instance Generic SubnetType
 instance Serialise SubnetType where
+
+deriving instance Generic WasmClosure
+instance Serialise WasmClosure where
+
+deriving instance Generic Callback
+instance Serialise Callback where
 
 deriving instance Generic MethodCall
 instance Serialise MethodCall where
@@ -50,9 +67,6 @@ instance Serialise PInstance where
 
 deriving instance Generic PModuleInst
 instance Serialise PModuleInst where
-
-deriving instance Generic (Snapshot a)
-instance Serialise a => Serialise (Snapshot a) where
 
 deriving instance Generic IC
 instance Serialise IC where
@@ -95,6 +109,8 @@ instance Serialise CanisterContent where
         return $ CanisterContent
             { can_mod = can_mod
             }
+
+deriving instance Serialise EntityId
 
 deriving instance Serialise StdGen
 

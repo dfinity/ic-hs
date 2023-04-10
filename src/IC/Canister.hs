@@ -37,9 +37,6 @@ import qualified Wasm.Syntax.AST as W
 import IC.Hash
 import IC.Utils
 
-import Codec.Serialise
-import GHC.Generics
-
 import IC.CBOR.Parser
 import Codec.CBOR.Term
 
@@ -96,6 +93,42 @@ data EntryPoint = RuntimeInstantiate Blob
   | RuntimeHeartbeat Env
   | RuntimeGlobalTimer Env
 
+blobterm :: Blob -> Term
+blobterm = TBytes . BS.toStrict
+
+cidterm :: CanisterId -> Term
+cidterm = blobterm . rawEntityId
+
+enumterm :: T.Text -> Term -> Term
+enumterm n t = TMap [(TString n, t)]
+
+mapterm :: [(T.Text, Term)] -> Term
+mapterm = TMap . map (\(n, t) -> (TString n, t))
+
+stringterm :: String -> Term
+stringterm = TString . T.pack
+
+maybeblobterm :: Maybe Blob -> Term
+maybeblobterm Nothing = TNull
+maybeblobterm (Just b) = blobterm b
+
+timestampterm :: Timestamp -> Term
+timestampterm (Timestamp t) = TInteger $ fromIntegral t
+
+envterm :: Env -> Term
+envterm (Env cid t bal status cert can_version glob_timer) = mapterm [("canister_id", cidterm cid), ("time", timestampterm t), ("balance", TInteger $ fromIntegral bal), ("status", stringterm $ show status), ("certificate", maybeblobterm cert), ("canister_version", TInteger $ fromIntegral can_version), ("global_timer", TInteger $ fromIntegral glob_timer)]
+
+needsToRespond :: NeedsToRespond -> Bool
+needsToRespond (NeedsToRespond b) = b
+
+epterm :: EntryPoint -> Term
+epterm (RuntimeInstantiate mod) = enumterm "RuntimeInstantiate" $ mapterm [("module", blobterm mod)]
+epterm (RuntimeInitialize cid env arg) = enumterm "RuntimeInitialize" $ mapterm [("caller", cidterm cid), ("env", envterm env), ("arg", blobterm arg)]
+epterm (RuntimeUpdate n cid env respond cycles arg) = enumterm "RuntimeUpdate" $ mapterm [("method", stringterm n), ("caller", cidterm cid), ("env", envterm env), ("needs_to_respond", TBool $ needsToRespond respond), ("cycles", TInteger $ fromIntegral cycles), ("arg", blobterm arg)]
+epterm (RuntimeInspectMessage n cid env arg) = enumterm "RuntimeInspectMessage" $ mapterm [("method", stringterm n), ("caller", cidterm cid), ("env", envterm env), ("arg", blobterm arg)]
+epterm (RuntimeHeartbeat env) = enumterm "RuntimeHeartbeat" $ mapterm [("env", envterm env)]
+epterm _ = error "not implemented"
+
 parseCanister :: CanisterId -> Blob -> Either String CanisterModule
 parseCanister cid bytes = do
   decodedModule <- decodeModule bytes
@@ -151,35 +184,6 @@ parseCanister cid bytes = do
     , metadata = M.fromList metadata
     }
 
-deriving instance Serialise EntityId
-
-deriving instance Generic Timestamp
-instance Serialise Timestamp where
-
-deriving instance Generic Status
-instance Serialise Status where
-
-deriving instance Generic NeedsToRespond
-instance Serialise NeedsToRespond where
-
-deriving instance Generic Callback
-instance Serialise Callback where
-
-deriving instance Generic WasmClosure
-instance Serialise WasmClosure where
-
-deriving instance Generic Response
-instance Serialise Response where
-
-deriving instance Generic RejectCode
-instance Serialise RejectCode where
-
-deriving instance Generic Env
-instance Serialise Env where
-
-deriving instance Generic EntryPoint
-instance Serialise EntryPoint where
-
 unpackBlob :: Term -> Blob
 unpackBlob (TBytes b) = BS.fromStrict b
 unpackBlob _ = error "unreachable"
@@ -190,10 +194,9 @@ unpackString _ = error "unreachable"
 
 invoke :: CanisterId -> EntryPoint -> IO (TrapOr UpdateResult)
 invoke cid ep = do
-  let bytes = BSU.toString $ BS64.encode $ CB.toStrictByteString $ encode (cid, ep)
+  let bytes = BSU.toString $ BS64.encode $ CB.toStrictByteString $ encodeTerm $ TMap [(TString "canister_id", TBytes $ BS.toStrict $ rawEntityId cid), (TString "entry_point", epterm ep)]
   cres <- withCString bytes R.invoke
   res <- peekCString cres
-  --putStrLn $ res
   let x = fromRight' $ parseMap "RuntimeResponse" $ fromRight' $ decodeWithoutTag $ BS.fromStrict $ fromRight "" $ BS64.decode $ BSU.fromString res
   let (TString resp, payload) = head $ fromRight' $ parseMap "CanisterResponse" $ fromRight' $ parseField "response" x
   if resp == "CanisterTrap" then return $ Trap $ unpackString payload

@@ -153,7 +153,7 @@ type TestSubnetConfig = (EntityId, SubnetType, W.Word64, [(W.Word64, W.Word64)])
 
 -- | This data type contains all read-only data that should be available to the
 -- canister almost always
-data Status = Running | Stopping | Stopped
+data Status = Running | Stopping | Stopped deriving Show
 data Env = Env
     { env_self :: CanisterId
     , env_time :: Timestamp
