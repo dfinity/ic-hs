@@ -30,6 +30,7 @@ serde = { version = "1.0.99", features = ["derive"] }
 serde_cbor = "0.11.1"
 base64 = "0.21.0"
 serde_with = "1.10.0"
+serde_bytes="0.11.9"
 hex="0.4.3"
 
 [lib]

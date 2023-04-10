@@ -22,6 +22,7 @@ import qualified Data.Text.Lazy as TL
 import qualified Data.ByteString.Lazy.Char8 as BS
 import Data.Char (chr)
 import Data.Either
+import Data.Either.Combinators (fromRight')
 import Data.List
 import Control.Monad
 import Data.Foldable
@@ -39,11 +40,13 @@ import IC.Utils
 import Codec.Serialise
 import GHC.Generics
 
+import IC.CBOR.Parser
+import Codec.CBOR.Term
+
 import qualified Data.ByteString.UTF8 as BSU
-import qualified Data.ByteString.Lazy.UTF8 as BSLU
 import qualified Data.ByteString.Base64 as BS64
 import qualified Codec.CBOR.Write as CB
-import qualified IC.Runtime as R (instantiate, invoke)
+import qualified IC.Runtime as R (invoke)
 
 type InitFunc = EntityId -> Env -> Blob -> IO (TrapOr CanisterActions)
 type UpdateFunc = IO (TrapOr UpdateResult)
@@ -81,7 +84,8 @@ decodeModule bytes =
     asmMagic = asBytes [0x00, 0x61, 0x73, 0x6d]
     gzipMagic = asBytes [0x1f, 0x8b, 0x08]
 
-data EntryPoint = RuntimeInitialize EntityId Env Blob
+data EntryPoint = RuntimeInstantiate Blob
+  | RuntimeInitialize EntityId Env Blob
   | RuntimeUpdate MethodName EntityId Env NeedsToRespond Cycles Blob
   | RuntimeQuery MethodName EntityId Env Blob
   | RuntimeCallback Callback Env NeedsToRespond Cycles Response Cycles
@@ -114,7 +118,7 @@ parseCanister cid bytes = do
     , raw_wasm_hash = sha256 bytes
     , canister_id_mod = cid
     , init_method = \caller env dat -> do
-        inst <- instantiate cid decodedModule
+        inst <- invokeToUnit cid (RuntimeInstantiate decodedModule)
         case inst of Trap err -> return $ Trap err
                      Return () -> invokeToCanisterActions cid (RuntimeInitialize caller env dat)
     , update_methods = M.fromList
@@ -137,7 +141,7 @@ parseCanister cid bytes = do
     , pre_upgrade_method = \caller env ->
           invokeToCanisterActions cid (RuntimePreUpgrade caller env)
     , post_upgrade_method = \caller env dat -> do
-          inst <- instantiate cid decodedModule
+          inst <- invokeToUnit cid (RuntimeInstantiate decodedModule)
           case inst of Trap err -> return $ Trap err
                        Return () -> invokeToCanisterActions cid (RuntimePostUpgrade caller env dat)
     , inspect_message = \method_name caller env arg ->
@@ -147,12 +151,7 @@ parseCanister cid bytes = do
     , metadata = M.fromList metadata
     }
 
-data RuntimeInstantiate = RuntimeInstantiate (CanisterId, Blob) deriving Show
-
 deriving instance Serialise EntityId
-
-deriving instance Generic RuntimeInstantiate
-instance Serialise RuntimeInstantiate where
 
 deriving instance Generic Timestamp
 instance Serialise Timestamp where
@@ -181,26 +180,28 @@ instance Serialise Env where
 deriving instance Generic EntryPoint
 instance Serialise EntryPoint where
 
-instantiate :: CanisterId -> Blob -> IO (TrapOr ())
-instantiate cid wasm_mod = do
-  let bytes = BSU.toString $ BS64.encode $ CB.toStrictByteString $ encode $ (cid, wasm_mod)
-  cres <- withCString bytes R.instantiate
-  res <- peekCString cres
-  putStrLn $ res
-  return $ Return ()
+unpackBlob :: Term -> Blob
+unpackBlob (TBytes b) = BS.fromStrict b
+unpackBlob _ = error "unreachable"
+
+unpackString :: Term -> String
+unpackString (TString m) = T.unpack m
+unpackString _ = error "unreachable"
 
 invoke :: CanisterId -> EntryPoint -> IO (TrapOr UpdateResult)
 invoke cid ep = do
   let bytes = BSU.toString $ BS64.encode $ CB.toStrictByteString $ encode (cid, ep)
   cres <- withCString bytes R.invoke
   res <- peekCString cres
-  putStrLn $ res
-  let prefix_reply = "ok: reply: "
-  let prefix_reject = "ok: reject: "
-  let resp = if isPrefixOf prefix_reply res then Just (Reply $ BS.fromStrict $ fromRight "" (BS64.decode (BS.toStrict $ BS.drop (fromIntegral $ length prefix_reply) (BSLU.fromString res))))
-             else if isPrefixOf prefix_reject res then Just (Reject (RC_CANISTER_REJECT, drop (length prefix_reject) res))
-             else Nothing
-  return $ Return (CallActions [] 0 0 resp, noCanisterActions)
+  --putStrLn $ res
+  let x = fromRight' $ parseMap "RuntimeResponse" $ fromRight' $ decodeWithoutTag $ BS.fromStrict $ fromRight "" $ BS64.decode $ BSU.fromString res
+  let (TString resp, payload) = head $ fromRight' $ parseMap "CanisterResponse" $ fromRight' $ parseField "response" x
+  if resp == "CanisterTrap" then return $ Trap $ unpackString payload
+  else do
+    let rep = if resp == "CanisterReply" then Just (Reply (unpackBlob payload))
+              else if resp == "CanisterReject" then Just (Reject (RC_CANISTER_REJECT, unpackString payload))
+              else Nothing
+    return $ Return (CallActions [] 0 0 rep, noCanisterActions)
 
 invokeToUnit :: CanisterId -> EntryPoint -> IO (TrapOr ())
 invokeToUnit cid ep = ((\_ -> ()) <$>) <$> invoke cid ep

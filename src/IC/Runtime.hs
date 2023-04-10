@@ -16,7 +16,7 @@
 
 {-# OPTIONS_GHC -Wno-unused-imports #-}
 
-module IC.Runtime (instantiate, invoke) where
+module IC.Runtime (invoke) where
 
 import Data.Int
 import Data.Word
@@ -24,5 +24,4 @@ import Foreign.C.String
 import Foreign.C.Types
 import Foreign.Ptr
 
-foreign import ccall safe "__c_instantiate" instantiate :: CString -> IO (CString)
 foreign import ccall safe "__c_invoke" invoke :: CString -> IO (CString)

@@ -42,70 +42,11 @@ use ic_wasm_types::CanisterModule;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
-use serde::Deserialize;
-use serde_cbor::{from_slice, Value};
+use serde::{Serialize, Deserialize};
+use serde_cbor::{from_slice, Value, to_vec};
 use serde_with::{serde_as, Bytes};
 
 const DEFAULT_NUM_INSTRUCTIONS: NumInstructions = NumInstructions::new(5_000_000_000);
-
-const COUNTER_WAT: &str = r#"
-    (module
-        (import "ic0" "call_new"
-            (func $ic0_call_new
-                (param i32 i32)
-                (param $method_name_src i32)    (param $method_name_len i32)
-                (param $reply_fun i32)          (param $reply_env i32)
-                (param $reject_fun i32)         (param $reject_env i32)
-            ))
-        (import "ic0" "call_data_append" (func $ic0_call_data_append (param $src i32) (param $size i32)))
-        (import "ic0" "call_cycles_add" (func $ic0_call_cycles_add (param $amount i64)))
-        (import "ic0" "call_perform" (func $ic0_call_perform (result i32)))
-        (import "ic0" "msg_reply" (func $msg_reply))
-        (import "ic0" "msg_reply_data_append"
-            (func $msg_reply_data_append (param i32 i32)))
-        (func $inc
-            (call $ic0_call_new
-                (i32.const 100) (i32.const 10)  ;; callee canister id = 777
-                (i32.const 0) (i32.const 18)    ;; refers to "some_remote_method" on the heap
-                (i32.const 11) (i32.const 22)   ;; fictive on_reply closure
-                (i32.const 33) (i32.const 44)   ;; fictive on_reject closure
-            )
-            (call $ic0_call_data_append
-                (i32.const 19) (i32.const 3)    ;; refers to "XYZ" on the heap
-            )
-            (call $ic0_call_cycles_add
-                (i64.const 100)
-            )
-            (drop (call $ic0_call_perform))
-            ;; Increment a counter.
-            (i32.store
-                (i32.const 0)
-                (i32.add (i32.load (i32.const 0)) (i32.const 4))))
-        (func $read
-            (call $msg_reply_data_append
-                (i32.const 0) ;; the counter from heap[0]
-                (i32.const 4)) ;; length
-            (call $msg_reply))
-        (func $canister_init
-            ;; Increment the counter by 41 in canister_init.
-            (i32.store
-                (i32.const 0)
-                (i32.add (i32.load (i32.const 0)) (i32.const 41))))
-        (start $inc)    ;; Increments counter by 1 in canister_start
-        (memory $memory 1)
-        (export "canister_query read" (func $read))
-        (export "canister_update inc" (func $inc))
-        (export "canister_init" (func $canister_init))
-    )"#;
-
-#[serde_as]
-#[derive(Debug, Deserialize)]
-struct RuntimeInstantiate {
-    #[serde_as(deserialize_as = "Bytes")]
-    cid: Vec<u8>,
-    #[serde_as(deserialize_as = "Bytes")]
-    wasm: Vec<u8>,
-}
 
 struct RuntimeState {
     pub canister_id: CanisterId,
@@ -123,8 +64,47 @@ lazy_static! {
     static ref STATE: Mutex<BTreeMap<CanisterId, RuntimeState>> = Mutex::new(BTreeMap::new());
 }
 
+#[derive(Serialize)]
+enum CanisterResponse {
+    NoResponse(()),
+    CanisterReply(serde_bytes::ByteBuf),
+    CanisterReject(String),
+    CanisterTrap(String),
+}
+
+#[derive(Serialize)]
+struct RuntimeResponse {
+    pub response: CanisterResponse,
+    pub cycles_accept: u64,
+    pub cycles_mint: u64,
+    pub new_certified_data: Option<serde_bytes::ByteBuf>,
+    pub new_global_timer: Option<u64>,
+}
+
+impl RuntimeResponse {
+    pub fn trap(m: String) -> Self {
+      RuntimeResponse {
+          response: CanisterResponse::CanisterTrap(m),
+          cycles_accept: 0,
+          cycles_mint: 0,
+          new_certified_data: None,
+          new_global_timer: None,
+      }
+    }
+
+    pub fn noop() -> Self {
+      RuntimeResponse {
+          response: CanisterResponse::NoResponse(()),
+          cycles_accept: 0,
+          cycles_mint: 0,
+          new_certified_data: None,
+          new_global_timer: None,
+      }
+    }
+}
+
 impl RuntimeState {
-    fn execute(&mut self, input: WasmExecutionInput) -> Result<String, String> {
+    fn execute(&mut self, input: WasmExecutionInput) -> Result<RuntimeResponse, String> {
         let res = self
             .controller
             .execute(
@@ -139,9 +119,9 @@ impl RuntimeState {
             Finished(_, exec_output_wasm, Some(state_changes)) => (exec_output_wasm, state_changes),
             Finished(_, exec_output_wasm, None) => {
                 if let Err(e) = exec_output_wasm.wasm_result {
-                    return Err(format!("trap: {}", e));
+                    return Err(e.to_string());
                 }
-                return Err("execution has failed".to_string());
+                panic!("execution has failed")
             }
             _ => panic!("DTS should be disabled"),
         };
@@ -149,107 +129,22 @@ impl RuntimeState {
         self.stable_memory = state_changes.stable_memory;
         self.exported_globals = state_changes.globals;
         let output = match exec_output_wasm.wasm_result.clone() {
-            Ok(Some(WasmResult::Reply(bytes))) => format!("reply: {}", base64::encode(bytes)),
-            Ok(Some(WasmResult::Reject(msg))) => format!("reject: {}", msg),
-            Ok(None) => "NoResponse".to_string(),
-            Err(e) => format!("trap: {}", e),
+            Ok(Some(WasmResult::Reply(bytes))) => CanisterResponse::CanisterReply(serde_bytes::ByteBuf::from(bytes)),
+            Ok(Some(WasmResult::Reject(msg))) => CanisterResponse::CanisterReject(msg),
+            Ok(None) => CanisterResponse::NoResponse(()),
+            Err(e) => {
+                return Err(e.to_string());
+            }
         };
-        Ok(output)
+        Ok(RuntimeResponse {
+            response: output,
+            cycles_accept: 0,
+            cycles_mint: 0,
+            //new_certified_data: Some(serde_bytes::ByteBuf::from(vec![])),
+            new_certified_data: None,
+            new_global_timer: None,
+        })
     }
-}
-
-#[hs_bindgen(instantiate :: CString -> IO CString)]
-pub fn instantiate(arg: &str) -> String {
-    let a = base64::decode(arg).unwrap();
-    let x: RuntimeInstantiate = from_slice(a.as_slice()).unwrap();
-    let canister_id: CanisterId = x.cid.try_into().unwrap();
-    let controller = Arc::new(
-        SandboxedExecutionController::new(
-            &EmbeddersConfig::default(),
-            Arc::new(TestPageAllocatorFileDescriptorImpl::new()),
-        )
-        .unwrap(),
-    );
-    let execution_parameters = ExecutionParameters {
-        instruction_limits: InstructionLimits::new(
-            FlagStatus::Disabled,
-            DEFAULT_NUM_INSTRUCTIONS,
-            DEFAULT_NUM_INSTRUCTIONS,
-        ),
-        canister_memory_limit: NumBytes::from(4 << 30),
-        compute_allocation: ComputeAllocation::default(),
-        subnet_type: SubnetType::Application,
-        execution_mode: ExecutionMode::Replicated,
-    };
-    let cycles_account_manager = CyclesAccountManager::new(
-        NumInstructions::new(1_000_000_000),
-        SubnetType::Application,
-        PrincipalId::default().into(),
-        CyclesAccountManagerConfig::application_subnet(),
-    );
-    let canister_module = CanisterModule::new(x.wasm);
-    let (wasm_binary, wasm_memory, stable_memory, exported_globals, exported_functions, _, _) =
-        controller
-            .create_execution_state(
-                canister_module,
-                canister_id,
-                Arc::new(CompilationCache::default()),
-            )
-            .unwrap();
-    let mut current_state: RuntimeState = RuntimeState {
-        canister_id,
-        controller,
-        cycles_account_manager,
-        //canister_module,
-        wasm_binary,
-        wasm_memory,
-        stable_memory,
-        exported_functions,
-        exported_globals,
-    };
-
-    const DEFAULT_FREEZE_THRESHOLD: NumSeconds = NumSeconds::new(1 << 5);
-    let dirty_page_overhead = SchedulerConfig::application_subnet().dirty_page_overhead;
-    let sandbox_safe_system_state = SandboxSafeSystemState::new_internal(
-        canister_id,
-        PrincipalId::default(),
-        Running,
-        DEFAULT_FREEZE_THRESHOLD,
-        BestEffort,
-        Cycles::new(1 << 40),
-        BTreeMap::new(),
-        current_state.cycles_account_manager,
-        Some(666),
-        BTreeMap::new(),
-        1000,
-        BTreeSet::new(),
-        2,
-        dirty_page_overhead,
-        Inactive,
-        0,
-        BTreeSet::new(),
-    );
-
-    let subnet_available_memory: SubnetAvailableMemory =
-        SubnetAvailableMemory::new(100000000, 100000000, 100000000);
-    let res = current_state.execute(WasmExecutionInput {
-        api_type: Start {
-            time: Time::from_nanos_since_unix_epoch(0),
-        },
-        sandbox_safe_system_state: sandbox_safe_system_state.clone(),
-        canister_current_memory_usage: 0.into(),
-        execution_parameters: execution_parameters.clone(),
-        subnet_available_memory: subnet_available_memory,
-        func_ref: FuncRef::Method(WasmMethod::System(SystemMethod::CanisterStart)),
-        compilation_cache: Arc::new(CompilationCache::default()),
-    });
-    if let Err(e) = res {
-        return format!("trap: {}", e);
-    }
-
-    STATE.lock().unwrap().insert(canister_id, current_state);
-
-    format!("ok")
 }
 
 #[serde_as]
@@ -264,6 +159,14 @@ struct Env {
     certificate: Vec<u8>,
     canister_version: u64,
     global_timer: u64,
+}
+
+#[serde_as]
+#[derive(Debug, Deserialize)]
+struct RuntimeInstantiate {
+    tag: u64,
+    #[serde_as(deserialize_as = "Bytes")]
+    module: Vec<u8>,
 }
 
 #[serde_as]
@@ -312,6 +215,7 @@ struct RuntimeHeartbeat {
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
 enum RuntimeInvokeEnum {
+    RuntimeInstantiate(RuntimeInstantiate),
     RuntimeInitialize(RuntimeInitialize),
     RuntimeInspect(RuntimeInspect),
     RuntimeUpdate(RuntimeUpdate),
@@ -330,11 +234,51 @@ struct RuntimeInvoke {
 pub fn invoke(arg: &str) -> String {
     let a = base64::decode(arg).unwrap();
     let v: Value = from_slice(a.as_slice()).unwrap();
-    //return format!("{:?}", v);
     let xx: RuntimeInvoke = from_slice(a.as_slice()).unwrap();
     let canister_id: CanisterId = xx.cid.try_into().unwrap();
 
     let mut state_map = STATE.lock().unwrap();
+
+    match xx.payload {
+        RuntimeInvokeEnum::RuntimeInstantiate(ref x) => {
+    let controller = Arc::new(
+        SandboxedExecutionController::new(
+            &EmbeddersConfig::default(),
+            Arc::new(TestPageAllocatorFileDescriptorImpl::new()),
+        )
+        .unwrap(),
+    );
+    let cycles_account_manager = CyclesAccountManager::new(
+        NumInstructions::new(1_000_000_000),
+        SubnetType::Application,
+        PrincipalId::default().into(),
+        CyclesAccountManagerConfig::application_subnet(),
+    );
+    let canister_module = CanisterModule::new(x.module.clone());
+    let (wasm_binary, wasm_memory, stable_memory, exported_globals, exported_functions, _, _) =
+        controller
+            .create_execution_state(
+                canister_module,
+                canister_id,
+                Arc::new(CompilationCache::default()),
+            )
+            .unwrap();
+    let current_state: RuntimeState = RuntimeState {
+        canister_id,
+        controller,
+        cycles_account_manager,
+        //canister_module,
+        wasm_binary,
+        wasm_memory,
+        stable_memory,
+        exported_functions,
+        exported_globals,
+    };
+        state_map.insert(canister_id, current_state);
+        }
+        _ => {}
+    };
+
     let current_state = state_map.get_mut(&canister_id).unwrap();
 
     let execution_parameters = ExecutionParameters {
@@ -375,6 +319,12 @@ pub fn invoke(arg: &str) -> String {
         SubnetAvailableMemory::new(100000000, 100000000, 100000000);
 
     let (method, api_type) = match xx.payload {
+        RuntimeInvokeEnum::RuntimeInstantiate(x) => (
+            WasmMethod::System(SystemMethod::CanisterStart),
+            Start {
+                time: Time::from_nanos_since_unix_epoch(0),
+            }
+        ),
         RuntimeInvokeEnum::RuntimeInitialize(x) => (
             WasmMethod::System(SystemMethod::CanisterInit),
             Init {
@@ -388,7 +338,7 @@ pub fn invoke(arg: &str) -> String {
                 .exported_functions
                 .has_method(&WasmMethod::System(SystemMethod::CanisterInspectMessage))
             {
-                return format!("inspect: ok");
+                return base64::encode(to_vec(&RuntimeResponse::noop()).unwrap());
             }
             (
                 WasmMethod::System(SystemMethod::CanisterInspectMessage),
@@ -416,7 +366,7 @@ pub fn invoke(arg: &str) -> String {
             },
         ),
         RuntimeInvokeEnum::RuntimeHeartbeat(_) => {
-            return format!("heartbeat");
+            return base64::encode(to_vec(&RuntimeResponse::noop()).unwrap());
         }
         _ => panic!("unsupported"),
     };
@@ -431,8 +381,7 @@ pub fn invoke(arg: &str) -> String {
     };
     let res = current_state.execute(input);
     if let Err(e) = res {
-        return format!("trap: {}", e);
+        return base64::encode(to_vec(&RuntimeResponse::trap(e)).unwrap());
     }
-
-    format!("ok: {}", res.unwrap())
+    base64::encode(to_vec(&res.unwrap()).unwrap())
 }
