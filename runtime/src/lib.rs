@@ -42,8 +42,8 @@ use ic_wasm_types::CanisterModule;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
-use serde::{Serialize, Deserialize};
-use serde_cbor::{from_slice, Value, to_vec};
+use serde::{Deserialize, Serialize};
+use serde_cbor::{from_slice, to_vec, Value};
 use serde_with::{serde_as, Bytes};
 
 const DEFAULT_NUM_INSTRUCTIONS: NumInstructions = NumInstructions::new(5_000_000_000);
@@ -83,23 +83,23 @@ struct RuntimeResponse {
 
 impl RuntimeResponse {
     pub fn trap(m: String) -> Self {
-      RuntimeResponse {
-          response: CanisterResponse::CanisterTrap(m),
-          cycles_accept: 0,
-          cycles_mint: 0,
-          new_certified_data: None,
-          new_global_timer: None,
-      }
+        RuntimeResponse {
+            response: CanisterResponse::CanisterTrap(m),
+            cycles_accept: 0,
+            cycles_mint: 0,
+            new_certified_data: None,
+            new_global_timer: None,
+        }
     }
 
     pub fn noop() -> Self {
-      RuntimeResponse {
-          response: CanisterResponse::NoResponse(()),
-          cycles_accept: 0,
-          cycles_mint: 0,
-          new_certified_data: None,
-          new_global_timer: None,
-      }
+        RuntimeResponse {
+            response: CanisterResponse::NoResponse(()),
+            cycles_accept: 0,
+            cycles_mint: 0,
+            new_certified_data: None,
+            new_global_timer: None,
+        }
     }
 }
 
@@ -129,7 +129,9 @@ impl RuntimeState {
         self.stable_memory = state_changes.stable_memory;
         self.exported_globals = state_changes.globals;
         let output = match exec_output_wasm.wasm_result.clone() {
-            Ok(Some(WasmResult::Reply(bytes))) => CanisterResponse::CanisterReply(serde_bytes::ByteBuf::from(bytes)),
+            Ok(Some(WasmResult::Reply(bytes))) => {
+                CanisterResponse::CanisterReply(serde_bytes::ByteBuf::from(bytes))
+            }
             Ok(Some(WasmResult::Reject(msg))) => CanisterResponse::CanisterReject(msg),
             Ok(None) => CanisterResponse::NoResponse(()),
             Err(e) => {
@@ -149,9 +151,9 @@ impl RuntimeState {
 
 #[derive(Debug, Deserialize, Serialize)]
 enum CanisterStatus {
-  Running,
-  Stopping,
-  Stopped
+    Running,
+    Stopping,
+    Stopped,
 }
 
 #[serde_as]
@@ -241,40 +243,47 @@ pub fn invoke(arg: &str) -> String {
 
     match xx.entry_point {
         RuntimeInvokeEnum::RuntimeInstantiate(ref x) => {
-    let controller = Arc::new(
-        SandboxedExecutionController::new(
-            &EmbeddersConfig::default(),
-            Arc::new(TestPageAllocatorFileDescriptorImpl::new()),
-        )
-        .unwrap(),
-    );
-    let cycles_account_manager = CyclesAccountManager::new(
-        NumInstructions::new(1_000_000_000),
-        SubnetType::Application,
-        PrincipalId::default().into(),
-        CyclesAccountManagerConfig::application_subnet(),
-    );
-    let canister_module = CanisterModule::new(x.module.clone());
-    let (wasm_binary, wasm_memory, stable_memory, exported_globals, exported_functions, _, _) =
-        controller
-            .create_execution_state(
-                canister_module,
+            let controller = Arc::new(
+                SandboxedExecutionController::new(
+                    &EmbeddersConfig::default(),
+                    Arc::new(TestPageAllocatorFileDescriptorImpl::new()),
+                )
+                .unwrap(),
+            );
+            let cycles_account_manager = CyclesAccountManager::new(
+                NumInstructions::new(1_000_000_000),
+                SubnetType::Application,
+                PrincipalId::default().into(),
+                CyclesAccountManagerConfig::application_subnet(),
+            );
+            let canister_module = CanisterModule::new(x.module.clone());
+            let (
+                wasm_binary,
+                wasm_memory,
+                stable_memory,
+                exported_globals,
+                exported_functions,
+                _,
+                _,
+            ) = controller
+                .create_execution_state(
+                    canister_module,
+                    canister_id,
+                    Arc::new(CompilationCache::default()),
+                )
+                .unwrap();
+            let current_state: RuntimeState = RuntimeState {
                 canister_id,
-                Arc::new(CompilationCache::default()),
-            )
-            .unwrap();
-    let current_state: RuntimeState = RuntimeState {
-        canister_id,
-        controller,
-        cycles_account_manager,
-        //canister_module,
-        wasm_binary,
-        wasm_memory,
-        stable_memory,
-        exported_functions,
-        exported_globals,
-    };
-        state_map.insert(canister_id, current_state);
+                controller,
+                cycles_account_manager,
+                //canister_module,
+                wasm_binary,
+                wasm_memory,
+                stable_memory,
+                exported_functions,
+                exported_globals,
+            };
+            state_map.insert(canister_id, current_state);
         }
         _ => {}
     };
@@ -323,7 +332,7 @@ pub fn invoke(arg: &str) -> String {
             WasmMethod::System(SystemMethod::CanisterStart),
             Start {
                 time: Time::from_nanos_since_unix_epoch(0),
-            }
+            },
         ),
         RuntimeInvokeEnum::RuntimeInitialize(x) => (
             WasmMethod::System(SystemMethod::CanisterInit),
