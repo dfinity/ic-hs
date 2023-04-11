@@ -1,11 +1,11 @@
-pub mod active_execution_state_registry;
-pub mod controller_service_impl;
-pub mod launch_as_process;
+mod active_execution_state_registry;
+mod controller_service_impl;
+mod launch_as_process;
 mod process_exe_and_args;
 mod sandbox_process_eviction;
-pub mod sandboxed_execution_controller;
+mod sandboxed_execution_controller;
 
-use lazy_static::lazy_static; // 1.4.0
+use lazy_static::lazy_static;
 use std::sync::Mutex;
 
 use crate::sandboxed_execution_controller::SandboxedExecutionController;
@@ -26,7 +26,6 @@ use ic_replicated_state::page_map::TestPageAllocatorFileDescriptorImpl;
 use ic_replicated_state::{ExportedFunctions, Global, Memory};
 use ic_system_api::sandbox_safe_system_state::CanisterStatusView::Running;
 use ic_system_api::sandbox_safe_system_state::SandboxSafeSystemState;
-use ic_system_api::ApiType::ReplicatedQuery;
 use ic_system_api::ApiType::Update as ApiUpdate;
 use ic_system_api::ApiType::{Init, InspectMessage, Start};
 use ic_system_api::ResponseStatus::NotRepliedYet;
@@ -34,24 +33,24 @@ use ic_system_api::{ExecutionParameters, InstructionLimits};
 use ic_types::ingress::WasmResult;
 use ic_types::messages::CallContextId;
 use ic_types::methods::{FuncRef, SystemMethod, WasmMethod};
+use ic_types::MemoryAllocation::BestEffort;
 use ic_types::{CanisterId, PrincipalId};
-use ic_types::{CanisterTimer::Inactive, MemoryAllocation::BestEffort};
-use ic_types::{ComputeAllocation, Cycles, NumBytes, NumInstructions, Time};
+use ic_types::{CanisterTimer::*, ComputeAllocation, Cycles, NumBytes, NumInstructions, Time};
 use ic_wasm_types::CanisterModule;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
+use base64::{engine::general_purpose, Engine as _};
+
 use serde::{Deserialize, Serialize};
-use serde_cbor::{from_slice, to_vec, Value};
+use serde_cbor::{from_slice, to_vec};
 use serde_with::{serde_as, Bytes};
 
 const DEFAULT_NUM_INSTRUCTIONS: NumInstructions = NumInstructions::new(5_000_000_000);
 
 struct RuntimeState {
-    pub canister_id: CanisterId,
     pub controller: Arc<SandboxedExecutionController>,
     pub cycles_account_manager: CyclesAccountManager,
-    //pub canister_module: CanisterModule,
     pub wasm_binary: Arc<WasmBinary>,
     pub wasm_memory: Memory,
     pub stable_memory: Memory,
@@ -141,9 +140,16 @@ impl RuntimeState {
             response: output,
             cycles_accept: 0,
             cycles_mint: 0,
-            //new_certified_data: Some(serde_bytes::ByteBuf::from(vec![])),
-            new_certified_data: None,
-            new_global_timer: None,
+            new_certified_data: state_changes
+                .system_state_changes
+                .new_certified_data
+                .map(serde_bytes::ByteBuf::from),
+            new_global_timer: state_changes.system_state_changes.new_global_timer.map(
+                |t| match t {
+                    Inactive => 0,
+                    Active(t) => t.as_nanos_since_unix_epoch(),
+                },
+            ),
         })
     }
 }
@@ -233,14 +239,13 @@ struct RuntimeInvoke {
 
 #[hs_bindgen(invoke :: CString -> IO CString)]
 pub fn invoke(arg: &str) -> String {
-    let a = base64::decode(arg).unwrap();
-    //let v: Value = from_slice(a.as_slice()).unwrap();
-    let xx: RuntimeInvoke = from_slice(a.as_slice()).unwrap();
-    let canister_id: CanisterId = xx.canister_id.try_into().unwrap();
+    let r: RuntimeInvoke =
+        from_slice(general_purpose::STANDARD.decode(arg).unwrap().as_slice()).unwrap();
+    let canister_id: CanisterId = r.canister_id.try_into().unwrap();
 
     let mut state_map = STATE.lock().unwrap();
 
-    match xx.entry_point {
+    match r.entry_point {
         RuntimeInvokeEnum::RuntimeInstantiate(ref x) => {
             let controller = Arc::new(
                 SandboxedExecutionController::new(
@@ -272,10 +277,8 @@ pub fn invoke(arg: &str) -> String {
                 )
                 .unwrap();
             let current_state: RuntimeState = RuntimeState {
-                canister_id,
                 controller,
                 cycles_account_manager,
-                //canister_module,
                 wasm_binary,
                 wasm_memory,
                 stable_memory,
@@ -326,8 +329,8 @@ pub fn invoke(arg: &str) -> String {
     let subnet_available_memory: SubnetAvailableMemory =
         SubnetAvailableMemory::new(100000000, 100000000, 100000000);
 
-    let (method, api_type) = match xx.entry_point {
-        RuntimeInvokeEnum::RuntimeInstantiate(x) => (
+    let (method, api_type) = match r.entry_point {
+        RuntimeInvokeEnum::RuntimeInstantiate(_) => (
             WasmMethod::System(SystemMethod::CanisterStart),
             Start {
                 time: Time::from_nanos_since_unix_epoch(0),
@@ -346,7 +349,7 @@ pub fn invoke(arg: &str) -> String {
                 .exported_functions
                 .has_method(&WasmMethod::System(SystemMethod::CanisterInspectMessage))
             {
-                return base64::encode(to_vec(&RuntimeResponse::noop()).unwrap());
+                return general_purpose::STANDARD.encode(to_vec(&RuntimeResponse::noop()).unwrap());
             }
             (
                 WasmMethod::System(SystemMethod::CanisterInspectMessage),
@@ -374,9 +377,8 @@ pub fn invoke(arg: &str) -> String {
             },
         ),
         RuntimeInvokeEnum::RuntimeHeartbeat(_) => {
-            return base64::encode(to_vec(&RuntimeResponse::noop()).unwrap());
+            return general_purpose::STANDARD.encode(to_vec(&RuntimeResponse::noop()).unwrap());
         }
-        _ => panic!("unsupported"),
     };
     let input = WasmExecutionInput {
         api_type,
@@ -389,7 +391,7 @@ pub fn invoke(arg: &str) -> String {
     };
     let res = current_state.execute(input);
     if let Err(e) = res {
-        return base64::encode(to_vec(&RuntimeResponse::trap(e)).unwrap());
+        return general_purpose::STANDARD.encode(to_vec(&RuntimeResponse::trap(e)).unwrap());
     }
-    base64::encode(to_vec(&res.unwrap()).unwrap())
+    general_purpose::STANDARD.encode(to_vec(&res.unwrap()).unwrap())
 }

@@ -5,3 +5,6 @@ members = [
   "runtime",
   "universal-canister"
 ]
+
+[patch."https://github.com/dfinity/ic"]
+ic-system-api = { path = "./runtime/system_api" }

@@ -211,11 +211,6 @@ pub struct SandboxProcessStats {
     last_used: std::time::Instant,
 }
 
-pub enum SandboxProcessStatus {
-    Active,
-    Evicted,
-}
-
 /// Manages sandboxed processes, forwards requests to the appropriate
 /// process.
 pub struct SandboxedExecutionController {
