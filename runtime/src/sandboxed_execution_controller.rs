@@ -216,30 +216,6 @@ pub enum SandboxProcessStatus {
     Evicted,
 }
 
-/*
-// Represent a paused sandbox execution.
-struct PausedSandboxExecution {
-    canister_id: CanisterId,
-    sandbox_process: Arc<SandboxProcess>,
-    exec_id: ExecId,
-    next_wasm_memory_id: MemoryId,
-    next_stable_memory_id: MemoryId,
-    message_instruction_limit: NumInstructions,
-    api_type_label: &'static str,
-    controller: Arc<SandboxedExecutionController>,
-}
-
-impl std::fmt::Debug for PausedSandboxExecution {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("PausedSandboxExecution")
-            .field("canister_id", &self.canister_id)
-            .field("exec_id", &self.exec_id)
-            .field("api_type_label", &self.api_type_label)
-            .finish()
-    }
-}
-*/
-
 /// Manages sandboxed processes, forwards requests to the appropriate
 /// process.
 pub struct SandboxedExecutionController {
