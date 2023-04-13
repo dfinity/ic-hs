@@ -48,7 +48,6 @@
 , quickcheck-io
 , random
 , row-types
-, runtime
 , serialise
 , split
 , splitmix
@@ -161,7 +160,7 @@ mkDerivation {
     x509-validation
     zlib
   ];
-  librarySystemDepends = [ openssl runtime ];
+  librarySystemDepends = [ openssl ];
   executableHaskellDepends = [
     async
     base

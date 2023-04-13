@@ -23,11 +23,30 @@ let universal-canister = (naersk.buildPackage rec {
     '';
 }); in
 
+let naersk_1_66 = nixpkgs.callPackage nixpkgs.sources.naersk {
+    inherit (nixpkgs.rustPackages_1_66) cargo rustc;
+}; in
+
+let runtime = (naersk_1_66.buildPackage rec {
+    name = "runtime";
+    root = nixpkgs.subpath ./.;
+    copyLibs = true;
+    copyBins = false;
+    doCheck = false;
+    release = true;
+    nativeBuildInputs = with nixpkgs; [ pkg-config protobuf ];
+    CARGO_BUILD_TARGET = "x86_64-unknown-linux-musl";
+    CARGO_BUILD_RUSTFLAGS = "-C target-feature=+crt-static";
+    cargoBuildOptions = x : x ++ [ "--target x86_64-unknown-linux-musl" ];
+    buildInputs = with nixpkgs; [ openssl ];
+}); in
+
 let haskellOverrides = self: super:
     let generated = import nix/generated/all.nix self super; in
     generated //
     {
       haskoin-core = nixpkgs.haskell.lib.dontCheck (nixpkgs.haskell.lib.markUnbroken super.haskoin-core);
+      ic-hs = nixpkgs.haskell.lib.addExtraLibrary generated.ic-hs runtime;
 
       #ic-hs = nixpkgs.haskell.lib.addExtraLibrary generated.ic-hs runtime;
     }; in
@@ -48,6 +67,10 @@ let
         cp ${universal-canister}/universal-canister.wasm $out/test-data
       '';
       # variant of justStaticExecutables that retains propagatedBuildInputs
+      preInstall = ''
+        cp ${runtime}/lib/libruntime.a dist/build/libruntime.a;
+        cp ${runtime}/lib/libruntime.a dist/build/libruntime-ghc9.0.2.so;
+      '';
       postFixup = "rm -rf $out/lib $out/share/doc";
     })
   );
@@ -165,7 +188,7 @@ in
 }); in
 
 rec {
-  inherit (nixpkgs) runtime;
+  inherit runtime;
 
   inherit ic-hs;
   inherit ic-ref;
