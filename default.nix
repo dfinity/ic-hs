@@ -24,7 +24,7 @@ let universal-canister = (naersk.buildPackage rec {
 }); in
 
 let naersk_1_66 = nixpkgs.callPackage nixpkgs.sources.naersk {
-    inherit (nixpkgs.rustPackages_1_66) cargo rustc;
+    inherit (nixpkgs.pkgsMusl.rustPackages_1_66) cargo rustc;
 }; in
 
 let runtime = (naersk_1_66.buildPackage rec {
