@@ -23,8 +23,8 @@ let universal-canister = (naersk.buildPackage rec {
     '';
 }); in
 
-let naersk_1_66 = nixpkgs.pkgsMusl.callPackage nixpkgs.sources.naersk {
-    inherit (nixpkgs.pkgsMusl.rustPackages_1_66) cargo rustc;
+let naersk_1_66 = nixpkgs.callPackage nixpkgs.sources.naersk {
+    inherit (nixpkgs.rustPackages_1_66) cargo rustc;
 }; in
 
 let runtime = (naersk_1_66.buildPackage rec {
@@ -34,10 +34,8 @@ let runtime = (naersk_1_66.buildPackage rec {
     copyBins = false;
     doCheck = false;
     release = true;
-    CARGO_BUILD_TARGET = "x86_64-unknown-linux-musl";
-    cargoBuildOptions = x : x ++ [ "--target x86_64-unknown-linux-musl" ];
-    nativeBuildInputs = with nixpkgs.pkgsMusl; [ pkg-config protobuf ];
-    buildInputs = with nixpkgs.pkgsMusl; [ openssl ];
+    nativeBuildInputs = with nixpkgs; [ pkg-config protobuf ];
+    buildInputs = with nixpkgs; [ openssl ];
 }); in
 
 let haskellOverrides = self: super:
@@ -46,16 +44,41 @@ let haskellOverrides = self: super:
     {
       haskoin-core = nixpkgs.haskell.lib.dontCheck (nixpkgs.haskell.lib.markUnbroken super.haskoin-core);
       ic-hs = nixpkgs.haskell.lib.addExtraLibrary generated.ic-hs runtime;
-
-      #ic-hs = nixpkgs.haskell.lib.addExtraLibrary generated.ic-hs runtime;
     }; in
 
 let haskellPackages = nixpkgs.haskellPackages.override {
   overrides = haskellOverrides;
 }; in
 
+let naersk_1_66_musl = nixpkgs.pkgsMusl.callPackage nixpkgs.sources.naersk {
+    inherit (nixpkgs.pkgsMusl.rustPackages_1_66) cargo rustc;
+}; in
+
+let static-openssl = nixpkgs.pkgsMusl.openssl.override {static = true;}; in
+
+let runtime_musl = (naersk_1_66_musl.buildPackage rec {
+    name = "runtime";
+    root = nixpkgs.subpath ./runtime;
+    copyLibs = true;
+    copyBins = false;
+    doCheck = false;
+    release = true;
+    CARGO_BUILD_TARGET = "x86_64-unknown-linux-musl";
+    cargoBuildOptions = x : x ++ [ "--target x86_64-unknown-linux-musl" ];
+    nativeBuildInputs = with nixpkgs.pkgsMusl; [ pkg-config protobuf ];
+    buildInputs = [ static-openssl ];
+}); in
+
+let staticHaskellOverrides = self: super:
+    let generated = import nix/generated/all.nix self super; in
+    generated //
+    {
+      haskoin-core = nixpkgs.haskell.lib.dontCheck (nixpkgs.haskell.lib.markUnbroken super.haskoin-core);
+      ic-hs = nixpkgs.haskell.lib.addExtraLibrary generated.ic-hs runtime_musl;
+    }; in
+
 let staticHaskellPackages = nixpkgs.pkgsStatic.haskellPackages.override {
-  overrides = haskellOverrides;
+  overrides = staticHaskellOverrides;
 }; in
 
 let
@@ -125,12 +148,10 @@ let
           nixpkgs.haskell.lib.justStaticExecutables
             (nixpkgs.haskell.lib.failOnAllWarnings
               (staticHaskellPackages.ic-hs.overrideAttrs (old: {
-                  # variant of justStaticExecutables that retains propagatedBuildInputs
                   preInstall = ''
-                    cp ${runtime}/lib/libruntime.a dist/build/libruntime.a;
-                    cp ${runtime}/lib/libruntime.a dist/build/libruntime-ghc9.0.2.so;
+                    cp ${runtime_musl}/lib/libruntime.a dist/build/libruntime.a;
+                    cp ${runtime_musl}/lib/libruntime.a dist/build/libruntime-ghc9.0.2.so;
                   '';
-                  postFixup = "rm -rf $out/lib $out/share/doc";
                 })));
       in nixpkgs.runCommandNoCC "ic-ref-dist" {
         nativeBuildInputs = [ nixpkgs.removeReferencesTo ];
@@ -193,8 +214,6 @@ in
 }); in
 
 rec {
-  inherit runtime;
-
   inherit ic-hs;
   inherit ic-ref;
   inherit ic-ref-dist;

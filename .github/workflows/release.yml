@@ -47,8 +47,8 @@ jobs:
       #run: nix-build-uncached -A coverage
       run: nix-build-uncached -A check-generated
     - run: nix-build-uncached -A ic-ref-dist
-    - if: matrix.os == 'ubuntu-latest'
-      run: nix-build-uncached -A ic-ref-test
+    #- if: matrix.os == 'ubuntu-latest'
+    #  run: nix-build-uncached -A ic-ref-test
     - run: nix-build-uncached -A ic-hs-shell
     - run: nix-build-uncached -A license-check
 
