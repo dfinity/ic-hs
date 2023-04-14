@@ -124,7 +124,7 @@ share getshare(int id,int nsr,octet *S,octet *M,octet *R)
         return Sh;
     }
     RAND_clean(&rng);
-    RAND_seed(&rng,R->len,R->val);
+    _RAND_seed(&rng,R->len,R->val);
     Sh.id=id;
     Sh.nsr=nsr;
     Sh.B=S;

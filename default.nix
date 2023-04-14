@@ -29,13 +29,12 @@ let naersk_1_66 = nixpkgs.pkgsMusl.callPackage nixpkgs.sources.naersk {
 
 let runtime = (naersk_1_66.buildPackage rec {
     name = "runtime";
-    root = nixpkgs.subpath ./.;
+    root = nixpkgs.subpath ./runtime;
     copyLibs = true;
     copyBins = false;
     doCheck = false;
     release = true;
     CARGO_BUILD_TARGET = "x86_64-unknown-linux-musl";
-    CARGO_BUILD_RUSTFLAGS = "-C target-feature=+crt-static";
     cargoBuildOptions = x : x ++ [ "--target x86_64-unknown-linux-musl" ];
     nativeBuildInputs = with nixpkgs.pkgsMusl; [ pkg-config protobuf ];
     buildInputs = with nixpkgs.pkgsMusl; [ openssl ];
@@ -125,9 +124,15 @@ let
         ic-hs-static =
           nixpkgs.haskell.lib.justStaticExecutables
             (nixpkgs.haskell.lib.failOnAllWarnings
-              staticHaskellPackages.ic-hs);
+              (staticHaskellPackages.ic-hs.overrideAttrs (old: {
+                  # variant of justStaticExecutables that retains propagatedBuildInputs
+                  preInstall = ''
+                    cp ${runtime}/lib/libruntime.a dist/build/libruntime.a;
+                    cp ${runtime}/lib/libruntime.a dist/build/libruntime-ghc9.0.2.so;
+                  '';
+                  postFixup = "rm -rf $out/lib $out/share/doc";
+                })));
       in nixpkgs.runCommandNoCC "ic-ref-dist" {
-        allowedReferences = [];
         nativeBuildInputs = [ nixpkgs.removeReferencesTo ];
       } ''
         mkdir -p $out/build

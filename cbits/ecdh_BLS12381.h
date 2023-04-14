@@ -102,10 +102,10 @@ extern int ECP_BLS12381_SVDP_DH(octet *s, octet *W, octet *K, int type);
 	@param R is a pointer to a cryptographically secure random number generator
 	@param W the input public key of the recieving party
 	@param M is the plaintext message to be encrypted
-	@param len the length of the HMAC tag
+	@param len the length of the _HMAC tag
 	@param V component of the output ciphertext
 	@param C the output ciphertext
-	@param T the output HMAC tag, part of the ciphertext
+	@param T the output _HMAC tag, part of the ciphertext
  */
 extern void ECP_BLS12381_ECIES_ENCRYPT(int h, octet *P1, octet *P2, csprng *R, octet *W, octet *M, int len, octet *V, octet *C, octet *T);
 /**	@brief ECIES Decryption
@@ -116,7 +116,7 @@ extern void ECP_BLS12381_ECIES_ENCRYPT(int h, octet *P1, octet *P2, csprng *R, o
 	@param P2 input Encoding parameters
 	@param V component of the input ciphertext
 	@param C the input ciphertext
-	@param T the input HMAC tag, part of the ciphertext
+	@param T the input _HMAC tag, part of the ciphertext
 	@param U the input private key for decryption
 	@param M the output plaintext message
 	@return 1 if successful, else 0

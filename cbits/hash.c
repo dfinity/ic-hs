@@ -464,7 +464,7 @@ void SHA3_process(sha3 *sh, int byt)
 }
 
 /* squeeze the sponge */
-void SHA3_squeeze(sha3 *sh, char *buff, int len)
+void _SHA3_squeeze(sha3 *sh, char *buff, int len)
 {
     int done, i, j, k, m = 0;
     unsign64 el;
@@ -508,7 +508,7 @@ void SHA3_hash(sha3 *sh, char *hash)
         while ((int)sh->length % sh->rate != sh->rate - 1) SHA3_process(sh, 0x00);
         SHA3_process(sh, 0x80); /* this will force a final transform */
     }
-    SHA3_squeeze(sh, hash, sh->len);
+    _SHA3_squeeze(sh, hash, sh->len);
 }
 
 void SHA3_shake(sha3 *sh, char *buff, int len)
@@ -522,7 +522,7 @@ void SHA3_shake(sha3 *sh, char *buff, int len)
         while ((int) sh->length % sh->rate != sh->rate - 1) SHA3_process(sh, 0x00);
         SHA3_process(sh, 0x80); /* this will force a final transform */
     }
-    SHA3_squeeze(sh, buff, len);
+    _SHA3_squeeze(sh, buff, len);
 }
 
 

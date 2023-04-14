@@ -494,7 +494,7 @@ extern void  SHA3_shake(sha3 *H, char *h, int len);
 	@param h a byte array to take hash
 	@param len is the length of the hash
  */
-extern void  SHA3_squeeze(sha3 *H, char *h, int len);
+extern void  _SHA3_squeeze(sha3 *H, char *h, int len);
 
 /* MAC functions */
 
@@ -520,7 +520,7 @@ extern void GPhash(int hash,int hlen,octet *w,int olen,int pad,octet *p,int n,oc
  */
 extern void SPhash(int hash, int hlen,octet *w, octet *p);
 
-/**	@brief HMAC function
+/**	@brief _HMAC function
  *
     @param hash the hash family (SHA2 or SHA3)
 	@param hlen the hash function output length (32,48 or 64)
@@ -529,7 +529,7 @@ extern void SPhash(int hash, int hlen,octet *w, octet *p);
     @param K an input key, or salt
     @param M an input message
  */
-extern void HMAC(int hash,int hlen,octet *T,int len,octet *K,octet *M);
+extern void _HMAC(int hash,int hlen,octet *T,int len,octet *K,octet *M);
 
 
 /**	@brief HKDF_Extract function
@@ -711,7 +711,7 @@ extern int GCM_add_plain(gcm *G, char *c, char *p, int n);
 	@param n the number of bytes in the ciphertext
  */
 extern int GCM_add_cipher(gcm *G, char *p, char *c, int n);
-/**	@brief Finish off and extract authentication tag (HMAC)
+/**	@brief Finish off and extract authentication tag (_HMAC)
  *
 	@param G is an active instance AES-GCM
 	@param t is the output 16 byte authentication tag
@@ -771,7 +771,7 @@ extern int recover(octet *M,share *S);
 	@param b an array of seed bytes
 
  */
-extern void RAND_seed(csprng *R, int n, char *b);
+extern void _RAND_seed(csprng *R, int n, char *b);
 /**	@brief Delete all internal state of a random number generator
  *
 	@param R an instance of a Cryptographically Secure Random Number Generator

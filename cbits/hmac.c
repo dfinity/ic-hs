@@ -18,7 +18,7 @@
  */
 
 /*
-    HMAC functions
+    _HMAC functions
 */
 
 #include "arch.h"
@@ -146,7 +146,7 @@ static int blksize(int hash,int hlen)
 }
 
 /* RFC 2104 */
-void HMAC(int hash,int hlen,octet *TAG,int olen,octet *K,octet *M)
+void _HMAC(int hash,int hlen,octet *TAG,int olen,octet *K,octet *M)
 {
     int blk;
     char h[128],k0[200];   // assumes max block sizes
@@ -181,9 +181,9 @@ void HKDF_Extract(int hash,int hlen,octet *PRK,octet *SALT,octet *IKM)
     octet H={0,sizeof(h),h};
     if (SALT==NULL) {
         OCT_jbyte(&H,0,hlen);
-        HMAC(hash,hlen,PRK,hlen,&H,IKM);
+        _HMAC(hash,hlen,PRK,hlen,&H,IKM);
     } else {
-        HMAC(hash,hlen,PRK,hlen,SALT,IKM);
+        _HMAC(hash,hlen,PRK,hlen,SALT,IKM);
     }
 }
 
@@ -200,14 +200,14 @@ void HKDF_Expand(int hash,int hlen,octet *OKM,int olen,octet *PRK,octet *INFO)
     {
         OCT_joctet(&T,INFO);
         OCT_jbyte(&T,i,1);
-        HMAC(hash,hlen,&T,hlen,PRK,&T);
+        _HMAC(hash,hlen,&T,hlen,PRK,&T);
         OCT_joctet(OKM,&T);
     }
     if (flen>0)
     {
         OCT_joctet(&T,INFO);
         OCT_jbyte(&T,n+1,1);
-        HMAC(hash,hlen,&T,flen,PRK,&T);
+        _HMAC(hash,hlen,&T,flen,PRK,&T);
         OCT_joctet(OKM,&T);
     }
 }
@@ -309,13 +309,13 @@ void PBKDF2(int hash, int hlen, octet *key, int olen, octet *p, octet *s, int re
         len = s->len;
         OCT_jint(s, i, 4);
 
-        HMAC(hash, hlen, &F, hlen, s, p);
+        _HMAC(hash, hlen, &F, hlen, s, p);
 
         s->len = len;
         OCT_copy(&U, &F);
         for (j = 2; j <= rep; j++)
         {
-            HMAC(hash, hlen, &U, hlen, &U, p);
+            _HMAC(hash, hlen, &U, hlen, &U, p);
             OCT_xor(&F, &U);
         }
 
@@ -347,7 +347,7 @@ int main()
 
     HKDF_Extract(MC_SHA2,32,&PRK,&SALT,&IKM);
 
-    //HMAC(&PRK,32,&SALT,&IKM,SHA2,32);
+    //_HMAC(&PRK,32,&SALT,&IKM,SHA2,32);
 
     printf("PRK= "); OCT_output(&PRK); 
 

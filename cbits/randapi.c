@@ -24,7 +24,7 @@
 
 void CREATE_CSPRNG(csprng *RNG, octet *RAW)
 {
-    RAND_seed(RNG, RAW->len, RAW->val);
+    _RAND_seed(RNG, RAW->len, RAW->val);
 }
 
 void KILL_CSPRNG(csprng *RNG)
