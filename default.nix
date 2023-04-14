@@ -35,9 +35,6 @@ let runtime = (naersk_1_66.buildPackage rec {
     doCheck = false;
     release = true;
     nativeBuildInputs = with nixpkgs; [ pkg-config protobuf ];
-    CARGO_BUILD_TARGET = "x86_64-unknown-linux-musl";
-    CARGO_BUILD_RUSTFLAGS = "-C target-feature=+crt-static";
-    cargoBuildOptions = x : x ++ [ "--target x86_64-unknown-linux-musl" ];
     buildInputs = with nixpkgs; [ openssl ];
 }); in
 
