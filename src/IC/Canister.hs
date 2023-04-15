@@ -29,6 +29,7 @@ import Data.Foldable
 import Control.Monad.Except
 import Codec.Compression.GZip (decompress)
 import Foreign.C.String
+import System.Environment
 
 import IC.Types
 import IC.Wasm.Winter (parseModule, exportedFunctions)
@@ -81,7 +82,7 @@ decodeModule bytes =
     asmMagic = asBytes [0x00, 0x61, 0x73, 0x6d]
     gzipMagic = asBytes [0x1f, 0x8b, 0x08]
 
-data EntryPoint = RuntimeInstantiate Blob
+data EntryPoint = RuntimeInstantiate Blob String
   | RuntimeInitialize EntityId Env Blob
   | RuntimeUpdate MethodName EntityId Env NeedsToRespond Cycles Blob
   | RuntimeQuery MethodName EntityId Env Blob
@@ -122,7 +123,7 @@ needsToRespond :: NeedsToRespond -> Bool
 needsToRespond (NeedsToRespond b) = b
 
 epterm :: EntryPoint -> Term
-epterm (RuntimeInstantiate mod) = enumterm "RuntimeInstantiate" $ mapterm [("module", blobterm mod)]
+epterm (RuntimeInstantiate mod prefix) = enumterm "RuntimeInstantiate" $ mapterm [("module", blobterm mod), ("prefix", stringterm prefix)]
 epterm (RuntimeInitialize cid env arg) = enumterm "RuntimeInitialize" $ mapterm [("caller", cidterm cid), ("env", envterm env), ("arg", blobterm arg)]
 epterm (RuntimeUpdate n cid env respond cycles arg) = enumterm "RuntimeUpdate" $ mapterm [("method", stringterm n), ("caller", cidterm cid), ("env", envterm env), ("needs_to_respond", TBool $ needsToRespond respond), ("cycles", TInteger $ fromIntegral cycles), ("arg", blobterm arg)]
 epterm (RuntimeInspectMessage n cid env arg) = enumterm "RuntimeInspectMessage" $ mapterm [("method", stringterm n), ("caller", cidterm cid), ("env", envterm env), ("arg", blobterm arg)]
@@ -151,7 +152,8 @@ parseCanister cid bytes = do
     , raw_wasm_hash = sha256 bytes
     , canister_id_mod = cid
     , init_method = \caller env dat -> do
-        inst <- invokeToUnit cid (RuntimeInstantiate decodedModule)
+        prefix <- getExecutablePath
+        inst <- invokeToUnit cid (RuntimeInstantiate decodedModule prefix)
         case inst of Trap err -> return $ Trap err
                      Return () -> invokeToCanisterActions cid (RuntimeInitialize caller env dat)
     , update_methods = M.fromList
@@ -174,7 +176,8 @@ parseCanister cid bytes = do
     , pre_upgrade_method = \caller env ->
           invokeToCanisterActions cid (RuntimePreUpgrade caller env)
     , post_upgrade_method = \caller env dat -> do
-          inst <- invokeToUnit cid (RuntimeInstantiate decodedModule)
+          prefix <- getExecutablePath
+          inst <- invokeToUnit cid (RuntimeInstantiate decodedModule prefix)
           case inst of Trap err -> return $ Trap err
                        Return () -> invokeToCanisterActions cid (RuntimePostUpgrade caller env dat)
     , inspect_message = \method_name caller env arg ->

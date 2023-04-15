@@ -48,8 +48,8 @@ impl SandboxCrate {
 }
 
 /// Gets the executable and arguments for spawning a canister sandbox.
-pub(super) fn create_sandbox_argv(embedder_config: &EmbeddersConfig) -> Option<Vec<String>> {
-    let argv = create_child_process_argv(SandboxCrate::CanisterSandbox);
+pub(super) fn create_sandbox_argv(prefix: &String, embedder_config: &EmbeddersConfig) -> Option<Vec<String>> {
+    let argv = create_child_process_argv(prefix, SandboxCrate::CanisterSandbox);
     if let Some(mut argv) = argv {
         argv.push("--embedder-config".to_string());
         argv.push(
@@ -62,13 +62,13 @@ pub(super) fn create_sandbox_argv(embedder_config: &EmbeddersConfig) -> Option<V
 }
 
 /// Gets the executable and arguments for spawning the sandbox launcher.
-pub(super) fn create_launcher_argv() -> Option<Vec<String>> {
-    create_child_process_argv(SandboxCrate::SandboxLauncher)
+pub(super) fn create_launcher_argv(prefix: &String) -> Option<Vec<String>> {
+    create_child_process_argv(prefix, SandboxCrate::SandboxLauncher)
 }
 
 /// Gets the executable and arguments for spawning a canister sandbox.
-fn create_child_process_argv(krate: SandboxCrate) -> Option<Vec<String>> {
-    let current_binary_path = current_binary_path()?;
+fn create_child_process_argv(prefix: &String, krate: SandboxCrate) -> Option<Vec<String>> {
+    let current_binary_path = PathBuf::from(prefix);
     let current_binary_name = current_binary_path.file_name()?.to_str()?;
 
     // The order of checks performed in this function is important.

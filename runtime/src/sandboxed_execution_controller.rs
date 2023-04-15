@@ -489,13 +489,14 @@ impl SandboxedExecutionController {
     pub fn new(
         embedder_config: &EmbeddersConfig,
         fd_factory: Arc<dyn PageAllocatorFileDescriptor>,
+        prefix: &String,
     ) -> std::io::Result<Self> {
-        let launcher_exec_argv = create_launcher_argv().expect("No sandbox_launcher binary found");
+        let launcher_exec_argv = create_launcher_argv(prefix).expect("No sandbox_launcher binary found");
         let min_sandbox_count = embedder_config.min_sandbox_count;
         let max_sandbox_count = embedder_config.max_sandbox_count;
         let max_sandbox_idle_time = embedder_config.max_sandbox_idle_time;
         let sandbox_exec_argv =
-            create_sandbox_argv(embedder_config).expect("No canister_sandbox binary found");
+            create_sandbox_argv(prefix, embedder_config).expect("No canister_sandbox binary found");
         let backends = Arc::new(Mutex::new(HashMap::new()));
 
         let backends_copy = Arc::clone(&backends);

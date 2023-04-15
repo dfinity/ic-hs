@@ -179,6 +179,7 @@ struct Env {
 struct RuntimeInstantiate {
     #[serde_as(deserialize_as = "Bytes")]
     module: Vec<u8>,
+    prefix: String,
 }
 
 #[serde_as]
@@ -251,6 +252,7 @@ pub fn invoke(arg: &str) -> String {
                 SandboxedExecutionController::new(
                     &EmbeddersConfig::default(),
                     Arc::new(TestPageAllocatorFileDescriptorImpl::new()),
+                    &x.prefix,
                 )
                 .unwrap(),
             );
