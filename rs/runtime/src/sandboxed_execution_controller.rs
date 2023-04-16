@@ -491,7 +491,8 @@ impl SandboxedExecutionController {
         fd_factory: Arc<dyn PageAllocatorFileDescriptor>,
         prefix: &String,
     ) -> std::io::Result<Self> {
-        let launcher_exec_argv = create_launcher_argv(prefix).expect("No sandbox_launcher binary found");
+        let launcher_exec_argv =
+            create_launcher_argv(prefix).expect("No sandbox_launcher binary found");
         let min_sandbox_count = embedder_config.min_sandbox_count;
         let max_sandbox_count = embedder_config.max_sandbox_count;
         let max_sandbox_idle_time = embedder_config.max_sandbox_idle_time;

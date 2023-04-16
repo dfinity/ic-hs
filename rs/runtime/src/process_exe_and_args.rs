@@ -48,7 +48,10 @@ impl SandboxCrate {
 }
 
 /// Gets the executable and arguments for spawning a canister sandbox.
-pub(super) fn create_sandbox_argv(prefix: &String, embedder_config: &EmbeddersConfig) -> Option<Vec<String>> {
+pub(super) fn create_sandbox_argv(
+    prefix: &String,
+    embedder_config: &EmbeddersConfig,
+) -> Option<Vec<String>> {
     let argv = create_child_process_argv(prefix, SandboxCrate::CanisterSandbox);
     if let Some(mut argv) = argv {
         argv.push("--embedder-config".to_string());

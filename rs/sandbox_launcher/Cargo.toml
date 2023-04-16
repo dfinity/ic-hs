@@ -1,0 +1,22 @@
+[package]
+name = "ic-canister-sandbox-launcher"
+version = "0.8.0"
+edition = "2021"
+
+[build-dependencies]
+cc = "1.0"
+
+[dependencies]
+ic-canister-sandbox-common = { git = "https://github.com/dfinity/ic", rev = "dca3091bc0a1a7f175c57464068c86ba19a556e6" }
+ic-types = { git = "https://github.com/dfinity/ic", rev = "dca3091bc0a1a7f175c57464068c86ba19a556e6" }
+nix = "0.23.0"
+
+[[bin]]
+name = "sandbox_launcher"
+path = "bin/sandbox_launcher.rs"
+
+# This feature doesn't actually do anything. It is just convenient because it
+# allows us to use the same cargo flags for building sandbox_launcher as we have
+# for canister_sandbox.
+[features]
+sigsegv_handler_checksum = []

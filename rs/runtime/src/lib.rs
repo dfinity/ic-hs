@@ -114,42 +114,45 @@ impl RuntimeState {
             )
             .1;
         let (exec_output_wasm, state_changes) = match res {
-            Finished(_, exec_output_wasm, Some(state_changes)) => (exec_output_wasm, state_changes),
-            Finished(_, exec_output_wasm, None) => {
-                if let Err(e) = exec_output_wasm.wasm_result {
-                    return Err(e.to_string());
-                }
-                panic!("execution has failed")
-            }
+            Finished(_, exec_output_wasm, state_changes) => (exec_output_wasm, state_changes),
             _ => panic!("DTS should be disabled"),
         };
-        self.wasm_memory = state_changes.wasm_memory;
-        self.stable_memory = state_changes.stable_memory;
-        self.exported_globals = state_changes.globals;
-        let output = match exec_output_wasm.wasm_result.clone() {
+        if let Err(e) = exec_output_wasm.wasm_result {
+            return Err(e.to_string());
+        }
+        let mut new_certified_data = None;
+        let mut new_global_timer = None;
+        if let Some(state_changes) = state_changes {
+            self.wasm_memory = state_changes.wasm_memory;
+            self.stable_memory = state_changes.stable_memory;
+            self.exported_globals = state_changes.globals;
+            new_certified_data = state_changes
+                .system_state_changes
+                .new_certified_data
+                .map(serde_bytes::ByteBuf::from);
+            new_global_timer =
+                state_changes
+                    .system_state_changes
+                    .new_global_timer
+                    .map(|t| match t {
+                        Inactive => 0,
+                        Active(t) => t.as_nanos_since_unix_epoch(),
+                    });
+        }
+        let output = match exec_output_wasm.wasm_result {
             Ok(Some(WasmResult::Reply(bytes))) => {
                 CanisterResponse::CanisterReply(serde_bytes::ByteBuf::from(bytes))
             }
             Ok(Some(WasmResult::Reject(msg))) => CanisterResponse::CanisterReject(msg),
             Ok(None) => CanisterResponse::NoResponse(()),
-            Err(e) => {
-                return Err(e.to_string());
-            }
+            Err(_) => panic!("unreachable"),
         };
         Ok(RuntimeResponse {
             response: output,
             cycles_accept: 0,
             cycles_mint: 0,
-            new_certified_data: state_changes
-                .system_state_changes
-                .new_certified_data
-                .map(serde_bytes::ByteBuf::from),
-            new_global_timer: state_changes.system_state_changes.new_global_timer.map(
-                |t| match t {
-                    Inactive => 0,
-                    Active(t) => t.as_nanos_since_unix_epoch(),
-                },
-            ),
+            new_certified_data,
+            new_global_timer,
         })
     }
 }
@@ -332,12 +335,20 @@ pub fn invoke(arg: &str) -> String {
         SubnetAvailableMemory::new(100000000, 100000000, 100000000);
 
     let (method, api_type) = match r.entry_point {
-        RuntimeInvokeEnum::RuntimeInstantiate(_) => (
-            WasmMethod::System(SystemMethod::CanisterStart),
-            Start {
-                time: Time::from_nanos_since_unix_epoch(0),
-            },
-        ),
+        RuntimeInvokeEnum::RuntimeInstantiate(_) => {
+            if !current_state
+                .exported_functions
+                .has_method(&WasmMethod::System(SystemMethod::CanisterStart))
+            {
+                return general_purpose::STANDARD.encode(to_vec(&RuntimeResponse::noop()).unwrap());
+            }
+            (
+                WasmMethod::System(SystemMethod::CanisterStart),
+                Start {
+                    time: Time::from_nanos_since_unix_epoch(0),
+                },
+            )
+        }
         RuntimeInvokeEnum::RuntimeInitialize(x) => (
             WasmMethod::System(SystemMethod::CanisterInit),
             Init {

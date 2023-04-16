@@ -1,0 +1,14 @@
+[package]
+name = "canister_sandbox"
+version = "0.8.0"
+edition = "2021"
+
+[build-dependencies]
+cc = "1.0"
+
+[dependencies]
+ic-canister-sandbox-backend-lib = { git = "https://github.com/dfinity/ic", rev = "dca3091bc0a1a7f175c57464068c86ba19a556e6" }
+libc = "0.2.119"
+
+[features]
+sigsegv_handler_checksum = [ "ic-canister-sandbox-backend-lib/sigsegv_handler_checksum" ]

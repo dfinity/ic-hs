@@ -27,9 +27,31 @@ let naersk_1_66 = nixpkgs.callPackage nixpkgs.sources.naersk {
     inherit (nixpkgs.rustPackages_1_66) cargo rustc;
 }; in
 
+let canister_sandbox = naersk_1_66.buildPackage rec {
+    name = "canister_sandbox";
+    root = subpath ./rs/canister_sandbox;
+    copyLibs = false;
+    copyBins = true;
+    doCheck = false;
+    release = true;
+    nativeBuildInputs = with nixpkgs; [ pkg-config protobuf ];
+    buildInputs = with nixpkgs; [ openssl libunwind ];
+}; in
+
+let sandbox_launcher = naersk_1_66.buildPackage rec {
+    name = "sandbox_launcher";
+    root = subpath ./rs/sandbox_launcher;
+    copyLibs = false;
+    copyBins = true;
+    doCheck = false;
+    release = true;
+    nativeBuildInputs = with nixpkgs; [ pkg-config protobuf ];
+    buildInputs = with nixpkgs; [ openssl libunwind ];
+}; in
+
 let runtime = (naersk_1_66.buildPackage rec {
     name = "runtime";
-    root = nixpkgs.subpath ./runtime;
+    root = subpath ./rs/runtime;
     copyLibs = true;
     copyBins = false;
     doCheck = false;
@@ -58,7 +80,7 @@ let static-openssl = nixpkgs.pkgsMusl.openssl.override {static = true;}; in
 
 let runtime_musl = (naersk_1_66_musl.buildPackage rec {
     name = "runtime";
-    root = nixpkgs.subpath ./runtime;
+    root = subpath ./rs/runtime;
     copyLibs = true;
     copyBins = false;
     doCheck = false;
@@ -87,6 +109,8 @@ let
       installPhase = (old.installPhase or "") + ''
         mkdir $out/test-data
         cp ${universal-canister}/universal-canister.wasm $out/test-data
+        cp ${canister_sandbox}/bin/canister_sandbox $out/bin
+        cp ${sandbox_launcher}/bin/sandbox_launcher $out/bin
       '';
       # variant of justStaticExecutables that retains propagatedBuildInputs
       preInstall = ''
