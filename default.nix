@@ -210,11 +210,14 @@ let
         #   Network/Wai/Handler/Warp/Settings.hs:    , settingsServerName = C8.pack $ "Warp/" ++ showVersion Paths_warp.version
         #
         # So we can safely remove the references to warp:
-        remove-references-to -t ${staticHaskellPackages.warp} -t "/nix/store/xdsdvmnd33dxcgfxpvvww8sxz2l3bdni-openssl-static-x86_64-unknown-linux-musl-3.0.8-etc" $out/build/ic-ref
+        remove-references-to \
+          -t ${staticHaskellPackages.warp} \
+          -t ${nixpkgs.pkgsStatic.openssl.etc} \
+          $out/build/ic-ref
         remove-references-to \
           -t ${staticHaskellPackages.tasty-html} \
           -t ${staticHaskellPackages.tasty-html.data} \
-          -t "/nix/store/xdsdvmnd33dxcgfxpvvww8sxz2l3bdni-openssl-static-x86_64-unknown-linux-musl-3.0.8-etc" \
+          -t ${nixpkgs.pkgsStatic.openssl.etc} \
           $out/build/ic-ref-test
       '';
 
