@@ -177,6 +177,38 @@ struct Env {
     global_timer: u64,
 }
 
+#[derive(Debug, Deserialize, Serialize)]
+struct WasmClosure {
+    closure_idx: i32,
+    closure_env: i32,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct Callback {
+    reply_closure: WasmClosure,
+    reject_closure: WasmClosure,
+    cleanup_closure: Option<WasmClosure>,
+}
+
+#[serde_as]
+#[derive(Debug, Deserialize, Serialize)]
+struct ResponseReply {
+    #[serde_as(deserialize_as = "Bytes")]
+    reply_payload: Vec<u8>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct ResponseReject {
+    reject_code: u8,
+    reject_msg: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+enum Response {
+    Reply(ResponseReply),
+    Reject(ResponseReject),
+}
+
 #[serde_as]
 #[derive(Debug, Deserialize, Serialize)]
 struct RuntimeInstantiate {
@@ -210,6 +242,53 @@ struct RuntimeUpdate {
 
 #[serde_as]
 #[derive(Debug, Deserialize, Serialize)]
+struct RuntimeQuery {
+    method: String,
+    #[serde_as(deserialize_as = "Bytes")]
+    caller: Vec<u8>,
+    env: Env,
+    #[serde_as(deserialize_as = "Bytes")]
+    arg: Vec<u8>,
+}
+
+#[serde_as]
+#[derive(Debug, Deserialize, Serialize)]
+struct RuntimeCallback {
+    callback: Callback,
+    env: Env,
+    needs_to_respond: bool,
+    cycles_available: u64,
+    response: Response,
+    refunded_cycles: u64,
+}
+
+#[serde_as]
+#[derive(Debug, Deserialize, Serialize)]
+struct RuntimeCleanup {
+    wasm_closure: WasmClosure,
+    env: Env,
+}
+
+#[serde_as]
+#[derive(Debug, Deserialize, Serialize)]
+struct RuntimePreUpgrade {
+    #[serde_as(deserialize_as = "Bytes")]
+    caller: Vec<u8>,
+    env: Env,
+}
+
+#[serde_as]
+#[derive(Debug, Deserialize, Serialize)]
+struct RuntimePostUpgrade {
+    #[serde_as(deserialize_as = "Bytes")]
+    caller: Vec<u8>,
+    env: Env,
+    #[serde_as(deserialize_as = "Bytes")]
+    arg: Vec<u8>,
+}
+
+#[serde_as]
+#[derive(Debug, Deserialize, Serialize)]
 struct RuntimeInspectMessage {
     method: String,
     #[serde_as(deserialize_as = "Bytes")]
@@ -225,12 +304,23 @@ struct RuntimeHeartbeat {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+struct RuntimeGlobalTimer {
+    env: Env,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
 enum RuntimeInvokeEnum {
     RuntimeInstantiate(RuntimeInstantiate),
     RuntimeInitialize(RuntimeInitialize),
     RuntimeUpdate(RuntimeUpdate),
+    RuntimeQuery(RuntimeQuery),
+    RuntimeCallback(RuntimeCallback),
+    RuntimeCleanup(RuntimeCleanup),
+    RuntimePreUpgrade(RuntimePreUpgrade),
+    RuntimePostUpgrade(RuntimePostUpgrade),
     RuntimeInspectMessage(RuntimeInspectMessage),
     RuntimeHeartbeat(RuntimeHeartbeat),
+    RuntimeGlobalTimer(RuntimeGlobalTimer),
 }
 
 #[serde_as]
@@ -390,6 +480,9 @@ pub fn invoke(arg: &str) -> String {
             },
         ),
         RuntimeInvokeEnum::RuntimeHeartbeat(_) => {
+            return general_purpose::STANDARD.encode(to_vec(&RuntimeResponse::noop()).unwrap());
+        }
+        _ => {
             return general_purpose::STANDARD.encode(to_vec(&RuntimeResponse::noop()).unwrap());
         }
     };

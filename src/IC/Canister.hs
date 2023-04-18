@@ -82,6 +82,9 @@ decodeModule bytes =
     asmMagic = asBytes [0x00, 0x61, 0x73, 0x6d]
     gzipMagic = asBytes [0x1f, 0x8b, 0x08]
 
+needsToRespond :: NeedsToRespond -> Bool
+needsToRespond (NeedsToRespond b) = b
+
 data EntryPoint = RuntimeInstantiate Blob String
   | RuntimeInitialize EntityId Env Blob
   | RuntimeUpdate MethodName EntityId Env NeedsToRespond Cycles Blob
@@ -109,26 +112,45 @@ mapterm = TMap . map (\(n, t) -> (TString n, t))
 stringterm :: String -> Term
 stringterm = TString . T.pack
 
-maybeblobterm :: Maybe Blob -> Term
-maybeblobterm Nothing = TNull
-maybeblobterm (Just b) = blobterm b
+maybeterm :: (a -> Term) -> Maybe a -> Term
+maybeterm _ Nothing = TNull
+maybeterm f (Just v) = f v
 
 timestampterm :: Timestamp -> Term
 timestampterm (Timestamp t) = TInteger $ fromIntegral t
 
 envterm :: Env -> Term
-envterm (Env cid t bal status cert can_version glob_timer) = mapterm [("canister_id", cidterm cid), ("time", timestampterm t), ("balance", TInteger $ fromIntegral bal), ("status", stringterm $ show status), ("certificate", maybeblobterm cert), ("canister_version", TInteger $ fromIntegral can_version), ("global_timer", TInteger $ fromIntegral glob_timer)]
+envterm (Env cid t bal status cert can_version glob_timer) = mapterm [("canister_id", cidterm cid), ("time", timestampterm t), ("balance", TInteger $ fromIntegral bal), ("status", stringterm $ show status), ("certificate", maybeterm blobterm cert), ("canister_version", TInteger $ fromIntegral can_version), ("global_timer", TInteger $ fromIntegral glob_timer)]
 
-needsToRespond :: NeedsToRespond -> Bool
-needsToRespond (NeedsToRespond b) = b
+cbterm :: Callback -> Term
+cbterm (Callback reply_closure reject_closure cleanup_closure) = mapterm [("reply_closure", closureterm reply_closure), ("reject_closure", closureterm reject_closure), ("cleanup_closure", maybeterm closureterm cleanup_closure)]
+
+codeterm :: RejectCode -> Term
+codeterm RC_SYS_FATAL           = TInteger 1
+codeterm RC_SYS_TRANSIENT       = TInteger 2
+codeterm RC_DESTINATION_INVALID = TInteger 3
+codeterm RC_CANISTER_REJECT     = TInteger 4
+codeterm RC_CANISTER_ERROR      = TInteger 5
+
+responseterm :: Response -> Term
+responseterm (Reply reply_payload) = enumterm "Reply" $ mapterm [("reply_payload", blobterm reply_payload)]
+responseterm (Reject (reject_code, reject_msg)) = enumterm "Reject" $ mapterm [("reject_code", codeterm reject_code), ("reject_msg", stringterm reject_msg)]
+
+closureterm :: WasmClosure -> Term
+closureterm (WasmClosure closure_idx closure_env) = mapterm [("closure_idx", TInteger $ fromIntegral closure_idx), ("closure_env", TInteger $ fromIntegral closure_env)]
 
 epterm :: EntryPoint -> Term
 epterm (RuntimeInstantiate mod prefix) = enumterm "RuntimeInstantiate" $ mapterm [("module", blobterm mod), ("prefix", stringterm prefix)]
 epterm (RuntimeInitialize cid env arg) = enumterm "RuntimeInitialize" $ mapterm [("caller", cidterm cid), ("env", envterm env), ("arg", blobterm arg)]
-epterm (RuntimeUpdate n cid env respond cycles arg) = enumterm "RuntimeUpdate" $ mapterm [("method", stringterm n), ("caller", cidterm cid), ("env", envterm env), ("needs_to_respond", TBool $ needsToRespond respond), ("cycles", TInteger $ fromIntegral cycles), ("arg", blobterm arg)]
+epterm (RuntimeUpdate n cid env needs_to_respond cycles arg) = enumterm "RuntimeUpdate" $ mapterm [("method", stringterm n), ("caller", cidterm cid), ("env", envterm env), ("needs_to_respond", TBool $ needsToRespond needs_to_respond), ("cycles", TInteger $ fromIntegral cycles), ("arg", blobterm arg)]
+epterm (RuntimeQuery n cid env arg) = enumterm "RuntimeQuery" $ mapterm [("method", stringterm n), ("caller", cidterm cid), ("env", envterm env), ("arg", blobterm arg)]
+epterm (RuntimeCallback cb env needs_to_respond cycles_available response refunded_cycles) = enumterm "RuntimeCallback" $ mapterm [("callback", cbterm cb), ("env", envterm env), ("needs_to_respond", TBool $ needsToRespond needs_to_respond), ("cycles_available", TInteger $ fromIntegral cycles_available), ("response", responseterm response), ("refunded_cycles", TInteger $ fromIntegral refunded_cycles)]
+epterm (RuntimeCleanup wasm_closure env) = enumterm "RuntimeCleanup" $ mapterm [("wasm_closure", closureterm wasm_closure), ("env", envterm env)]
+epterm (RuntimePreUpgrade cid env) = enumterm "RuntimePreUpgrade" $ mapterm [("caller", cidterm cid), ("env", envterm env)]
+epterm (RuntimePostUpgrade cid env arg) = enumterm "RuntimePostUpgrade" $ mapterm [("caller", cidterm cid), ("env", envterm env), ("arg", blobterm arg)]
 epterm (RuntimeInspectMessage n cid env arg) = enumterm "RuntimeInspectMessage" $ mapterm [("method", stringterm n), ("caller", cidterm cid), ("env", envterm env), ("arg", blobterm arg)]
 epterm (RuntimeHeartbeat env) = enumterm "RuntimeHeartbeat" $ mapterm [("env", envterm env)]
-epterm _ = error "not implemented"
+epterm (RuntimeGlobalTimer env) = enumterm "RuntimeGlobalTimer" $ mapterm [("env", envterm env)]
 
 parseCanister :: CanisterId -> Blob -> Either String CanisterModule
 parseCanister cid bytes = do
@@ -221,7 +243,7 @@ invokeToNoCyclesResponse cid ep = ((\(a, b) -> (ca_new_calls a, b)) <$>) <$> inv
 invokeQuery :: CanisterId -> EntryPoint -> IO (TrapOr Response)
 invokeQuery cid ep = (\res -> res >>= (response . ca_response . fst)) <$> invoke cid ep
   where
-    response Nothing = Trap ""
+    response Nothing = Trap "Canister did not respond."
     response (Just r) = Return r
 
 -- | Turns a query function into an update function
