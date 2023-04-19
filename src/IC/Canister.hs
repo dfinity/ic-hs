@@ -20,6 +20,7 @@ import qualified Data.Map as M
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
 import qualified Data.ByteString.Lazy.Char8 as BS
+import Data.Bits
 import Data.Char (chr)
 import Data.Either
 import Data.Either.Combinators (fromRight')
@@ -123,7 +124,7 @@ certterm :: Blob -> Term
 certterm bytes = mapterm [("bytes", blobterm bytes)]
 
 envterm :: Env -> Term
-envterm (Env cid t bal status cert can_version glob_timer) = mapterm [("canister_id", cidterm cid), ("time", timestampterm t), ("balance", TInteger $ fromIntegral bal), ("status", stringterm $ show status), ("certificate", maybeterm certterm cert), ("canister_version", TInteger $ fromIntegral can_version), ("global_timer", TInteger $ fromIntegral glob_timer)]
+envterm (Env cid t bal status cert can_version glob_timer) = mapterm [("canister_id", cidterm cid), ("time", timestampterm t), ("balance", cyclesterm bal), ("status", stringterm $ show status), ("certificate", maybeterm certterm cert), ("canister_version", TInteger $ fromIntegral can_version), ("global_timer", TInteger $ fromIntegral glob_timer)]
 
 cbterm :: Callback -> Term
 cbterm (Callback reply_closure reject_closure cleanup_closure) = mapterm [("reply_closure", closureterm reply_closure), ("reject_closure", closureterm reject_closure), ("cleanup_closure", maybeterm closureterm cleanup_closure)]
@@ -142,12 +143,18 @@ responseterm (Reject (reject_code, reject_msg)) = enumterm "Reject" $ mapterm [(
 closureterm :: WasmClosure -> Term
 closureterm (WasmClosure closure_idx closure_env) = mapterm [("closure_idx", TInteger $ fromIntegral closure_idx), ("closure_env", TInteger $ fromIntegral closure_env)]
 
+cyclesmask :: Num a => a
+cyclesmask = (2^(64::Int)) - 1
+
+cyclesterm :: Cycles -> Term
+cyclesterm x = TList [TInteger $ fromIntegral $ (shiftR x 64) .&. cyclesmask, TInteger $ fromIntegral $ x .&. cyclesmask]
+
 epterm :: EntryPoint -> Term
 epterm (RuntimeInstantiate mod prefix) = enumterm "RuntimeInstantiate" $ mapterm [("module", blobterm mod), ("prefix", stringterm prefix)]
 epterm (RuntimeInitialize cid env arg) = enumterm "RuntimeInitialize" $ mapterm [("caller", cidterm cid), ("env", envterm env), ("arg", blobterm arg)]
-epterm (RuntimeUpdate n cid env needs_to_respond cycles arg) = enumterm "RuntimeUpdate" $ mapterm [("method", stringterm n), ("caller", cidterm cid), ("env", envterm env), ("needs_to_respond", TBool $ needsToRespond needs_to_respond), ("cycles", TInteger $ fromIntegral cycles), ("arg", blobterm arg)]
+epterm (RuntimeUpdate n cid env needs_to_respond cycles arg) = enumterm "RuntimeUpdate" $ mapterm [("method", stringterm n), ("caller", cidterm cid), ("env", envterm env), ("needs_to_respond", TBool $ needsToRespond needs_to_respond), ("cycles", cyclesterm cycles), ("arg", blobterm arg)]
 epterm (RuntimeQuery n cid env arg) = enumterm "RuntimeQuery" $ mapterm [("method", stringterm n), ("caller", cidterm cid), ("env", envterm env), ("arg", blobterm arg)]
-epterm (RuntimeCallback cb env needs_to_respond cycles_available response refunded_cycles) = enumterm "RuntimeCallback" $ mapterm [("callback", cbterm cb), ("env", envterm env), ("needs_to_respond", TBool $ needsToRespond needs_to_respond), ("cycles_available", TInteger $ fromIntegral cycles_available), ("response", responseterm response), ("refunded_cycles", TInteger $ fromIntegral refunded_cycles)]
+epterm (RuntimeCallback cb env needs_to_respond cycles_available response refunded_cycles) = enumterm "RuntimeCallback" $ mapterm [("callback", cbterm cb), ("env", envterm env), ("needs_to_respond", TBool $ needsToRespond needs_to_respond), ("cycles_available", cyclesterm cycles_available), ("response", responseterm response), ("refunded_cycles", cyclesterm refunded_cycles)]
 epterm (RuntimeCleanup wasm_closure env) = enumterm "RuntimeCleanup" $ mapterm [("wasm_closure", closureterm wasm_closure), ("env", envterm env)]
 epterm (RuntimePreUpgrade cid env) = enumterm "RuntimePreUpgrade" $ mapterm [("caller", cidterm cid), ("env", envterm env)]
 epterm (RuntimePostUpgrade cid env arg) = enumterm "RuntimePostUpgrade" $ mapterm [("caller", cidterm cid), ("env", envterm env), ("arg", blobterm arg)]

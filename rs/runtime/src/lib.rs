@@ -70,11 +70,13 @@ enum CanisterResponse {
     CanisterTrap(String),
 }
 
+type RuntimeCycles = (u64, u64);
+
 #[derive(Serialize)]
 struct RuntimeResponse {
     pub response: CanisterResponse,
-    pub cycles_accept: u64,
-    pub cycles_mint: u64,
+    pub cycles_accept: RuntimeCycles,
+    pub cycles_mint: RuntimeCycles,
     pub new_certified_data: Option<serde_bytes::ByteBuf>,
     pub new_global_timer: Option<u64>,
 }
@@ -83,8 +85,8 @@ impl RuntimeResponse {
     pub fn trap(m: String) -> Self {
         RuntimeResponse {
             response: CanisterResponse::CanisterTrap(m),
-            cycles_accept: 0,
-            cycles_mint: 0,
+            cycles_accept: (0, 0),
+            cycles_mint: (0, 0),
             new_certified_data: None,
             new_global_timer: None,
         }
@@ -93,8 +95,8 @@ impl RuntimeResponse {
     pub fn noop() -> Self {
         RuntimeResponse {
             response: CanisterResponse::NoResponse(()),
-            cycles_accept: 0,
-            cycles_mint: 0,
+            cycles_accept: (0, 0),
+            cycles_mint: (0, 0),
             new_certified_data: None,
             new_global_timer: None,
         }
@@ -149,8 +151,8 @@ impl RuntimeState {
         };
         Ok(RuntimeResponse {
             response: output,
-            cycles_accept: 0,
-            cycles_mint: 0,
+            cycles_accept: (0, 0),
+            cycles_mint: (0, 0),
             new_certified_data,
             new_global_timer,
         })
@@ -177,7 +179,7 @@ struct Env {
     #[serde_as(deserialize_as = "Bytes")]
     canister_id: Vec<u8>,
     time: u64,
-    balance: u64,
+    balance: RuntimeCycles,
     status: CanisterStatus,
     certificate: Option<Certificate>,
     canister_version: u64,
@@ -242,7 +244,7 @@ struct RuntimeUpdate {
     caller: Vec<u8>,
     env: Env,
     needs_to_respond: bool,
-    cycles: u64,
+    cycles: RuntimeCycles,
     #[serde_as(deserialize_as = "Bytes")]
     arg: Vec<u8>,
 }
@@ -264,9 +266,9 @@ struct RuntimeCallback {
     callback: Callback,
     env: Env,
     needs_to_respond: bool,
-    cycles_available: u64,
+    cycles_available: RuntimeCycles,
     response: Response,
-    refunded_cycles: u64,
+    refunded_cycles: RuntimeCycles,
 }
 
 #[serde_as]
