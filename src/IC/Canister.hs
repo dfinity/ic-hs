@@ -119,8 +119,11 @@ maybeterm f (Just v) = f v
 timestampterm :: Timestamp -> Term
 timestampterm (Timestamp t) = TInteger $ fromIntegral t
 
+certterm :: Blob -> Term
+certterm bytes = mapterm [("bytes", blobterm bytes)]
+
 envterm :: Env -> Term
-envterm (Env cid t bal status cert can_version glob_timer) = mapterm [("canister_id", cidterm cid), ("time", timestampterm t), ("balance", TInteger $ fromIntegral bal), ("status", stringterm $ show status), ("certificate", maybeterm blobterm cert), ("canister_version", TInteger $ fromIntegral can_version), ("global_timer", TInteger $ fromIntegral glob_timer)]
+envterm (Env cid t bal status cert can_version glob_timer) = mapterm [("canister_id", cidterm cid), ("time", timestampterm t), ("balance", TInteger $ fromIntegral bal), ("status", stringterm $ show status), ("certificate", maybeterm certterm cert), ("canister_version", TInteger $ fromIntegral can_version), ("global_timer", TInteger $ fromIntegral glob_timer)]
 
 cbterm :: Callback -> Term
 cbterm (Callback reply_closure reject_closure cleanup_closure) = mapterm [("reply_closure", closureterm reply_closure), ("reject_closure", closureterm reject_closure), ("cleanup_closure", maybeterm closureterm cleanup_closure)]

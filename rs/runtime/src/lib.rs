@@ -166,13 +166,20 @@ enum CanisterStatus {
 
 #[serde_as]
 #[derive(Debug, Deserialize, Serialize)]
+struct Certificate {
+  #[serde_as(deserialize_as = "Bytes")]
+  bytes: Vec<u8>
+}
+
+#[serde_as]
+#[derive(Debug, Deserialize, Serialize)]
 struct Env {
     #[serde_as(deserialize_as = "Bytes")]
     canister_id: Vec<u8>,
     time: u64,
     balance: u64,
     status: CanisterStatus,
-    certificate: Option<Vec<u8>>,
+    certificate: Option<Certificate>,
     canister_version: u64,
     global_timer: u64,
 }
