@@ -6,7 +6,11 @@ let nixpkgs = import ./nix { inherit system; }; in
 let stdenv = nixpkgs.stdenv; in
 let subpath = nixpkgs.subpath; in
 
-let naersk = nixpkgs.callPackage nixpkgs.sources.naersk { rustc = nixpkgs.rustc-wasm; }; in
+let naersk = nixpkgs.callPackage nixpkgs.sources.naersk {
+    inherit (nixpkgs.rustPackages_1_66) cargo;
+    rustc = nixpkgs.rustPackages_1_66.rustc-wasm;
+}; in
+
 let universal-canister = (naersk.buildPackage rec {
     name = "universal-canister";
     src = subpath ./universal-canister;
@@ -23,11 +27,8 @@ let universal-canister = (naersk.buildPackage rec {
     '';
 }); in
 
-let naersk_1_66 = nixpkgs.callPackage nixpkgs.sources.naersk {
-    inherit (nixpkgs.rustPackages_1_66) cargo rustc;
-}; in
 
-let canister_sandbox = naersk_1_66.buildPackage rec {
+let canister_sandbox = naersk.buildPackage rec {
     name = "canister_sandbox";
     root = subpath ./rs/canister_sandbox;
     copyLibs = false;
@@ -38,7 +39,7 @@ let canister_sandbox = naersk_1_66.buildPackage rec {
     buildInputs = with nixpkgs; [ openssl libunwind ];
 }; in
 
-let sandbox_launcher = naersk_1_66.buildPackage rec {
+let sandbox_launcher = naersk.buildPackage rec {
     name = "sandbox_launcher";
     root = subpath ./rs/sandbox_launcher;
     copyLibs = false;
@@ -49,7 +50,7 @@ let sandbox_launcher = naersk_1_66.buildPackage rec {
     buildInputs = with nixpkgs; [ openssl libunwind ];
 }; in
 
-let runtime = (naersk_1_66.buildPackage rec {
+let runtime = (naersk.buildPackage rec {
     name = "runtime";
     root = subpath ./rs/runtime;
     copyLibs = true;
@@ -72,13 +73,13 @@ let haskellPackages = nixpkgs.haskellPackages.override {
   overrides = haskellOverrides;
 }; in
 
-let naersk_1_66_musl = nixpkgs.pkgsMusl.callPackage nixpkgs.sources.naersk {
+let naersk_musl = nixpkgs.pkgsMusl.callPackage nixpkgs.sources.naersk {
     inherit (nixpkgs.pkgsMusl.rustPackages_1_66) cargo rustc;
 }; in
 
 let static-openssl = nixpkgs.pkgsMusl.openssl.override {static = true;}; in
 
-let runtime_musl = (naersk_1_66_musl.buildPackage rec {
+let runtime_musl = (naersk_musl.buildPackage rec {
     name = "runtime";
     root = subpath ./rs/runtime;
     copyLibs = true;
