@@ -7,8 +7,7 @@ let stdenv = nixpkgs.stdenv; in
 let subpath = nixpkgs.subpath; in
 
 let naersk = nixpkgs.callPackage nixpkgs.sources.naersk {
-    inherit (nixpkgs.rustPackages_1_66) cargo;
-    rustc = nixpkgs.rustPackages_1_66.rustc-wasm;
+    inherit (nixpkgs.rustPackages) cargo rustc;
 }; in
 
 let universal-canister = (naersk.buildPackage rec {
@@ -74,7 +73,7 @@ let haskellPackages = nixpkgs.haskellPackages.override {
 }; in
 
 let naersk_musl = nixpkgs.pkgsMusl.callPackage nixpkgs.sources.naersk {
-    inherit (nixpkgs.pkgsMusl.rustPackages_1_66) cargo rustc;
+    inherit (nixpkgs.pkgsMusl.rustPackages) cargo rustc;
 }; in
 
 let static-openssl = nixpkgs.pkgsMusl.openssl.override {static = true;}; in
@@ -249,6 +248,7 @@ rec {
   inherit ic-ref-dist;
   inherit ic-hs-coverage;
   inherit universal-canister;
+  inherit runtime;
 
   openssl = nixpkgs.openssl;
 
