@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::routing::ResolveDestinationError;
 use ic_base_types::{CanisterId, NumBytes, NumSeconds, PrincipalId, SubnetId};
-use ic_constants::{LOG_CANISTER_OPERATION_CYCLES_THRESHOLD, SMALL_APP_SUBNET_MAX_SIZE};
+use ic_constants::{LOG_CANISTER_OPERATION_CYCLES_THRESHOLD};
 use ic_cycles_account_manager::{CyclesAccountManager, CyclesAccountManagerError};
 use ic_error_types::{ErrorCode, RejectCode, UserError};
 use ic_ic00_types::{
@@ -494,7 +494,6 @@ pub struct SandboxSafeSystemState {
     #[doc(hidden)]
     pub system_state_changes: SystemStateChanges,
     pub(super) canister_id: CanisterId,
-    pub(super) controller: PrincipalId,
     pub(super) status: CanisterStatusView,
     pub(super) subnet_type: SubnetType,
     pub(super) subnet_size: usize,
@@ -522,7 +521,6 @@ impl SandboxSafeSystemState {
     #[allow(clippy::too_many_arguments)]
     pub fn new_internal(
         canister_id: CanisterId,
-        controller: PrincipalId,
         status: CanisterStatusView,
         freeze_threshold: NumSeconds,
         memory_allocation: MemoryAllocation,
@@ -541,7 +539,6 @@ impl SandboxSafeSystemState {
     ) -> Self {
         Self {
             canister_id,
-            controller,
             status,
             subnet_type: cycles_account_manager.subnet_type(),
             subnet_size,
@@ -560,67 +557,6 @@ impl SandboxSafeSystemState {
             canister_version,
             controllers,
         }
-    }
-
-    pub fn new(
-        system_state: &SystemState,
-        cycles_account_manager: CyclesAccountManager,
-        network_topology: &NetworkTopology,
-        dirty_page_overhead: NumInstructions,
-    ) -> Self {
-        let call_context_balances = match system_state.call_context_manager() {
-            Some(call_context_manager) => call_context_manager
-                .call_contexts()
-                .iter()
-                .map(|(id, context)| (*id, context.available_cycles()))
-                .collect(),
-            None => BTreeMap::new(),
-        };
-        let available_request_slots = system_state.available_output_request_slots();
-
-        // Compute the available slots for IC_00 requests as the minimum of available
-        // slots across any queue to a subnet explicitly or IC_00 itself.
-        let mut ic00_aliases: BTreeSet<CanisterId> = network_topology
-            .subnets
-            .keys()
-            .map(|id| CanisterId::new(id.get()).unwrap())
-            .collect();
-        ic00_aliases.insert(CanisterId::ic_00());
-        let ic00_available_request_slots = ic00_aliases
-            .iter()
-            .map(|id| {
-                available_request_slots
-                    .get(id)
-                    .cloned()
-                    .unwrap_or(DEFAULT_QUEUE_CAPACITY)
-            })
-            .min()
-            .unwrap_or(DEFAULT_QUEUE_CAPACITY);
-        let subnet_size = network_topology
-            .get_subnet_size(&cycles_account_manager.get_subnet_id())
-            .unwrap_or(SMALL_APP_SUBNET_MAX_SIZE);
-
-        Self::new_internal(
-            system_state.canister_id,
-            *system_state.controller(),
-            CanisterStatusView::from_full_status(&system_state.status),
-            system_state.freeze_threshold,
-            system_state.memory_allocation,
-            system_state.balance(),
-            call_context_balances,
-            cycles_account_manager,
-            system_state
-                .call_context_manager()
-                .map(|c| c.next_callback_id()),
-            available_request_slots,
-            ic00_available_request_slots,
-            ic00_aliases,
-            subnet_size,
-            dirty_page_overhead,
-            system_state.global_timer,
-            system_state.canister_version,
-            system_state.controllers.clone(),
-        )
     }
 
     pub fn canister_id(&self) -> CanisterId {

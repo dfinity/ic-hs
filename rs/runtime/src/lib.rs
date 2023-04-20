@@ -12,9 +12,9 @@ use crate::sandboxed_execution_controller::SandboxedExecutionController;
 use hs_bindgen::*;
 use ic_base_types::NumSeconds;
 use ic_config::embedders::Config as EmbeddersConfig;
+use ic_config::execution_environment::Config as ExecutionConfig;
 use ic_config::flag_status::FlagStatus;
-use ic_config::subnet_config::CyclesAccountManagerConfig;
-use ic_config::subnet_config::SchedulerConfig;
+use ic_config::subnet_config::SubnetConfigs;
 use ic_cycles_account_manager::CyclesAccountManager;
 use ic_embedders::wasm_executor::WasmExecutionResult::Finished;
 use ic_embedders::CompilationCache;
@@ -22,6 +22,7 @@ use ic_embedders::WasmExecutionInput;
 use ic_interfaces::execution_environment::{ExecutionMode, SubnetAvailableMemory};
 use ic_registry_subnet_type::SubnetType;
 use ic_replicated_state::canister_state::execution_state::WasmBinary;
+use ic_replicated_state::canister_state::DEFAULT_QUEUE_CAPACITY;
 use ic_replicated_state::page_map::TestPageAllocatorFileDescriptorImpl;
 use ic_replicated_state::{ExportedFunctions, Global, Memory};
 use ic_system_api::sandbox_safe_system_state::CanisterStatusView::Running;
@@ -34,8 +35,8 @@ use ic_types::ingress::WasmResult;
 use ic_types::messages::CallContextId;
 use ic_types::methods::{FuncRef, SystemMethod, WasmMethod};
 use ic_types::MemoryAllocation::BestEffort;
-use ic_types::{CanisterId, PrincipalId};
-use ic_types::{CanisterTimer::*, ComputeAllocation, Cycles, NumBytes, NumInstructions, Time};
+use ic_types::{CanisterId, PrincipalId, SubnetId};
+use ic_types::{CanisterTimer::*, ComputeAllocation, Cycles, Time};
 use ic_wasm_types::CanisterModule;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -45,8 +46,6 @@ use base64::{engine::general_purpose, Engine as _};
 use serde::{Deserialize, Serialize};
 use serde_cbor::{from_slice, to_vec};
 use serde_with::{serde_as, Bytes};
-
-const DEFAULT_NUM_INSTRUCTIONS: NumInstructions = NumInstructions::new(5_000_000_000);
 
 struct RuntimeState {
     pub controller: Arc<SandboxedExecutionController>,
@@ -151,8 +150,8 @@ impl RuntimeState {
         };
         Ok(RuntimeResponse {
             response: output,
-            cycles_accept: (0, 0),
-            cycles_mint: (0, 0),
+            cycles_accept: (0, 0), // TODO(1): cycles accepted
+            cycles_mint: (0, 0),   // TODO(2): cycles minted
             new_certified_data,
             new_global_timer,
         })
@@ -169,8 +168,8 @@ enum CanisterStatus {
 #[serde_as]
 #[derive(Debug, Deserialize, Serialize)]
 struct Certificate {
-  #[serde_as(deserialize_as = "Bytes")]
-  bytes: Vec<u8>
+    #[serde_as(deserialize_as = "Bytes")]
+    bytes: Vec<u8>,
 }
 
 #[serde_as]
@@ -348,21 +347,30 @@ pub fn invoke(arg: &str) -> String {
 
     let mut state_map = STATE.lock().unwrap();
 
+    let subnet_type = SubnetType::Application; // TODO(3): subnet type
+    let subnet_id = SubnetId::from(PrincipalId::default()); // TODO(4): subnet ID
+
+    let subnet_config = SubnetConfigs::default().own_subnet_config(subnet_type);
+    let dirty_page_overhead = subnet_config.scheduler_config.dirty_page_overhead;
+
     match r.entry_point {
         RuntimeInvokeEnum::RuntimeInstantiate(ref x) => {
+            let mut embedder_config = EmbeddersConfig::new();
+            embedder_config.subnet_type = subnet_type;
+            embedder_config.dirty_page_overhead = dirty_page_overhead;
             let controller = Arc::new(
                 SandboxedExecutionController::new(
-                    &EmbeddersConfig::default(),
+                    &embedder_config,
                     Arc::new(TestPageAllocatorFileDescriptorImpl::new()),
                     &x.prefix,
                 )
                 .unwrap(),
             );
             let cycles_account_manager = CyclesAccountManager::new(
-                NumInstructions::new(1_000_000_000),
-                SubnetType::Application,
-                PrincipalId::default().into(),
-                CyclesAccountManagerConfig::application_subnet(),
+                subnet_config.scheduler_config.max_instructions_per_message,
+                subnet_type,
+                subnet_id,
+                subnet_config.cycles_account_manager_config,
             );
             let canister_module = CanisterModule::new(x.module.clone());
             let (
@@ -396,43 +404,35 @@ pub fn invoke(arg: &str) -> String {
 
     let current_state = state_map.get_mut(&canister_id).unwrap();
 
-    let execution_parameters = ExecutionParameters {
-        instruction_limits: InstructionLimits::new(
-            FlagStatus::Disabled,
-            DEFAULT_NUM_INSTRUCTIONS,
-            DEFAULT_NUM_INSTRUCTIONS,
-        ),
-        canister_memory_limit: NumBytes::from(4 << 30),
-        compute_allocation: ComputeAllocation::default(),
-        subnet_type: SubnetType::Application,
-        execution_mode: ExecutionMode::Replicated,
-    };
-
-    const DEFAULT_FREEZE_THRESHOLD: NumSeconds = NumSeconds::new(1 << 5);
-    let dirty_page_overhead = SchedulerConfig::application_subnet().dirty_page_overhead;
     let sandbox_safe_system_state = SandboxSafeSystemState::new_internal(
         canister_id,
-        PrincipalId::default(),
-        Running,
-        DEFAULT_FREEZE_THRESHOLD,
-        BestEffort,
-        Cycles::new(1 << 40),
-        BTreeMap::new(),
+        Running,                 // TODO(5): canister status
+        NumSeconds::new(1 << 5), // TODO(6): freeze_threshold
+        BestEffort,              // TODO(7): memory_allocation
+        Cycles::new(1 << 40),    // TODO(8): initial_cycles_balance
+        BTreeMap::new(),         // TODO(9): call_context_balances
         current_state.cycles_account_manager,
-        Some(666),
+        Some(666), // TODO(10): next_callback_id
         BTreeMap::new(),
-        1000,
-        BTreeSet::new(),
-        2,
+        DEFAULT_QUEUE_CAPACITY,
+        BTreeSet::new(), // TODO(11): IC00 aliases, i.e., PrincipalId::default() and all subnet IDs
+        2,               // TODO(12): subnet size
         dirty_page_overhead,
-        Inactive,
-        0,
-        BTreeSet::new(),
+        Inactive,        // TODO(13): global_timer
+        0,               // TODO(14): canister_version
+        BTreeSet::new(), // TODO(15): controllers
     );
 
-    let subnet_available_memory: SubnetAvailableMemory =
-        SubnetAvailableMemory::new(100000000, 100000000, 100000000);
+    let exec_config = ExecutionConfig::default();
+    let subnet_available_memory: SubnetAvailableMemory = SubnetAvailableMemory::new(
+        exec_config.subnet_memory_capacity.get() as i64,
+        exec_config.subnet_message_memory_capacity.get() as i64,
+        exec_config
+            .subnet_wasm_custom_sections_memory_capacity
+            .get() as i64,
+    );
 
+    // TODO(...) case distinction on entry point
     let (method, api_type) = match r.entry_point {
         RuntimeInvokeEnum::RuntimeInstantiate(_) => {
             if !current_state
@@ -495,6 +495,18 @@ pub fn invoke(arg: &str) -> String {
             return general_purpose::STANDARD.encode(to_vec(&RuntimeResponse::noop()).unwrap());
         }
     };
+    let execution_parameters = ExecutionParameters {
+        instruction_limits: InstructionLimits::new(
+            FlagStatus::Disabled,
+            subnet_config.scheduler_config.max_instructions_per_message,
+            subnet_config.scheduler_config.max_instructions_per_slice,
+        ),
+        canister_memory_limit: exec_config.max_canister_memory_size,
+        compute_allocation: ComputeAllocation::default(), // TODO(16): compute allocation
+        subnet_type,
+        execution_mode: ExecutionMode::Replicated, // TODO(17): replicated vs non-replicated
+    };
+
     let input = WasmExecutionInput {
         api_type,
         sandbox_safe_system_state: sandbox_safe_system_state.clone(),

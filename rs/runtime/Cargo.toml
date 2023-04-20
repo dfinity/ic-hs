@@ -41,4 +41,6 @@ crate-type = ["staticlib"]
 [patch."https://github.com/dfinity/ic"]
 ic-canister-sandbox-common = { path = "./ic_canister_sandbox_common" }
 ic-canister-sandbox-backend-lib = { path = "./ic_canister_sandbox_backend_lib" }
+ic-interfaces = { path = "./interfaces" }
+ic-embedders = { path = "./embedders" }
 ic-system-api = { path = "./system_api" }
