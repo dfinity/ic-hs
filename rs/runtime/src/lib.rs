@@ -411,7 +411,7 @@ pub fn invoke(arg: &str) -> String {
         NumSeconds::new(1 << 5), // TODO(6): freeze_threshold
         BestEffort,              // TODO(7): memory_allocation
         Cycles::new(1 << 40),    // TODO(8): initial_cycles_balance
-        BTreeMap::new(),         // TODO(9): call_context_balances
+        BTreeMap::new(),         // TODO(9): call_context_balances (only the current call context suffices)
         current_state.cycles_account_manager,
         Some(666), // TODO(10): next_callback_id
         BTreeMap::new(),
