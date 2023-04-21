@@ -20,3 +20,9 @@ path = "bin/sandbox_launcher.rs"
 # for canister_sandbox.
 [features]
 sigsegv_handler_checksum = []
+
+[patch."https://github.com/dfinity/ic"]
+ic-canister-sandbox-common = { path = "./ic_canister_sandbox_common" }
+ic-interfaces = { path = "./interfaces" }
+ic-embedders = { path = "./embedders" }
+ic-system-api = { path = "./system_api" }

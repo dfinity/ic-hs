@@ -12,3 +12,10 @@ libc = "0.2.119"
 
 [features]
 sigsegv_handler_checksum = [ "ic-canister-sandbox-backend-lib/sigsegv_handler_checksum" ]
+
+[patch."https://github.com/dfinity/ic"]
+ic-canister-sandbox-common = { path = "./ic_canister_sandbox_common" }
+ic-canister-sandbox-backend-lib = { path = "./ic_canister_sandbox_backend_lib" }
+ic-interfaces = { path = "./interfaces" }
+ic-embedders = { path = "./embedders" }
+ic-system-api = { path = "./system_api" }

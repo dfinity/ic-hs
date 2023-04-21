@@ -1,0 +1,186 @@
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
+load("//bazel:defs.bzl", "rust_bench", "rust_test_suite_with_extra_srcs")
+
+package(default_visibility = ["//visibility:public"])
+
+DEPENDENCIES = [
+    "//rs/config",
+    "//rs/cycles_account_manager",
+    "//rs/interfaces",
+    "//rs/memory_tracker",
+    "//rs/monitoring/logger",
+    "//rs/monitoring/metrics",
+    "//rs/registry/subnet_type",
+    "//rs/replicated_state",
+    "//rs/sys",
+    "//rs/system_api",
+    "//rs/types/types",
+    "//rs/types/wasm_types",
+    "//rs/utils",
+    "@crate_index//:anyhow",
+    "@crate_index//:libc",
+    "@crate_index//:libflate",
+    "@crate_index//:nix",
+    "@crate_index//:prometheus",
+    "@crate_index//:rayon",
+    "@crate_index//:serde",
+    "@crate_index//:serde_bytes",
+    "@crate_index//:slog",
+    "@crate_index//:slog-term",
+    "@crate_index//:wasm-encoder",
+    "@crate_index//:wasmparser",
+    "@crate_index//:wasmtime",
+    "@crate_index//:wasmtime-environ",
+    "@crate_index//:wasmtime-runtime",
+]
+
+MACRO_DEPENDENCIES = []
+
+DEV_DEPENDENCIES = [
+    "//rs/registry/routing_table",
+    "//rs/rust_canisters/canister_test",
+    "//rs/test_utilities",
+    "//rs/test_utilities/logger",
+    "//rs/test_utilities/execution_environment",
+    "@crate_index//:assert_matches",
+    "@crate_index//:criterion",
+    "@crate_index//:insta",
+    "@crate_index//:lazy_static",
+    "@crate_index//:maplit",
+    "@crate_index//:pretty_assertions",
+    "@crate_index//:proptest",
+    "@crate_index//:wasmprinter",
+    "@crate_index//:wast",
+    "@crate_index//:wat",
+]
+
+MACRO_DEV_DEPENDENCIES = []
+
+ALIASES = {}
+
+DATA = [
+    "//rs/canister_sandbox",
+    "//rs/canister_sandbox/sandbox_launcher",
+    "//rs/rust_canisters/stable_structures:stable_structures_canister",
+]
+
+ENV = {
+    "LAUNCHER_BINARY": "$(rootpath //rs/canister_sandbox/sandbox_launcher)",
+    "SANDBOX_BINARY": "$(rootpath //rs/canister_sandbox)",
+    "STABLE_STRUCTURES_CANISTER_WASM_PATH": "$(rootpath //rs/rust_canisters/stable_structures:stable_structures_canister)",
+}
+
+rust_library(
+    name = "embedders",
+    srcs = glob(["src/**/*.rs"]),
+    aliases = ALIASES,
+    crate_name = "ic_embedders",
+    proc_macro_deps = MACRO_DEPENDENCIES,
+    version = "0.8.0",
+    deps = DEPENDENCIES,
+)
+
+rust_binary(
+    name = "instrument-wasm",
+    srcs = ["bin/instrument_wasm.rs"],
+    aliases = ALIASES,
+    proc_macro_deps = MACRO_DEPENDENCIES,
+    deps = DEPENDENCIES + [":embedders"],
+)
+
+rust_test(
+    name = "embedders_test",
+    aliases = ALIASES,
+    crate = ":embedders",
+    proc_macro_deps = MACRO_DEPENDENCIES + MACRO_DEV_DEPENDENCIES,
+    deps = DEPENDENCIES + DEV_DEPENDENCIES,
+)
+
+rust_test(
+    name = "instrumentation",
+    srcs = ["tests/instrumentation.rs"],
+    aliases = ALIASES,
+    crate_root = "tests/instrumentation.rs",
+    data = glob(["tests/instrumentation-test-data/*"]) + glob(["tests/snapshots/*"]),
+    env = {
+        "CARGO_MANIFEST_DIR": "rs/embedders",
+        "INSTA_WORKSPACE_ROOT": ".",
+    },
+    proc_macro_deps = MACRO_DEPENDENCIES + MACRO_DEV_DEPENDENCIES,
+    deps = [":embedders"] + DEPENDENCIES + DEV_DEPENDENCIES,
+)
+
+rust_test_suite_with_extra_srcs(
+    name = "embedders_integration_tests",
+    srcs = glob(
+        ["tests/**/*.rs"],
+        exclude = [
+            "tests/wasmtime_simple.rs",
+            "tests/instrumentation.rs",
+        ],
+    ),
+    aliases = ALIASES,
+    compile_data = glob(["tests/instrumentation-test-data/*"]),
+    data = DATA + ["@wasm_spec_testsuite//:wast_files"] + glob([
+        "tests/compressed/*",
+        "tests/instrumentation-test-data/*",
+        "tests/round-trip-test-data/*",
+    ]),
+    env = dict(ENV.items() + [
+        ("CARGO_MANIFEST_DIR", "rs/embedders"),
+    ]),
+    extra_srcs = [
+        "tests/wasmtime_simple.rs",
+        "tests/instrumentation.rs",
+    ],
+    proc_macro_deps = MACRO_DEPENDENCIES + MACRO_DEV_DEPENDENCIES,
+    deps = [":embedders"] + DEPENDENCIES + DEV_DEPENDENCIES,
+)
+
+rust_bench(
+    name = "compilation_bench",
+    srcs = ["benches/compilation.rs"],
+    compile_data = glob(["benches/test-data/*"]),
+    deps = [":embedders"] + DEPENDENCIES + DEV_DEPENDENCIES,
+)
+
+rust_library(
+    name = "embedders_bench",
+    testonly = True,
+    srcs = [
+        "benches/embedders_bench/src/lib.rs",
+    ],
+    aliases = ALIASES,
+    proc_macro_deps = MACRO_DEPENDENCIES,
+    version = "0.8.0",
+    deps = [
+        "@crate_index//:candid",
+    ] + DEPENDENCIES + DEV_DEPENDENCIES,
+)
+
+rust_bench(
+    name = "stable_memory_bench",
+    testonly = True,
+    srcs = ["benches/stable_memory.rs"],
+    data = DATA,
+    env = ENV,
+    deps = [
+        ":embedders_bench",
+        "//rs/types/base_types",
+        "@crate_index//:candid",
+    ] + DEPENDENCIES + DEV_DEPENDENCIES,
+)
+
+rust_bench(
+    name = "heap_bench",
+    testonly = True,
+    srcs = ["benches/heap.rs"],
+    compile_data = glob(["benches/test-data/*"]),
+    data = DATA,
+    env = ENV,
+    deps = [
+        ":embedders_bench",
+        "//rs/types/base_types",
+        "@crate_index//:candid",
+    ] + DEPENDENCIES + DEV_DEPENDENCIES,
+)

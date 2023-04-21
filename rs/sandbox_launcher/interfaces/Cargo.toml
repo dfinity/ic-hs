@@ -1,0 +1,27 @@
+[package]
+name = "ic-interfaces"
+version = "0.8.0"
+edition = "2021"
+
+[dependencies]
+async-trait = "0.1.36"
+derive_more = { git = "https://github.com/dfinity-lab/derive_more", branch = "master" }
+ic-base-types = { git = "https://github.com/dfinity/ic", rev = "dca3091bc0a1a7f175c57464068c86ba19a556e6" }
+ic-crypto-tree-hash = { git = "https://github.com/dfinity/ic", rev = "dca3091bc0a1a7f175c57464068c86ba19a556e6" }
+ic-error-types = { git = "https://github.com/dfinity/ic", rev = "dca3091bc0a1a7f175c57464068c86ba19a556e6" }
+ic-ic00-types = { git = "https://github.com/dfinity/ic", rev = "dca3091bc0a1a7f175c57464068c86ba19a556e6" }
+ic-interfaces-state-manager = { git = "https://github.com/dfinity/ic", rev = "dca3091bc0a1a7f175c57464068c86ba19a556e6" }
+ic-protobuf = { git = "https://github.com/dfinity/ic", rev = "dca3091bc0a1a7f175c57464068c86ba19a556e6" }
+ic-registry-provisional-whitelist = { git = "https://github.com/dfinity/ic", rev = "dca3091bc0a1a7f175c57464068c86ba19a556e6" }
+ic-registry-subnet-type = { git = "https://github.com/dfinity/ic", rev = "dca3091bc0a1a7f175c57464068c86ba19a556e6" }
+ic-sys = { git = "https://github.com/dfinity/ic", rev = "dca3091bc0a1a7f175c57464068c86ba19a556e6" }
+ic-types = { git = "https://github.com/dfinity/ic", rev = "dca3091bc0a1a7f175c57464068c86ba19a556e6" }
+ic-utils = { git = "https://github.com/dfinity/ic", rev = "dca3091bc0a1a7f175c57464068c86ba19a556e6" }
+ic-wasm-types = { git = "https://github.com/dfinity/ic", rev = "dca3091bc0a1a7f175c57464068c86ba19a556e6" }
+prost = "0.11.0"
+rand = "0.8"
+serde = { version = "1.0.99", features = ["derive"] }
+serde_bytes = "0.11"
+tower = { version = "0.4.11", features = ["util", "limit"] }
+thiserror = "1.0"
+

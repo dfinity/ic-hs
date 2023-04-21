@@ -1321,7 +1321,6 @@ dependencies = [
 [[package]]
 name = "ic-canister-sandbox-common"
 version = "0.8.0"
-source = "git+https://github.com/dfinity/ic?rev=dca3091bc0a1a7f175c57464068c86ba19a556e6#dca3091bc0a1a7f175c57464068c86ba19a556e6"
 dependencies = [
  "bincode",
  "bytes",
@@ -1458,7 +1457,6 @@ dependencies = [
 [[package]]
 name = "ic-embedders"
 version = "0.8.0"
-source = "git+https://github.com/dfinity/ic?rev=dca3091bc0a1a7f175c57464068c86ba19a556e6#dca3091bc0a1a7f175c57464068c86ba19a556e6"
 dependencies = [
  "anyhow",
  "ic-config",
@@ -1523,7 +1521,6 @@ dependencies = [
 [[package]]
 name = "ic-interfaces"
 version = "0.8.0"
-source = "git+https://github.com/dfinity/ic?rev=dca3091bc0a1a7f175c57464068c86ba19a556e6#dca3091bc0a1a7f175c57464068c86ba19a556e6"
 dependencies = [
  "async-trait",
  "derive_more 0.99.8-alpha.0",
@@ -1719,7 +1716,6 @@ dependencies = [
 [[package]]
 name = "ic-system-api"
 version = "0.8.0"
-source = "git+https://github.com/dfinity/ic?rev=dca3091bc0a1a7f175c57464068c86ba19a556e6#dca3091bc0a1a7f175c57464068c86ba19a556e6"
 dependencies = [
  "candid",
  "ic-base-types",
