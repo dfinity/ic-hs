@@ -150,6 +150,7 @@ impl RuntimeState {
         };
         Ok(RuntimeResponse {
             response: output,
+            // new_calls:          // TODO(0): new calls
             cycles_accept: (0, 0), // TODO(1): cycles accepted
             cycles_mint: (0, 0),   // TODO(2): cycles minted
             new_certified_data,
