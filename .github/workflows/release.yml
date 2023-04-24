@@ -29,8 +29,8 @@ jobs:
       with:
         nixbuild_ssh_key: ${{ secrets.SSH_KEY_FOR_NIXBUILD }}
     - if: matrix.os == 'macos-latest'
-      run: nix-env -iA nix-build-uncached -f nix/
       uses: cachix/cachix-action@v12
+      run: nix-env -iA nix-build-uncached -f nix/
       with:
         name: ic-hs-test
         authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
