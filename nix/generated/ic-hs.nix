@@ -97,6 +97,7 @@ mkDerivation {
     base64-bytestring
     binary
     bytestring
+    Cabal
     candid
     case-insensitive
     cborg

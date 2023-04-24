@@ -1,0 +1,232 @@
+cradle:
+  cabal:
+    - path: "Setup.lhs"
+      component: "lib:ic-hs"
+      
+    - path: "tests/unit-tests.hs"
+      component: "ic-hs:test:unit-test"
+
+    - path: "bin/ic-request-id.hs"
+      component: "ic-hs:exe:ic-request-id"
+
+    - path: "bin/ic-ref-test.hs"
+      component: "ic-hs:exe:ic-ref-test"
+
+    - path: "bin/ic-ref-run.hs"
+      component: "ic-hs:exe:ic-ref-run"
+
+    - path: "bin/ic-ref.hs"
+      component: "ic-hs:exe:ic-ref"
+
+    - path: "src/IC/Canister.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/Canister/Imp.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/Canister/Snapshot.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/Canister/StableMemory.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/CBOR/Parser.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/CBOR/Patterns.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/CBOR/Utils.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/Certificate.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/Certificate/CBOR.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/Certificate/Validate.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/Certificate/Value.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/Constants.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/Crypto.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/Crypto/Bitcoin.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/Crypto/CanisterSig.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/Crypto/DER.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/Crypto/DER_BLS.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/Crypto/DER/Decode.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/Crypto/ECDSA.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/Crypto/Ed25519.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/Crypto/Secp256k1.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/Crypto/WebAuthn.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/Debug/JSON.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/DRun/Parse.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/Hash.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/HashTree.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/HashTree/CBOR.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/HTTP.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/HTTP/CBOR.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/HTTP/GenR.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/HTTP/GenR/Parse.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/HTTP/Request.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/HTTP/RequestId.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/HTTP/Status.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/Id/Forms.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/Id/Fresh.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/Management.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/Purify.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/Ref.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/Ref/IO.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/Ref/HTTP.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/Ref/Management.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/Ref/Types.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/Serialise.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/StateFile.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/Test/Agent.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/Test/Agent/Calls.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/Test/Agent/UnsafeCalls.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/Test/Agent/SafeCalls.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/Test/Agent/UserCalls.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/Test/BLS.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/Test/ECDSA.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/Test/HashTree.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/Test/Options.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/Test/Secp256k1.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/Test/Spec.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/Test/Spec/HTTP.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/Test/Spec/Timer.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/Test/Spec/TECDSA.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/Test/Spec/Utils.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/Test/StableMemory.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/Test/Universal.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/Test/WebAuthn.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/Types.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/Utils.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/Version.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/Wasm/Imports.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/Wasm/Winter.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/Wasm/Winter/Persist.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/IC/Runtime.hs"
+      component: "lib:ic-hs"
+
+    - path: "src/SourceId.hs"
+      component: "lib:ic-hs"
