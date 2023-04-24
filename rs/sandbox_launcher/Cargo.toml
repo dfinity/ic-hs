@@ -20,9 +20,3 @@ path = "bin/sandbox_launcher.rs"
 # for canister_sandbox.
 [features]
 sigsegv_handler_checksum = []
-
-[patch."https://github.com/dfinity/ic"]
-ic-canister-sandbox-common = { git = "https://github.com/dfinity/ic-hs.git", branch = "mraszyk/runtime-poc-v0-bas-fixes" }
-ic-interfaces = { git = "https://github.com/dfinity/ic-hs.git", branch = "mraszyk/runtime-poc-v0-bas-fixes" }
-ic-embedders = { git = "https://github.com/dfinity/ic-hs.git", branch = "mraszyk/runtime-poc-v0-bas-fixes" }
-ic-system-api = { git = "https://github.com/dfinity/ic-hs.git", branch = "mraszyk/runtime-poc-v0-bas-fixes" }

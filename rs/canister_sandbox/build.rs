@@ -7,4 +7,12 @@ fn main() {
         println!("cargo:rerun-if-changed=src/backtrace.c");
         println!("cargo:rustc-link-lib=dylib=unwind");
     }
+    if std::env::var("TARGET").unwrap() == "x86_64-unknown-linux-musl" {
+        cc::Build::new()
+            .file("src/backtrace.c")
+            .debug(false)
+            .compile("backtrace");
+        println!("cargo:rerun-if-changed=src/backtrace.c");
+        println!("cargo:rustc-link-lib=staticlib=unwind");
+    }
 }
