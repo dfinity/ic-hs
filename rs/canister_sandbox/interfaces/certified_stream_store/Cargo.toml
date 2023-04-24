@@ -1,7 +1,0 @@
-[package]
-name = "ic-interfaces-certified-stream-store"
-version = "0.8.0"
-edition = "2021"
-
-[dependencies]
-ic-types = { path = "../../types/types" }
