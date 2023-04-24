@@ -26,10 +26,10 @@ let universal-canister = (naersk.buildPackage rec {
     '';
 }); in
 
-
 let canister_sandbox = naersk.buildPackage rec {
     name = "canister_sandbox";
-    root = subpath ./rs/canister_sandbox;
+    root = subpath ./rs;
+    #src = nixpkgs.lib.sources.sourceByRegex ./rs ["Cargo.toml" "Cargo.lock" "canister_sandbox.*" "embedders.*" "ic_canister_sandbox_backend_lib.*" "ic_canister_sandbox_common.*" "interfaces.*" "system_api.*"];
     copyLibs = false;
     copyBins = true;
     doCheck = false;
@@ -40,7 +40,8 @@ let canister_sandbox = naersk.buildPackage rec {
 
 let sandbox_launcher = naersk.buildPackage rec {
     name = "sandbox_launcher";
-    root = subpath ./rs/sandbox_launcher;
+    root = subpath ./rs;
+    #src = nixpkgs.lib.sources.sourceByRegex ./rs ["Cargo.toml" "Cargo.lock" "sandbox_launcher.*" "embedders.*" "ic_canister_sandbox_backend_lib.*" "ic_canister_sandbox_common.*" "interfaces.*" "system_api.*"];
     copyLibs = false;
     copyBins = true;
     doCheck = false;
@@ -51,13 +52,14 @@ let sandbox_launcher = naersk.buildPackage rec {
 
 let runtime = (naersk.buildPackage rec {
     name = "runtime";
-    root = subpath ./rs/runtime;
+    root = subpath ./rs;
+    #src = nixpkgs.lib.sources.sourceByRegex ./rs ["Cargo.toml" "Cargo.lock" "runtime.*" "embedders.*" "ic_canister_sandbox_backend_lib.*" "ic_canister_sandbox_common.*" "interfaces.*" "system_api.*"];
     copyLibs = true;
     copyBins = false;
     doCheck = false;
     release = true;
     nativeBuildInputs = with nixpkgs; [ pkg-config protobuf ];
-    buildInputs = with nixpkgs; [ openssl ];
+    buildInputs = with nixpkgs; [ openssl libunwind ];
 }); in
 
 let haskellOverrides = self: super:
@@ -77,10 +79,37 @@ let naersk_musl = nixpkgs.pkgsMusl.callPackage nixpkgs.sources.naersk {
 }; in
 
 let static-openssl = nixpkgs.pkgsMusl.openssl.override {static = true;}; in
+let static-libunwind = nixpkgs.pkgsMusl.libunwind; in
+
+let canister_sandbox_musl = (naersk_musl.buildPackage rec {
+    name = "canister_sandbox";
+    root = subpath ./rs;
+    copyLibs = false;
+    copyBins = true;
+    doCheck = false;
+    release = true;
+    CARGO_BUILD_TARGET = "x86_64-unknown-linux-musl";
+    cargoBuildOptions = x : x ++ [ "--target x86_64-unknown-linux-musl" ];
+    nativeBuildInputs = with nixpkgs.pkgsMusl; [ pkg-config protobuf ];
+    buildInputs = [ static-openssl static-libunwind ];
+}); in
+
+let sandbox_launcher_musl = (naersk_musl.buildPackage rec {
+    name = "sandbox_launcher";
+    root = subpath ./rs;
+    copyLibs = false;
+    copyBins = true;
+    doCheck = false;
+    release = true;
+    CARGO_BUILD_TARGET = "x86_64-unknown-linux-musl";
+    cargoBuildOptions = x : x ++ [ "--target x86_64-unknown-linux-musl" ];
+    nativeBuildInputs = with nixpkgs.pkgsMusl; [ pkg-config protobuf ];
+    buildInputs = [ static-openssl static-libunwind ];
+}); in
 
 let runtime_musl = (naersk_musl.buildPackage rec {
     name = "runtime";
-    root = subpath ./rs/runtime;
+    root = subpath ./rs;
     copyLibs = true;
     copyBins = false;
     doCheck = false;
@@ -88,7 +117,7 @@ let runtime_musl = (naersk_musl.buildPackage rec {
     CARGO_BUILD_TARGET = "x86_64-unknown-linux-musl";
     cargoBuildOptions = x : x ++ [ "--target x86_64-unknown-linux-musl" ];
     nativeBuildInputs = with nixpkgs.pkgsMusl; [ pkg-config protobuf ];
-    buildInputs = [ static-openssl ];
+    buildInputs = [ static-openssl static-libunwind ];
 }); in
 
 let staticHaskellOverrides = self: super:
@@ -136,6 +165,8 @@ let
         mkdir -p $out/build/libs
         cp ${ic-ref}/bin/ic-ref $out/build
         cp ${ic-ref}/bin/ic-ref-test $out/build
+        cp ${canister_sandbox}/bin/canister_sandbox $out/build
+        cp ${sandbox_launcher}/bin/sandbox_launcher $out/build
         mkdir -p $out/test-data
         cp ${ic-ref}/test-data/universal-canister.wasm $out/test-data/universal-canister.wasm
         chmod u+w $out/build/ic-ref
@@ -144,6 +175,8 @@ let
           -b \
           -x $out/build/ic-ref \
           -x $out/build/ic-ref-test \
+          -x $out/build/canister_sandbox \
+          -x $out/build/sandbox_launcher \
           -d $out/build/libs \
           -p '@executable_path/libs' \
           -i /usr/lib/system \
@@ -184,6 +217,8 @@ let
         mkdir -p $out/build
         cp ${ic-hs-static}/bin/ic-ref $out/build
         cp ${ic-hs-static}/bin/ic-ref-test $out/build
+        cp ${canister_sandbox_musl}/bin/canister_sandbox $out/build
+        cp ${sandbox_launcher_musl}/bin/sandbox_launcher $out/build
         mkdir -p $out/test-data
         cp ${ic-hs}/test-data/universal-canister.wasm $out/test-data/universal-canister.wasm
 
@@ -219,6 +254,12 @@ let
           -t ${staticHaskellPackages.tasty-html.data} \
           -t ${nixpkgs.pkgsStatic.openssl.etc} \
           $out/build/ic-ref-test
+        remove-references-to \
+          -t ${nixpkgs.pkgsStatic.openssl.etc} \
+          $out/build/canister_sandbox
+        remove-references-to \
+          -t ${nixpkgs.pkgsStatic.openssl.etc} \
+          $out/build/sandbox_launcher
       '';
 
 
