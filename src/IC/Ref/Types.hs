@@ -144,7 +144,7 @@ data Message
   deriving (Show)
 
 -- Finally, the full IC state:
-
+--                                   subnetsize 
 type Subnet = (EntityId, SubnetType, W.Word64, SecretKey, [(W.Word64, W.Word64)])
 
 isRootSubnet :: Subnet -> Bool
@@ -210,7 +210,7 @@ onTrap a b = a >>= \case { Trap msg -> b msg; Return x -> return x }
 
 -- Helper functions
 
-getSubnetFromCanisterId' :: (CanReject m, ICM m) => CanisterId -> m (Maybe Subnet)
+getSubnetFromCanisterId' :: ICM m => CanisterId -> m (Maybe Subnet)
 getSubnetFromCanisterId' cid = do
   subnets <- gets subnets
   return $ find (\(_, _, _, _, ranges) -> checkCanisterIdInRanges ranges cid) subnets
@@ -429,6 +429,7 @@ module_hash = fmap (raw_wasm_hash . can_mod) . content
 idle_cycles_burned_per_day :: CanState -> Natural
 idle_cycles_burned_per_day _ = fromInteger 0
 
+-- pass more data which we need for invoke
 canisterEnv :: ICM m => CanisterId -> m Env
 canisterEnv canister_id = do
   env_time <- getCanisterTime canister_id
@@ -440,14 +441,25 @@ canisterEnv canister_id = do
       IsDeleted -> error "deleted canister encountered"
   env_canister_version <- getCanisterVersion canister_id
   env_global_timer <- getCanisterGlobalTimer canister_id
+  -- , controllers :: S.Set EntityId -- want
+  -- , memory_allocation :: Natural -- want
+  -- , freezing_threshold :: Natural -- want
+  can_state <- getCanister canister_id
+  subnet <- getSubnetFromCanisterId' canister_id 
+  let (entity_id, subnet_type, subnet_size, _, _) = fromJust subnet
+      subnet_info = (entity_id, subnet_type, subnet_size)
+  -- EntityId, SubnetType, subnetsize
   return $ Env
     { env_self = canister_id
     , env_time
     , env_balance
-    , env_status
+    , env_status 
     , env_certificate = Nothing
     , env_canister_version
     , env_global_timer
+    , env_controllers = controllers can_state
+    , env_memory_allocation = memory_allocation can_state
+    , env_freeze_threshold = freeze_threshold can_state
     }
 
 performCanisterActions :: ICM m => CanisterId -> CanisterActions -> m ()

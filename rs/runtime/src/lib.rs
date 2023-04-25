@@ -25,7 +25,7 @@ use ic_replicated_state::canister_state::execution_state::WasmBinary;
 use ic_replicated_state::canister_state::DEFAULT_QUEUE_CAPACITY;
 use ic_replicated_state::page_map::TestPageAllocatorFileDescriptorImpl;
 use ic_replicated_state::{ExportedFunctions, Global, Memory};
-use ic_system_api::sandbox_safe_system_state::CanisterStatusView::Running;
+use ic_system_api::sandbox_safe_system_state::CanisterStatusView;
 use ic_system_api::sandbox_safe_system_state::SandboxSafeSystemState;
 use ic_system_api::ApiType::Update as ApiUpdate;
 use ic_system_api::ApiType::{Init, InspectMessage, Start};
@@ -36,7 +36,7 @@ use ic_types::messages::CallContextId;
 use ic_types::methods::{FuncRef, SystemMethod, WasmMethod};
 use ic_types::MemoryAllocation::BestEffort;
 use ic_types::{CanisterId, PrincipalId, SubnetId};
-use ic_types::{CanisterTimer::*, ComputeAllocation, Cycles, Time};
+use ic_types::{CanisterTimer, ComputeAllocation, Cycles, Time};
 use ic_wasm_types::CanisterModule;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -136,8 +136,8 @@ impl RuntimeState {
                     .system_state_changes
                     .new_global_timer
                     .map(|t| match t {
-                        Inactive => 0,
-                        Active(t) => t.as_nanos_since_unix_epoch(),
+                        CanisterTimer::Inactive => 0,
+                        CanisterTimer::Active(t) => t.as_nanos_since_unix_epoch(),
                     });
         }
         let output = match exec_output_wasm.wasm_result {
@@ -159,31 +159,47 @@ impl RuntimeState {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-enum CanisterStatus {
-    Running,
-    Stopping,
-    Stopped,
-}
-
 #[serde_as]
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 struct Certificate {
     #[serde_as(deserialize_as = "Bytes")]
     bytes: Vec<u8>,
 }
 
 #[serde_as]
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 struct Env {
     #[serde_as(deserialize_as = "Bytes")]
     canister_id: Vec<u8>,
     time: u64,
     balance: RuntimeCycles,
-    status: CanisterStatus,
+    status: CanisterStatusView,
     certificate: Option<Certificate>,
     canister_version: u64,
     global_timer: u64,
+    controllers: BTreeSet<PrincipalId>,
+    memory_allocation: MemoryAllocation,
+    freeze_threshold: NumSeconds,
+    //subnet_info: (Vec<u8>, SubnetType, String),
+}
+//     let subnet_type = SubnetType::Application; // TODO(3): subnet type
+//     let subnet_id = SubnetId::from(PrincipalId::default()); // TODO(4): subnet ID
+impl Default for Env {
+    fn default() {
+        Env {
+            canister_id: r.canister_id.clone(),
+            time: 0u64,
+            balance: ((1 << 40), 0),
+            status: CanisterStatusView::Running,
+            certificate: None,
+            canister_version: 0u64,
+            global_timer: 0u64, 
+            controllers: BTreeSet<PrincipalId>::new(),
+            memory_allocation: BestEffort,
+            freeze_threshold: NumSeconds::new(1 << 5),
+            //subnet_info: (vec![0], SubnetType::Application, SubnetId::from(PrincipalId::default()))
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -332,6 +348,23 @@ enum RuntimeInvokeEnum {
     RuntimeGlobalTimer(RuntimeGlobalTimer),
 }
 
+fn get_env(rte: &RuntimeInvokeEnum) -> Option<Env> {
+    match rte {
+        RuntimeInvokeEnum::RuntimeInstantiate(_) => {None},
+        RuntimeInvokeEnum::RuntimeInitialize(x) => {Some(x.env.clone())},
+        RuntimeInvokeEnum::RuntimeUpdate(x) => {Some(x.env.clone())},
+        RuntimeInvokeEnum::RuntimeQuery(x) => {Some(x.env.clone())},
+        RuntimeInvokeEnum::RuntimeCallback(x) => {Some(x.env.clone())},
+        RuntimeInvokeEnum::RuntimeCleanup(x) => {Some(x.env.clone())},
+        RuntimeInvokeEnum::RuntimePreUpgrade(x) => {Some(x.env.clone())},
+        RuntimeInvokeEnum::RuntimePostUpgrade(x) => {Some(x.env.clone())},
+        RuntimeInvokeEnum::RuntimeInspectMessage(x) => {Some(x.env.clone())},
+        RuntimeInvokeEnum::RuntimeHeartbeat(x) => {Some(x.env.clone())},
+        RuntimeInvokeEnum::RuntimeGlobalTimer(x) => {Some(x.env.clone())},
+    }
+}
+
+
 #[serde_as]
 #[derive(Debug, Deserialize, Serialize)]
 struct RuntimeInvoke {
@@ -344,7 +377,8 @@ struct RuntimeInvoke {
 pub fn invoke(arg: &str) -> String {
     let r: RuntimeInvoke =
         from_slice(general_purpose::STANDARD.decode(arg).unwrap().as_slice()).unwrap();
-    let canister_id: CanisterId = r.canister_id.try_into().unwrap();
+    let canister_id: CanisterId = r.canister_id.clone().try_into().unwrap();
+    let env: Env = get_env(&r.entry_point).unwrap_or(Env::default());
 
     let mut state_map = STATE.lock().unwrap();
 
@@ -405,23 +439,25 @@ pub fn invoke(arg: &str) -> String {
 
     let current_state = state_map.get_mut(&canister_id).unwrap();
 
+    
     let sandbox_safe_system_state = SandboxSafeSystemState::new_internal(
-        canister_id,
-        Running,                 // TODO(5): canister status
-        NumSeconds::new(1 << 5), // TODO(6): freeze_threshold
-        BestEffort,              // TODO(7): memory_allocation
-        Cycles::new(1 << 40),    // TODO(8): initial_cycles_balance
+        env.canister_id.try_into().unwrap(),
+        env.status, 
+        env.freeze_threshold,
+        env.memory_allocation, 
+        Cycles::new(env.balance.0 as u128), //TODO: need to recompose the two parts
         BTreeMap::new(),         // TODO(9): call_context_balances (only the current call context suffices)
+        // map cycles attached to call (call context (which the caller supplies)) 
         current_state.cycles_account_manager,
-        Some(666), // TODO(10): next_callback_id
+        Some(666),               // TODO(10): next_callback_id
         BTreeMap::new(),
         DEFAULT_QUEUE_CAPACITY,
-        BTreeSet::new(), // TODO(11): IC00 aliases, i.e., PrincipalId::default() and all subnet IDs
-        2,               // TODO(12): subnet size
+        BTreeSet::new(),         // TODO(11): IC00 aliases, i.e., PrincipalId::default() and all subnet IDs
+        2,                       // TODO(12): subnet size
         dirty_page_overhead,
-        Inactive,        // TODO(13): global_timer
-        0,               // TODO(14): canister_version
-        BTreeSet::new(), // TODO(15): controllers
+        CanisterTimer::from_time(Time::from_nanos_since_unix_epoch(env.global_timer)),
+        env.canister_version, 
+        env.controllers,
     );
 
     let exec_config = ExecutionConfig::default();
@@ -481,7 +517,7 @@ pub fn invoke(arg: &str) -> String {
                 time: Time::from_nanos_since_unix_epoch(0),
                 incoming_payload: vec![],
                 incoming_cycles: Cycles::new(0),
-                caller: PrincipalId::default(),
+                caller: PrincipalId::default(), // EntityId from EntryPoint data
                 call_context_id: CallContextId::from(42),
                 response_data: vec![],
                 response_status: NotRepliedYet,

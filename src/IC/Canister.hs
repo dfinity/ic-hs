@@ -113,6 +113,9 @@ mapterm = TMap . map (\(n, t) -> (TString n, t))
 stringterm :: String -> Term
 stringterm = TString . T.pack
 
+listterm :: [Term] -> Term
+listterm = TList
+
 maybeterm :: (a -> Term) -> Maybe a -> Term
 maybeterm _ Nothing = TNull
 maybeterm f (Just v) = f v
@@ -123,8 +126,11 @@ timestampterm (Timestamp t) = TInteger $ fromIntegral t
 certterm :: Blob -> Term
 certterm bytes = mapterm [("bytes", blobterm bytes)]
 
+-- change this to accomodate new Env components
+-- string is name of field in rust code
+-- subnetId :: principal , turn principal into cbor term too, like cidterm above
 envterm :: Env -> Term
-envterm (Env cid t bal status cert can_version glob_timer) = mapterm [("canister_id", cidterm cid), ("time", timestampterm t), ("balance", cyclesterm bal), ("status", stringterm $ show status), ("certificate", maybeterm certterm cert), ("canister_version", TInteger $ fromIntegral can_version), ("global_timer", TInteger $ fromIntegral glob_timer)]
+envterm (Env cid t bal status cert can_version glob_timer subnet_info_TODO) = mapterm [("canister_id", cidterm cid), ("time", timestampterm t), ("balance", cyclesterm bal), ("status", stringterm $ show status), ("certificate", maybeterm certterm cert), ("canister_version", TInteger $ fromIntegral can_version), ("global_timer", TInteger $ fromIntegral glob_timer)]
 
 cbterm :: Callback -> Term
 cbterm (Callback reply_closure reject_closure cleanup_closure) = mapterm [("reply_closure", closureterm reply_closure), ("reject_closure", closureterm reject_closure), ("cleanup_closure", maybeterm closureterm cleanup_closure)]
