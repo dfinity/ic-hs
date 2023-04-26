@@ -422,9 +422,15 @@ starveCallContext ctxt_id = do
 
 -- Message handling
 
+printEntry :: EntryPoint -> String
+printEntry (Public name _) = "Method: " ++ name
+printEntry (Closure cb resp _) = "Closure: " ++ show cb ++ " with response " ++ show resp
+printEntry _ = "..."
+
 processMessage :: ICM m => Message -> m ()
 processMessage m = case m of
   CallMessage ctxt_id entry -> onReject (rejectCallContext ctxt_id) $ do
+    _ <- liftIO $ putStrLn $ "CallMessage: " ++ show ctxt_id ++ " to " ++ printEntry entry
     callee <- calleeOfCallID ctxt_id
     maybeSubnet <- getSubnetFromSubnetId callee
     if callee == managementCanisterId || isJust maybeSubnet then do
@@ -465,6 +471,7 @@ processMessage m = case m of
       FromCanister other_ctxt_id callback -> do
         -- Add refund to balance
         cid <- calleeOfCallID other_ctxt_id
+        _ <- liftIO $ putStrLn $ "ResponseMessage: from " ++ show ctxt_id ++ " to " ++ show other_ctxt_id
         prev_balance <- getBalance cid
         setBalance cid $ prev_balance + refunded_cycles
         -- Unless deleted
@@ -581,6 +588,7 @@ newCall from_ctxt_id call = do
     , last_trap = Nothing
     , available_cycles = call_transferred_cycles call
     }
+  _ <- liftIO $ putStrLn $ "New call from: " ++ show from_ctxt_id ++ " to " ++ show new_ctxt_id ++ " with cb " ++ show (call_callback call)
   enqueueMessage $ CallMessage
     { call_context = new_ctxt_id
     , entry = Public (call_method_name call) (call_arg call)
