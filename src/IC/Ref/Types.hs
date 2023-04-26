@@ -144,13 +144,17 @@ data Message
   deriving (Show)
 
 -- Finally, the full IC state:
---                                   subnetsize 
+--           subnet princial  (PrincipalId or SubnetId in rust) 
 type Subnet = (EntityId, SubnetType, W.Word64, SecretKey, [(W.Word64, W.Word64)])
-
+--                                   subnetsize
 isRootSubnet :: Subnet -> Bool
 isRootSubnet (_, _, _, _, ranges) = checkCanisterIdInRanges ranges nns_canister_id
   where
     nns_canister_id = wordToId 0
+
+-- TODO: Make Subnet a record and use the accessor instead
+entityId :: Subnet -> EntityId
+entityId (x, _, _ ,_ ,_) = x
 
 data IC = IC
   { canisters :: CanisterId ↦ CanState
@@ -160,7 +164,7 @@ data IC = IC
   , rng :: StdGen
   , secretRootKey :: SecretKey
   , rootSubnet :: Maybe EntityId
-  , subnets :: [Subnet]
+  , subnets :: [Subnet] -- needs to be passed into toplevel next to env TODO only the EntityId
   }
   deriving (Show)
 
@@ -441,14 +445,9 @@ canisterEnv canister_id = do
       IsDeleted -> error "deleted canister encountered"
   env_canister_version <- getCanisterVersion canister_id
   env_global_timer <- getCanisterGlobalTimer canister_id
-  -- , controllers :: S.Set EntityId -- want
-  -- , memory_allocation :: Natural -- want
-  -- , freezing_threshold :: Natural -- want
   can_state <- getCanister canister_id
-  subnet <- getSubnetFromCanisterId' canister_id 
-  let (entity_id, subnet_type, subnet_size, _, _) = fromJust subnet
-      subnet_info = (entity_id, subnet_type, subnet_size)
-  -- EntityId, SubnetType, subnetsize
+  (env_subnet_id, env_subnet_type, env_subnet_size, _, _) <- fromJust <$> getSubnetFromCanisterId' canister_id 
+  env_all_subnets <- fmap entityId <$> gets subnets
   return $ Env
     { env_self = canister_id
     , env_time
@@ -459,7 +458,11 @@ canisterEnv canister_id = do
     , env_global_timer
     , env_controllers = controllers can_state
     , env_memory_allocation = memory_allocation can_state
-    , env_freeze_threshold = freeze_threshold can_state
+    , env_freeze_threshold = freezing_threshold can_state
+    , env_subnet_id
+    , env_subnet_type
+    , env_subnet_size
+    , env_all_subnets -- this info is not canister-specific, so all canister share the same data here.
     }
 
 performCanisterActions :: ICM m => CanisterId -> CanisterActions -> m ()

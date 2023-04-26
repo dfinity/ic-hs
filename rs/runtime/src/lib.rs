@@ -34,7 +34,7 @@ use ic_system_api::{ExecutionParameters, InstructionLimits};
 use ic_types::ingress::WasmResult;
 use ic_types::messages::CallContextId;
 use ic_types::methods::{FuncRef, SystemMethod, WasmMethod};
-use ic_types::MemoryAllocation::BestEffort;
+use ic_types::MemoryAllocation;
 use ic_types::{CanisterId, PrincipalId, SubnetId};
 use ic_types::{CanisterTimer, ComputeAllocation, Cycles, Time};
 use ic_wasm_types::CanisterModule;
@@ -177,27 +177,33 @@ struct Env {
     certificate: Option<Certificate>,
     canister_version: u64,
     global_timer: u64,
-    controllers: BTreeSet<PrincipalId>,
-    memory_allocation: MemoryAllocation,
-    freeze_threshold: NumSeconds,
-    //subnet_info: (Vec<u8>, SubnetType, String),
+    controllers: Vec<PrincipalId>, // TODO: these types are for easy deserialization 
+    memory_allocation: u64,        // they have to be transformed before being passed
+    freeze_threshold: u64,         // to new_internal. 
+    subnet_id: SubnetId,  // like canister_id an EntityId 
+    subnet_type: SubnetType,
+    subnet_size: u64,
+    all_subnets: Vec<CanisterId>,
 }
 //     let subnet_type = SubnetType::Application; // TODO(3): subnet type
 //     let subnet_id = SubnetId::from(PrincipalId::default()); // TODO(4): subnet ID
-impl Default for Env {
-    fn default() {
+impl Env {
+    fn new(can_id: Vec<u8>) -> Env {
         Env {
-            canister_id: r.canister_id.clone(),
+            canister_id: can_id,
             time: 0u64,
-            balance: ((1 << 40), 0),
+            balance: (0, (1 << 40)),
             status: CanisterStatusView::Running,
             certificate: None,
             canister_version: 0u64,
             global_timer: 0u64, 
-            controllers: BTreeSet<PrincipalId>::new(),
-            memory_allocation: BestEffort,
-            freeze_threshold: NumSeconds::new(1 << 5),
-            //subnet_info: (vec![0], SubnetType::Application, SubnetId::from(PrincipalId::default()))
+            controllers: vec![], //BTreeSet::<PrincipalId>::new(),
+            memory_allocation: 0, //MemoryAllocation::BestEffort,
+            freeze_threshold: 1 << 5, //NumSeconds::new(1 << 5),
+            subnet_id: SubnetId::from(PrincipalId::default()),
+            subnet_type: SubnetType::Application,
+            subnet_size: 2,
+            all_subnets: vec![],
         }
     }
 }
@@ -378,12 +384,12 @@ pub fn invoke(arg: &str) -> String {
     let r: RuntimeInvoke =
         from_slice(general_purpose::STANDARD.decode(arg).unwrap().as_slice()).unwrap();
     let canister_id: CanisterId = r.canister_id.clone().try_into().unwrap();
-    let env: Env = get_env(&r.entry_point).unwrap_or(Env::default());
+    let env: Env = get_env(&r.entry_point).unwrap_or(Env::new(r.canister_id.clone()));
 
     let mut state_map = STATE.lock().unwrap();
 
-    let subnet_type = SubnetType::Application; // TODO(3): subnet type
-    let subnet_id = SubnetId::from(PrincipalId::default()); // TODO(4): subnet ID
+    let subnet_type = env.subnet_type;
+    let subnet_id = env.subnet_id;
 
     let subnet_config = SubnetConfigs::default().own_subnet_config(subnet_type);
     let dirty_page_overhead = subnet_config.scheduler_config.dirty_page_overhead;
@@ -443,21 +449,20 @@ pub fn invoke(arg: &str) -> String {
     let sandbox_safe_system_state = SandboxSafeSystemState::new_internal(
         env.canister_id.try_into().unwrap(),
         env.status, 
-        env.freeze_threshold,
-        env.memory_allocation, 
-        Cycles::new(env.balance.0 as u128), //TODO: need to recompose the two parts
-        BTreeMap::new(),         // TODO(9): call_context_balances (only the current call context suffices)
-        // map cycles attached to call (call context (which the caller supplies)) 
+        NumSeconds::new(env.freeze_threshold),
+        if env.memory_allocation == 0 {MemoryAllocation::BestEffort} else {MemoryAllocation::Reserved((env.memory_allocation).into())}, 
+        Cycles::new(((env.balance.0 as u128) << 64) + env.balance.1 as u128),
+        BTreeMap::new(),                    // TODO(9): call_context_balances (only the current call context suffices). map cycles attached to call (call context (which the caller supplies)) 
         current_state.cycles_account_manager,
-        Some(666),               // TODO(10): next_callback_id
+        Some(666),                          // TODO(10): next_callback_id
         BTreeMap::new(),
         DEFAULT_QUEUE_CAPACITY,
-        BTreeSet::new(),         // TODO(11): IC00 aliases, i.e., PrincipalId::default() and all subnet IDs
-        2,                       // TODO(12): subnet size
+        BTreeSet::from_iter(env.all_subnets.into_iter()), 
+        env.subnet_size.try_into().unwrap(),
         dirty_page_overhead,
         CanisterTimer::from_time(Time::from_nanos_since_unix_epoch(env.global_timer)),
         env.canister_version, 
-        env.controllers,
+        BTreeSet::from_iter(env.controllers.into_iter()),
     );
 
     let exec_config = ExecutionConfig::default();

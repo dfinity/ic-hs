@@ -166,7 +166,10 @@ data Env = Env
     , env_controllers :: S.Set EntityId
     , env_memory_allocation :: Natural
     , env_freeze_threshold :: Natural
-    --, subnet_info :: (EntityId, SubnetType, W.Word64)
+    , env_subnet_id :: EntityId
+    , env_subnet_type :: SubnetType
+    , env_subnet_size :: W.Word64
+    , env_all_subnets :: [EntityId]
     }
 
 data TrapOr a = Trap String | Return a deriving Functor
