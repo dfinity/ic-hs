@@ -525,7 +525,8 @@ impl SandboxSafeSystemState {
         freeze_threshold: NumSeconds,
         memory_allocation: MemoryAllocation,
         initial_cycles_balance: Cycles,
-        call_context_balances: BTreeMap<CallContextId, Cycles>,
+        // map contains a single entry: 
+        call_context_balances: BTreeMap<CallContextId, Cycles>, 
         cycles_account_manager: CyclesAccountManager,
         next_callback_id: Option<u64>,
         available_request_slots: BTreeMap<CanisterId, usize>,

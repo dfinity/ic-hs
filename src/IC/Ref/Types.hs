@@ -144,9 +144,8 @@ data Message
   deriving (Show)
 
 -- Finally, the full IC state:
---           subnet princial  (PrincipalId or SubnetId in rust) 
 type Subnet = (EntityId, SubnetType, W.Word64, SecretKey, [(W.Word64, W.Word64)])
---                                   subnetsize
+
 isRootSubnet :: Subnet -> Bool
 isRootSubnet (_, _, _, _, ranges) = checkCanisterIdInRanges ranges nns_canister_id
   where
@@ -164,7 +163,7 @@ data IC = IC
   , rng :: StdGen
   , secretRootKey :: SecretKey
   , rootSubnet :: Maybe EntityId
-  , subnets :: [Subnet] -- needs to be passed into toplevel next to env TODO only the EntityId
+  , subnets :: [Subnet] 
   }
   deriving (Show)
 

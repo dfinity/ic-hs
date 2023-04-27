@@ -177,16 +177,15 @@ struct Env {
     certificate: Option<Certificate>,
     canister_version: u64,
     global_timer: u64,
-    controllers: Vec<PrincipalId>, // TODO: these types are for easy deserialization 
-    memory_allocation: u64,        // they have to be transformed before being passed
-    freeze_threshold: u64,         // to new_internal. 
-    subnet_id: SubnetId,  // like canister_id an EntityId 
+    controllers: Vec<PrincipalId>, 
+    memory_allocation: u64,
+    freeze_threshold: u64,
+    subnet_id: SubnetId, 
     subnet_type: SubnetType,
     subnet_size: u64,
     all_subnets: Vec<CanisterId>,
 }
-//     let subnet_type = SubnetType::Application; // TODO(3): subnet type
-//     let subnet_id = SubnetId::from(PrincipalId::default()); // TODO(4): subnet ID
+
 impl Env {
     fn new(can_id: Vec<u8>) -> Env {
         Env {
@@ -197,9 +196,9 @@ impl Env {
             certificate: None,
             canister_version: 0u64,
             global_timer: 0u64, 
-            controllers: vec![], //BTreeSet::<PrincipalId>::new(),
-            memory_allocation: 0, //MemoryAllocation::BestEffort,
-            freeze_threshold: 1 << 5, //NumSeconds::new(1 << 5),
+            controllers: vec![], 
+            memory_allocation: 0, 
+            freeze_threshold: 1 << 5, 
             subnet_id: SubnetId::from(PrincipalId::default()),
             subnet_type: SubnetType::Application,
             subnet_size: 2,
