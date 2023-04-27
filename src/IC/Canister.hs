@@ -126,9 +126,6 @@ certterm bytes = mapterm [("bytes", blobterm bytes)]
 entityterm :: EntityId -> Term
 entityterm = blobterm . rawEntityId
 
--- change this to accomodate new Env components
--- string is name of field in rust code
--- subnetId :: principal , turn principal into cbor term too, like cidterm above
 envterm :: Env -> Term
 envterm (Env cid t bal status cert can_version glob_timer ctrls mem_alloc freeze_thresh subnet_id subnet_type subnet_size all_subnets) = mapterm [
   ("canister_id", cidterm cid), 

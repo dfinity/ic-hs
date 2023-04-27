@@ -591,7 +591,10 @@ pub fn invoke(arg: &str) -> String {
 
         },
         RuntimeInvokeEnum::RuntimeCleanup(x) => {
-
+            (
+                WasmMethod::System(SystemMethod::Empty),
+                ApiType::Cleanup { time: Time::from_nanos_since_unix_epoch(0) }
+            )
         },
         RuntimeInvokeEnum::RuntimePreUpgrade(x) => {
 
