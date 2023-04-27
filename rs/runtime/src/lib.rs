@@ -27,8 +27,7 @@ use ic_replicated_state::page_map::TestPageAllocatorFileDescriptorImpl;
 use ic_replicated_state::{ExportedFunctions, Global, Memory};
 use ic_system_api::sandbox_safe_system_state::CanisterStatusView;
 use ic_system_api::sandbox_safe_system_state::SandboxSafeSystemState;
-use ic_system_api::ApiType::Update as ApiUpdate;
-use ic_system_api::ApiType::{Init, InspectMessage, Start};
+use ic_system_api::ApiType;
 use ic_system_api::ResponseStatus::NotRepliedYet;
 use ic_system_api::{ExecutionParameters, InstructionLimits};
 use ic_types::ingress::WasmResult;
@@ -444,7 +443,8 @@ pub fn invoke(arg: &str) -> String {
 
     let current_state = state_map.get_mut(&canister_id).unwrap();
 
-    
+    let call_ctx_id = dummy_below; // put it everywhere and leave dummy as TODO
+
     let sandbox_safe_system_state = SandboxSafeSystemState::new_internal(
         env.canister_id.try_into().unwrap(),
         env.status, 
@@ -473,7 +473,18 @@ pub fn invoke(arg: &str) -> String {
             .get() as i64,
     );
 
-    // TODO(...) case distinction on entry point
+    let execution_parameters = ExecutionParameters {
+        instruction_limits: InstructionLimits::new(
+            FlagStatus::Disabled,
+            subnet_config.scheduler_config.max_instructions_per_message,
+            subnet_config.scheduler_config.max_instructions_per_slice,
+        ),
+        canister_memory_limit: exec_config.max_canister_memory_size,
+        compute_allocation: ComputeAllocation::default(), // TODO(16): compute allocation
+        subnet_type,
+        execution_mode: ExecutionMode::Replicated, // TODO(17): replicated vs non-replicated
+    };
+
     let (method, api_type) = match r.entry_point {
         RuntimeInvokeEnum::RuntimeInstantiate(_) => {
             if !current_state
@@ -484,19 +495,110 @@ pub fn invoke(arg: &str) -> String {
             }
             (
                 WasmMethod::System(SystemMethod::CanisterStart),
-                Start {
+                ApiType::Start {
                     time: Time::from_nanos_since_unix_epoch(0),
                 },
             )
         }
         RuntimeInvokeEnum::RuntimeInitialize(x) => (
             WasmMethod::System(SystemMethod::CanisterInit),
-            Init {
-                time: Time::from_nanos_since_unix_epoch(0),
+            ApiType::Init {
+                time: Time::from_nanos_since_unix_epoch(0),  
                 incoming_payload: x.arg,
                 caller: x.caller.try_into().unwrap(),
             },
         ),
+        RuntimeInvokeEnum::RuntimeUpdate(x) => (
+            WasmMethod::Update(x.method),
+            ApiType::Update {
+                time: Time::from_nanos_since_unix_epoch(0), // TODO? 
+                incoming_payload: vec![],                   // TODO
+                incoming_cycles: Cycles::new(0),            // TODO
+                caller: PrincipalId::default(),             // EntityId from EntryPoint data
+                call_context_id: CallContextId::from(42),   // TODO
+                response_data: vec![],                      // final 
+                response_status: NotRepliedYet,             // final 
+                outgoing_request: None,                     // final
+                max_reply_size: 2000000.into(),             // TODO 
+            },
+        ),
+        RuntimeInvokeEnum::RuntimeQuery(x) => {(
+            WasmMethod::Query(x.method),
+            if execution_parameters.execution_mode  == ExecutionMode::Replicated {
+                ApiType::ReplicatedQuery {
+                    time: Time,
+                    incoming_payload: Vec<u8>,
+                    caller: PrincipalId,
+                    response_data: Vec<u8>,
+                    response_status: ResponseStatus,
+                    data_certificate: Option<Vec<u8>>,
+                    max_reply_size: NumBytes,
+                }
+            } else {
+                ApiType::NonReplicatedQuery {
+                    time: Time,
+                    caller: PrincipalId,
+                    own_subnet_id: SubnetId,
+                    incoming_payload: Vec<u8>,
+                    data_certificate: Option<Vec<u8>>,
+                    // Begins as empty and used to accumulate data for sending replies.
+                    response_data: Vec<u8>,
+                    response_status: ResponseStatus,
+                    max_reply_size: NumBytes,
+                    query_kind: NonReplicatedQueryKind,
+                }
+            }
+        )},
+        RuntimeInvokeEnum::RuntimeCallback(x) => {
+            match x.response {
+                Response::Reply(response_reply) => {
+                    (
+                        WasmMethod::System(SystemMethod::Empty),  // TODO: no idea what WasmMethod to use here
+                        ApiType::ReplyCallback { 
+                            time: (), 
+                            incoming_payload: (), 
+                            incoming_cycles: (), 
+                            call_context_id: (), 
+                            response_data: (), 
+                            response_status: (), 
+                            outgoing_request: (), 
+                            max_reply_size: (), 
+                            execution_mode: () 
+                        }
+                    )
+                }
+                Response::Reject(response_reject) => {
+                    (
+                        WasmMethod::System(SystemMethod::Empty),  // TODO: no idea what WasmMethod to use here
+                        ApiType::RejectCallback { 
+                            time: Time,
+                            reject_context: RejectContext,
+                            incoming_cycles: Cycles,
+                            call_context_id: CallContextId,
+                            // Begins as empty and used to accumulate data for sending replies.
+                            #[serde(with = "serde_bytes")]
+                            response_data: Vec<u8>,
+                            response_status: ResponseStatus,
+                            /// Optional outgoing request under construction. If `None` no outgoing
+                            /// request is currently under construction.
+                            outgoing_request: Option<RequestInPrep>,
+                            max_reply_size: NumBytes,
+                            execution_mode: ExecutionMode,
+                        }
+                    )
+                }
+            }
+
+        },
+        RuntimeInvokeEnum::RuntimeCleanup(x) => {
+
+        },
+        RuntimeInvokeEnum::RuntimePreUpgrade(x) => {
+
+        },
+        RuntimeInvokeEnum::RuntimePostUpgrade(x) => {
+
+        },
         RuntimeInvokeEnum::RuntimeInspectMessage(x) => {
             if !current_state
                 .exported_functions
@@ -515,38 +617,17 @@ pub fn invoke(arg: &str) -> String {
                 },
             )
         }
-        RuntimeInvokeEnum::RuntimeUpdate(x) => (
-            WasmMethod::Update(x.method),
-            ApiUpdate {
-                time: Time::from_nanos_since_unix_epoch(0),
-                incoming_payload: vec![],
-                incoming_cycles: Cycles::new(0),
-                caller: PrincipalId::default(), // EntityId from EntryPoint data
-                call_context_id: CallContextId::from(42),
-                response_data: vec![],
-                response_status: NotRepliedYet,
-                outgoing_request: None,
-                max_reply_size: 2000000.into(),
-            },
-        ),
         RuntimeInvokeEnum::RuntimeHeartbeat(_) => {
             return general_purpose::STANDARD.encode(to_vec(&RuntimeResponse::noop()).unwrap());
         }
+        RuntimeInvokeEnum::RuntimeGlobalTimer(x) => {
+
+        },
         _ => {
             return general_purpose::STANDARD.encode(to_vec(&RuntimeResponse::noop()).unwrap());
         }
     };
-    let execution_parameters = ExecutionParameters {
-        instruction_limits: InstructionLimits::new(
-            FlagStatus::Disabled,
-            subnet_config.scheduler_config.max_instructions_per_message,
-            subnet_config.scheduler_config.max_instructions_per_slice,
-        ),
-        canister_memory_limit: exec_config.max_canister_memory_size,
-        compute_allocation: ComputeAllocation::default(), // TODO(16): compute allocation
-        subnet_type,
-        execution_mode: ExecutionMode::Replicated, // TODO(17): replicated vs non-replicated
-    };
+    
 
     let input = WasmExecutionInput {
         api_type,
