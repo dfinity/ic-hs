@@ -152,8 +152,8 @@ isRootSubnet (_, _, _, _, ranges) = checkCanisterIdInRanges ranges nns_canister_
     nns_canister_id = wordToId 0
 
 -- TODO: Make Subnet a record and use the accessor instead
-entityId :: Subnet -> EntityId
-entityId (x, _, _ ,_ ,_) = x
+entity_id :: Subnet -> EntityId
+entity_id (x, _, _ ,_ ,_) = x
 
 data IC = IC
   { canisters :: CanisterId ↦ CanState
@@ -446,7 +446,7 @@ canisterEnv canister_id = do
   env_global_timer <- getCanisterGlobalTimer canister_id
   can_state <- getCanister canister_id
   (env_subnet_id, env_subnet_type, env_subnet_size, _, _) <- fromJust <$> getSubnetFromCanisterId' canister_id 
-  env_all_subnets <- fmap entityId <$> gets subnets
+  env_all_subnets <- fmap entity_id <$> gets subnets
   return $ Env
     { env_self = canister_id
     , env_time

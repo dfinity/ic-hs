@@ -446,7 +446,7 @@ pub fn invoke(arg: &str) -> String {
 
     
     let sandbox_safe_system_state = SandboxSafeSystemState::new_internal(
-        env.canister_id.try_into().unwrap(),
+        canister_id,
         env.status, 
         NumSeconds::new(env.freeze_threshold),
         if env.memory_allocation == 0 {MemoryAllocation::BestEffort} else {MemoryAllocation::Reserved((env.memory_allocation).into())}, 
