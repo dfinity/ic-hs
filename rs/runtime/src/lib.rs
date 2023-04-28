@@ -70,6 +70,10 @@ enum CanisterResponse {
 
 type RuntimeCycles = (u64, u64);
 
+pub fn to_cycles(rtc: RuntimeCycles) -> Cycles {
+    Cycles::new(rtc.0 << 64 as u128 + rtc.1 as u128) // TODO: confirm
+}
+
 #[derive(Serialize)]
 struct RuntimeResponse {
     pub response: CanisterResponse,
@@ -236,6 +240,13 @@ struct ResponseReject {
 enum Response {
     Reply(ResponseReply),
     Reject(ResponseReject),
+}
+
+fn get_response_reject(r: Response) -> Option<ResponseReject> {
+    match r {
+        Reply(_) => None,
+        Reject(x) => Some(x),
+    }
 }
 
 #[serde_as]
@@ -450,7 +461,7 @@ pub fn invoke(arg: &str) -> String {
         env.status, 
         NumSeconds::new(env.freeze_threshold),
         if env.memory_allocation == 0 {MemoryAllocation::BestEffort} else {MemoryAllocation::Reserved((env.memory_allocation).into())}, 
-        Cycles::new(((env.balance.0 as u128) << 64) + env.balance.1 as u128),
+        to_cycles(env.balance),
         BTreeMap::new(),                    // TODO(9): call_context_balances (only the current call context suffices). map cycles attached to call (call context (which the caller supplies)) 
         current_state.cycles_account_manager,
         Some(666),                          // TODO(10): next_callback_id
@@ -491,10 +502,10 @@ pub fn invoke(arg: &str) -> String {
                 .exported_functions
                 .has_method(&WasmMethod::System(SystemMethod::CanisterStart))
             {
-                return general_purpose::STANDARD.encode(to_vec(&RuntimeResponse::noop()).unwrap());
+                return general_purpose::STANDARD.encode(to_vec(&RuntimeResponse::noop()).unwrap()); // TODO? 
             }
             (
-                WasmMethod::System(SystemMethod::CanisterStart),
+                WasmMethod::System(SystemMethod::CanisterStart), // TODO: is this right or do we need to invoke some provided payload?
                 ApiType::Start {
                     time: env.time, // using the default env's default time
                 },
@@ -511,14 +522,14 @@ pub fn invoke(arg: &str) -> String {
         RuntimeInvokeEnum::RuntimeUpdate(x) => (
             WasmMethod::Update(x.method),
             ApiType::Update {
-                time: x.env.time,                           // TODO? 
-                incoming_payload: vec![],                   // TODO
-                incoming_cycles: Cycles::new(0),            // TODO
-                caller: PrincipalId::default(),             // EntityId from EntryPoint data
+                time: x.env.time,  
+                incoming_payload: x.arg,                    // TODO confirm
+                incoming_cycles: to_cycles(x.cycles),       // TODO confirm
+                caller: x.caller.try_into().unwrap(),       // TODO confirm
                 call_context_id: CallContextId::from(42),   // TODO
-                response_data: vec![],                      // final 
-                response_status: NotRepliedYet,             // final 
-                outgoing_request: None,                     // final
+                response_data: vec![],
+                response_status: NotRepliedYet,
+                outgoing_request: None,
                 max_reply_size: 2000000.into(),             // TODO 
             },
         ),
@@ -526,26 +537,25 @@ pub fn invoke(arg: &str) -> String {
             WasmMethod::Query(x.method),
             if execution_parameters.execution_mode  == ExecutionMode::Replicated {
                 ApiType::ReplicatedQuery {
-                    time: Time,
-                    incoming_payload: Vec<u8>,
-                    caller: PrincipalId,
-                    response_data: Vec<u8>,
-                    response_status: ResponseStatus,
-                    data_certificate: Option<Vec<u8>>,
-                    max_reply_size: NumBytes,
+                    time: x.time,
+                    incoming_payload: x.arg,
+                    caller: x.caller.try_into.unrwap(),
+                    response_data: vec![], 
+                    response_status: NotRepliedYet,
+                    data_certificate: None,                     // TODO
+                    max_reply_size: 2000000.into(),             // TODO
                 }
             } else {
                 ApiType::NonReplicatedQuery {
-                    time: Time,
-                    caller: PrincipalId,
-                    own_subnet_id: SubnetId,
-                    incoming_payload: Vec<u8>,
-                    data_certificate: Option<Vec<u8>>,
-                    // Begins as empty and used to accumulate data for sending replies.
-                    response_data: Vec<u8>,
-                    response_status: ResponseStatus,
-                    max_reply_size: NumBytes,
-                    query_kind: NonReplicatedQueryKind,
+                    time: x.time,
+                    caller: x.caller.try_into().unwrap(),
+                    own_subnet_id: subnet_id,
+                    incoming_payload: x.arg,
+                    data_certificate: None,                     // TODO
+                    response_data: vec![], 
+                    response_status: NotRepliedYet, 
+                    max_reply_size: 2000000.into(),             // TODO
+                    query_kind: NonReplicatedQueryKind,         // TODO
                 }
             }
         )},
@@ -553,17 +563,17 @@ pub fn invoke(arg: &str) -> String {
             match x.response {
                 Response::Reply(response_reply) => {
                     (
-                        WasmMethod::System(SystemMethod::Empty),  // TODO: no idea what WasmMethod to use here
+                        WasmMethod::System(SystemMethod::Empty),  // TODO: what WasmMethod to use here?
                         ApiType::ReplyCallback { 
-                            time: (), 
-                            incoming_payload: (), 
-                            incoming_cycles: (), 
-                            call_context_id: (), 
-                            response_data: (), 
-                            response_status: (), 
-                            outgoing_request: (), 
-                            max_reply_size: (), 
-                            execution_mode: () 
+                            time: x.time, 
+                            incoming_payload: x.callback.reply_closure, // TODO confirm
+                            incoming_cycles: x.refunded_cycles,         // TODO confirm 
+                            call_context_id: CallContextId::from(42),   // TODO
+                            response_data: vec![], 
+                            response_status: NotRepliedYet,
+                            outgoing_request: None,
+                            max_reply_size: 2000000.into(),             // TODO
+                            execution_mode: execution_parameters.execution_mode, // TODO confirm 
                         }
                     )
                 }
@@ -571,28 +581,23 @@ pub fn invoke(arg: &str) -> String {
                     (
                         WasmMethod::System(SystemMethod::Empty),  // TODO: no idea what WasmMethod to use here
                         ApiType::RejectCallback { 
-                            time: Time,
-                            reject_context: RejectContext,
-                            incoming_cycles: Cycles,
-                            call_context_id: CallContextId,
-                            // Begins as empty and used to accumulate data for sending replies.
-                            #[serde(with = "serde_bytes")]
-                            response_data: Vec<u8>,
-                            response_status: ResponseStatus,
-                            /// Optional outgoing request under construction. If `None` no outgoing
-                            /// request is currently under construction.
-                            outgoing_request: Option<RequestInPrep>,
-                            max_reply_size: NumBytes,
-                            execution_mode: ExecutionMode,
+                            time: x.time,
+                            reject_context: get_response_reject(x.response).unwrap(), // TODO 
+                            incoming_cycles: x.refunded_cycles,         // TODO confirm
+                            call_context_id: CallContextId::from(42),   // TODO
+                            response_data: vec![],
+                            response_status: NotRepliedYet, 
+                            outgoing_request: None, 
+                            max_reply_size: 2000000.into(),             // TODO
+                            execution_mode: execution_parameters.execution_mode, // TODO confirm 
                         }
                     )
                 }
             }
-
         },
         RuntimeInvokeEnum::RuntimeCleanup(x) => {
             (
-                WasmMethod::System(SystemMethod::Empty),
+                WasmMethod::System(SystemMethod::Empty),    // TODO: which wasmmethod? 
                 ApiType::Cleanup { time: x.env.time }
             )
         },
@@ -600,13 +605,18 @@ pub fn invoke(arg: &str) -> String {
             (
                 WasmMethod::System(SystemMethod::CanisterPreUpgrade),
                 ApiType::PreUpgrade { 
-                    caller: (), 
+                    caller: x.caller.try_into().unwrap(),
                     time: x.env.time,
                 }
             )
         },
         RuntimeInvokeEnum::RuntimePostUpgrade(x) => {
-
+            (
+                WasmMethod::System(SystemMethod::CanisterPostUpgrade),
+                ApiType::Start {                            // TODO: which apitype? 
+                    time: x.env.time,
+                }
+            )
         },
         RuntimeInvokeEnum::RuntimeInspectMessage(x) => {
             if !current_state
@@ -618,19 +628,35 @@ pub fn invoke(arg: &str) -> String {
             (
                 WasmMethod::System(SystemMethod::CanisterInspectMessage),
                 InspectMessage {
-                    caller: PrincipalId::default(),
+                    caller: x.caller.try_into().unwrap(),
                     method_name: x.method,
-                    incoming_payload: vec![],
-                    time: Time::from_nanos_since_unix_epoch(0),
-                    message_accepted: false,
+                    incoming_payload: x.arg,
+                    time: x.env.time,
+                    message_accepted: false,       // TODO 
                 },
             )
         }
         RuntimeInvokeEnum::RuntimeHeartbeat(_) => {
-            return general_purpose::STANDARD.encode(to_vec(&RuntimeResponse::noop()).unwrap());
+            (
+                WasmMethod::System(SystemMethod::CanisterHeartbeat),
+                ApiType::SystemTask { 
+                    system_task: (), 
+                    time: x.env.time, 
+                    call_context_id: CallContextId::from(42),   // TODO
+                    outgoing_request: None 
+                }
+            )
         }
         RuntimeInvokeEnum::RuntimeGlobalTimer(x) => {
-
+            (
+                WasmMethod::System(SystemMethod::CanisterGlobalTimer),
+                ApiType::SystemTask { 
+                    system_task: SystemMethod::CanisterGlobalTimer, 
+                    time: x.env.time, 
+                    call_context_id: CallContextId::from(42),   // TODO, 
+                    outgoing_request: None 
+                }
+            )
         },
         _ => {
             return general_purpose::STANDARD.encode(to_vec(&RuntimeResponse::noop()).unwrap());
