@@ -496,14 +496,14 @@ pub fn invoke(arg: &str) -> String {
             (
                 WasmMethod::System(SystemMethod::CanisterStart),
                 ApiType::Start {
-                    time: Time::from_nanos_since_unix_epoch(0),
+                    time: env.time, // using the default env's default time
                 },
             )
         }
         RuntimeInvokeEnum::RuntimeInitialize(x) => (
             WasmMethod::System(SystemMethod::CanisterInit),
             ApiType::Init {
-                time: Time::from_nanos_since_unix_epoch(0),  
+                time: x.env.time,  
                 incoming_payload: x.arg,
                 caller: x.caller.try_into().unwrap(),
             },
@@ -511,7 +511,7 @@ pub fn invoke(arg: &str) -> String {
         RuntimeInvokeEnum::RuntimeUpdate(x) => (
             WasmMethod::Update(x.method),
             ApiType::Update {
-                time: Time::from_nanos_since_unix_epoch(0), // TODO? 
+                time: x.env.time,                           // TODO? 
                 incoming_payload: vec![],                   // TODO
                 incoming_cycles: Cycles::new(0),            // TODO
                 caller: PrincipalId::default(),             // EntityId from EntryPoint data
@@ -593,7 +593,7 @@ pub fn invoke(arg: &str) -> String {
         RuntimeInvokeEnum::RuntimeCleanup(x) => {
             (
                 WasmMethod::System(SystemMethod::Empty),
-                ApiType::Cleanup { time: Time::from_nanos_since_unix_epoch(0) }
+                ApiType::Cleanup { time: x.env.time }
             )
         },
         RuntimeInvokeEnum::RuntimePreUpgrade(x) => {
@@ -601,7 +601,7 @@ pub fn invoke(arg: &str) -> String {
                 WasmMethod::System(SystemMethod::CanisterPreUpgrade),
                 ApiType::PreUpgrade { 
                     caller: (), 
-                    time: Time::from_nanos_since_unix_epoch(0) 
+                    time: x.env.time,
                 }
             )
         },
