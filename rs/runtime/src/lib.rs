@@ -5,6 +5,7 @@ mod process_exe_and_args;
 mod sandbox_process_eviction;
 mod sandboxed_execution_controller;
 
+use ic_system_api::NonReplicatedQueryKind;
 use lazy_static::lazy_static;
 use std::sync::Mutex;
 
@@ -71,7 +72,7 @@ enum CanisterResponse {
 type RuntimeCycles = (u64, u64);
 
 pub fn to_cycles(rtc: RuntimeCycles) -> Cycles {
-    Cycles::new(rtc.0 << 64 as u128 + rtc.1 as u128) // TODO: confirm
+    Cycles::new(((rtc.0 as u128) << 64) + rtc.1 as u128)  // TODO: confirm
 }
 
 #[derive(Serialize)]
@@ -242,13 +243,6 @@ enum Response {
     Reject(ResponseReject),
 }
 
-fn get_response_reject(r: Response) -> Option<ResponseReject> {
-    match r {
-        Reply(_) => None,
-        Reject(x) => Some(x),
-    }
-}
-
 #[serde_as]
 #[derive(Debug, Deserialize, Serialize)]
 struct RuntimeInstantiate {
@@ -403,6 +397,9 @@ pub fn invoke(arg: &str) -> String {
     let subnet_config = SubnetConfigs::default().own_subnet_config(subnet_type);
     let dirty_page_overhead = subnet_config.scheduler_config.dirty_page_overhead;
 
+    let call_ctx_id: CallContextId =  CallContextId::from(0); // TODO
+    let call_ctx_id_default_cycles = Cycles::new(0); // TODO
+
     match r.entry_point {
         RuntimeInvokeEnum::RuntimeInstantiate(ref x) => {
             let mut embedder_config = EmbeddersConfig::new();
@@ -452,9 +449,7 @@ pub fn invoke(arg: &str) -> String {
         _ => {}
     };
 
-    let current_state = state_map.get_mut(&canister_id).unwrap();
-
-    let call_ctx_id = dummy_below; // put it everywhere and leave dummy as TODO
+    let current_state = state_map.get_mut(&canister_id).unwrap();    
 
     let sandbox_safe_system_state = SandboxSafeSystemState::new_internal(
         canister_id,
@@ -462,7 +457,7 @@ pub fn invoke(arg: &str) -> String {
         NumSeconds::new(env.freeze_threshold),
         if env.memory_allocation == 0 {MemoryAllocation::BestEffort} else {MemoryAllocation::Reserved((env.memory_allocation).into())}, 
         to_cycles(env.balance),
-        BTreeMap::new(),                    // TODO(9): call_context_balances (only the current call context suffices). map cycles attached to call (call context (which the caller supplies)) 
+        BTreeMap::from_iter(vec![(call_ctx_id.clone(), call_ctx_id_default_cycles.clone())].into_iter()), // TODO(9): call_context_balances (only the current call context suffices). map cycles attached to call (call context (which the caller supplies)) 
         current_state.cycles_account_manager,
         Some(666),                          // TODO(10): next_callback_id
         BTreeMap::new(),
@@ -507,14 +502,14 @@ pub fn invoke(arg: &str) -> String {
             (
                 WasmMethod::System(SystemMethod::CanisterStart), // TODO: is this right or do we need to invoke some provided payload?
                 ApiType::Start {
-                    time: env.time, // using the default env's default time
+                    time: Time::from_nanos_since_unix_epoch(env.time), // using the default env's default time
                 },
             )
         }
         RuntimeInvokeEnum::RuntimeInitialize(x) => (
             WasmMethod::System(SystemMethod::CanisterInit),
             ApiType::Init {
-                time: x.env.time,  
+                time: Time::from_nanos_since_unix_epoch(x.env.time),  
                 incoming_payload: x.arg,
                 caller: x.caller.try_into().unwrap(),
             },
@@ -522,11 +517,11 @@ pub fn invoke(arg: &str) -> String {
         RuntimeInvokeEnum::RuntimeUpdate(x) => (
             WasmMethod::Update(x.method),
             ApiType::Update {
-                time: x.env.time,  
+                time: Time::from_nanos_since_unix_epoch(x.env.time),  
                 incoming_payload: x.arg,                    // TODO confirm
                 incoming_cycles: to_cycles(x.cycles),       // TODO confirm
                 caller: x.caller.try_into().unwrap(),       // TODO confirm
-                call_context_id: CallContextId::from(42),   // TODO
+                call_context_id: call_ctx_id,
                 response_data: vec![],
                 response_status: NotRepliedYet,
                 outgoing_request: None,
@@ -535,11 +530,11 @@ pub fn invoke(arg: &str) -> String {
         ),
         RuntimeInvokeEnum::RuntimeQuery(x) => {(
             WasmMethod::Query(x.method),
-            if execution_parameters.execution_mode  == ExecutionMode::Replicated {
+            if execution_parameters.execution_mode == ExecutionMode::Replicated {
                 ApiType::ReplicatedQuery {
-                    time: x.time,
+                    time: Time::from_nanos_since_unix_epoch(x.env.time),
                     incoming_payload: x.arg,
-                    caller: x.caller.try_into.unrwap(),
+                    caller: x.caller.try_into().unwrap(),
                     response_data: vec![], 
                     response_status: NotRepliedYet,
                     data_certificate: None,                     // TODO
@@ -547,7 +542,7 @@ pub fn invoke(arg: &str) -> String {
                 }
             } else {
                 ApiType::NonReplicatedQuery {
-                    time: x.time,
+                    time: Time::from_nanos_since_unix_epoch(x.env.time),
                     caller: x.caller.try_into().unwrap(),
                     own_subnet_id: subnet_id,
                     incoming_payload: x.arg,
@@ -555,7 +550,7 @@ pub fn invoke(arg: &str) -> String {
                     response_data: vec![], 
                     response_status: NotRepliedYet, 
                     max_reply_size: 2000000.into(),             // TODO
-                    query_kind: NonReplicatedQueryKind,         // TODO
+                    query_kind: NonReplicatedQueryKind::Pure,   // TODO
                 }
             }
         )},
@@ -563,33 +558,37 @@ pub fn invoke(arg: &str) -> String {
             match x.response {
                 Response::Reply(response_reply) => {
                     (
-                        WasmMethod::System(SystemMethod::Empty),  // TODO: what WasmMethod to use here?
+                        WasmMethod::System(SystemMethod::Empty),                   // TODO: what WasmMethod to use here?
                         ApiType::ReplyCallback { 
-                            time: x.time, 
-                            incoming_payload: x.callback.reply_closure, // TODO confirm
-                            incoming_cycles: x.refunded_cycles,         // TODO confirm 
-                            call_context_id: CallContextId::from(42),   // TODO
+                            time: Time::from_nanos_since_unix_epoch(x.env.time),
+                            incoming_payload: response_reply.reply_payload,        // TODO confirm
+                            incoming_cycles: to_cycles(x.refunded_cycles),         // TODO confirm 
+                            call_context_id: call_ctx_id,
                             response_data: vec![], 
                             response_status: NotRepliedYet,
                             outgoing_request: None,
-                            max_reply_size: 2000000.into(),             // TODO
-                            execution_mode: execution_parameters.execution_mode, // TODO confirm 
+                            max_reply_size: 2000000.into(),                        // TODO
+                            execution_mode: execution_parameters.execution_mode,   // TODO confirm 
                         }
                     )
                 }
                 Response::Reject(response_reject) => {
-                    (
-                        WasmMethod::System(SystemMethod::Empty),  // TODO: no idea what WasmMethod to use here
+                    let reject_ctx = ic_types::messages::inter_canister::RejectContext {
+                        code: response_reject.reject_code.into(),
+                        message: response_reject.reject_msg,
+                    };
+                    (   
+                        WasmMethod::System(SystemMethod::Empty),                   // TODO: what WasmMethod to use here?
                         ApiType::RejectCallback { 
-                            time: x.time,
-                            reject_context: get_response_reject(x.response).unwrap(), // TODO 
-                            incoming_cycles: x.refunded_cycles,         // TODO confirm
-                            call_context_id: CallContextId::from(42),   // TODO
+                            time: Time::from_nanos_since_unix_epoch(x.env.time),
+                            reject_context: reject_ctx,                            // TODO 
+                            incoming_cycles: to_cycles(x.refunded_cycles),         // TODO confirm
+                            call_context_id: call_ctx_id, 
                             response_data: vec![],
                             response_status: NotRepliedYet, 
                             outgoing_request: None, 
-                            max_reply_size: 2000000.into(),             // TODO
-                            execution_mode: execution_parameters.execution_mode, // TODO confirm 
+                            max_reply_size: 2000000.into(),                        // TODO
+                            execution_mode: execution_parameters.execution_mode,   // TODO confirm 
                         }
                     )
                 }
@@ -598,7 +597,9 @@ pub fn invoke(arg: &str) -> String {
         RuntimeInvokeEnum::RuntimeCleanup(x) => {
             (
                 WasmMethod::System(SystemMethod::Empty),    // TODO: which wasmmethod? 
-                ApiType::Cleanup { time: x.env.time }
+                ApiType::Cleanup { 
+                    time: Time::from_nanos_since_unix_epoch(x.env.time) 
+                }
             )
         },
         RuntimeInvokeEnum::RuntimePreUpgrade(x) => {
@@ -606,7 +607,7 @@ pub fn invoke(arg: &str) -> String {
                 WasmMethod::System(SystemMethod::CanisterPreUpgrade),
                 ApiType::PreUpgrade { 
                     caller: x.caller.try_into().unwrap(),
-                    time: x.env.time,
+                    time: Time::from_nanos_since_unix_epoch(x.env.time),
                 }
             )
         },
@@ -614,7 +615,7 @@ pub fn invoke(arg: &str) -> String {
             (
                 WasmMethod::System(SystemMethod::CanisterPostUpgrade),
                 ApiType::Start {                            // TODO: which apitype? 
-                    time: x.env.time,
+                    time: Time::from_nanos_since_unix_epoch(x.env.time),
                 }
             )
         },
@@ -627,23 +628,23 @@ pub fn invoke(arg: &str) -> String {
             }
             (
                 WasmMethod::System(SystemMethod::CanisterInspectMessage),
-                InspectMessage {
+                ApiType::InspectMessage {
                     caller: x.caller.try_into().unwrap(),
                     method_name: x.method,
-                    incoming_payload: x.arg,
-                    time: x.env.time,
+                    incoming_payload: x.arg, 
+                    time: Time::from_nanos_since_unix_epoch(x.env.time),
                     message_accepted: false,       // TODO 
                 },
             )
         }
-        RuntimeInvokeEnum::RuntimeHeartbeat(_) => {
+        RuntimeInvokeEnum::RuntimeHeartbeat(x) => {
             (
                 WasmMethod::System(SystemMethod::CanisterHeartbeat),
                 ApiType::SystemTask { 
-                    system_task: (), 
-                    time: x.env.time, 
-                    call_context_id: CallContextId::from(42),   // TODO
-                    outgoing_request: None 
+                    system_task: SystemMethod::CanisterHeartbeat,  // TODO confirm
+                    time: Time::from_nanos_since_unix_epoch(x.env.time), 
+                    call_context_id: call_ctx_id,
+                    outgoing_request: None  
                 }
             )
         }
@@ -652,8 +653,8 @@ pub fn invoke(arg: &str) -> String {
                 WasmMethod::System(SystemMethod::CanisterGlobalTimer),
                 ApiType::SystemTask { 
                     system_task: SystemMethod::CanisterGlobalTimer, 
-                    time: x.env.time, 
-                    call_context_id: CallContextId::from(42),   // TODO, 
+                    time: Time::from_nanos_since_unix_epoch(x.env.time), 
+                    call_context_id: call_ctx_id,
                     outgoing_request: None 
                 }
             )
