@@ -233,7 +233,7 @@ struct ResponseReply {
 
 #[derive(Debug, Deserialize, Serialize)]
 struct ResponseReject {
-    reject_code: u8,
+    reject_code: u64,
     reject_msg: String,
 }
 
@@ -500,7 +500,7 @@ pub fn invoke(arg: &str) -> String {
                 return general_purpose::STANDARD.encode(to_vec(&RuntimeResponse::noop()).unwrap()); // TODO? 
             }
             (
-                WasmMethod::System(SystemMethod::CanisterStart), // TODO: is this right or do we need to invoke some provided payload?
+                WasmMethod::System(SystemMethod::CanisterStart),       // TODO: is this right or do we need to invoke some provided payload?
                 ApiType::Start {
                     time: Time::from_nanos_since_unix_epoch(env.time), // using the default env's default time
                 },
@@ -568,13 +568,13 @@ pub fn invoke(arg: &str) -> String {
                             response_status: NotRepliedYet,
                             outgoing_request: None,
                             max_reply_size: 2000000.into(),                        // TODO
-                            execution_mode: execution_parameters.execution_mode,   // TODO confirm 
+                            execution_mode: execution_parameters.execution_mode.clone(),   // TODO confirm 
                         }
                     )
                 }
                 Response::Reject(response_reject) => {
-                    let reject_ctx = ic_types::messages::inter_canister::RejectContext {
-                        code: response_reject.reject_code.into(),
+                    let reject_ctx = ic_types::messages::RejectContext {
+                        code: response_reject.reject_code.try_into().unwrap(),
                         message: response_reject.reject_msg,
                     };
                     (   
@@ -588,7 +588,7 @@ pub fn invoke(arg: &str) -> String {
                             response_status: NotRepliedYet, 
                             outgoing_request: None, 
                             max_reply_size: 2000000.into(),                        // TODO
-                            execution_mode: execution_parameters.execution_mode,   // TODO confirm 
+                            execution_mode: execution_parameters.execution_mode.clone(),   // TODO confirm 
                         }
                     )
                 }
@@ -659,9 +659,6 @@ pub fn invoke(arg: &str) -> String {
                 }
             )
         },
-        _ => {
-            return general_purpose::STANDARD.encode(to_vec(&RuntimeResponse::noop()).unwrap());
-        }
     };
     
 
