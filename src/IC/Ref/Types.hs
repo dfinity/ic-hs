@@ -144,13 +144,16 @@ data Message
   deriving (Show)
 
 -- Finally, the full IC state:
-
 type Subnet = (EntityId, SubnetType, W.Word64, SecretKey, [(W.Word64, W.Word64)])
 
 isRootSubnet :: Subnet -> Bool
 isRootSubnet (_, _, _, _, ranges) = checkCanisterIdInRanges ranges nns_canister_id
   where
     nns_canister_id = wordToId 0
+
+-- TODO: Make Subnet a record and use the accessor instead
+entity_id :: Subnet -> EntityId
+entity_id (x, _, _ ,_ ,_) = x
 
 data IC = IC
   { canisters :: CanisterId ↦ CanState
@@ -160,7 +163,7 @@ data IC = IC
   , rng :: StdGen
   , secretRootKey :: SecretKey
   , rootSubnet :: Maybe EntityId
-  , subnets :: [Subnet]
+  , subnets :: [Subnet] 
   }
   deriving (Show)
 
@@ -210,7 +213,7 @@ onTrap a b = a >>= \case { Trap msg -> b msg; Return x -> return x }
 
 -- Helper functions
 
-getSubnetFromCanisterId' :: (CanReject m, ICM m) => CanisterId -> m (Maybe Subnet)
+getSubnetFromCanisterId' :: ICM m => CanisterId -> m (Maybe Subnet)
 getSubnetFromCanisterId' cid = do
   subnets <- gets subnets
   return $ find (\(_, _, _, _, ranges) -> checkCanisterIdInRanges ranges cid) subnets
@@ -429,6 +432,7 @@ module_hash = fmap (raw_wasm_hash . can_mod) . content
 idle_cycles_burned_per_day :: CanState -> Natural
 idle_cycles_burned_per_day _ = fromInteger 0
 
+-- pass more data which we need for invoke
 canisterEnv :: ICM m => CanisterId -> m Env
 canisterEnv canister_id = do
   env_time <- getCanisterTime canister_id
@@ -440,14 +444,24 @@ canisterEnv canister_id = do
       IsDeleted -> error "deleted canister encountered"
   env_canister_version <- getCanisterVersion canister_id
   env_global_timer <- getCanisterGlobalTimer canister_id
+  can_state <- getCanister canister_id
+  (env_subnet_id, env_subnet_type, env_subnet_size, _, _) <- fromJust <$> getSubnetFromCanisterId' canister_id 
+  env_all_subnets <- fmap entity_id <$> gets subnets
   return $ Env
     { env_self = canister_id
     , env_time
     , env_balance
-    , env_status
+    , env_status 
     , env_certificate = Nothing
     , env_canister_version
     , env_global_timer
+    , env_controllers = controllers can_state
+    , env_memory_allocation = memory_allocation can_state
+    , env_freeze_threshold = freezing_threshold can_state
+    , env_subnet_id
+    , env_subnet_type
+    , env_subnet_size
+    , env_all_subnets -- this info is not canister-specific, so all canister share the same data here.
     }
 
 performCanisterActions :: ICM m => CanisterId -> CanisterActions -> m ()

@@ -24,3 +24,11 @@ cabal.project.local
 .tasty-rerun-log
 result
 result-*
+.vscode/
+rs/.vscode/
+target/
+*/target/
+*/*/target/
+*.lock
+*/*.lock
+rs/runtime/src/IC.Runtime.hs

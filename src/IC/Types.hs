@@ -23,6 +23,7 @@ import Data.List.Split (chunksOf)
 import Numeric.Natural
 import Control.Monad.Except
 import Text.Printf (printf)
+import qualified Data.Set as S
 
 type (↦) = M.Map
 
@@ -162,6 +163,13 @@ data Env = Env
     , env_certificate :: Maybe Blob
     , env_canister_version :: Natural
     , env_global_timer :: Natural
+    , env_controllers :: S.Set EntityId
+    , env_memory_allocation :: Natural
+    , env_freeze_threshold :: Natural
+    , env_subnet_id :: EntityId
+    , env_subnet_type :: SubnetType
+    , env_subnet_size :: W.Word64
+    , env_all_subnets :: [EntityId]
     }
 
 data TrapOr a = Trap String | Return a deriving Functor

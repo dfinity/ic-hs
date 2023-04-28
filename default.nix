@@ -305,7 +305,6 @@ rec {
       ${openssl}/bin/openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -sha256 -nodes -subj '/C=CH/ST=Zurich/L=Zurich/O=DFINITY/CN=127.0.0.1'
       ${httpbin}/httpbin-rs --port 8003 --cert-file cert.pem --key-file key.pem &
       sleep 1
-      ulimit -n 1000000
       ic-ref --pick-port --write-port-to port --cert-path "cert.pem" &
       trap kill_jobs EXIT PIPE
       sleep 1
@@ -335,7 +334,6 @@ rec {
       ${openssl}/bin/openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -sha256 -nodes -subj '/C=CH/ST=Zurich/L=Zurich/O=DFINITY/CN=127.0.0.1'
       ${httpbin}/httpbin-rs --port 8003 --cert-file cert.pem --key-file key.pem &
       sleep 1
-      ulimit -n 1000000
       ic-ref --pick-port --write-port-to port --cert-path "cert.pem" &
       trap kill_jobs EXIT PIPE
       sleep 1
@@ -410,12 +408,14 @@ rec {
   # of all the dependencies that are only depended on by nix-shell.
   ic-hs-shell =
     haskellPackages.shellFor {
+      LD_LIBRARY_PATH = nixpkgs.lib.makeLibraryPath [ openssl ];
       packages = p: [ p.ic-hs ];
       buildInputs = [
         nixpkgs.cabal-install
         nixpkgs.ghcid
         nixpkgs.cachix
         haskellPackages.haskell-language-server
+        haskellPackages.implicit-hie
       ];
     };
 }
