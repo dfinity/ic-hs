@@ -54,6 +54,9 @@ jobs:
     - if: matrix.os == 'ubuntu-latest'
       run: cp -r "$(nix-build -A ic-hs.doc)"/share/doc/*/html gh-page
 
+    - if: matrix.os == 'ubuntu-latest'
+      run: nix build -f default.nix --eval-store auto --store ssh-ng://eu.nixbuild.net --builders "" --max-jobs 2 --no-link --print-build-logs ic-hs-coverage
+
     #- if: matrix.os == 'ubuntu-latest'
     #  run: nix build -f default.nix --eval-store auto --store ssh-ng://eu.nixbuild.net --builders "" --max-jobs 2 --no-link --print-build-logs coverage
 
