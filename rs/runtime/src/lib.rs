@@ -597,7 +597,13 @@ pub fn invoke(arg: &str) -> String {
             )
         },
         RuntimeInvokeEnum::RuntimePreUpgrade(x) => {
-
+            (
+                WasmMethod::System(SystemMethod::CanisterPreUpgrade),
+                ApiType::PreUpgrade { 
+                    caller: (), 
+                    time: Time::from_nanos_since_unix_epoch(0) 
+                }
+            )
         },
         RuntimeInvokeEnum::RuntimePostUpgrade(x) => {
 
