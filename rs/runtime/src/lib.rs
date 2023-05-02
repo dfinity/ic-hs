@@ -72,7 +72,7 @@ enum CanisterResponse {
 type RuntimeCycles = (u64, u64);
 
 pub fn to_cycles(rtc: RuntimeCycles) -> Cycles {
-    Cycles::new(((rtc.0 as u128) << 64) + rtc.1 as u128) 
+    Cycles::new(((rtc.0 as u128) << 64) + rtc.1 as u128)
 }
 
 #[derive(Serialize)]
@@ -181,11 +181,11 @@ struct Env {
     certificate: Option<Certificate>,
     canister_version: u64,
     global_timer: u64,
-    controllers: Vec<PrincipalId>, 
+    controllers: Vec<PrincipalId>,
     memory_allocation: u64,
     compute_allocation: u64,
     freeze_threshold: u64,
-    subnet_id: SubnetId, 
+    subnet_id: SubnetId,
     subnet_type: SubnetType,
     subnet_size: u64,
     all_subnets: Vec<CanisterId>,
@@ -200,11 +200,11 @@ impl Env {
             status: CanisterStatusView::Running,
             certificate: None,
             canister_version: 0u64,
-            global_timer: 0u64, 
-            controllers: vec![], 
-            memory_allocation: 0, 
+            global_timer: 0u64,
+            controllers: vec![],
+            memory_allocation: 0,
             compute_allocation: 0,
-            freeze_threshold: 1 << 5, 
+            freeze_threshold: 1 << 5,
             subnet_id: SubnetId::from(PrincipalId::default()),
             subnet_type: SubnetType::Application,
             subnet_size: 2,
@@ -361,20 +361,19 @@ enum RuntimeInvokeEnum {
 
 fn get_env(rte: &RuntimeInvokeEnum) -> Option<Env> {
     match rte {
-        RuntimeInvokeEnum::RuntimeInstantiate(_) => {None},
-        RuntimeInvokeEnum::RuntimeInitialize(x) => {Some(x.env.clone())},
-        RuntimeInvokeEnum::RuntimeUpdate(x) => {Some(x.env.clone())},
-        RuntimeInvokeEnum::RuntimeQuery(x) => {Some(x.env.clone())},
-        RuntimeInvokeEnum::RuntimeCallback(x) => {Some(x.env.clone())},
-        RuntimeInvokeEnum::RuntimeCleanup(x) => {Some(x.env.clone())},
-        RuntimeInvokeEnum::RuntimePreUpgrade(x) => {Some(x.env.clone())},
-        RuntimeInvokeEnum::RuntimePostUpgrade(x) => {Some(x.env.clone())},
-        RuntimeInvokeEnum::RuntimeInspectMessage(x) => {Some(x.env.clone())},
-        RuntimeInvokeEnum::RuntimeHeartbeat(x) => {Some(x.env.clone())},
-        RuntimeInvokeEnum::RuntimeGlobalTimer(x) => {Some(x.env.clone())},
+        RuntimeInvokeEnum::RuntimeInstantiate(_) => None,
+        RuntimeInvokeEnum::RuntimeInitialize(x) => Some(x.env.clone()),
+        RuntimeInvokeEnum::RuntimeUpdate(x) => Some(x.env.clone()),
+        RuntimeInvokeEnum::RuntimeQuery(x) => Some(x.env.clone()),
+        RuntimeInvokeEnum::RuntimeCallback(x) => Some(x.env.clone()),
+        RuntimeInvokeEnum::RuntimeCleanup(x) => Some(x.env.clone()),
+        RuntimeInvokeEnum::RuntimePreUpgrade(x) => Some(x.env.clone()),
+        RuntimeInvokeEnum::RuntimePostUpgrade(x) => Some(x.env.clone()),
+        RuntimeInvokeEnum::RuntimeInspectMessage(x) => Some(x.env.clone()),
+        RuntimeInvokeEnum::RuntimeHeartbeat(x) => Some(x.env.clone()),
+        RuntimeInvokeEnum::RuntimeGlobalTimer(x) => Some(x.env.clone()),
     }
 }
-
 
 #[serde_as]
 #[derive(Debug, Deserialize, Serialize)]
@@ -399,7 +398,7 @@ pub fn invoke(arg: &str) -> String {
     let subnet_config = SubnetConfigs::default().own_subnet_config(subnet_type);
     let dirty_page_overhead = subnet_config.scheduler_config.dirty_page_overhead;
 
-    let call_ctx_id: CallContextId =  CallContextId::from(0); // TODO
+    let call_ctx_id: CallContextId = CallContextId::from(0); // TODO
     let call_ctx_available_cycles = Cycles::new(0); // TODO
 
     match r.entry_point {
@@ -451,24 +450,30 @@ pub fn invoke(arg: &str) -> String {
         _ => {}
     };
 
-    let current_state = state_map.get_mut(&canister_id).unwrap();    
+    let current_state = state_map.get_mut(&canister_id).unwrap();
 
     let sandbox_safe_system_state = SandboxSafeSystemState::new_internal(
         canister_id,
-        env.status, 
+        env.status,
         NumSeconds::new(env.freeze_threshold),
-        if env.memory_allocation == 0 {MemoryAllocation::BestEffort} else {MemoryAllocation::Reserved((env.memory_allocation).into())}, 
+        if env.memory_allocation == 0 {
+            MemoryAllocation::BestEffort
+        } else {
+            MemoryAllocation::Reserved((env.memory_allocation).into())
+        },
         to_cycles(env.balance),
-        BTreeMap::from_iter(vec![(call_ctx_id.clone(), call_ctx_available_cycles.clone())].into_iter()), // TODO(9): call_context_balances (only the current call context suffices). map cycles attached to call (call context (which the caller supplies)) 
+        BTreeMap::from_iter(
+            vec![(call_ctx_id.clone(), call_ctx_available_cycles.clone())].into_iter(),
+        ), // TODO(9): call_context_balances (only the current call context suffices). map cycles attached to call (call context (which the caller supplies))
         current_state.cycles_account_manager,
-        Some(666),                          // TODO(10): next_callback_id
+        Some(666), // TODO(10): next_callback_id
         BTreeMap::new(),
         DEFAULT_QUEUE_CAPACITY,
-        BTreeSet::from_iter(env.all_subnets.into_iter()), 
+        BTreeSet::from_iter(env.all_subnets.into_iter()),
         env.subnet_size.try_into().unwrap(),
         dirty_page_overhead,
         CanisterTimer::from_time(Time::from_nanos_since_unix_epoch(env.global_timer)),
-        env.canister_version, 
+        env.canister_version,
         BTreeSet::from_iter(env.controllers.into_iter()),
     );
 
@@ -492,8 +497,8 @@ pub fn invoke(arg: &str) -> String {
         subnet_type,
         execution_mode: match r.entry_point {
             RuntimeInvokeEnum::RuntimeQuery(_) => ExecutionMode::NonReplicated,
-            _                           => ExecutionMode::Replicated,
-        }
+            _ => ExecutionMode::Replicated,
+        },
     };
 
     let (method, api_type) = match r.entry_point {
@@ -502,10 +507,11 @@ pub fn invoke(arg: &str) -> String {
                 .exported_functions
                 .has_method(&WasmMethod::System(SystemMethod::CanisterStart))
             {
-                return general_purpose::STANDARD.encode(to_vec(&RuntimeResponse::noop()).unwrap()); // TODO? 
+                return general_purpose::STANDARD.encode(to_vec(&RuntimeResponse::noop()).unwrap());
+                // TODO?
             }
             (
-                FuncRef::Method(WasmMethod::System(SystemMethod::CanisterStart)), 
+                FuncRef::Method(WasmMethod::System(SystemMethod::CanisterStart)),
                 ApiType::Start {
                     time: Time::from_nanos_since_unix_epoch(env.time), // using the default env's default time
                 },
@@ -514,31 +520,33 @@ pub fn invoke(arg: &str) -> String {
         RuntimeInvokeEnum::RuntimeInitialize(x) => (
             FuncRef::Method(WasmMethod::System(SystemMethod::CanisterInit)),
             ApiType::Init {
-                time: Time::from_nanos_since_unix_epoch(x.env.time),  
+                time: Time::from_nanos_since_unix_epoch(x.env.time),
                 incoming_payload: x.arg,
                 caller: x.caller.try_into().unwrap(),
             },
         ),
-        RuntimeInvokeEnum::RuntimeUpdate(x) => 
-            // TODO: do not simply return noop if method not found: give actual error instead 
+        RuntimeInvokeEnum::RuntimeUpdate(x) =>
+        // TODO: do not simply return noop if method not found: give actual error instead
+        {
             (
-            FuncRef::Method(WasmMethod::Update(x.method)),
-            ApiType::Update {
-                time: Time::from_nanos_since_unix_epoch(x.env.time),  
-                incoming_payload: x.arg,
-                incoming_cycles: to_cycles(x.cycles),
-                caller: x.caller.try_into().unwrap(),
-                call_context_id: call_ctx_id,
-                response_data: vec![],
-                response_status: NotRepliedYet,
-                outgoing_request: None,
-                max_reply_size: 2000000.into(),             // TODO 
-            },
-        ),
+                FuncRef::Method(WasmMethod::Update(x.method)),
+                ApiType::Update {
+                    time: Time::from_nanos_since_unix_epoch(x.env.time),
+                    incoming_payload: x.arg,
+                    incoming_cycles: to_cycles(x.cycles),
+                    caller: x.caller.try_into().unwrap(),
+                    call_context_id: call_ctx_id,
+                    response_data: vec![],
+                    response_status: NotRepliedYet,
+                    outgoing_request: None,
+                    max_reply_size: 2000000.into(), // TODO
+                },
+            )
+        }
         RuntimeInvokeEnum::RuntimeQuery(x) => {
             let cert_vec = match x.env.certificate {
-                Some(Certificate{bytes}) => Some(bytes),
-                _                        => None,
+                Some(Certificate { bytes }) => Some(bytes),
+                _ => None,
             };
             (
                 FuncRef::Method(WasmMethod::Query(x.method)),
@@ -547,10 +555,10 @@ pub fn invoke(arg: &str) -> String {
                         time: Time::from_nanos_since_unix_epoch(x.env.time),
                         incoming_payload: x.arg,
                         caller: x.caller.try_into().unwrap(),
-                        response_data: vec![], 
+                        response_data: vec![],
                         response_status: NotRepliedYet,
                         data_certificate: cert_vec,
-                        max_reply_size: 2000000.into(),             // TODO
+                        max_reply_size: 2000000.into(), // TODO
                     }
                 } else {
                     ApiType::NonReplicatedQuery {
@@ -559,14 +567,14 @@ pub fn invoke(arg: &str) -> String {
                         own_subnet_id: subnet_id,
                         incoming_payload: x.arg,
                         data_certificate: cert_vec,
-                        response_data: vec![], 
-                        response_status: NotRepliedYet, 
-                        max_reply_size: 2000000.into(),             // TODO
-                        query_kind: NonReplicatedQueryKind::Pure,   // TODO
+                        response_data: vec![],
+                        response_status: NotRepliedYet,
+                        max_reply_size: 2000000.into(), // TODO
+                        query_kind: NonReplicatedQueryKind::Pure, // TODO
                     }
-                }
+                },
             )
-    },
+        }
         RuntimeInvokeEnum::RuntimeCallback(x) => {
             match x.response {
                 Response::Reply(response_reply) => {
@@ -576,17 +584,17 @@ pub fn invoke(arg: &str) -> String {
                     };
                     (
                         FuncRef::UpdateClosure(closure),
-                        ApiType::ReplyCallback { 
+                        ApiType::ReplyCallback {
                             time: Time::from_nanos_since_unix_epoch(x.env.time),
                             incoming_payload: response_reply.reply_payload,
                             incoming_cycles: to_cycles(x.refunded_cycles),
                             call_context_id: call_ctx_id,
-                            response_data: vec![], 
+                            response_data: vec![],
                             response_status: NotRepliedYet,
                             outgoing_request: None,
-                            max_reply_size: 2000000.into(),                        // TODO
+                            max_reply_size: 2000000.into(), // TODO
                             execution_mode: execution_parameters.execution_mode.clone(),
-                        }
+                        },
                     )
                 }
                 Response::Reject(response_reject) => {
@@ -598,23 +606,23 @@ pub fn invoke(arg: &str) -> String {
                         func_idx: x.callback.reject_closure.closure_idx as u32,
                         env: x.callback.reject_closure.closure_env as u32,
                     };
-                    (   
-                        FuncRef::UpdateClosure(closure), 
-                        ApiType::RejectCallback { 
+                    (
+                        FuncRef::UpdateClosure(closure),
+                        ApiType::RejectCallback {
                             time: Time::from_nanos_since_unix_epoch(x.env.time),
                             reject_context: reject_ctx,
-                            incoming_cycles: to_cycles(x.refunded_cycles), 
-                            call_context_id: call_ctx_id, 
+                            incoming_cycles: to_cycles(x.refunded_cycles),
+                            call_context_id: call_ctx_id,
                             response_data: vec![],
-                            response_status: NotRepliedYet, 
-                            outgoing_request: None, 
-                            max_reply_size: 2000000.into(),                        // TODO
+                            response_status: NotRepliedYet,
+                            outgoing_request: None,
+                            max_reply_size: 2000000.into(), // TODO
                             execution_mode: execution_parameters.execution_mode.clone(),
-                        }
+                        },
                     )
                 }
             }
-        },
+        }
         RuntimeInvokeEnum::RuntimeCleanup(x) => {
             let closure = ic_types::methods::WasmClosure {
                 func_idx: x.wasm_closure.closure_idx as u32,
@@ -622,30 +630,26 @@ pub fn invoke(arg: &str) -> String {
             };
             (
                 FuncRef::UpdateClosure(closure),
-                ApiType::Cleanup { 
-                    time: Time::from_nanos_since_unix_epoch(x.env.time) 
-                }
-            )
-        },
-        RuntimeInvokeEnum::RuntimePreUpgrade(x) => {
-            (
-                FuncRef::Method(WasmMethod::System(SystemMethod::CanisterPreUpgrade)),
-                ApiType::PreUpgrade { 
-                    caller: x.caller.try_into().unwrap(),
+                ApiType::Cleanup {
                     time: Time::from_nanos_since_unix_epoch(x.env.time),
-                }
+                },
             )
-        },
-        RuntimeInvokeEnum::RuntimePostUpgrade(x) => {
-            (
-                FuncRef::Method(WasmMethod::System(SystemMethod::CanisterPostUpgrade)),
-                ApiType::Init { 
-                    time: Time::from_nanos_since_unix_epoch(x.env.time),
-                    incoming_payload: x.arg, 
-                    caller: x.caller.try_into().unwrap(),
-                }
-            )
-        },
+        }
+        RuntimeInvokeEnum::RuntimePreUpgrade(x) => (
+            FuncRef::Method(WasmMethod::System(SystemMethod::CanisterPreUpgrade)),
+            ApiType::PreUpgrade {
+                caller: x.caller.try_into().unwrap(),
+                time: Time::from_nanos_since_unix_epoch(x.env.time),
+            },
+        ),
+        RuntimeInvokeEnum::RuntimePostUpgrade(x) => (
+            FuncRef::Method(WasmMethod::System(SystemMethod::CanisterPostUpgrade)),
+            ApiType::Init {
+                time: Time::from_nanos_since_unix_epoch(x.env.time),
+                incoming_payload: x.arg,
+                caller: x.caller.try_into().unwrap(),
+            },
+        ),
         RuntimeInvokeEnum::RuntimeInspectMessage(x) => {
             if !current_state
                 .exported_functions
@@ -658,36 +662,31 @@ pub fn invoke(arg: &str) -> String {
                 ApiType::InspectMessage {
                     caller: x.caller.try_into().unwrap(),
                     method_name: x.method,
-                    incoming_payload: x.arg, 
+                    incoming_payload: x.arg,
                     time: Time::from_nanos_since_unix_epoch(x.env.time),
                     message_accepted: false,
                 },
             )
         }
-        RuntimeInvokeEnum::RuntimeHeartbeat(x) => {
-            (
-                FuncRef::Method(WasmMethod::System(SystemMethod::CanisterHeartbeat)),
-                ApiType::SystemTask { 
-                    system_task: SystemMethod::CanisterHeartbeat,
-                    time: Time::from_nanos_since_unix_epoch(x.env.time), 
-                    call_context_id: call_ctx_id,
-                    outgoing_request: None  
-                }
-            )
-        }
-        RuntimeInvokeEnum::RuntimeGlobalTimer(x) => {
-            (
-                FuncRef::Method(WasmMethod::System(SystemMethod::CanisterGlobalTimer)),
-                ApiType::SystemTask { 
-                    system_task: SystemMethod::CanisterGlobalTimer, 
-                    time: Time::from_nanos_since_unix_epoch(x.env.time), 
-                    call_context_id: call_ctx_id,
-                    outgoing_request: None 
-                }
-            )
-        },
+        RuntimeInvokeEnum::RuntimeHeartbeat(x) => (
+            FuncRef::Method(WasmMethod::System(SystemMethod::CanisterHeartbeat)),
+            ApiType::SystemTask {
+                system_task: SystemMethod::CanisterHeartbeat,
+                time: Time::from_nanos_since_unix_epoch(x.env.time),
+                call_context_id: call_ctx_id,
+                outgoing_request: None,
+            },
+        ),
+        RuntimeInvokeEnum::RuntimeGlobalTimer(x) => (
+            FuncRef::Method(WasmMethod::System(SystemMethod::CanisterGlobalTimer)),
+            ApiType::SystemTask {
+                system_task: SystemMethod::CanisterGlobalTimer,
+                time: Time::from_nanos_since_unix_epoch(x.env.time),
+                call_context_id: call_ctx_id,
+                outgoing_request: None,
+            },
+        ),
     };
-    
 
     let input = WasmExecutionInput {
         api_type,
