@@ -127,7 +127,7 @@ entityterm :: EntityId -> Term
 entityterm = blobterm . rawEntityId
 
 envterm :: Env -> Term
-envterm (Env cid t bal status cert can_version glob_timer ctrls mem_alloc freeze_thresh subnet_id subnet_type subnet_size all_subnets) = mapterm [
+envterm (Env cid t bal status cert can_version glob_timer ctrls mem_alloc cmp_alloc freeze_thresh subnet_id subnet_type subnet_size all_subnets) = mapterm [
   ("canister_id", cidterm cid), 
   ("time", timestampterm t), 
   ("balance", cyclesterm bal), 
@@ -137,6 +137,7 @@ envterm (Env cid t bal status cert can_version glob_timer ctrls mem_alloc freeze
   ("global_timer", TInteger $ fromIntegral glob_timer),
   ("controllers", TList $ map entityterm $ toList ctrls),
   ("memory_allocation", TInteger $ fromIntegral mem_alloc),
+  ("compute_allocation", TInteger $ fromIntegral cmp_alloc),
   ("freeze_threshold", TInteger $ fromIntegral freeze_thresh),
   ("subnet_id", entityterm subnet_id),
   ("subnet_type", stringterm $ show subnet_type),

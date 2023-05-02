@@ -457,6 +457,7 @@ canisterEnv canister_id = do
     , env_global_timer
     , env_controllers = controllers can_state
     , env_memory_allocation = memory_allocation can_state
+    , env_compute_allocation = compute_allocation can_state
     , env_freeze_threshold = freezing_threshold can_state
     , env_subnet_id
     , env_subnet_type

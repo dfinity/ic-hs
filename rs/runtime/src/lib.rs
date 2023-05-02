@@ -183,6 +183,7 @@ struct Env {
     global_timer: u64,
     controllers: Vec<PrincipalId>, 
     memory_allocation: u64,
+    compute_allocation: u64,
     freeze_threshold: u64,
     subnet_id: SubnetId, 
     subnet_type: SubnetType,
@@ -202,6 +203,7 @@ impl Env {
             global_timer: 0u64, 
             controllers: vec![], 
             memory_allocation: 0, 
+            compute_allocation: 0,
             freeze_threshold: 1 << 5, 
             subnet_id: SubnetId::from(PrincipalId::default()),
             subnet_type: SubnetType::Application,
@@ -486,7 +488,7 @@ pub fn invoke(arg: &str) -> String {
             subnet_config.scheduler_config.max_instructions_per_slice,
         ),
         canister_memory_limit: exec_config.max_canister_memory_size,
-        compute_allocation: ComputeAllocation::default(), // TODO(16): compute allocation
+        compute_allocation: env.compute_allocation.try_into().unwrap(),
         subnet_type,
         execution_mode: match r.entry_point {
             RuntimeInvokeEnum::RuntimeQuery(_) => ExecutionMode::NonReplicated,

@@ -165,6 +165,7 @@ data Env = Env
     , env_global_timer :: Natural
     , env_controllers :: S.Set EntityId
     , env_memory_allocation :: Natural
+    , env_compute_allocation :: Natural
     , env_freeze_threshold :: Natural
     , env_subnet_id :: EntityId
     , env_subnet_type :: SubnetType
