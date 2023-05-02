@@ -206,7 +206,9 @@ parseCanister cid bytes = do
         prefix <- getExecutablePath
         inst <- invokeToUnit cid (RuntimeInstantiate decodedModule prefix)
         case inst of Trap err -> return $ Trap err
-                     Return () -> invokeToCanisterActions cid (RuntimeInitialize caller env dat)
+                     Return () -> if "canister_init" `elem` exportedFunctions wasm_mod 
+                                  then invokeToCanisterActions cid (RuntimeInitialize caller env dat)
+                                  else return $ Return noCanisterActions 
     , update_methods = M.fromList
       [ (m,
         \caller env needs_to_respond cycles_available dat ->

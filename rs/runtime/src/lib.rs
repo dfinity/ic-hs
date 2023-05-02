@@ -519,7 +519,9 @@ pub fn invoke(arg: &str) -> String {
                 caller: x.caller.try_into().unwrap(),
             },
         ),
-        RuntimeInvokeEnum::RuntimeUpdate(x) => (
+        RuntimeInvokeEnum::RuntimeUpdate(x) => 
+            // TODO: do not simply return noop if method not found: give actual error instead 
+            (
             FuncRef::Method(WasmMethod::Update(x.method)),
             ApiType::Update {
                 time: Time::from_nanos_since_unix_epoch(x.env.time),  
