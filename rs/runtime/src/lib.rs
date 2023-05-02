@@ -37,7 +37,7 @@ use ic_types::messages::CallContextId;
 use ic_types::methods::{FuncRef, SystemMethod, WasmMethod};
 use ic_types::MemoryAllocation;
 use ic_types::{CanisterId, PrincipalId, SubnetId};
-use ic_types::{CanisterTimer, ComputeAllocation, Cycles, Time};
+use ic_types::{CanisterTimer, Cycles, Time};
 use ic_wasm_types::CanisterModule;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -519,8 +519,7 @@ pub fn invoke(arg: &str) -> String {
             },
             Cycles::new(0),
         ),
-        RuntimeInvokeEnum::RuntimeUpdate(x) =>
-        {
+        RuntimeInvokeEnum::RuntimeUpdate(x) => {
             (
                 FuncRef::Method(WasmMethod::Update(x.method)),
                 ApiType::Update {
@@ -564,19 +563,19 @@ pub fn invoke(arg: &str) -> String {
                         response_data: vec![],
                         response_status: NotRepliedYet,
                         max_reply_size: 2000000.into(), // TODO
-                        query_kind: NonReplicatedQueryKind::Pure, 
+                        query_kind: NonReplicatedQueryKind::Pure,
                     }
                 },
                 Cycles::new(0),
             )
         }
         RuntimeInvokeEnum::RuntimeCallback(x) => {
+            let closure = ic_types::methods::WasmClosure {
+                func_idx: x.callback.reply_closure.closure_idx as u32,
+                env: x.callback.reply_closure.closure_env as u32,
+            };
             match x.response {
                 Response::Reply(response_reply) => {
-                    let closure = ic_types::methods::WasmClosure {
-                        func_idx: x.callback.reply_closure.closure_idx,
-                        env: x.callback.reply_closure.closure_env,
-                    };
                     (
                         FuncRef::UpdateClosure(closure),
                         ApiType::ReplyCallback {
@@ -598,10 +597,6 @@ pub fn invoke(arg: &str) -> String {
                         code: response_reject.reject_code.try_into().unwrap(),
                         message: response_reject.reject_msg,
                     };
-                    let closure = ic_types::methods::WasmClosure {
-                        func_idx: x.callback.reject_closure.closure_idx,
-                        env: x.callback.reject_closure.closure_env,
-                    };
                     (
                         FuncRef::UpdateClosure(closure),
                         ApiType::RejectCallback {
@@ -622,8 +617,8 @@ pub fn invoke(arg: &str) -> String {
         }
         RuntimeInvokeEnum::RuntimeCleanup(x) => {
             let closure = ic_types::methods::WasmClosure {
-                func_idx: x.wasm_closure.closure_idx,
-                env: x.wasm_closure.closure_env,
+                func_idx: x.wasm_closure.closure_idx as u32,
+                env: x.wasm_closure.closure_env as u32,
             };
             (
                 FuncRef::UpdateClosure(closure),

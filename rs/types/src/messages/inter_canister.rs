@@ -32,15 +32,15 @@ impl CountBytes for CallbackId {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct WasmClosure {
-    pub closure_idx: u32,
-    pub closure_env: u32,
+    pub closure_idx: i32,
+    pub closure_env: i32,
 }
 
 impl WasmClosure {
   pub fn new(closure_idx: u32, closure_env: u32) -> Self {
     Self {
-      closure_idx,
-      closure_env,
+      closure_idx: closure_idx as i32,
+      closure_env: closure_env as i32,
     }
   }
 }
