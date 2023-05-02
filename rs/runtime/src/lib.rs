@@ -72,7 +72,7 @@ enum CanisterResponse {
 type RuntimeCycles = (u64, u64);
 
 pub fn to_cycles(rtc: RuntimeCycles) -> Cycles {
-    Cycles::new(((rtc.0 as u128) << 64) + rtc.1 as u128)  // TODO: confirm
+    Cycles::new(((rtc.0 as u128) << 64) + rtc.1 as u128) 
 }
 
 #[derive(Serialize)]
@@ -398,7 +398,7 @@ pub fn invoke(arg: &str) -> String {
     let dirty_page_overhead = subnet_config.scheduler_config.dirty_page_overhead;
 
     let call_ctx_id: CallContextId =  CallContextId::from(0); // TODO
-    let call_ctx_id_default_cycles = Cycles::new(0); // TODO
+    let call_ctx_available_cycles = Cycles::new(0); // TODO
 
     match r.entry_point {
         RuntimeInvokeEnum::RuntimeInstantiate(ref x) => {
@@ -457,7 +457,7 @@ pub fn invoke(arg: &str) -> String {
         NumSeconds::new(env.freeze_threshold),
         if env.memory_allocation == 0 {MemoryAllocation::BestEffort} else {MemoryAllocation::Reserved((env.memory_allocation).into())}, 
         to_cycles(env.balance),
-        BTreeMap::from_iter(vec![(call_ctx_id.clone(), call_ctx_id_default_cycles.clone())].into_iter()), // TODO(9): call_context_balances (only the current call context suffices). map cycles attached to call (call context (which the caller supplies)) 
+        BTreeMap::from_iter(vec![(call_ctx_id.clone(), call_ctx_available_cycles.clone())].into_iter()), // TODO(9): call_context_balances (only the current call context suffices). map cycles attached to call (call context (which the caller supplies)) 
         current_state.cycles_account_manager,
         Some(666),                          // TODO(10): next_callback_id
         BTreeMap::new(),
@@ -488,7 +488,10 @@ pub fn invoke(arg: &str) -> String {
         canister_memory_limit: exec_config.max_canister_memory_size,
         compute_allocation: ComputeAllocation::default(), // TODO(16): compute allocation
         subnet_type,
-        execution_mode: ExecutionMode::Replicated, // TODO(17): replicated vs non-replicated
+        execution_mode: match r.entry_point {
+            RuntimeInvokeEnum::RuntimeQuery(_) => ExecutionMode::NonReplicated,
+            _                           => ExecutionMode::Replicated,
+        }
     };
 
     let (method, api_type) = match r.entry_point {
@@ -500,14 +503,14 @@ pub fn invoke(arg: &str) -> String {
                 return general_purpose::STANDARD.encode(to_vec(&RuntimeResponse::noop()).unwrap()); // TODO? 
             }
             (
-                WasmMethod::System(SystemMethod::CanisterStart),       // TODO: is this right or do we need to invoke some provided payload?
+                FuncRef::Method(WasmMethod::System(SystemMethod::CanisterStart)), 
                 ApiType::Start {
                     time: Time::from_nanos_since_unix_epoch(env.time), // using the default env's default time
                 },
             )
         }
         RuntimeInvokeEnum::RuntimeInitialize(x) => (
-            WasmMethod::System(SystemMethod::CanisterInit),
+            FuncRef::Method(WasmMethod::System(SystemMethod::CanisterInit)),
             ApiType::Init {
                 time: Time::from_nanos_since_unix_epoch(x.env.time),  
                 incoming_payload: x.arg,
@@ -515,12 +518,12 @@ pub fn invoke(arg: &str) -> String {
             },
         ),
         RuntimeInvokeEnum::RuntimeUpdate(x) => (
-            WasmMethod::Update(x.method),
+            FuncRef::Method(WasmMethod::Update(x.method)),
             ApiType::Update {
                 time: Time::from_nanos_since_unix_epoch(x.env.time),  
-                incoming_payload: x.arg,                    // TODO confirm
-                incoming_cycles: to_cycles(x.cycles),       // TODO confirm
-                caller: x.caller.try_into().unwrap(),       // TODO confirm
+                incoming_payload: x.arg,
+                incoming_cycles: to_cycles(x.cycles),
+                caller: x.caller.try_into().unwrap(),
                 call_context_id: call_ctx_id,
                 response_data: vec![],
                 response_status: NotRepliedYet,
@@ -528,47 +531,57 @@ pub fn invoke(arg: &str) -> String {
                 max_reply_size: 2000000.into(),             // TODO 
             },
         ),
-        RuntimeInvokeEnum::RuntimeQuery(x) => {(
-            WasmMethod::Query(x.method),
-            if execution_parameters.execution_mode == ExecutionMode::Replicated {
-                ApiType::ReplicatedQuery {
-                    time: Time::from_nanos_since_unix_epoch(x.env.time),
-                    incoming_payload: x.arg,
-                    caller: x.caller.try_into().unwrap(),
-                    response_data: vec![], 
-                    response_status: NotRepliedYet,
-                    data_certificate: None,                     // TODO
-                    max_reply_size: 2000000.into(),             // TODO
+        RuntimeInvokeEnum::RuntimeQuery(x) => {
+            let cert_vec = match x.env.certificate {
+                Some(Certificate{bytes}) => Some(bytes),
+                _                        => None,
+            };
+            (
+                FuncRef::Method(WasmMethod::Query(x.method)),
+                if execution_parameters.execution_mode == ExecutionMode::Replicated {
+                    ApiType::ReplicatedQuery {
+                        time: Time::from_nanos_since_unix_epoch(x.env.time),
+                        incoming_payload: x.arg,
+                        caller: x.caller.try_into().unwrap(),
+                        response_data: vec![], 
+                        response_status: NotRepliedYet,
+                        data_certificate: cert_vec,
+                        max_reply_size: 2000000.into(),             // TODO
+                    }
+                } else {
+                    ApiType::NonReplicatedQuery {
+                        time: Time::from_nanos_since_unix_epoch(x.env.time),
+                        caller: x.caller.try_into().unwrap(),
+                        own_subnet_id: subnet_id,
+                        incoming_payload: x.arg,
+                        data_certificate: cert_vec,
+                        response_data: vec![], 
+                        response_status: NotRepliedYet, 
+                        max_reply_size: 2000000.into(),             // TODO
+                        query_kind: NonReplicatedQueryKind::Pure,   // TODO
+                    }
                 }
-            } else {
-                ApiType::NonReplicatedQuery {
-                    time: Time::from_nanos_since_unix_epoch(x.env.time),
-                    caller: x.caller.try_into().unwrap(),
-                    own_subnet_id: subnet_id,
-                    incoming_payload: x.arg,
-                    data_certificate: None,                     // TODO
-                    response_data: vec![], 
-                    response_status: NotRepliedYet, 
-                    max_reply_size: 2000000.into(),             // TODO
-                    query_kind: NonReplicatedQueryKind::Pure,   // TODO
-                }
-            }
-        )},
+            )
+    },
         RuntimeInvokeEnum::RuntimeCallback(x) => {
             match x.response {
                 Response::Reply(response_reply) => {
+                    let closure = ic_types::methods::WasmClosure {
+                        func_idx: x.callback.reply_closure.closure_idx as u32,
+                        env: x.callback.reply_closure.closure_env as u32,
+                    };
                     (
-                        WasmMethod::System(SystemMethod::Empty),                   // TODO: what WasmMethod to use here?
+                        FuncRef::UpdateClosure(closure),
                         ApiType::ReplyCallback { 
                             time: Time::from_nanos_since_unix_epoch(x.env.time),
-                            incoming_payload: response_reply.reply_payload,        // TODO confirm
-                            incoming_cycles: to_cycles(x.refunded_cycles),         // TODO confirm 
+                            incoming_payload: response_reply.reply_payload,
+                            incoming_cycles: to_cycles(x.refunded_cycles),
                             call_context_id: call_ctx_id,
                             response_data: vec![], 
                             response_status: NotRepliedYet,
                             outgoing_request: None,
                             max_reply_size: 2000000.into(),                        // TODO
-                            execution_mode: execution_parameters.execution_mode.clone(),   // TODO confirm 
+                            execution_mode: execution_parameters.execution_mode.clone(),
                         }
                     )
                 }
@@ -577,26 +590,34 @@ pub fn invoke(arg: &str) -> String {
                         code: response_reject.reject_code.try_into().unwrap(),
                         message: response_reject.reject_msg,
                     };
+                    let closure = ic_types::methods::WasmClosure {
+                        func_idx: x.callback.reject_closure.closure_idx as u32,
+                        env: x.callback.reject_closure.closure_env as u32,
+                    };
                     (   
-                        WasmMethod::System(SystemMethod::Empty),                   // TODO: what WasmMethod to use here?
+                        FuncRef::UpdateClosure(closure), 
                         ApiType::RejectCallback { 
                             time: Time::from_nanos_since_unix_epoch(x.env.time),
-                            reject_context: reject_ctx,                            // TODO 
-                            incoming_cycles: to_cycles(x.refunded_cycles),         // TODO confirm
+                            reject_context: reject_ctx,
+                            incoming_cycles: to_cycles(x.refunded_cycles), 
                             call_context_id: call_ctx_id, 
                             response_data: vec![],
                             response_status: NotRepliedYet, 
                             outgoing_request: None, 
                             max_reply_size: 2000000.into(),                        // TODO
-                            execution_mode: execution_parameters.execution_mode.clone(),   // TODO confirm 
+                            execution_mode: execution_parameters.execution_mode.clone(),
                         }
                     )
                 }
             }
         },
         RuntimeInvokeEnum::RuntimeCleanup(x) => {
+            let closure = ic_types::methods::WasmClosure {
+                func_idx: x.wasm_closure.closure_idx as u32,
+                env: x.wasm_closure.closure_env as u32,
+            };
             (
-                WasmMethod::System(SystemMethod::Empty),    // TODO: which wasmmethod? 
+                FuncRef::UpdateClosure(closure),
                 ApiType::Cleanup { 
                     time: Time::from_nanos_since_unix_epoch(x.env.time) 
                 }
@@ -604,7 +625,7 @@ pub fn invoke(arg: &str) -> String {
         },
         RuntimeInvokeEnum::RuntimePreUpgrade(x) => {
             (
-                WasmMethod::System(SystemMethod::CanisterPreUpgrade),
+                FuncRef::Method(WasmMethod::System(SystemMethod::CanisterPreUpgrade)),
                 ApiType::PreUpgrade { 
                     caller: x.caller.try_into().unwrap(),
                     time: Time::from_nanos_since_unix_epoch(x.env.time),
@@ -613,9 +634,11 @@ pub fn invoke(arg: &str) -> String {
         },
         RuntimeInvokeEnum::RuntimePostUpgrade(x) => {
             (
-                WasmMethod::System(SystemMethod::CanisterPostUpgrade),
-                ApiType::Start {                            // TODO: which apitype? 
+                FuncRef::Method(WasmMethod::System(SystemMethod::CanisterPostUpgrade)),
+                ApiType::Init { 
                     time: Time::from_nanos_since_unix_epoch(x.env.time),
+                    incoming_payload: x.arg, 
+                    caller: x.caller.try_into().unwrap(),
                 }
             )
         },
@@ -627,21 +650,21 @@ pub fn invoke(arg: &str) -> String {
                 return general_purpose::STANDARD.encode(to_vec(&RuntimeResponse::noop()).unwrap());
             }
             (
-                WasmMethod::System(SystemMethod::CanisterInspectMessage),
+                FuncRef::Method(WasmMethod::System(SystemMethod::CanisterInspectMessage)),
                 ApiType::InspectMessage {
                     caller: x.caller.try_into().unwrap(),
                     method_name: x.method,
                     incoming_payload: x.arg, 
                     time: Time::from_nanos_since_unix_epoch(x.env.time),
-                    message_accepted: false,       // TODO 
+                    message_accepted: false,
                 },
             )
         }
         RuntimeInvokeEnum::RuntimeHeartbeat(x) => {
             (
-                WasmMethod::System(SystemMethod::CanisterHeartbeat),
+                FuncRef::Method(WasmMethod::System(SystemMethod::CanisterHeartbeat)),
                 ApiType::SystemTask { 
-                    system_task: SystemMethod::CanisterHeartbeat,  // TODO confirm
+                    system_task: SystemMethod::CanisterHeartbeat,
                     time: Time::from_nanos_since_unix_epoch(x.env.time), 
                     call_context_id: call_ctx_id,
                     outgoing_request: None  
@@ -650,7 +673,7 @@ pub fn invoke(arg: &str) -> String {
         }
         RuntimeInvokeEnum::RuntimeGlobalTimer(x) => {
             (
-                WasmMethod::System(SystemMethod::CanisterGlobalTimer),
+                FuncRef::Method(WasmMethod::System(SystemMethod::CanisterGlobalTimer)),
                 ApiType::SystemTask { 
                     system_task: SystemMethod::CanisterGlobalTimer, 
                     time: Time::from_nanos_since_unix_epoch(x.env.time), 
@@ -668,7 +691,7 @@ pub fn invoke(arg: &str) -> String {
         canister_current_memory_usage: 0.into(),
         execution_parameters: execution_parameters.clone(),
         subnet_available_memory,
-        func_ref: FuncRef::Method(method),
+        func_ref: method,
         compilation_cache: Arc::new(CompilationCache::default()),
     };
     let res = current_state.execute(input);
