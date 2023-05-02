@@ -62,8 +62,10 @@ pub struct SystemStateChanges {
     consumed_cycles_by_use_case: BTreeMap<CyclesUseCase, Cycles>,
     call_context_balance_taken: BTreeMap<CallContextId, Cycles>,
     request_slots_used: BTreeMap<CanisterId, usize>,
-    requests: Vec<Request>,
+    pub requests: Vec<Request>,
     pub new_global_timer: Option<CanisterTimer>,
+    pub cycles_accepted: Cycles,
+    pub cycles_minted: Cycles,
 }
 
 impl Default for SystemStateChanges {
@@ -77,6 +79,8 @@ impl Default for SystemStateChanges {
             request_slots_used: BTreeMap::new(),
             requests: vec![],
             new_global_timer: None,
+            cycles_accepted: Cycles::new(0),
+            cycles_minted: Cycles::new(0),
         }
     }
 }
@@ -658,6 +662,7 @@ impl SandboxSafeSystemState {
 
     pub(super) fn mint_cycles(&mut self, amount_to_mint: Cycles) -> HypervisorResult<()> {
         let mut new_balance = self.cycles_balance();
+        let old_balance = new_balance;
         let result = self
             .cycles_account_manager
             .mint_cycles(self.canister_id, &mut new_balance, amount_to_mint)
@@ -665,6 +670,8 @@ impl SandboxSafeSystemState {
                 HypervisorError::ContractViolation(msg)
             });
         self.update_balance_change(new_balance);
+        assert!(new_balance >= old_balance);
+        self.system_state_changes.cycles_minted += new_balance - old_balance;
         result
     }
 
@@ -707,6 +714,7 @@ impl SandboxSafeSystemState {
             .or_insert_with(Cycles::zero) += amount_to_accept;
 
         new_balance += amount_to_accept;
+        self.system_state_changes.cycles_accepted += amount_to_accept;
 
         self.update_balance_change(new_balance);
         amount_to_accept

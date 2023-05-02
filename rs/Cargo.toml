@@ -12,3 +12,4 @@ ic-canister-sandbox-backend-lib = { path = "./ic_canister_sandbox_backend_lib" }
 ic-interfaces = { path = "./interfaces" }
 ic-embedders = { path = "./embedders" }
 ic-system-api = { path = "./system_api" }
+ic-types = { path = "./types" }

@@ -51,8 +51,8 @@ https://github.com/haskell/cabal/issues/2641
 >     { localPkgDescr = packageDescription
 >       { PD.library = Just $ library
 >         { PD.libBuildInfo = libraryBuildInfo
->           { PD.extraLibDirs = (dir ++ "/rs/runtime/target/release") :
->                               (dir ++ "/rs/runtime/target/debug") :
+>           { PD.extraLibDirs = (dir ++ "/rs/target/release") :
+>                               (dir ++ "/rs/target/debug") :
 >             PD.extraLibDirs libraryBuildInfo
 >     } } } }
 

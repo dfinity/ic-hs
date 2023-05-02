@@ -3,9 +3,10 @@ use ic_interfaces::execution_environment::{HypervisorError, HypervisorResult};
 use ic_logger::ReplicaLogger;
 use ic_types::{
     messages::{CallContextId, Request},
-    methods::{Callback, WasmClosure},
+    messages::inter_canister::{Callback, WasmClosure},
     CanisterId, Cycles, NumBytes, PrincipalId,
 };
+use ic_types::messages::CallbackId;
 use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
 
@@ -162,7 +163,7 @@ pub(crate) fn into_request(
         max_size_remote_subnet,
         multiplier_max_size_local_subnet,
     }: RequestInPrep,
-    call_context_id: CallContextId,
+    _call_context_id: CallContextId,
     sandbox_safe_system_state: &mut SandboxSafeSystemState,
     _logger: &ReplicaLogger,
 ) -> HypervisorResult<RequestWithPrepayment> {
@@ -185,25 +186,18 @@ pub(crate) fn into_request(
     let prepayment_for_response_transmission =
         sandbox_safe_system_state.prepayment_for_response_transmission();
 
-    let callback_id = sandbox_safe_system_state.register_callback(Callback::new(
-        call_context_id,
-        Some(sender),
-        Some(destination_canister),
-        cycles,
-        Some(prepayment_for_response_execution),
-        Some(prepayment_for_response_transmission),
-        on_reply,
-        on_reject,
-        on_cleanup,
-    ))?;
-
     let req = Request {
         sender,
         receiver: destination_canister,
         method_name,
         method_payload,
-        sender_reply_callback: callback_id,
+        sender_reply_callback: CallbackId::new(0),
         payment: cycles,
+        callback: Some(Callback {
+                  reply_closure: on_reply,
+                  reject_closure: on_reject,
+                  cleanup_closure: on_cleanup,
+                }),
     };
     // We cannot call `Request::payload_size_bytes()` before constructing the
     // request, so ensure our separate calculation matches the actual size.
