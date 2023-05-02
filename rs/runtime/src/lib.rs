@@ -32,6 +32,7 @@ use ic_system_api::ApiType;
 use ic_system_api::ResponseStatus::NotRepliedYet;
 use ic_system_api::{ExecutionParameters, InstructionLimits};
 use ic_types::ingress::WasmResult;
+use ic_types::messages::inter_canister::{Callback, WasmClosure};
 use ic_types::messages::CallContextId;
 use ic_types::methods::{FuncRef, SystemMethod, WasmMethod};
 use ic_types::MemoryAllocation;
@@ -76,12 +77,23 @@ pub fn to_cycles(rtc: RuntimeCycles) -> Cycles {
 }
 
 #[derive(Serialize)]
+struct RuntimeMethodCall {
+    call_callee: CanisterId,
+    call_method_name: String,
+    #[serde(with = "serde_bytes")]
+    call_arg: Vec<u8>,
+    call_callback: Callback,
+    call_transferred_cycles: RuntimeCycles,
+}
+
+#[derive(Serialize)]
 struct RuntimeResponse {
     pub response: CanisterResponse,
     pub cycles_accept: RuntimeCycles,
     pub cycles_mint: RuntimeCycles,
     pub new_certified_data: Option<serde_bytes::ByteBuf>,
     pub new_global_timer: Option<u64>,
+    pub new_calls: Vec<RuntimeMethodCall>,
 }
 
 impl RuntimeResponse {
@@ -92,6 +104,7 @@ impl RuntimeResponse {
             cycles_mint: (0, 0),
             new_certified_data: None,
             new_global_timer: None,
+            new_calls: vec![],
         }
     }
 
@@ -102,6 +115,7 @@ impl RuntimeResponse {
             cycles_mint: (0, 0),
             new_certified_data: None,
             new_global_timer: None,
+            new_calls: vec![],
         }
     }
 }
@@ -127,6 +141,9 @@ impl RuntimeState {
         }
         let mut new_certified_data = None;
         let mut new_global_timer = None;
+        let mut cycles_accepted = Cycles::new(0);
+        let mut cycles_minted = Cycles::new(0);
+        let mut new_calls = vec![];
         if let Some(state_changes) = state_changes {
             self.wasm_memory = state_changes.wasm_memory;
             self.stable_memory = state_changes.stable_memory;
@@ -143,6 +160,20 @@ impl RuntimeState {
                         CanisterTimer::Inactive => 0,
                         CanisterTimer::Active(t) => t.as_nanos_since_unix_epoch(),
                     });
+            cycles_accepted = state_changes.system_state_changes.cycles_accepted;
+            cycles_minted = state_changes.system_state_changes.cycles_minted;
+            new_calls = state_changes
+                .system_state_changes
+                .requests
+                .into_iter()
+                .map(|r| RuntimeMethodCall {
+                    call_callee: r.receiver,
+                    call_method_name: r.method_name,
+                    call_arg: r.method_payload,
+                    call_callback: r.callback.unwrap(),
+                    call_transferred_cycles: r.payment.into_parts(),
+                })
+                .collect();
         }
         let output = match exec_output_wasm.wasm_result {
             Ok(Some(WasmResult::Reply(bytes))) => {
@@ -154,9 +185,9 @@ impl RuntimeState {
         };
         Ok(RuntimeResponse {
             response: output,
-            // new_calls:          // TODO(0): new calls
-            cycles_accept: (0, 0), // TODO(1): cycles accepted
-            cycles_mint: (0, 0),   // TODO(2): cycles minted
+            new_calls,
+            cycles_accept: cycles_accepted.into_parts(),
+            cycles_mint: cycles_minted.into_parts(),
             new_certified_data,
             new_global_timer,
         })
@@ -211,19 +242,6 @@ impl Env {
             all_subnets: vec![],
         }
     }
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct WasmClosure {
-    closure_idx: i32,
-    closure_env: i32,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct Callback {
-    reply_closure: WasmClosure,
-    reject_closure: WasmClosure,
-    cleanup_closure: Option<WasmClosure>,
 }
 
 #[serde_as]
@@ -464,7 +482,7 @@ pub fn invoke(arg: &str) -> String {
         to_cycles(env.balance),
         BTreeMap::from_iter(
             vec![(call_ctx_id.clone(), call_ctx_available_cycles.clone())].into_iter(),
-        ), // TODO(9): call_context_balances (only the current call context suffices). map cycles attached to call (call context (which the caller supplies))
+        ),
         current_state.cycles_account_manager,
         Some(666), // TODO(10): next_callback_id
         BTreeMap::new(),
@@ -701,5 +719,7 @@ pub fn invoke(arg: &str) -> String {
     if let Err(e) = res {
         return general_purpose::STANDARD.encode(to_vec(&RuntimeResponse::trap(e)).unwrap());
     }
+    //let v: serde_cbor::Value = from_slice(&to_vec(&res.as_ref().unwrap()).unwrap()).unwrap();
+    //println!("{:?}", v);
     general_purpose::STANDARD.encode(to_vec(&res.unwrap()).unwrap())
 }

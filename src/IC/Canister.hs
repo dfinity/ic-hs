@@ -24,12 +24,14 @@ import Data.Bits
 import Data.Char (chr)
 import Data.Either
 import Data.Either.Combinators (fromRight')
+import Data.Int
 import Data.List
 import Control.Monad
 import Data.Foldable
 import Control.Monad.Except
 import Codec.Compression.GZip (decompress)
 import Foreign.C.String
+import Numeric.Natural
 import System.Environment
 
 import IC.Types
@@ -168,6 +170,15 @@ cyclesmask = (2^(64::Int)) - 1
 cyclesterm :: Cycles -> Term
 cyclesterm x = TList [TInteger $ fromIntegral $ (shiftR x 64) .&. cyclesmask, TInteger $ fromIntegral $ x .&. cyclesmask]
 
+parseInteger :: Term -> Integer
+parseInteger (TInt t) = fromIntegral t
+parseInteger (TInteger t) = t
+parseInteger _ = error "parseInteger: not supported"
+
+assembleCycles :: Term -> Cycles
+assembleCycles (TList [high, low]) = fromIntegral $ (shiftL (parseInteger high) 64) .|. (parseInteger low)
+assembleCycles _ = error "assembleCycles: not supported"
+
 epterm :: EntryPoint -> Term
 epterm (RuntimeInstantiate mod prefix) = enumterm "RuntimeInstantiate" $ mapterm [("module", blobterm mod), ("prefix", stringterm prefix)]
 epterm (RuntimeInitialize cid env arg) = enumterm "RuntimeInitialize" $ mapterm [("caller", cidterm cid), ("env", envterm env), ("arg", blobterm arg)]
@@ -242,11 +253,46 @@ parseCanister cid bytes = do
 
 unpackBlob :: Term -> Blob
 unpackBlob (TBytes b) = BS.fromStrict b
-unpackBlob _ = error "unreachable"
+unpackBlob _ = error "unpackBlob: not supported"
 
 unpackString :: Term -> String
 unpackString (TString m) = T.unpack m
-unpackString _ = error "unreachable"
+unpackString _ = error "unpackString: not supported"
+
+parseOption :: (Term -> a) -> Term -> Maybe a
+parseOption _ TNull = Nothing
+parseOption f t = Just $ f t
+
+parseInt32 :: Term -> Int32
+parseInt32 (TInt x) = fromIntegral x
+parseInt32 (TInteger x) = fromIntegral x
+parseInt32 _ = error "parseInt32: not supported"
+
+parseNatural :: Term -> Natural
+parseNatural (TInteger x) = fromIntegral x
+parseNatural _ = error "parseNatural: not supported"
+
+parseList :: Term -> [Term]
+parseList (TList ts) = ts
+parseList _ = error "parseList: not supported"
+
+parseCanisterId :: Term -> CanisterId
+parseCanisterId = EntityId . unpackBlob
+
+parseWasmClosure :: Term -> WasmClosure
+parseWasmClosure t = aux $ fromRight' $ parseMap "WasmClosure" t
+  where
+    aux m = WasmClosure (parseInt32 $ fromRight' $ parseField "closure_idx" m) (parseInt32 $ fromRight' $ parseField "closure_env" m)
+
+parseCallback :: Term -> Callback
+parseCallback t = aux $ fromRight' $ parseMap "Callback" t
+  where
+    aux m = Callback (parseWasmClosure $ fromRight' $ parseField "reply_closure" m) (parseWasmClosure $ fromRight' $ parseField "reject_closure" m) (parseOption parseWasmClosure $ fromRight' $ parseField "cleanup_closure" m)
+
+parseMethodCall :: Term -> MethodCall
+parseMethodCall t = aux $ fromRight' $ parseMap "RuntimeMethodCall" t
+  where
+    aux m = MethodCall (parseCanisterId $ fromRight' $ parseField "call_callee" m) (unpackString $ fromRight' $ parseField "call_method_name" m) (unpackBlob $ fromRight' $ parseField "call_arg" m) (parseCallback $ fromRight' $ parseField "call_callback" m) (assembleCycles $ fromRight' $ parseField "call_transferred_cycles" m)
 
 invoke :: CanisterId -> EntryPoint -> IO (TrapOr UpdateResult)
 invoke cid ep = do
@@ -255,12 +301,17 @@ invoke cid ep = do
   res <- peekCString cres
   let x = fromRight' $ parseMap "RuntimeResponse" $ fromRight' $ decodeWithoutTag $ BS.fromStrict $ fromRight "" $ BS64.decode $ BSU.fromString res
   let (TString resp, payload) = head $ fromRight' $ parseMap "CanisterResponse" $ fromRight' $ parseField "response" x
+  let cycles_accept = assembleCycles $ fromRight' $ parseField "cycles_accept" x
+  let cycles_mint = assembleCycles $ fromRight' $ parseField "cycles_mint" x
+  let new_certified_data = parseOption unpackBlob $ fromRight' $ parseField "new_certified_data" x
+  let new_global_timer = parseOption parseNatural $ fromRight' $ parseField "new_global_timer" x
+  let new_calls = map parseMethodCall $ parseList $ fromRight' $ parseField "new_calls" x
   if resp == "CanisterTrap" then return $ Trap $ unpackString payload
   else do
     let rep = if resp == "CanisterReply" then Just (Reply (unpackBlob payload))
               else if resp == "CanisterReject" then Just (Reject (RC_CANISTER_REJECT, unpackString payload))
               else Nothing
-    return $ Return (CallActions [] 0 0 rep, noCanisterActions)
+    return $ Return (CallActions new_calls cycles_accept cycles_mint rep, CanisterActions new_certified_data new_global_timer)
 
 invokeToUnit :: CanisterId -> EntryPoint -> IO (TrapOr ())
 invokeToUnit cid ep = ((\_ -> ()) <$>) <$> invoke cid ep

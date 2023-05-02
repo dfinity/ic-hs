@@ -25,7 +25,8 @@ use ic_sys::PageBytes;
 use ic_types::{
     ingress::WasmResult,
     messages::{CallContextId, RejectContext, Request, MAX_INTER_CANISTER_PAYLOAD_IN_BYTES},
-    methods::{SystemMethod, WasmClosure},
+    messages::inter_canister::{WasmClosure},
+    methods::{SystemMethod},
     CanisterId, CanisterTimer, ComputeAllocation, Cycles, NumBytes, NumInstructions, NumPages,
     PrincipalId, SubnetId, Time, MAX_STABLE_MEMORY_IN_BYTES,
 };
