@@ -574,8 +574,8 @@ pub fn invoke(arg: &str) -> String {
             match x.response {
                 Response::Reply(response_reply) => {
                     let closure = ic_types::methods::WasmClosure {
-                        func_idx: u32::from(x.callback.reply_closure.closure_idx),
-                        env: u32::from(x.callback.reply_closure.closure_env),
+                        func_idx: x.callback.reply_closure.closure_idx,
+                        env: x.callback.reply_closure.closure_env,
                     };
                     (
                         FuncRef::UpdateClosure(closure),
@@ -599,8 +599,8 @@ pub fn invoke(arg: &str) -> String {
                         message: response_reject.reject_msg,
                     };
                     let closure = ic_types::methods::WasmClosure {
-                        func_idx: u32::from(x.callback.reject_closure.closure_idx),
-                        env: u32::from(x.callback.reject_closure.closure_env),
+                        func_idx: x.callback.reject_closure.closure_idx,
+                        env: x.callback.reject_closure.closure_env,
                     };
                     (
                         FuncRef::UpdateClosure(closure),
@@ -622,8 +622,8 @@ pub fn invoke(arg: &str) -> String {
         }
         RuntimeInvokeEnum::RuntimeCleanup(x) => {
             let closure = ic_types::methods::WasmClosure {
-                func_idx: u32::from(x.wasm_closure.closure_idx),
-                env: u32::from(x.wasm_closure.closure_env),
+                func_idx: x.wasm_closure.closure_idx,
+                env: x.wasm_closure.closure_env,
             };
             (
                 FuncRef::UpdateClosure(closure),
