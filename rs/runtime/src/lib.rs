@@ -416,8 +416,8 @@ pub fn invoke(arg: &str) -> String {
     let subnet_config = SubnetConfigs::default().own_subnet_config(subnet_type);
     let dirty_page_overhead = subnet_config.scheduler_config.dirty_page_overhead;
 
-    let call_ctx_id: CallContextId = CallContextId::from(0); // TODO
-    let call_ctx_available_cycles = Cycles::new(0); // TODO
+    let call_ctx_id: CallContextId = CallContextId::from(0);
+    // let mut call_ctx_available_cycles = Cycles::new(0);
 
     match r.entry_point {
         RuntimeInvokeEnum::RuntimeInstantiate(ref x) => {
@@ -470,31 +470,6 @@ pub fn invoke(arg: &str) -> String {
 
     let current_state = state_map.get_mut(&canister_id).unwrap();
 
-    let sandbox_safe_system_state = SandboxSafeSystemState::new_internal(
-        canister_id,
-        env.status,
-        NumSeconds::new(env.freeze_threshold),
-        if env.memory_allocation == 0 {
-            MemoryAllocation::BestEffort
-        } else {
-            MemoryAllocation::Reserved((env.memory_allocation).into())
-        },
-        to_cycles(env.balance),
-        BTreeMap::from_iter(
-            vec![(call_ctx_id.clone(), call_ctx_available_cycles.clone())].into_iter(),
-        ),
-        current_state.cycles_account_manager,
-        Some(666), // TODO(10): next_callback_id
-        BTreeMap::new(),
-        DEFAULT_QUEUE_CAPACITY,
-        BTreeSet::from_iter(env.all_subnets.into_iter()),
-        env.subnet_size.try_into().unwrap(),
-        dirty_page_overhead,
-        CanisterTimer::from_time(Time::from_nanos_since_unix_epoch(env.global_timer)),
-        env.canister_version,
-        BTreeSet::from_iter(env.controllers.into_iter()),
-    );
-
     let exec_config = ExecutionConfig::default();
     let subnet_available_memory: SubnetAvailableMemory = SubnetAvailableMemory::new(
         exec_config.subnet_memory_capacity.get() as i64,
@@ -519,20 +494,20 @@ pub fn invoke(arg: &str) -> String {
         },
     };
 
-    let (method, api_type) = match r.entry_point {
+    let (method, api_type, call_ctx_available_cycles) = match r.entry_point {
         RuntimeInvokeEnum::RuntimeInstantiate(_) => {
             if !current_state
                 .exported_functions
                 .has_method(&WasmMethod::System(SystemMethod::CanisterStart))
             {
                 return general_purpose::STANDARD.encode(to_vec(&RuntimeResponse::noop()).unwrap());
-                // TODO?
             }
             (
                 FuncRef::Method(WasmMethod::System(SystemMethod::CanisterStart)),
                 ApiType::Start {
                     time: Time::from_nanos_since_unix_epoch(env.time), // using the default env's default time
                 },
+                Cycles::new(0),
             )
         }
         RuntimeInvokeEnum::RuntimeInitialize(x) => (
@@ -542,9 +517,9 @@ pub fn invoke(arg: &str) -> String {
                 incoming_payload: x.arg,
                 caller: x.caller.try_into().unwrap(),
             },
+            Cycles::new(0),
         ),
         RuntimeInvokeEnum::RuntimeUpdate(x) =>
-        // TODO: do not simply return noop if method not found: give actual error instead
         {
             (
                 FuncRef::Method(WasmMethod::Update(x.method)),
@@ -559,6 +534,7 @@ pub fn invoke(arg: &str) -> String {
                     outgoing_request: None,
                     max_reply_size: 2000000.into(), // TODO
                 },
+                to_cycles(x.cycles),
             )
         }
         RuntimeInvokeEnum::RuntimeQuery(x) => {
@@ -588,17 +564,18 @@ pub fn invoke(arg: &str) -> String {
                         response_data: vec![],
                         response_status: NotRepliedYet,
                         max_reply_size: 2000000.into(), // TODO
-                        query_kind: NonReplicatedQueryKind::Pure, // TODO
+                        query_kind: NonReplicatedQueryKind::Pure, 
                     }
                 },
+                Cycles::new(0),
             )
         }
         RuntimeInvokeEnum::RuntimeCallback(x) => {
             match x.response {
                 Response::Reply(response_reply) => {
                     let closure = ic_types::methods::WasmClosure {
-                        func_idx: x.callback.reply_closure.closure_idx as u32,
-                        env: x.callback.reply_closure.closure_env as u32,
+                        func_idx: u32::from(x.callback.reply_closure.closure_idx),
+                        env: u32::from(x.callback.reply_closure.closure_env),
                     };
                     (
                         FuncRef::UpdateClosure(closure),
@@ -613,6 +590,7 @@ pub fn invoke(arg: &str) -> String {
                             max_reply_size: 2000000.into(), // TODO
                             execution_mode: execution_parameters.execution_mode.clone(),
                         },
+                        to_cycles(x.cycles_available),
                     )
                 }
                 Response::Reject(response_reject) => {
@@ -621,8 +599,8 @@ pub fn invoke(arg: &str) -> String {
                         message: response_reject.reject_msg,
                     };
                     let closure = ic_types::methods::WasmClosure {
-                        func_idx: x.callback.reject_closure.closure_idx as u32,
-                        env: x.callback.reject_closure.closure_env as u32,
+                        func_idx: u32::from(x.callback.reject_closure.closure_idx),
+                        env: u32::from(x.callback.reject_closure.closure_env),
                     };
                     (
                         FuncRef::UpdateClosure(closure),
@@ -637,20 +615,22 @@ pub fn invoke(arg: &str) -> String {
                             max_reply_size: 2000000.into(), // TODO
                             execution_mode: execution_parameters.execution_mode.clone(),
                         },
+                        to_cycles(x.cycles_available),
                     )
                 }
             }
         }
         RuntimeInvokeEnum::RuntimeCleanup(x) => {
             let closure = ic_types::methods::WasmClosure {
-                func_idx: x.wasm_closure.closure_idx as u32,
-                env: x.wasm_closure.closure_env as u32,
+                func_idx: u32::from(x.wasm_closure.closure_idx),
+                env: u32::from(x.wasm_closure.closure_env),
             };
             (
                 FuncRef::UpdateClosure(closure),
                 ApiType::Cleanup {
                     time: Time::from_nanos_since_unix_epoch(x.env.time),
                 },
+                Cycles::new(0),
             )
         }
         RuntimeInvokeEnum::RuntimePreUpgrade(x) => (
@@ -659,6 +639,7 @@ pub fn invoke(arg: &str) -> String {
                 caller: x.caller.try_into().unwrap(),
                 time: Time::from_nanos_since_unix_epoch(x.env.time),
             },
+            Cycles::new(0),
         ),
         RuntimeInvokeEnum::RuntimePostUpgrade(x) => (
             FuncRef::Method(WasmMethod::System(SystemMethod::CanisterPostUpgrade)),
@@ -667,6 +648,7 @@ pub fn invoke(arg: &str) -> String {
                 incoming_payload: x.arg,
                 caller: x.caller.try_into().unwrap(),
             },
+            Cycles::new(0),
         ),
         RuntimeInvokeEnum::RuntimeInspectMessage(x) => {
             if !current_state
@@ -684,6 +666,7 @@ pub fn invoke(arg: &str) -> String {
                     time: Time::from_nanos_since_unix_epoch(x.env.time),
                     message_accepted: false,
                 },
+                Cycles::new(0),
             )
         }
         RuntimeInvokeEnum::RuntimeHeartbeat(x) => (
@@ -694,6 +677,7 @@ pub fn invoke(arg: &str) -> String {
                 call_context_id: call_ctx_id,
                 outgoing_request: None,
             },
+            Cycles::new(0),
         ),
         RuntimeInvokeEnum::RuntimeGlobalTimer(x) => (
             FuncRef::Method(WasmMethod::System(SystemMethod::CanisterGlobalTimer)),
@@ -703,8 +687,34 @@ pub fn invoke(arg: &str) -> String {
                 call_context_id: call_ctx_id,
                 outgoing_request: None,
             },
+            Cycles::new(0),
         ),
     };
+
+    let sandbox_safe_system_state = SandboxSafeSystemState::new_internal(
+        canister_id,
+        env.status,
+        NumSeconds::new(env.freeze_threshold),
+        if env.memory_allocation == 0 {
+            MemoryAllocation::BestEffort
+        } else {
+            MemoryAllocation::Reserved((env.memory_allocation).into())
+        },
+        to_cycles(env.balance),
+        BTreeMap::from_iter(
+            vec![(call_ctx_id.clone(), call_ctx_available_cycles.clone())].into_iter(),
+        ),
+        current_state.cycles_account_manager,
+        Some(666), // TODO(10): next_callback_id
+        BTreeMap::new(),
+        DEFAULT_QUEUE_CAPACITY,
+        BTreeSet::from_iter(env.all_subnets.into_iter()),
+        env.subnet_size.try_into().unwrap(),
+        dirty_page_overhead,
+        CanisterTimer::from_time(Time::from_nanos_since_unix_epoch(env.global_timer)),
+        env.canister_version,
+        BTreeSet::from_iter(env.controllers.into_iter()),
+    );
 
     let input = WasmExecutionInput {
         api_type,
