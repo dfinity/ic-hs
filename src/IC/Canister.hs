@@ -269,6 +269,7 @@ parseInt32 (TInteger x) = fromIntegral x
 parseInt32 _ = error "parseInt32: not supported"
 
 parseNatural :: Term -> Natural
+parseNatural (TInt x) = fromIntegral x
 parseNatural (TInteger x) = fromIntegral x
 parseNatural _ = error "parseNatural: not supported"
 
