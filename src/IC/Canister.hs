@@ -238,16 +238,26 @@ parseCanister cid bytes = do
     , cleanup = \cb env ->
       invokeToUnit cid (RuntimeCleanup cb env)
     , pre_upgrade_method = \caller env ->
-          invokeToCanisterActions cid (RuntimePreUpgrade caller env)
+          if "canister_pre_upgrade" `elem` exportedFunctions wasm_mod 
+          then invokeToCanisterActions cid (RuntimePreUpgrade caller env)
+          else return $ Return noCanisterActions
     , post_upgrade_method = \caller env dat -> do
           prefix <- getExecutablePath
-          inst <- invokeToUnit cid (RuntimeInstantiate decodedModule prefix)
+          inst <- if "canister_post_upgrade" `elem` exportedFunctions wasm_mod 
+                  then invokeToUnit cid (RuntimeInstantiate decodedModule prefix)
+                  else return $ Return ()
           case inst of Trap err -> return $ Trap err
                        Return () -> invokeToCanisterActions cid (RuntimePostUpgrade caller env dat)
     , inspect_message = \method_name caller env arg ->
-          invokeToUnit cid (RuntimeInspectMessage method_name caller env arg)
-    , heartbeat = \env -> invokeToNoCyclesResponse cid (RuntimeHeartbeat env)
-    , canister_global_timer = \env-> invokeToNoCyclesResponse cid (RuntimeGlobalTimer env)
+          if "canister_inspect_message" `elem` exportedFunctions wasm_mod 
+          then invokeToUnit cid (RuntimeInspectMessage method_name caller env arg)
+          else return $ Return ()
+    , heartbeat = \env -> if "canister_heartbeat" `elem` exportedFunctions wasm_mod
+                          then invokeToNoCyclesResponse cid (RuntimeHeartbeat env)
+                          else return $ Return ([], noCanisterActions)
+    , canister_global_timer = \env-> if "canister_global_timer" `elem` exportedFunctions wasm_mod 
+                                     then invokeToNoCyclesResponse cid (RuntimeGlobalTimer env)
+                                     else return $ Return ([], noCanisterActions)
     , metadata = M.fromList metadata
     }
 
