@@ -38,6 +38,7 @@ use ic_types::methods::{FuncRef, SystemMethod, WasmMethod};
 use ic_types::MemoryAllocation;
 use ic_types::{CanisterId, PrincipalId, SubnetId};
 use ic_types::{CanisterTimer, Cycles, Time};
+use ic_types::NumInstructions;
 use ic_wasm_types::CanisterModule;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -49,7 +50,7 @@ use serde_cbor::{from_slice, to_vec};
 use serde_with::{serde_as, Bytes};
 
 struct RuntimeState {
-    pub controller: Arc<SandboxedExecutionController>,
+    // pub controller: Arc<SandboxedExecutionController>,
     pub cycles_account_manager: CyclesAccountManager,
     pub wasm_binary: Arc<WasmBinary>,
     pub wasm_memory: Memory,
@@ -60,6 +61,8 @@ struct RuntimeState {
 
 lazy_static! {
     static ref STATE: Mutex<BTreeMap<CanisterId, RuntimeState>> = Mutex::new(BTreeMap::new());
+    static ref CTRL_MAP: Mutex<BTreeMap<SubnetId, Arc<SandboxedExecutionController>>> = Mutex::new(BTreeMap::new());
+    static ref PREFIX: Mutex<Option<String>> = Mutex::new(None);
 }
 
 #[derive(Serialize)]
@@ -121,9 +124,8 @@ impl RuntimeResponse {
 }
 
 impl RuntimeState {
-    fn execute(&mut self, input: WasmExecutionInput) -> Result<RuntimeResponse, String> {
-        let res = self
-            .controller
+    fn execute(&mut self, input: WasmExecutionInput, controller: Arc<SandboxedExecutionController>) -> Result<RuntimeResponse, String> {
+        let res = controller
             .execute(
                 input,
                 &self.wasm_binary,
@@ -393,6 +395,28 @@ fn get_env(rte: &RuntimeInvokeEnum) -> Option<Env> {
     }
 }
 
+
+fn get_or_create_controller(subnet_id: &SubnetId, subnet_type: &SubnetType, dirty_page_overhead: &NumInstructions) -> Arc<SandboxedExecutionController> {
+    let mut ctrl_map = CTRL_MAP.lock().unwrap();
+    let controller: Arc<SandboxedExecutionController> = if ctrl_map.contains_key(subnet_id) {
+        ctrl_map.get(subnet_id).unwrap().clone()
+    } else {
+        let guard = PREFIX.lock().unwrap();
+        let prefix = guard.as_ref().unwrap().clone();
+        drop(guard);
+        let mut embedder_config = EmbeddersConfig::new();
+        embedder_config.subnet_type = subnet_type.clone();
+        embedder_config.dirty_page_overhead = dirty_page_overhead.clone();
+        let ctrl = SandboxedExecutionController::new(
+                &embedder_config,
+                Arc::new(TestPageAllocatorFileDescriptorImpl::new()),
+                &prefix,
+            ) .unwrap();
+        ctrl_map.insert(subnet_id.clone(), Arc::new(ctrl));
+        ctrl_map.get(subnet_id).unwrap().clone()
+    };
+    controller
+}
 #[serde_as]
 #[derive(Debug, Deserialize, Serialize)]
 struct RuntimeInvoke {
@@ -415,23 +439,30 @@ pub fn invoke(arg: &str) -> String {
 
     let subnet_config = SubnetConfigs::default().own_subnet_config(subnet_type);
     let dirty_page_overhead = subnet_config.scheduler_config.dirty_page_overhead;
-
     let call_ctx_id: CallContextId = CallContextId::from(0);
-    // let mut call_ctx_available_cycles = Cycles::new(0);
+
+    let entry = match r.entry_point {
+        RuntimeInvokeEnum::RuntimeInstantiate(ref x) => format!("RuntimeInstantiate"),
+        ref x @ _ => format!("{:?}", x),
+    };
+
+    println!("canister_id: {:?}, subnet_type: {:?}, subnet_id: {:?}, entrypt: {:?}", canister_id, subnet_type, subnet_id, entry);
+    let guard = CTRL_MAP.lock().unwrap();
+    println!("map: {:?}", guard.keys());
+    drop(guard);
 
     match r.entry_point {
         RuntimeInvokeEnum::RuntimeInstantiate(ref x) => {
-            let mut embedder_config = EmbeddersConfig::new();
-            embedder_config.subnet_type = subnet_type;
-            embedder_config.dirty_page_overhead = dirty_page_overhead;
-            let controller = Arc::new(
-                SandboxedExecutionController::new(
-                    &embedder_config,
-                    Arc::new(TestPageAllocatorFileDescriptorImpl::new()),
-                    &x.prefix,
-                )
-                .unwrap(),
-            );
+            // set prefix if it does not exist yet
+            let mut prefix = PREFIX.lock().unwrap();
+            if prefix.is_none() {
+                *prefix = Some(x.prefix.clone());
+            }
+            drop(prefix);
+
+            // get or create controller for this subnet type   
+            let controller = get_or_create_controller(&subnet_id, &subnet_type, &dirty_page_overhead);
+            
             let cycles_account_manager = CyclesAccountManager::new(
                 subnet_config.scheduler_config.max_instructions_per_message,
                 subnet_type,
@@ -455,7 +486,7 @@ pub fn invoke(arg: &str) -> String {
                 )
                 .unwrap();
             let current_state: RuntimeState = RuntimeState {
-                controller,
+                // controller,
                 cycles_account_manager,
                 wasm_binary,
                 wasm_memory,
@@ -467,7 +498,8 @@ pub fn invoke(arg: &str) -> String {
         }
         _ => {}
     };
-
+    // get state by subnet, not by canister id
+    let controller = get_or_create_controller(&subnet_id, &subnet_type, &dirty_page_overhead);
     let current_state = state_map.get_mut(&canister_id).unwrap();
 
     let exec_config = ExecutionConfig::default();
@@ -720,7 +752,7 @@ pub fn invoke(arg: &str) -> String {
         func_ref: method,
         compilation_cache: Arc::new(CompilationCache::default()),
     };
-    let res = current_state.execute(input);
+    let res = current_state.execute(input, controller);
     if let Err(e) = res {
         return general_purpose::STANDARD.encode(to_vec(&RuntimeResponse::trap(e)).unwrap());
     }
