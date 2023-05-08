@@ -271,6 +271,7 @@ struct RuntimeInstantiate {
     #[serde_as(deserialize_as = "Bytes")]
     module: Vec<u8>,
     prefix: String,
+    env: Env,
 }
 
 #[serde_as]
@@ -381,7 +382,7 @@ enum RuntimeInvokeEnum {
 
 fn get_env(rte: &RuntimeInvokeEnum) -> Option<Env> {
     match rte {
-        RuntimeInvokeEnum::RuntimeInstantiate(_) => None,
+        RuntimeInvokeEnum::RuntimeInstantiate(x) => Some(x.env.clone()),
         RuntimeInvokeEnum::RuntimeInitialize(x) => Some(x.env.clone()),
         RuntimeInvokeEnum::RuntimeUpdate(x) => Some(x.env.clone()),
         RuntimeInvokeEnum::RuntimeQuery(x) => Some(x.env.clone()),
@@ -407,6 +408,8 @@ fn get_or_create_controller(subnet_id: &SubnetId, subnet_type: &SubnetType, dirt
         let mut embedder_config = EmbeddersConfig::new();
         embedder_config.subnet_type = subnet_type.clone();
         embedder_config.dirty_page_overhead = dirty_page_overhead.clone();
+        embedder_config.min_sandbox_count = 1;
+        embedder_config.max_sandbox_count = 10;
         let ctrl = SandboxedExecutionController::new(
                 &embedder_config,
                 Arc::new(TestPageAllocatorFileDescriptorImpl::new()),
@@ -441,19 +444,10 @@ pub fn invoke(arg: &str) -> String {
     let dirty_page_overhead = subnet_config.scheduler_config.dirty_page_overhead;
     let call_ctx_id: CallContextId = CallContextId::from(0);
 
-    let entry = match r.entry_point {
-        RuntimeInvokeEnum::RuntimeInstantiate(ref x) => format!("RuntimeInstantiate"),
-        ref x @ _ => format!("{:?}", x),
-    };
-
-    println!("canister_id: {:?}, subnet_type: {:?}, subnet_id: {:?}, entrypt: {:?}", canister_id, subnet_type, subnet_id, entry);
-    let guard = CTRL_MAP.lock().unwrap();
-    println!("map: {:?}", guard.keys());
-    drop(guard);
-
     match r.entry_point {
         RuntimeInvokeEnum::RuntimeInstantiate(ref x) => {
-            // set prefix if it does not exist yet
+            // set prefix if it does not exist yet. we need this "lazy initialization" 
+            // because we only get the prefix in the first invoke call, with RuntimeInstantiate
             let mut prefix = PREFIX.lock().unwrap();
             if prefix.is_none() {
                 *prefix = Some(x.prefix.clone());
@@ -498,7 +492,7 @@ pub fn invoke(arg: &str) -> String {
         }
         _ => {}
     };
-    // get state by subnet, not by canister id
+    // get controller by subnet, not by canister id
     let controller = get_or_create_controller(&subnet_id, &subnet_type, &dirty_page_overhead);
     let current_state = state_map.get_mut(&canister_id).unwrap();
 
@@ -537,7 +531,7 @@ pub fn invoke(arg: &str) -> String {
             (
                 FuncRef::Method(WasmMethod::System(SystemMethod::CanisterStart)),
                 ApiType::Start {
-                    time: Time::from_nanos_since_unix_epoch(env.time), // using the default env's default time
+                    time: Time::from_nanos_since_unix_epoch(env.time),
                 },
                 Cycles::new(0),
             )

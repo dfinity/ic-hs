@@ -88,7 +88,7 @@ decodeModule bytes =
 needsToRespond :: NeedsToRespond -> Bool
 needsToRespond (NeedsToRespond b) = b
 
-data EntryPoint = RuntimeInstantiate Blob String
+data EntryPoint = RuntimeInstantiate Blob String Env
   | RuntimeInitialize EntityId Env Blob
   | RuntimeUpdate MethodName EntityId Env NeedsToRespond Cycles Blob
   | RuntimeQuery MethodName EntityId Env Blob
@@ -180,7 +180,7 @@ assembleCycles (TList [high, low]) = fromIntegral $ (shiftL (parseInteger high) 
 assembleCycles _ = error "assembleCycles: not supported"
 
 epterm :: EntryPoint -> Term
-epterm (RuntimeInstantiate mod prefix) = enumterm "RuntimeInstantiate" $ mapterm [("module", blobterm mod), ("prefix", stringterm prefix)]
+epterm (RuntimeInstantiate mod prefix env) = enumterm "RuntimeInstantiate" $ mapterm [("module", blobterm mod), ("prefix", stringterm prefix), ("env", envterm env)]
 epterm (RuntimeInitialize cid env arg) = enumterm "RuntimeInitialize" $ mapterm [("caller", cidterm cid), ("env", envterm env), ("arg", blobterm arg)]
 epterm (RuntimeUpdate n cid env needs_to_respond cycles arg) = enumterm "RuntimeUpdate" $ mapterm [("method", stringterm n), ("caller", cidterm cid), ("env", envterm env), ("needs_to_respond", TBool $ needsToRespond needs_to_respond), ("cycles", cyclesterm cycles), ("arg", blobterm arg)]
 epterm (RuntimeQuery n cid env arg) = enumterm "RuntimeQuery" $ mapterm [("method", stringterm n), ("caller", cidterm cid), ("env", envterm env), ("arg", blobterm arg)]
@@ -213,9 +213,9 @@ parseCanister cid bytes = do
     { raw_wasm = bytes
     , raw_wasm_hash = sha256 bytes
     , canister_id_mod = cid
-    , init_method = \caller env dat -> do
+    , init_method = \caller env dat -> do 
         prefix <- getExecutablePath
-        inst <- invokeToUnit cid (RuntimeInstantiate decodedModule prefix)
+        inst <- invokeToUnit cid (RuntimeInstantiate decodedModule prefix env) -- TODO: return changed env components, and pass that env below: this call may cost cycles. 
         case inst of Trap err -> return $ Trap err
                      Return () -> if "canister_init" `elem` exportedFunctions wasm_mod 
                                   then invokeToCanisterActions cid (RuntimeInitialize caller env dat)
@@ -244,7 +244,7 @@ parseCanister cid bytes = do
     , post_upgrade_method = \caller env dat -> do
           prefix <- getExecutablePath
           inst <- if "canister_post_upgrade" `elem` exportedFunctions wasm_mod 
-                  then invokeToUnit cid (RuntimeInstantiate decodedModule prefix)
+                  then invokeToUnit cid (RuntimeInstantiate decodedModule prefix env)
                   else return $ Return ()
           case inst of Trap err -> return $ Trap err
                        Return () -> invokeToCanisterActions cid (RuntimePostUpgrade caller env dat)
