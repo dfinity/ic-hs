@@ -725,7 +725,7 @@ systemAPI esref =
 
     is_controller :: (Int32, Int32) -> HostM s Int32
     is_controller (src, size) = do
-      when (size > 29) $ throwError "Argument does not represent a principal"
+      when (size > 29) $ throwError "ic0.is_controller: Argument does not represent a principal"
       blob <- copy_from_canister "is_controller" src size
       ctrls <- gets (env_controllers . env)
       return (if EntityId blob `elem` ctrls then 1 else 0)
