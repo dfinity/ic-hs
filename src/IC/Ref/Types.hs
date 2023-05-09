@@ -448,6 +448,7 @@ canisterEnv canister_id = do
       IsDeleted -> error "deleted canister encountered"
   env_canister_version <- getCanisterVersion canister_id
   env_global_timer <- getCanisterGlobalTimer canister_id
+  can_state <- getCanister canister_id
   return $ Env
     { env_self = canister_id
     , env_time
@@ -456,6 +457,7 @@ canisterEnv canister_id = do
     , env_certificate = Nothing
     , env_canister_version
     , env_global_timer
+    , env_controllers = controllers can_state
     }
 
 performCanisterActions :: ICM m => CanisterId -> CanisterActions -> m ()

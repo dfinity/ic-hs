@@ -100,14 +100,14 @@ ic0.call_cycles_add : (amount : i64) -> ();                                 // U
 ic0.call_cycles_add128 : (amount_high : i64, amount_low: i64) -> ();        // U Ry Rt T
 ic0.call_perform : () -> ( err_code : i32 );                                // U Ry Rt T
 
-ic0.stable_size : () -> (page_count : i32);                                 // *
-ic0.stable_grow : (new_pages : i32) -> (old_page_count : i32);              // *
-ic0.stable_write : (offset : i32, src : i32, size : i32) -> ();             // *
-ic0.stable_read : (dst : i32, offset : i32, size : i32) -> ();              // *
-ic0.stable64_size : () -> (page_count : i64);                               // *
-ic0.stable64_grow : (new_pages : i64) -> (old_page_count : i64);            // *
-ic0.stable64_write : (offset : i64, src : i64, size : i64) -> ();           // *
-ic0.stable64_read : (dst : i64, offset : i64, size : i64) -> ();            // *
+ic0.stable_size : () -> (page_count : i32);                                 // * s
+ic0.stable_grow : (new_pages : i32) -> (old_page_count : i32);              // * s
+ic0.stable_write : (offset : i32, src : i32, size : i32) -> ();             // * s
+ic0.stable_read : (dst : i32, offset : i32, size : i32) -> ();              // * s
+ic0.stable64_size : () -> (page_count : i64);                               // * s
+ic0.stable64_grow : (new_pages : i64) -> (old_page_count : i64);            // * s
+ic0.stable64_write : (offset : i64, src : i64, size : i64) -> ();           // * s
+ic0.stable64_read : (dst : i64, offset : i64, size : i64) -> ();            // * s
 
 ic0.certified_data_set : (src: i32, size: i32) -> ();                       // I G U Ry Rt T
 ic0.data_certificate_present : () -> i32;                                   // *
@@ -117,6 +117,7 @@ ic0.data_certificate_copy : (dst: i32, offset: i32, size: i32) -> ();       // *
 ic0.time : () -> (timestamp : i64);                                         // *
 ic0.global_timer_set : (timestamp : i64) -> i64;                            // I G U Ry Rt C T
 ic0.performance_counter : (counter_type : i32) -> (counter : i64);          // * s
+ic0.is_controller: (src: i32, size: i32) -> ( result: i32);                 // * s
 
 ic0.debug_print : (src : i32, size : i32) -> ();                            // * s
 ic0.trap : (src : i32, size : i32) -> ();                                   // * s
@@ -132,13 +133,13 @@ Rt: from a reject callback
 C: from a cleanup callback
 s: the (start) module initialization function
 F: from canister_inspect_message
-T: from _system task_ (`canister_heartbeat` or `canister_global_timer`)
+T: from system task (canister_heartbeat or canister_global_timer)
 
 * = I G U Q Ry Rt C F T (NB: Not (start))
 
 If the canister invokes a system call from somewhere else, it will trap.
 
-Note. ic0.debug_print and ic0.trap are not (yet) available in the (start) module initialization function in ic-hs.
+Note. ic0.stable…, ic0.is_controller, ic0.debug_print, and ic0.trap are not (yet) available in the (start) module initialization function in ic-hs.
 -}
 
 data ExecutionContext = EXC_I | EXC_G | EXC_U | EXC_Q | EXC_Ry | EXC_Rt | EXC_C | EXC_F | EXC_T
@@ -356,6 +357,7 @@ systemAPI esref =
   , toImport' "ic0" "accept_message" [EXC_F] accept_message
   , toImport' "ic0" "time" star get_time
   , toImport' "ic0" "performance_counter" star performance_counter
+  , toImport' "ic0" "is_controller" star is_controller
   , toImport' "ic0" "global_timer_set" [EXC_I, EXC_G, EXC_U, EXC_Ry, EXC_Rt, EXC_C, EXC_T] global_timer_set
   , toImport' "ic0" "canister_version" star get_canister_version
 
@@ -720,6 +722,13 @@ systemAPI esref =
     -- TODO: implement once semantics of performance_counter is known.
     performance_counter :: Int32 -> HostM s Word64
     performance_counter _ = return 0
+
+    is_controller :: (Int32, Int32) -> HostM s Int32
+    is_controller (src, size) = do
+      when (size > 29) $ throwError "ic0.is_controller: Argument does not represent a principal"
+      blob <- copy_from_canister "is_controller" src size
+      ctrls <- gets (env_controllers . env)
+      return (if EntityId blob `elem` ctrls then 1 else 0)
 
     get_canister_version :: () -> HostM s Word64
     get_canister_version () = do
