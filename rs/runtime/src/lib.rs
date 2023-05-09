@@ -596,14 +596,18 @@ pub fn invoke(arg: &str) -> String {
             )
         }
         RuntimeInvokeEnum::RuntimeCallback(x) => {
-            let closure = ic_types::methods::WasmClosure {
+            let reply_closure = ic_types::methods::WasmClosure {
                 func_idx: x.callback.reply_closure.closure_idx as u32,
                 env: x.callback.reply_closure.closure_env as u32,
+            };
+            let reject_closure = ic_types::methods::WasmClosure {
+                func_idx: x.callback.reject_closure.closure_idx as u32,
+                env: x.callback.reject_closure.closure_env as u32,
             };
             match x.response {
                 Response::Reply(response_reply) => {
                     (
-                        FuncRef::UpdateClosure(closure),
+                        FuncRef::UpdateClosure(reply_closure),
                         ApiType::ReplyCallback {
                             time: Time::from_nanos_since_unix_epoch(x.env.time),
                             incoming_payload: response_reply.reply_payload,
@@ -624,7 +628,7 @@ pub fn invoke(arg: &str) -> String {
                         message: response_reject.reject_msg,
                     };
                     (
-                        FuncRef::UpdateClosure(closure),
+                        FuncRef::UpdateClosure(reject_closure),
                         ApiType::RejectCallback {
                             time: Time::from_nanos_since_unix_epoch(x.env.time),
                             reject_context: reject_ctx,

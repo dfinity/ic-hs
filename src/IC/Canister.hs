@@ -243,11 +243,11 @@ parseCanister cid bytes = do
           else return $ Return noCanisterActions
     , post_upgrade_method = \caller env dat -> do
           prefix <- getExecutablePath
-          inst <- if "canister_post_upgrade" `elem` exportedFunctions wasm_mod 
-                  then invokeToUnit cid (RuntimeInstantiate decodedModule prefix env)
-                  else return $ Return ()
+          inst <- invokeToUnit cid (RuntimeInstantiate decodedModule prefix env)
           case inst of Trap err -> return $ Trap err
-                       Return () -> invokeToCanisterActions cid (RuntimePostUpgrade caller env dat)
+                       Return () -> if "canister_post_upgrade" `elem` exportedFunctions wasm_mod
+                                    then invokeToCanisterActions cid (RuntimePostUpgrade caller env dat)
+                                    else return $ Return noCanisterActions
     , inspect_message = \method_name caller env arg ->
           if "canister_inspect_message" `elem` exportedFunctions wasm_mod 
           then invokeToUnit cid (RuntimeInspectMessage method_name caller env arg)
