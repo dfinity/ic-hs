@@ -936,6 +936,7 @@ icTests my_sub other_sub =
     , t "accept_message"               never               acceptMessage -- due to double accept
     , t "time"                         star              $ ignore getTime
     , t "performance_counter"          star              $ ignore $ performanceCounter (int 0)
+    , t "is_controller"                star              $ ignore $ isController ""
     , t "canister_version"             star              $ ignore $ canisterVersion
     , t "global_timer_set"             "I G U Ry Rt C T" $ ignore $ apiGlobalTimerSet (int64 0)
     , t "debug_print"                  star              $ debugPrint "hello"
@@ -1414,6 +1415,23 @@ icTests my_sub other_sub =
       ctr2 <- query cid (replyData canister_version) >>= asWord64
       ctr1 > 0 @? "Canister version must be positive"
       ctr1 @?= ctr2
+    ]
+
+  , testGroup "is_controller system API" $
+    [ simpleTestCase "argument is controller" ecid $ \cid -> do
+      res <- query cid (replyData $ i2b $ isController (bytes defaultUser)) >>= asWord32
+      res @?= 1
+
+    , simpleTestCase "argument is not controller" ecid $ \cid -> do
+      res <- query cid (replyData $ i2b $ isController (bytes "")) >>= asWord32
+      res @?= 0
+
+    , simpleTestCase "argument is a valid principal" ecid $ \cid -> do
+      res <- query cid (replyData $ i2b $ isController (bytes $ BS.replicate 29 0)) >>= asWord32
+      res @?= 0
+
+    , simpleTestCase "argument is not a valid principal" ecid $ \cid -> do
+      query' cid (replyData $ i2b $ isController (bytes $ BS.replicate 30 0)) >>= isReject [5]
     ]
 
   , testGroup "upgrades" $

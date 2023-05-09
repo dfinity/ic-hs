@@ -11,6 +11,7 @@ import qualified Data.ByteString.Lazy.Char8 as BS
 import qualified Data.ByteString.Builder as BS
 import qualified Data.ByteString.UTF8 as BSU
 import qualified Data.Map as M
+import qualified Data.Set as S
 import qualified Data.Text as T
 import qualified Data.Word as W
 import qualified Text.Hex as T hiding (Text)
@@ -162,6 +163,7 @@ data Env = Env
     , env_certificate :: Maybe Blob
     , env_canister_version :: Natural
     , env_global_timer :: Natural
+    , env_controllers :: S.Set EntityId
     }
 
 data TrapOr a = Trap String | Return a deriving Functor
