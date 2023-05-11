@@ -128,7 +128,7 @@ impl RuntimeResponse {
 
 impl RuntimeState {
     fn execute(&mut self, input: WasmExecutionInput, controller: Arc<SandboxedExecutionController>, use_persisted_stable_memory: bool) -> Result<RuntimeResponse, String> {
-        let (wasm_binary, wasm_memory, stable_memory, _exported_globals, _exported_functions, is_pre_upgrade) = match input.api_type {
+        let (wasm_binary, wasm_memory, stable_memory, exported_globals, _exported_functions, is_pre_upgrade) = match input.api_type {
             ApiType::Init{..} => {
                 let (
                     wasm_binary,
@@ -164,7 +164,7 @@ impl RuntimeState {
                 &wasm_binary,
                 &wasm_memory,
                 &stable_memory,
-                self.exported_globals.clone(),
+                exported_globals.to_vec(),
             )
             .1;
         let (exec_output_wasm, state_changes) = match res {
