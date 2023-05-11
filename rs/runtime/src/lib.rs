@@ -50,13 +50,16 @@ use serde_cbor::{from_slice, to_vec};
 use serde_with::{serde_as, Bytes};
 
 struct RuntimeState {
-    // pub controller: Arc<SandboxedExecutionController>,
     pub cycles_account_manager: CyclesAccountManager,
-    pub wasm_binary: Arc<WasmBinary>,
-    pub wasm_memory: Memory,
-    pub stable_memory: Memory,
-    pub exported_functions: ExportedFunctions,
-    pub exported_globals: Vec<Global>,
+    pub wasm_binary: Arc<WasmBinary>, // upgrade affects this 
+    pub wasm_memory: Memory, // wasm heap of canister. upgrade throws this away (pre upgrade sees old; then we throw it away; postUpgrade starts with fresh one)
+    pub stable_memory: Memory, // this is persisted across upgrade. both pre-and post upgrade see this memory. -> this we need to fix. 
+    pub exported_functions: ExportedFunctions, // and this (it's a function of wasm_binary)
+    pub exported_globals: Vec<Global>, // also a function of wasm_binary and execution
+    // corner case: what if we trap in post-upgrade? then we need to roll back (both wasm- and stable- memory) to before pre-upgrade. 
+    pub persisted_stable_memory: Option<Memory>, // only Some between pre-upgrade and post-upgrade. after successful pre-upgrade 
+    pub canister_module: CanisterModule,
+    pub canister_id: CanisterId,
 }
 
 lazy_static! {
@@ -124,13 +127,42 @@ impl RuntimeResponse {
 }
 
 impl RuntimeState {
-    fn execute(&mut self, input: WasmExecutionInput, controller: Arc<SandboxedExecutionController>) -> Result<RuntimeResponse, String> {
+    fn execute(&mut self, input: WasmExecutionInput, controller: Arc<SandboxedExecutionController>, use_persisted_stable_memory: bool) -> Result<RuntimeResponse, String> {
+        let (wasm_binary, wasm_memory, stable_memory, exported_globals, exported_functions) = match input.api_type {
+            ApiType::Init{..} => {
+                let (
+                    wasm_binary,
+                    wasm_memory,
+                    stable_memory,
+                    exported_globals,
+                    exported_functions,
+                    _,
+                    _,
+                ) = controller
+                    .create_execution_state(
+                        self.canister_module,
+                        self.canister_id,
+                        Arc::new(CompilationCache::default()),
+                    )
+                    .unwrap();
+                if use_persisted_stable_memory {
+                    // if we are in postupgrade, we create from scratch EXCEPT persisted stable memory 
+                    (wasm_binary, wasm_memory, self.persisted_stable_memory.unwrap(), exported_globals, exported_functions)
+                } else {
+                    // if we initialize the module, then we create state from scratch
+                    (wasm_binary, wasm_memory, stable_memory, exported_globals, exported_functions)
+                }
+            },
+            // if we don't touch the canister module, we take everything from RuntimeState
+            _ => (&self.wasm_binary, &self.wasm_memory, &self.stable_memory, &self.exported_globals, &self.exported_functions),
+        };
+        
         let res = controller
             .execute(
                 input,
-                &self.wasm_binary,
-                &self.wasm_memory,
-                &self.stable_memory,
+                &wasm_binary,
+                &wasm_memory,
+                &stable_memory,
                 self.exported_globals.clone(),
             )
             .1;
@@ -138,18 +170,31 @@ impl RuntimeState {
             Finished(_, exec_output_wasm, state_changes) => (exec_output_wasm, state_changes),
             _ => panic!("DTS should be disabled"),
         };
+        // if we trap, 
+        //   EITHER canister module was not changed, the we just return (persisted state was already None). 
+        //   OR we failed during upgrade (we are changing canister module), so we leave all fields as they were, 
+        //      because during upgrade nothing was committed, except persisted stable memory, which we unset. 
         if let Err(e) = exec_output_wasm.wasm_result {
+            self.persisted_stable_memory = None;
             return Err(e.to_string());
         }
+        // we are successful! 
         let mut new_certified_data = None;
         let mut new_global_timer = None;
         let mut cycles_accepted = Cycles::new(0);
         let mut cycles_minted = Cycles::new(0);
         let mut new_calls = vec![];
         if let Some(state_changes) = state_changes {
-            self.wasm_memory = state_changes.wasm_memory;
-            self.stable_memory = state_changes.stable_memory;
-            self.exported_globals = state_changes.globals;
+            match input.api_type {
+                // we must not commit anything, otherwise we violate invariant in OR case above, EXCEPT persisted stable memory
+                ApiType::PreUpgrade{..} => self.persisted_stable_memory = Some(state_changes.stable_memory),
+                _ => {
+                    self.wasm_memory = state_changes.wasm_memory;
+                    self.stable_memory = state_changes.stable_memory;
+                    self.persisted_stable_memory = None;
+                    self.exported_globals = state_changes.globals;
+                },
+            }            
             new_certified_data = state_changes
                 .system_state_changes
                 .new_certified_data
@@ -445,50 +490,59 @@ pub fn invoke(arg: &str) -> String {
     let call_ctx_id: CallContextId = CallContextId::from(0);
 
     match r.entry_point {
-        RuntimeInvokeEnum::RuntimeInstantiate(ref x) => {
-            // set prefix if it does not exist yet. we need this "lazy initialization" 
-            // because we only get the prefix in the first invoke call, with RuntimeInstantiate
-            let mut prefix = PREFIX.lock().unwrap();
-            if prefix.is_none() {
-                *prefix = Some(x.prefix.clone());
-            }
-            drop(prefix);
+        RuntimeInvokeEnum::RuntimeInstantiate(ref x) => { 
+            // we only run this, if we do not have any state for canister
+            if state_map.get(&canister_id).is_none() {
+                // set prefix if it does not exist yet. we need this "lazy initialization" 
+                // because we only get the prefix in the first invoke call, with RuntimeInstantiate
+                let mut prefix = PREFIX.lock().unwrap();
+                if prefix.is_none() {
+                    *prefix = Some(x.prefix.clone());
+                }
+                drop(prefix);
 
-            // get or create controller for this subnet type   
-            let controller = get_or_create_controller(&subnet_id, &subnet_type, &dirty_page_overhead);
-            
-            let cycles_account_manager = CyclesAccountManager::new(
-                subnet_config.scheduler_config.max_instructions_per_message,
-                subnet_type,
-                subnet_id,
-                subnet_config.cycles_account_manager_config,
-            );
-            let canister_module = CanisterModule::new(x.module.clone());
-            let (
-                wasm_binary,
-                wasm_memory,
-                stable_memory,
-                exported_globals,
-                exported_functions,
-                _,
-                _,
-            ) = controller
-                .create_execution_state(
+                // get or create controller for this subnet type   
+                let controller = get_or_create_controller(&subnet_id, &subnet_type, &dirty_page_overhead);
+                
+                let cycles_account_manager = CyclesAccountManager::new(
+                    subnet_config.scheduler_config.max_instructions_per_message,
+                    subnet_type,
+                    subnet_id,
+                    subnet_config.cycles_account_manager_config,
+                );
+                let canister_module = CanisterModule::new(x.module.clone());
+                let (
+                    wasm_binary,
+                    wasm_memory,
+                    stable_memory,
+                    exported_globals,
+                    exported_functions,
+                    _,
+                    _,
+                ) = controller
+                    .create_execution_state(
+                        canister_module,
+                        canister_id,
+                        Arc::new(CompilationCache::default()),
+                    )
+                    .unwrap();
+                let current_state: RuntimeState = RuntimeState {
+                    // controller,
+                    cycles_account_manager,
+                    wasm_binary,
+                    wasm_memory,
+                    stable_memory,
+                    exported_functions,
+                    exported_globals,
+                    persisted_stable_memory: None,
                     canister_module,
-                    canister_id,
-                    Arc::new(CompilationCache::default()),
-                )
-                .unwrap();
-            let current_state: RuntimeState = RuntimeState {
-                // controller,
-                cycles_account_manager,
-                wasm_binary,
-                wasm_memory,
-                stable_memory,
-                exported_functions,
-                exported_globals,
-            };
-            state_map.insert(canister_id, current_state);
+                    canister_id: canister_id.clone(),
+                };
+                state_map.insert(canister_id, current_state);
+            } else {
+                let mut current_state = state_map.get_mut(&canister_id).unwrap();
+                current_state.canister_module = CanisterModule::new(x.module.clone());
+            }
         }
         _ => {}
     };
@@ -755,7 +809,14 @@ pub fn invoke(arg: &str) -> String {
         func_ref: method,
         compilation_cache: Arc::new(CompilationCache::default()),
     };
-    let res = current_state.execute(input, controller);
+    let res = current_state.execute(
+        input, 
+        controller, 
+        match r.entry_point {
+            RuntimeInvokeEnum::RuntimePostUpgrade(x) => true, 
+            _ => false,
+        }
+    );
     if let Err(e) = res {
         return general_purpose::STANDARD.encode(to_vec(&RuntimeResponse::trap(e)).unwrap());
     }
