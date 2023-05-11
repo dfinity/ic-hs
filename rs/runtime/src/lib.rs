@@ -29,7 +29,7 @@ use ic_replicated_state::{ExportedFunctions, Global, Memory};
 use ic_system_api::sandbox_safe_system_state::CanisterStatusView;
 use ic_system_api::sandbox_safe_system_state::SandboxSafeSystemState;
 use ic_system_api::ApiType;
-use ic_system_api::ResponseStatus::NotRepliedYet;
+use ic_system_api::ResponseStatus::{NotRepliedYet, AlreadyReplied};
 use ic_system_api::{ExecutionParameters, InstructionLimits};
 use ic_types::ingress::WasmResult;
 use ic_types::messages::inter_canister::{Callback, WasmClosure};
@@ -604,6 +604,11 @@ pub fn invoke(arg: &str) -> String {
                 func_idx: x.callback.reject_closure.closure_idx as u32,
                 env: x.callback.reject_closure.closure_env as u32,
             };
+            let response_status = if x.needs_to_respond {
+                NotRepliedYet
+            } else {
+                AlreadyReplied
+            };
             match x.response {
                 Response::Reply(response_reply) => {
                     (
@@ -614,7 +619,7 @@ pub fn invoke(arg: &str) -> String {
                             incoming_cycles: to_cycles(x.refunded_cycles),
                             call_context_id: call_ctx_id,
                             response_data: vec![],
-                            response_status: NotRepliedYet,
+                            response_status,
                             outgoing_request: None,
                             max_reply_size: 2000000.into(), // TODO
                             execution_mode: execution_parameters.execution_mode.clone(),
@@ -635,7 +640,7 @@ pub fn invoke(arg: &str) -> String {
                             incoming_cycles: to_cycles(x.refunded_cycles),
                             call_context_id: call_ctx_id,
                             response_data: vec![],
-                            response_status: NotRepliedYet,
+                            response_status,
                             outgoing_request: None,
                             max_reply_size: 2000000.into(), // TODO
                             execution_mode: execution_parameters.execution_mode.clone(),
