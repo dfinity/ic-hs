@@ -147,15 +147,15 @@ impl RuntimeState {
                     .unwrap();
                 if use_persisted_stable_memory {
                     // if we are in postupgrade, we create from scratch EXCEPT persisted stable memory 
-                    (&wasm_binary, &wasm_memory, self.persisted_stable_memory.as_ref().unwrap(), &exported_globals, &exported_functions, false)
+                    (wasm_binary, wasm_memory, self.persisted_stable_memory.clone().unwrap(), exported_globals, exported_functions, false)
                 } else {
                     // if we initialize the module, then we create state from scratch
-                    (&wasm_binary, &wasm_memory, &stable_memory, &exported_globals, &exported_functions, false)
+                    (wasm_binary, wasm_memory, stable_memory, exported_globals, exported_functions, false)
                 }
             },
-            ApiType::PreUpgrade{..} => (&self.wasm_binary, &self.wasm_memory, &self.stable_memory, &self.exported_globals, &self.exported_functions, true),
+            ApiType::PreUpgrade{..} => (self.wasm_binary.clone(), self.wasm_memory.clone(), self.stable_memory.clone(), self.exported_globals.clone(), self.exported_functions.clone(), true),
             // if we don't touch the canister module, we take everything from RuntimeState
-            _ => (&self.wasm_binary, &self.wasm_memory, &self.stable_memory, &self.exported_globals, &self.exported_functions, false),
+            _ => (self.wasm_binary.clone(), self.wasm_memory.clone(), self.stable_memory.clone(), self.exported_globals.clone(), self.exported_functions.clone(), false),
         };
         
         let res = controller
