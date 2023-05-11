@@ -613,7 +613,7 @@ pub fn invoke(arg: &str) -> String {
                     response_data: vec![],
                     response_status: NotRepliedYet,
                     outgoing_request: None,
-                    max_reply_size: 2000000.into(), // TODO
+                    max_reply_size: 2097152.into(), // TODO
                 },
                 to_cycles(x.cycles),
                 false,
@@ -634,7 +634,7 @@ pub fn invoke(arg: &str) -> String {
                         response_data: vec![],
                         response_status: NotRepliedYet,
                         data_certificate: cert_vec,
-                        max_reply_size: 2000000.into(), // TODO
+                        max_reply_size: 2097152.into(), // TODO
                     }
                 } else {
                     ApiType::NonReplicatedQuery {
@@ -645,7 +645,7 @@ pub fn invoke(arg: &str) -> String {
                         data_certificate: cert_vec,
                         response_data: vec![],
                         response_status: NotRepliedYet,
-                        max_reply_size: 2000000.into(), // TODO
+                        max_reply_size: 2097152.into(), // TODO
                         query_kind: NonReplicatedQueryKind::Pure,
                     }
                 },
@@ -679,7 +679,7 @@ pub fn invoke(arg: &str) -> String {
                             response_data: vec![],
                             response_status,
                             outgoing_request: None,
-                            max_reply_size: 2000000.into(), // TODO
+                            max_reply_size: 2097152.into(), // TODO
                             execution_mode: execution_parameters.execution_mode.clone(),
                         },
                         to_cycles(x.cycles_available),
@@ -701,7 +701,7 @@ pub fn invoke(arg: &str) -> String {
                             response_data: vec![],
                             response_status,
                             outgoing_request: None,
-                            max_reply_size: 2000000.into(), // TODO
+                            max_reply_size: 2097152.into(), // TODO
                             execution_mode: execution_parameters.execution_mode.clone(),
                         },
                         to_cycles(x.cycles_available),
