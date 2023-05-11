@@ -128,7 +128,7 @@ impl RuntimeResponse {
 
 impl RuntimeState {
     fn execute(&mut self, input: WasmExecutionInput, controller: Arc<SandboxedExecutionController>, use_persisted_stable_memory: bool) -> Result<RuntimeResponse, String> {
-        let (wasm_binary, wasm_memory, stable_memory, exported_globals, exported_functions) = match input.api_type {
+        let (wasm_binary, wasm_memory, stable_memory, _exported_globals, _exported_functions, is_pre_upgrade) = match input.api_type {
             ApiType::Init{..} => {
                 let (
                     wasm_binary,
@@ -140,21 +140,22 @@ impl RuntimeState {
                     _,
                 ) = controller
                     .create_execution_state(
-                        self.canister_module,
+                        self.canister_module.clone(),
                         self.canister_id,
                         Arc::new(CompilationCache::default()),
                     )
                     .unwrap();
                 if use_persisted_stable_memory {
                     // if we are in postupgrade, we create from scratch EXCEPT persisted stable memory 
-                    (wasm_binary, wasm_memory, self.persisted_stable_memory.unwrap(), exported_globals, exported_functions)
+                    (&wasm_binary, &wasm_memory, self.persisted_stable_memory.as_ref().unwrap(), &exported_globals, &exported_functions, false)
                 } else {
                     // if we initialize the module, then we create state from scratch
-                    (wasm_binary, wasm_memory, stable_memory, exported_globals, exported_functions)
+                    (&wasm_binary, &wasm_memory, &stable_memory, &exported_globals, &exported_functions, false)
                 }
             },
+            ApiType::PreUpgrade{..} => (&self.wasm_binary, &self.wasm_memory, &self.stable_memory, &self.exported_globals, &self.exported_functions, true),
             // if we don't touch the canister module, we take everything from RuntimeState
-            _ => (&self.wasm_binary, &self.wasm_memory, &self.stable_memory, &self.exported_globals, &self.exported_functions),
+            _ => (&self.wasm_binary, &self.wasm_memory, &self.stable_memory, &self.exported_globals, &self.exported_functions, false),
         };
         
         let res = controller
@@ -185,15 +186,14 @@ impl RuntimeState {
         let mut cycles_minted = Cycles::new(0);
         let mut new_calls = vec![];
         if let Some(state_changes) = state_changes {
-            match input.api_type {
+            if is_pre_upgrade {
                 // we must not commit anything, otherwise we violate invariant in OR case above, EXCEPT persisted stable memory
-                ApiType::PreUpgrade{..} => self.persisted_stable_memory = Some(state_changes.stable_memory),
-                _ => {
+                self.persisted_stable_memory = Some(state_changes.stable_memory);
+            } else {
                     self.wasm_memory = state_changes.wasm_memory;
                     self.stable_memory = state_changes.stable_memory;
                     self.persisted_stable_memory = None;
                     self.exported_globals = state_changes.globals;
-                },
             }            
             new_certified_data = state_changes
                 .system_state_changes
@@ -521,7 +521,7 @@ pub fn invoke(arg: &str) -> String {
                     _,
                 ) = controller
                     .create_execution_state(
-                        canister_module,
+                        canister_module.clone(),
                         canister_id,
                         Arc::new(CompilationCache::default()),
                     )
@@ -574,7 +574,7 @@ pub fn invoke(arg: &str) -> String {
         },
     };
 
-    let (method, api_type, call_ctx_available_cycles) = match r.entry_point {
+    let (method, api_type, call_ctx_available_cycles, is_post_upgrade) = match r.entry_point {
         RuntimeInvokeEnum::RuntimeInstantiate(_) => {
             if !current_state
                 .exported_functions
@@ -588,6 +588,7 @@ pub fn invoke(arg: &str) -> String {
                     time: Time::from_nanos_since_unix_epoch(env.time),
                 },
                 Cycles::new(0),
+                false,
             )
         }
         RuntimeInvokeEnum::RuntimeInitialize(x) => (
@@ -598,6 +599,7 @@ pub fn invoke(arg: &str) -> String {
                 caller: x.caller.try_into().unwrap(),
             },
             Cycles::new(0),
+                false,
         ),
         RuntimeInvokeEnum::RuntimeUpdate(x) => {
             (
@@ -614,6 +616,7 @@ pub fn invoke(arg: &str) -> String {
                     max_reply_size: 2000000.into(), // TODO
                 },
                 to_cycles(x.cycles),
+                false,
             )
         }
         RuntimeInvokeEnum::RuntimeQuery(x) => {
@@ -647,6 +650,7 @@ pub fn invoke(arg: &str) -> String {
                     }
                 },
                 Cycles::new(0),
+                false,
             )
         }
         RuntimeInvokeEnum::RuntimeCallback(x) => {
@@ -679,6 +683,7 @@ pub fn invoke(arg: &str) -> String {
                             execution_mode: execution_parameters.execution_mode.clone(),
                         },
                         to_cycles(x.cycles_available),
+                false,
                     )
                 }
                 Response::Reject(response_reject) => {
@@ -700,6 +705,7 @@ pub fn invoke(arg: &str) -> String {
                             execution_mode: execution_parameters.execution_mode.clone(),
                         },
                         to_cycles(x.cycles_available),
+                false,
                     )
                 }
             }
@@ -715,6 +721,7 @@ pub fn invoke(arg: &str) -> String {
                     time: Time::from_nanos_since_unix_epoch(x.env.time),
                 },
                 Cycles::new(0),
+                false,
             )
         }
         RuntimeInvokeEnum::RuntimePreUpgrade(x) => (
@@ -724,6 +731,7 @@ pub fn invoke(arg: &str) -> String {
                 time: Time::from_nanos_since_unix_epoch(x.env.time),
             },
             Cycles::new(0),
+                false,
         ),
         RuntimeInvokeEnum::RuntimePostUpgrade(x) => (
             FuncRef::Method(WasmMethod::System(SystemMethod::CanisterPostUpgrade)),
@@ -733,6 +741,7 @@ pub fn invoke(arg: &str) -> String {
                 caller: x.caller.try_into().unwrap(),
             },
             Cycles::new(0),
+                true,
         ),
         RuntimeInvokeEnum::RuntimeInspectMessage(x) => {
             if !current_state
@@ -751,6 +760,7 @@ pub fn invoke(arg: &str) -> String {
                     message_accepted: false,
                 },
                 Cycles::new(0),
+                false,
             )
         }
         RuntimeInvokeEnum::RuntimeHeartbeat(x) => (
@@ -762,6 +772,7 @@ pub fn invoke(arg: &str) -> String {
                 outgoing_request: None,
             },
             Cycles::new(0),
+                false,
         ),
         RuntimeInvokeEnum::RuntimeGlobalTimer(x) => (
             FuncRef::Method(WasmMethod::System(SystemMethod::CanisterGlobalTimer)),
@@ -772,6 +783,7 @@ pub fn invoke(arg: &str) -> String {
                 outgoing_request: None,
             },
             Cycles::new(0),
+                false,
         ),
     };
 
@@ -811,11 +823,8 @@ pub fn invoke(arg: &str) -> String {
     };
     let res = current_state.execute(
         input, 
-        controller, 
-        match r.entry_point {
-            RuntimeInvokeEnum::RuntimePostUpgrade(x) => true, 
-            _ => false,
-        }
+        controller,
+        is_post_upgrade
     );
     if let Err(e) = res {
         return general_purpose::STANDARD.encode(to_vec(&RuntimeResponse::trap(e)).unwrap());
