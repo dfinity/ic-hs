@@ -424,14 +424,15 @@ starveCallContext ctxt_id = do
 
 printEntry :: EntryPoint -> String
 printEntry (Public name _) = "Method: " ++ name
-printEntry (Closure cb resp _) = "Closure: " ++ show cb ++ " with response " ++ show resp
-printEntry _ = "..."
+printEntry (Closure cb _ _) = "Closure: " ++ show cb
+printEntry Heartbeat = "Heartbeat"
+printEntry GlobalTimer = "GlobalTimer"
 
 processMessage :: ICM m => Message -> m ()
 processMessage m = case m of
   CallMessage ctxt_id entry -> onReject (rejectCallContext ctxt_id) $ do
-    _ <- liftIO $ putStrLn $ "CallMessage: " ++ show ctxt_id ++ " to " ++ printEntry entry
     callee <- calleeOfCallID ctxt_id
+    _ <- liftIO $ putStrLn $ "CallMessage: " ++ show ctxt_id ++ " to " ++ printEntry entry ++ " of canister " ++ prettyID callee
     maybeSubnet <- getSubnetFromSubnetId callee
     if callee == managementCanisterId || isJust maybeSubnet then do
       caller <- callerOfCallID ctxt_id

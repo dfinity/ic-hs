@@ -73,7 +73,7 @@ main = join . customExecParser (prefs showHelpOnError) $
     defaultSubnetConfig :: [(SubnetType, W.Word64, String, [(W.Word64, W.Word64)])]
     defaultSubnetConfig = [(System, 1, "sk1", [nth_canister_range 0]), (Application, 1, "sk2", [nth_canister_range 1])]
     defaultSystemTaskPeriod :: Int
-    defaultSystemTaskPeriod = 1
+    defaultSystemTaskPeriod = 10
     parser :: Parser (IO ())
     parser = work
       <$>
