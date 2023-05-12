@@ -30,7 +30,7 @@ import IC.Utils
 withApp :: HasRefConfig => [SubnetConfig] -> Int -> Maybe FilePath -> (Application -> IO a) -> IO a
 withApp subnets systemTaskPeriod backingFile action =
     withStore (initialIC subnets) backingFile $ \store -> 
-      --withAsync (loopSystemTasks store) $ \_async -> 
+      withAsync (loopSystemTasks store) $ \_async -> 
       withAsync (loopIC store) $ \_async -> 
         action $ handle store
   where
@@ -44,6 +44,7 @@ withApp subnets systemTaskPeriod backingFile action =
           processSystemTasks
     loopIC :: Store IC -> IO ()
     loopIC store = forever $ do
+        threadDelay 100000
         modifyStore store aux
       where
         aux = do
@@ -110,8 +111,9 @@ handle store req respond = case (requestMethod req, pathInfo req) of
         a
       -- begin processing in the background (it is important that
       -- this thread returns, else warp is blocked somehow)
-      putStrLn ("------------Entering thread for: " ++ ecid)
+      --putStrLn ("------------Entering thread for: " ++ ecid)
       --void $ forkIO (loopIC ecid)
+      putStrLn $ "Answering request for " ++ ecid
       return x
 
     -- Not atomic, reads most recent state
