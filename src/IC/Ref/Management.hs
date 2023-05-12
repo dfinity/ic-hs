@@ -210,6 +210,8 @@ icInstallCode :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "install_
 icInstallCode caller r = do
     let canister_id = principalToEntityId (r .! #canister_id)
     let arg = r .! #arg
+    _ <- liftIO $ putStrLn $ "mode: " ++ (show $ r .! #mode)
+    _ <- liftIO $ putStrLn $ "canister_id: " ++ prettyID canister_id
     new_can_mod <- return (parseCanister canister_id (r .! #wasm_module))
       `onErr` (\err -> reject RC_CANISTER_ERROR ("Parsing failed: " ++ err) (Just EC_INVALID_MODULE))
     was_empty <- isCanisterEmpty canister_id

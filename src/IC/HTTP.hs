@@ -30,17 +30,25 @@ import IC.Utils
 withApp :: HasRefConfig => [SubnetConfig] -> Int -> Maybe FilePath -> (Application -> IO a) -> IO a
 withApp subnets systemTaskPeriod backingFile action =
     withStore (initialIC subnets) backingFile $ \store -> 
+      --withAsync (loopSystemTasks store) $ \_async -> 
       withAsync (loopIC store) $ \_async -> 
         action $ handle store
   where
-    loopIC :: Store IC -> IO ()
-    loopIC store = forever $ do
+    loopSystemTasks :: Store IC -> IO ()
+    loopSystemTasks store = forever $ do
         threadDelay systemTaskPeriod
         modifyStore store aux
       where
         aux = do
           lift getTimestamp >>= setAllTimesTo
           processSystemTasks
+    loopIC :: Store IC -> IO ()
+    loopIC store = forever $ do
+        modifyStore store aux
+      where
+        aux = do
+          lift getTimestamp >>= setAllTimesTo
+          runStep
 
 handle :: HasRefConfig => Store IC -> Application
 handle store req respond = case (requestMethod req, pathInfo req) of
@@ -53,11 +61,12 @@ handle store req respond = case (requestMethod req, pathInfo req) of
         case parsePrincipal textual_ecid of
             Left err -> invalidRequest $ "cannot parse effective canister id: " <> T.pack err
             Right (Principal ecid) -> do
+              putStrLn $ "Incoming request to " ++ T.unpack verb ++ " for canister " ++ T.unpack textual_ecid
               root_key <- peekIC $ gets $ toPublicKey . secretRootKey
               case verb of
                 "call" -> withSignedCBOR root_key $ \(gr, ev) -> case callRequest gr of
                     Left err -> invalidRequest err
-                    Right cr -> runIC $ do
+                    Right cr -> runIC (T.unpack textual_ecid) $ do
                         t <- lift getTimestamp
                         runExceptT (authCallRequest t (EntityId ecid) ev cr) >>= \case
                             Left err ->
@@ -92,26 +101,29 @@ handle store req respond = case (requestMethod req, pathInfo req) of
                 _ -> notFound req
     _ -> notFound req
   where
-    runIC :: StateT IC IO a -> IO a
-    runIC a = do
+    runIC :: String -> StateT IC IO a -> IO a
+    runIC ecid a = do
       x <- modifyStore store $ do
         -- Here we make IC.Ref use “real time”
         lift getTimestamp >>= setAllTimesTo
-        processSystemTasks
+        --processSystemTasks
         a
       -- begin processing in the background (it is important that
       -- this thread returns, else warp is blocked somehow)
-      void $ forkIO loopIC
+      putStrLn ("------------Entering thread for: " ++ ecid)
+      --void $ forkIO (loopIC ecid)
       return x
 
     -- Not atomic, reads most recent state
     peekIC :: StateT IC IO a -> IO a
     peekIC a = peekStore store >>= evalStateT a
 
-    loopIC :: IO ()
-    loopIC = modifyStore store runStep >>= \case
-        True -> loopIC
-        False -> return ()
+    {-
+    loopIC :: String -> IO ()
+    loopIC ecid = putStrLn ("------------Executing step for: " ++ ecid) >> modifyStore store runStep >>= \case
+        True -> (loopIC ecid)
+        False -> putStrLn ("------------Exiting thread for: " ++ ecid) >> return ()
+    -}
 
     cbor status gr = respond $ responseBuilder
         status

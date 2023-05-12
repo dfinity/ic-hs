@@ -275,6 +275,9 @@ mintCycles = op 75
 oneWayCallNew :: Exp 'B -> Exp 'B -> Prog
 oneWayCallNew = op 76
 
+isController :: Exp 'B -> Exp 'I
+isController = op 77
+
 -- Some convenience combinators
 
 -- This allows us to write byte expressions as plain string literals

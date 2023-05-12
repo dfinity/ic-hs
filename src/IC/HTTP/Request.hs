@@ -41,7 +41,7 @@ stripEnvelope root_key gr = runWriterT $ flip record gr $ do
 
             delegations <- optionalField (listOf delegationField) "sender_delegation"
             let dels = fromMaybe [] delegations
-            when (length dels > 4) $ throwError "sender_delegation must not contain more than four delegations"
+            when (length dels > 20) $ throwError "sender_delegation must not contain more than 20 delegations"
             pk' <- checkDelegations pk [pk] dels
 
             let rid = requestId content
