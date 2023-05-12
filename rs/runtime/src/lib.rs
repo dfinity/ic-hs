@@ -147,7 +147,7 @@ impl RuntimeState {
                     .unwrap();
                 if use_persisted_stable_memory {
                     // if we are in postupgrade, we create from scratch EXCEPT persisted stable memory 
-                    (wasm_binary, wasm_memory, self.persisted_stable_memory.clone().unwrap(), exported_globals, exported_functions, false)
+                    (wasm_binary, wasm_memory, self.persisted_stable_memory.clone().unwrap_or(self.stable_memory.clone()), exported_globals, exported_functions, false)
                 } else {
                     // if we initialize the module, then we create state from scratch
                     (wasm_binary, wasm_memory, stable_memory, exported_globals, exported_functions, false)
