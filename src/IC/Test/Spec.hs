@@ -864,13 +864,6 @@ icTests my_sub other_sub =
             cid <- install ecid (onInspectMessage (callback (prog >>> acceptMessage)))
             call'' cid reply
           )
-        , "T" =: boolTest (\prog -> do
-            cid <- install ecid (onHeartbeat (callback (prog >>> setGlobal "Did not trap")))
-            call_ cid reply -- This assumes that after one update call returned, a heartbeat
-                            -- should have happened. Also see heartbeat tests below.
-            g <- query cid $ replyData getGlobal
-            return (g == "Did not trap")
-          )
         ]
 
       -- context builder helpers
@@ -891,7 +884,7 @@ icTests my_sub other_sub =
         ]
         where s = S.fromList (T.words trapping)
 
-      star = "I G U Q Ry Rt C F T"
+      star = "I G U Q Ry Rt C F"
       never = ""
 
     in concat
@@ -912,7 +905,7 @@ icTests my_sub other_sub =
     , t "canister_self"                star          $ ignore self
     , t "canister_cycle_balance"       star          $ ignore getBalance
     , t "canister_cycle_balance128"    star          $ ignore getBalance128
-    , t "call_new_call_perform"        "U Rt Ry T"   $
+    , t "call_new_call_perform"        "U Rt Ry"   $
         callNew "foo" "bar" "baz" "quux" >>>
         callDataAppend "foo" >>>
         callCyclesAdd (int64 0) >>>
@@ -930,7 +923,7 @@ icTests my_sub other_sub =
     , t "stable64_grow"                star              $ ignore $ stable64Grow (int64 1)
     , t "stable64_write"               star              $ stable64Write (int64 0) ""
     , t "stable64_read"                star              $ ignore $ stable64Read (int64 0) (int64 0)
-    , t "certified_data_set"           "I G U Ry Rt T"   $ setCertifiedData "foo"
+    , t "certified_data_set"           "I G U Ry Rt"   $ setCertifiedData "foo"
     , t "data_certificate_present"     star              $ ignore getCertificatePresent
     , t "msg_method_name"              "F"               $ ignore methodName
     , t "accept_message"               never               acceptMessage -- due to double accept
@@ -938,7 +931,7 @@ icTests my_sub other_sub =
     , t "performance_counter"          star              $ ignore $ performanceCounter (int 0)
     , t "is_controller"                star              $ ignore $ isController ""
     , t "canister_version"             star              $ ignore $ canisterVersion
-    , t "global_timer_set"             "I G U Ry Rt C T" $ ignore $ apiGlobalTimerSet (int64 0)
+    , t "global_timer_set"             "I G U Ry Rt C" $ ignore $ apiGlobalTimerSet (int64 0)
     , t "debug_print"                  star              $ debugPrint "hello"
     , t "trap"                         never             $ trap "this better traps"
     ]

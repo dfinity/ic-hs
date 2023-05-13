@@ -171,6 +171,8 @@ let
         cp ${ic-ref}/test-data/universal-canister.wasm $out/test-data/universal-canister.wasm
         chmod u+w $out/build/ic-ref
         chmod u+w $out/build/ic-ref-test
+        chmod u+w $out/build/canister_sandbox
+        chmod u+w $out/build/sandbox_launcher
         dylibbundler \
           -b \
           -x $out/build/ic-ref \

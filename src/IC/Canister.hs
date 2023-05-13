@@ -88,7 +88,7 @@ decodeModule bytes =
 needsToRespond :: NeedsToRespond -> Bool
 needsToRespond (NeedsToRespond b) = b
 
-data EntryPoint = RuntimeInstantiate Blob String Env
+data EntryPoint = RuntimeInstantiate Blob String Bool Env
   | RuntimeInitialize EntityId Env Blob
   | RuntimeUpdate MethodName EntityId Env NeedsToRespond Cycles Blob
   | RuntimeQuery MethodName EntityId Env Blob
@@ -180,7 +180,7 @@ assembleCycles (TList [high, low]) = fromIntegral $ (shiftL (parseInteger high) 
 assembleCycles _ = error "assembleCycles: not supported"
 
 epterm :: EntryPoint -> Term
-epterm (RuntimeInstantiate mod prefix env) = enumterm "RuntimeInstantiate" $ mapterm [("module", blobterm mod), ("prefix", stringterm prefix), ("env", envterm env)]
+epterm (RuntimeInstantiate mod prefix persist_stable_memory env) = enumterm "RuntimeInstantiate" $ mapterm [("module", blobterm mod), ("prefix", stringterm prefix), ("persist_stable_memory", TBool $ persist_stable_memory), ("env", envterm env)]
 epterm (RuntimeInitialize cid env arg) = enumterm "RuntimeInitialize" $ mapterm [("caller", cidterm cid), ("env", envterm env), ("arg", blobterm arg)]
 epterm (RuntimeUpdate n cid env needs_to_respond cycles arg) = enumterm "RuntimeUpdate" $ mapterm [("method", stringterm n), ("caller", cidterm cid), ("env", envterm env), ("needs_to_respond", TBool $ needsToRespond needs_to_respond), ("cycles", cyclesterm cycles), ("arg", blobterm arg)]
 epterm (RuntimeQuery n cid env arg) = enumterm "RuntimeQuery" $ mapterm [("method", stringterm n), ("caller", cidterm cid), ("env", envterm env), ("arg", blobterm arg)]
@@ -215,11 +215,9 @@ parseCanister cid bytes = do
     , canister_id_mod = cid
     , init_method = \caller env dat -> do 
         prefix <- getExecutablePath
-        inst <- invokeToUnit cid (RuntimeInstantiate decodedModule prefix env) -- TODO: return changed env components, and pass that env below: this call may cost cycles. 
+        inst <- invokeToUnit cid (RuntimeInstantiate decodedModule prefix False env) -- TODO: return changed env components, and pass that env below: this call may cost cycles. 
         case inst of Trap err -> return $ Trap err
-                     Return () -> if "canister_init" `elem` exportedFunctions wasm_mod 
-                                  then invokeToCanisterActions cid (RuntimeInitialize caller env dat)
-                                  else return $ Return noCanisterActions 
+                     Return () -> invokeToCanisterActions cid (RuntimeInitialize caller env dat)
     , update_methods = M.fromList
       [ (m,
         \caller env needs_to_respond cycles_available dat ->
@@ -237,17 +235,12 @@ parseCanister cid bytes = do
       invoke cid (RuntimeCallback cb env needs_to_respond cycles_available res refund)
     , cleanup = \cb env ->
       invokeToUnit cid (RuntimeCleanup cb env)
-    , pre_upgrade_method = \caller env ->
-          if "canister_pre_upgrade" `elem` exportedFunctions wasm_mod 
-          then invokeToCanisterActions cid (RuntimePreUpgrade caller env)
-          else return $ Return noCanisterActions
+    , pre_upgrade_method = \caller env -> invokeToCanisterActions cid (RuntimePreUpgrade caller env)
     , post_upgrade_method = \caller env dat -> do
           prefix <- getExecutablePath
-          inst <- invokeToUnit cid (RuntimeInstantiate decodedModule prefix env)
+          inst <- invokeToUnit cid (RuntimeInstantiate decodedModule prefix True env)
           case inst of Trap err -> return $ Trap err
-                       Return () -> if "canister_post_upgrade" `elem` exportedFunctions wasm_mod
-                                    then invokeToCanisterActions cid (RuntimePostUpgrade caller env dat)
-                                    else return $ Return noCanisterActions
+                       Return () -> invokeToCanisterActions cid (RuntimePostUpgrade caller env dat)
     , inspect_message = \method_name caller env arg ->
           if "canister_inspect_message" `elem` exportedFunctions wasm_mod 
           then invokeToUnit cid (RuntimeInspectMessage method_name caller env arg)

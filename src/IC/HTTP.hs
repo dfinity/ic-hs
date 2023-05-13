@@ -3,7 +3,7 @@
 module IC.HTTP where
 
 import Network.Wai
-import Control.Concurrent (forkIO, threadDelay)
+import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async (withAsync)
 import Network.HTTP.Types
 import qualified Data.Text as T
@@ -29,9 +29,9 @@ import IC.Utils
 
 withApp :: HasRefConfig => [SubnetConfig] -> Int -> Maybe FilePath -> (Application -> IO a) -> IO a
 withApp subnets systemTaskPeriod backingFile action =
-    withStore (initialIC subnets) backingFile $ \store -> 
-      withAsync (loopSystemTasks store) $ \_async -> 
-      withAsync (loopIC store) $ \_async -> 
+    withStore (initialIC subnets) backingFile $ \store ->
+      withAsync (loopSystemTasks store) $ \_async ->
+      withAsync (loopIC store) $ \_async ->
         action $ handle store
   where
     loopSystemTasks :: Store IC -> IO ()
@@ -44,7 +44,7 @@ withApp subnets systemTaskPeriod backingFile action =
           processSystemTasks
     loopIC :: Store IC -> IO ()
     loopIC store = forever $ do
-        threadDelay 100000
+        threadDelay 10000
         modifyStore store aux
       where
         aux = do

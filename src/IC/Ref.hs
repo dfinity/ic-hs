@@ -716,7 +716,7 @@ idleSinceLastHeartbeat _                = False
 -- | Returns true if a step was taken
 runStep :: ICM m => m Bool
 runStep = do
-  _ <- liftIO $ putStrLn "Running step"
+  --_ <- liftIO $ putStrLn "Running step"
   bumpTime
   try
     [ with nextReceived processRequest

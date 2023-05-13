@@ -264,14 +264,15 @@ impl SandboxedExecutionController {
         wasm_memory: &Memory,
         stable_memory: &Memory,
         exported_globals: Vec<Global>,
-    ) -> (Option<CompilationResult>, WasmExecutionResult) {
+        //) -> (Option<CompilationResult>, WasmExecutionResult) {
+    ) -> WasmExecutionResult {
         let message_instruction_limit = execution_parameters.instruction_limits.message();
 
         // Determine which process we want to run this on.
         let sandbox_process = self.get_sandbox_process(sandbox_safe_system_state.canister_id());
 
         // Ensure that Wasm is compiled.
-        let (wasm_id, compilation_result) = match open_wasm(
+        let (wasm_id, _compilation_result) = match open_wasm(
             &sandbox_process,
             wasm_binary,
             compilation_cache,
@@ -279,7 +280,8 @@ impl SandboxedExecutionController {
         ) {
             Ok((wasm_id, compilation_result)) => (wasm_id, compilation_result),
             Err(err) => {
-                return (None, wasm_execution_error(err, message_instruction_limit));
+                //return (None, wasm_execution_error(err, message_instruction_limit));
+                return wasm_execution_error(err, message_instruction_limit);
             }
         };
 
@@ -353,7 +355,7 @@ impl SandboxedExecutionController {
             message_instruction_limit,
             sandbox_process,
         );
-        (compilation_result, execution_result)
+        execution_result
     }
 
     pub fn create_execution_state(
