@@ -44,12 +44,12 @@ jobs:
     - if: matrix.os == 'ubuntu-latest'
       run: nix build -f default.nix --eval-store auto --store ssh-ng://eu.nixbuild.net --builders "" --max-jobs 2 --no-link --print-build-logs universal-canister
     - if: matrix.os == 'macos-latest'
-      run: nix build -f default.nix universal-canister
+      run: nix build -f default.nix --print-build-logs universal-canister
 
     - if: matrix.os == 'ubuntu-latest'
       run: nix build -f default.nix --eval-store auto --store ssh-ng://eu.nixbuild.net --builders "" --max-jobs 2 --no-link --print-build-logs ic-hs
     - if: matrix.os == 'macos-latest'
-      run: nix-build-uncached -A ic-hs
+      run: nix build -f default.nix --print-build-logs ic-hs
 
     - if: matrix.os == 'ubuntu-latest'
       run: cp -r "$(nix-build -A ic-hs.doc)"/share/doc/*/html gh-page
@@ -63,12 +63,12 @@ jobs:
     - if: matrix.os == 'ubuntu-latest'
       run: nix build -f default.nix --eval-store auto --store ssh-ng://eu.nixbuild.net --builders "" --max-jobs 2 --no-link --print-build-logs check-generated
     - if: matrix.os == 'macos-latest'
-      run: nix-build-uncached -A check-generated
+      run: nix build -f default.nix --print-build-logs check-generated
 
     - if: matrix.os == 'ubuntu-latest'
       run: nix build -f default.nix --eval-store auto --store ssh-ng://eu.nixbuild.net --builders "" --max-jobs 2 --no-link --print-build-logs ic-ref-dist
     - if: matrix.os == 'macos-latest'
-      run: nix-build-uncached -A ic-ref-dist
+      run: nix build -f default.nix --print-build-logs ic-ref-dist
 
     #- if: matrix.os == 'ubuntu-latest'
     #  run: nix build -f default.nix --eval-store auto --store ssh-ng://eu.nixbuild.net --builders "" --max-jobs 2 --no-link --print-build-logs ic-ref-test
@@ -76,12 +76,12 @@ jobs:
     - if: matrix.os == 'ubuntu-latest'
       run: nix build -f default.nix --eval-store auto --store ssh-ng://eu.nixbuild.net --builders "" --max-jobs 2 --no-link --print-build-logs ic-hs-shell
     - if: matrix.os == 'macos-latest'
-      run: nix-build-uncached -A ic-hs-shell
+      run: nix build -f default.nix --print-build-logs ic-hs-shell
 
     - if: matrix.os == 'ubuntu-latest'
       run: nix build -f default.nix --eval-store auto --store ssh-ng://eu.nixbuild.net --builders "" --max-jobs 2 --no-link --print-build-logs license-check
     - if: matrix.os == 'macos-latest'
-      run: nix-build-uncached -A license-check
+      run: nix build -f default.nix --print-build-logs license-check
 
   release:
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
