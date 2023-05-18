@@ -127,10 +127,10 @@ jobs:
     - run: |
         if [[ -d "${{ steps.buildit.outputs.out }}/build/libs" ]]
         then
-          tar -C "${{ steps.buildit.outputs.out }}/build" -czvf ic-ref.tar.gz ic-ref libs
+          tar -C "${{ steps.buildit.outputs.out }}/build" -czvf ic-ref.tar.gz ic-ref canister_sandbox sandbox_launcher libs
           tar -C "${{ steps.buildit.outputs.out }}" -czvf ic-ref-test.tar.gz build/ic-ref-test build/libs test-data
         else
-          tar -C "${{ steps.buildit.outputs.out }}/build" -czvf ic-ref.tar.gz ic-ref
+          tar -C "${{ steps.buildit.outputs.out }}/build" -czvf ic-ref.tar.gz ic-ref canister_sandbox sandbox_launcher
           tar -C "${{ steps.buildit.outputs.out }}" -czvf ic-ref-test.tar.gz build/ic-ref-test test-data
         fi
 
