@@ -299,12 +299,10 @@ rec {
   # of all the dependencies that are only depended on by nix-shell.
   ic-hs-shell =
     haskellPackages.shellFor {
-      LD_LIBRARY_PATH = nixpkgs.lib.makeLibraryPath [ openssl ];
       packages = p: [ p.ic-hs ];
       buildInputs = [
         nixpkgs.cabal-install
         nixpkgs.ghcid
-        nixpkgs.cachix
         haskellPackages.haskell-language-server
       ];
     };
