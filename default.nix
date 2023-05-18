@@ -7,7 +7,6 @@ let stdenv = nixpkgs.stdenv; in
 let subpath = nixpkgs.subpath; in
 
 let naersk = nixpkgs.callPackage nixpkgs.sources.naersk { rustc = nixpkgs.rustc-wasm; }; in
-
 let universal-canister = (naersk.buildPackage rec {
     name = "universal-canister";
     src = subpath ./universal-canister;
@@ -24,7 +23,6 @@ let universal-canister = (naersk.buildPackage rec {
     '';
 }); in
 
-
 let haskellOverrides = self: super:
     let generated = import nix/generated/all.nix self super; in
     generated //
@@ -36,15 +34,8 @@ let haskellPackages = nixpkgs.haskellPackages.override {
   overrides = haskellOverrides;
 }; in
 
-let staticHaskellOverrides = self: super:
-    let generated = import nix/generated/all.nix self super; in
-    generated //
-    {
-      haskoin-core = nixpkgs.haskell.lib.dontCheck (nixpkgs.haskell.lib.markUnbroken super.haskoin-core);
-    }; in
-
 let staticHaskellPackages = nixpkgs.pkgsStatic.haskellPackages.override {
-  overrides = staticHaskellOverrides;
+  overrides = haskellOverrides;
 }; in
 
 let
@@ -109,7 +100,7 @@ let
         ic-hs-static =
           nixpkgs.haskell.lib.justStaticExecutables
             (nixpkgs.haskell.lib.failOnAllWarnings
-              (staticHaskellPackages.ic-hs.overrideAttrs (old: {})));
+              staticHaskellPackages.ic-hs);
       in nixpkgs.runCommandNoCC "ic-ref-dist" {
         allowedReferences = [];
         nativeBuildInputs = [ nixpkgs.removeReferencesTo ];
@@ -143,14 +134,10 @@ let
         #   Network/Wai/Handler/Warp/Settings.hs:    , settingsServerName = C8.pack $ "Warp/" ++ showVersion Paths_warp.version
         #
         # So we can safely remove the references to warp:
-        remove-references-to \
-          -t ${staticHaskellPackages.warp} \
-          -t ${nixpkgs.pkgsStatic.openssl.etc} \
-          $out/build/ic-ref
+        remove-references-to -t ${staticHaskellPackages.warp} $out/build/ic-ref
         remove-references-to \
           -t ${staticHaskellPackages.tasty-html} \
           -t ${staticHaskellPackages.tasty-html.data} \
-          -t ${nixpkgs.pkgsStatic.openssl.etc} \
           $out/build/ic-ref-test
       '';
 
@@ -163,7 +150,7 @@ in
 
   let httpbin = (naersk.buildPackage rec {
     name = "httpbin-rs";
-    root = subpath ./httpbin-rs;
+    root = ./httpbin-rs;
     doCheck = false;
     release = true;
     nativeBuildInputs = with nixpkgs; [ pkg-config ];
