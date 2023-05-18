@@ -6,7 +6,10 @@ let nixpkgs = import ./nix { inherit system; }; in
 let stdenv = nixpkgs.stdenv; in
 let subpath = nixpkgs.subpath; in
 
-let naersk = nixpkgs.callPackage nixpkgs.sources.naersk { rustc = nixpkgs.rustc-wasm; }; in
+let naersk = nixpkgs.callPackage nixpkgs.sources.naersk {
+    inherit (nixpkgs.rustPackages) cargo rustc;
+}; in
+
 let universal-canister = (naersk.buildPackage rec {
     name = "universal-canister";
     src = subpath ./universal-canister;
@@ -23,6 +26,7 @@ let universal-canister = (naersk.buildPackage rec {
     '';
 }); in
 
+
 let haskellOverrides = self: super:
     let generated = import nix/generated/all.nix self super; in
     generated //
@@ -34,8 +38,22 @@ let haskellPackages = nixpkgs.haskellPackages.override {
   overrides = haskellOverrides;
 }; in
 
+let naersk_musl = nixpkgs.pkgsMusl.callPackage nixpkgs.sources.naersk {
+    inherit (nixpkgs.pkgsMusl.rustPackages) cargo rustc;
+}; in
+
+let static-openssl = nixpkgs.pkgsMusl.openssl.override {static = true;}; in
+let static-libunwind = nixpkgs.pkgsMusl.libunwind; in
+
+let staticHaskellOverrides = self: super:
+    let generated = import nix/generated/all.nix self super; in
+    generated //
+    {
+      haskoin-core = nixpkgs.haskell.lib.dontCheck (nixpkgs.haskell.lib.markUnbroken super.haskoin-core);
+    }; in
+
 let staticHaskellPackages = nixpkgs.pkgsStatic.haskellPackages.override {
-  overrides = haskellOverrides;
+  overrides = staticHaskellOverrides;
 }; in
 
 let
@@ -100,7 +118,7 @@ let
         ic-hs-static =
           nixpkgs.haskell.lib.justStaticExecutables
             (nixpkgs.haskell.lib.failOnAllWarnings
-              staticHaskellPackages.ic-hs);
+              (staticHaskellPackages.ic-hs.overrideAttrs (old: {})));
       in nixpkgs.runCommandNoCC "ic-ref-dist" {
         allowedReferences = [];
         nativeBuildInputs = [ nixpkgs.removeReferencesTo ];
@@ -134,10 +152,14 @@ let
         #   Network/Wai/Handler/Warp/Settings.hs:    , settingsServerName = C8.pack $ "Warp/" ++ showVersion Paths_warp.version
         #
         # So we can safely remove the references to warp:
-        remove-references-to -t ${staticHaskellPackages.warp} $out/build/ic-ref
+        remove-references-to \
+          -t ${staticHaskellPackages.warp} \
+          -t ${nixpkgs.pkgsStatic.openssl.etc} \
+          $out/build/ic-ref
         remove-references-to \
           -t ${staticHaskellPackages.tasty-html} \
           -t ${staticHaskellPackages.tasty-html.data} \
+          -t ${nixpkgs.pkgsStatic.openssl.etc} \
           $out/build/ic-ref-test
       '';
 
@@ -150,7 +172,7 @@ in
 
   let httpbin = (naersk.buildPackage rec {
     name = "httpbin-rs";
-    root = ./httpbin-rs;
+    root = subpath ./httpbin-rs;
     doCheck = false;
     release = true;
     nativeBuildInputs = with nixpkgs; [ pkg-config ];
@@ -284,10 +306,12 @@ rec {
   # of all the dependencies that are only depended on by nix-shell.
   ic-hs-shell =
     haskellPackages.shellFor {
+      LD_LIBRARY_PATH = nixpkgs.lib.makeLibraryPath [ openssl ];
       packages = p: [ p.ic-hs ];
       buildInputs = [
         nixpkgs.cabal-install
         nixpkgs.ghcid
+        nixpkgs.cachix
         haskellPackages.haskell-language-server
       ];
     };
