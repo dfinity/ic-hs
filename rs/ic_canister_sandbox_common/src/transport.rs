@@ -27,6 +27,8 @@ type MsgControlLenType = libc::socklen_t;
 type IovLen = usize;
 #[cfg(all(target_os = "linux", target_env = "musl"))]
 type IovLen = i32;
+#[cfg(not(target_os = "linux"))]
+type IovLen = libc::socklen_t;
 
 // https://github.com/servo/ipc-channel/issues/192
 fn new_msghdr(iovec: &mut libc::iovec, iovlen: IovLen, cmsg_buffer: *mut std::ffi::c_void, cmsg_space: MsgControlLenType, cmsg_flags: libc::c_int) -> libc::msghdr {
