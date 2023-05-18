@@ -38,13 +38,6 @@ let haskellPackages = nixpkgs.haskellPackages.override {
   overrides = haskellOverrides;
 }; in
 
-let naersk_musl = nixpkgs.pkgsMusl.callPackage nixpkgs.sources.naersk {
-    inherit (nixpkgs.pkgsMusl.rustPackages) cargo rustc;
-}; in
-
-let static-openssl = nixpkgs.pkgsMusl.openssl.override {static = true;}; in
-let static-libunwind = nixpkgs.pkgsMusl.libunwind; in
-
 let staticHaskellOverrides = self: super:
     let generated = import nix/generated/all.nix self super; in
     generated //
