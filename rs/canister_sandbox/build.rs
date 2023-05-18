@@ -13,6 +13,6 @@ fn main() {
             .debug(false)
             .compile("backtrace");
         println!("cargo:rerun-if-changed=src/backtrace.c");
-        println!("cargo:rustc-link-lib=staticlib=unwind");
+        //println!("cargo:rustc-link-lib=dylib=unwind");
     }
 }

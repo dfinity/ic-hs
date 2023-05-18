@@ -292,8 +292,11 @@ rec {
   inherit ic-hs-coverage;
   inherit universal-canister;
   inherit runtime;
+  inherit runtime_musl;
   inherit canister_sandbox;
+  inherit canister_sandbox_musl;
   inherit sandbox_launcher;
+  inherit sandbox_launcher_musl;
 
   openssl = nixpkgs.openssl;
 
