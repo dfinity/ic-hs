@@ -145,6 +145,7 @@ let
       preInstall = ''
         cp ${runtime}/lib/libruntime.a dist/build/libruntime.a;
         cp ${runtime}/lib/libruntime.a dist/build/libruntime-ghc9.0.2.so;
+        cp ${runtime}/lib/libruntime.a dist/build/libruntime-ghc9.0.2.dylib;
       '';
       postFixup = "rm -rf $out/lib $out/share/doc";
     })
