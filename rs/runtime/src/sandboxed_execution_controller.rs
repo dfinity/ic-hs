@@ -34,7 +34,6 @@ use crate::active_execution_state_registry::{ActiveExecutionStateRegistry, Compl
 use crate::controller_service_impl::ControllerServiceImpl;
 use crate::launch_as_process::{create_sandbox_process, spawn_launcher_process};
 use crate::process_exe_and_args::{create_launcher_argv, create_sandbox_argv};
-#[cfg(target_os = "linux")]
 use crate::sandbox_process_eviction::{self, EvictionCandidate};
 use ic_replicated_state::page_map::PageAllocatorFileDescriptor;
 
