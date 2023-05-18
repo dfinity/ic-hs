@@ -70,8 +70,8 @@ jobs:
     - if: matrix.os == 'macos-latest'
       run: nix-build-uncached -A ic-ref-dist
 
-    #- if: matrix.os == 'ubuntu-latest'
-    #  run: nix build -f default.nix --eval-store auto --store ssh-ng://eu.nixbuild.net --builders "" --max-jobs 2 --no-link --print-build-logs ic-ref-test
+    - if: matrix.os == 'ubuntu-latest'
+      run: nix-build-uncached -A ic-ref-test
 
     - if: matrix.os == 'ubuntu-latest'
       run: nix build -f default.nix --eval-store auto --store ssh-ng://eu.nixbuild.net --builders "" --max-jobs 2 --no-link --print-build-logs ic-hs-shell
