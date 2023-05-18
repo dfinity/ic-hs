@@ -6,9 +6,7 @@ let nixpkgs = import ./nix { inherit system; }; in
 let stdenv = nixpkgs.stdenv; in
 let subpath = nixpkgs.subpath; in
 
-let naersk = nixpkgs.callPackage nixpkgs.sources.naersk {
-    inherit (nixpkgs.rustPackages) cargo rustc;
-}; in
+let naersk = nixpkgs.callPackage nixpkgs.sources.naersk { rustc = nixpkgs.rustc-wasm; }; in
 
 let universal-canister = (naersk.buildPackage rec {
     name = "universal-canister";
