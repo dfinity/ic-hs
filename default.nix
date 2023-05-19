@@ -160,7 +160,7 @@ let
     if nixpkgs.stdenv.isDarwin
     # on Darwin, use dylibbundler to include non-system libraries
     then nixpkgs.runCommandNoCC "ic-ref-dist" {
-        buildInputs = [ nixpkgs.macdylibbundler nixpkgs.removeReferencesTo ];
+        buildInputs = [ nixpkgs.macdylibbundler nixpkgs.removeReferencesTo nixpkgs.darwin.sigtool ];
         allowedRequisites = [];
       } ''
         mkdir -p $out/build/libs
