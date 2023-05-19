@@ -184,15 +184,6 @@ let
           -p '@executable_path/libs' \
           -i ${nixpkgs.darwin.Libsystem}/lib \
           -i /usr/lib/system \
-          -i ${nixpkgs.libiconv}/lib \
-          -i ${nixpkgs.openssl}/lib \
-          -i ${nixpkgs.libxml2}/lib \
-          -i ${nixpkgs.libcxx}/lib \
-          -i ${nixpkgs.libcxxabi}/lib \
-          -i ${nixpkgs.libkrb5}/lib \
-          -i ${nixpkgs.libunistring}/lib \
-          -i ${nixpkgs.libssh2}/lib \
-          -i ${nixpkgs.libidn2}/lib \
           --no-codesign
 
         # there are still plenty of nix store references
@@ -201,16 +192,10 @@ let
           -t ${nixpkgs.darwin.Libsystem} \
           -t ${nixpkgs.darwin.CF} \
           -t ${nixpkgs.libiconv} \
-          -t ${nixpkgs.openssl} \
-          -t ${nixpkgs.libxml2} \
-          -t ${nixpkgs.libcxx} \
-          -t ${nixpkgs.libcxxabi} \
-          -t ${nixpkgs.libkrb5} \
-          -t ${nixpkgs.libunistring} \
-          -t ${nixpkgs.libssh2} \
-          -t ${nixpkgs.libidn2} \
+          -t ${nixpkgs.openssl.out} \
           -t ${staticHaskellPackages.tasty-html.data} \
-          $out/build/*
+          $out/build/* \
+          $out/build/libs/*
 
         # sanity check
         $out/build/ic-ref --version
