@@ -193,6 +193,14 @@ let
           -t ${nixpkgs.darwin.Libsystem} \
           -t ${nixpkgs.darwin.CF} \
           -t ${nixpkgs.libiconv} \
+          -t ${nixpkgs.openssl} \
+          -t ${nixpkgs.libxml2} \
+          -t ${nixpkgs.libcxx} \
+          -t ${nixpkgs.libcxxabi} \
+          -t ${nixpkgs.libkrb5} \
+          -t ${nixpkgs.libunistring} \
+          -t ${nixpkgs.libssh2} \
+          -t ${nixpkgs.libidn2} \
           -t ${staticHaskellPackages.tasty-html.data} \
           $out/build/*
 
