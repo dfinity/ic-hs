@@ -14,6 +14,7 @@ ic-interfaces = { git = "https://github.com/dfinity/ic", rev = "dca3091bc0a1a7f1
 ic-config = { git = "https://github.com/dfinity/ic", rev = "dca3091bc0a1a7f175c57464068c86ba19a556e6" }
 ic-replicated-state = { git = "https://github.com/dfinity/ic", rev = "dca3091bc0a1a7f175c57464068c86ba19a556e6" }
 ic-registry-subnet-type = { git = "https://github.com/dfinity/ic", rev = "dca3091bc0a1a7f175c57464068c86ba19a556e6" }
+ic-state-manager = { git = "https://github.com/dfinity/ic", rev = "dca3091bc0a1a7f175c57464068c86ba19a556e6" }
 ic-system-api = { git = "https://github.com/dfinity/ic", rev = "dca3091bc0a1a7f175c57464068c86ba19a556e6" }
 ic-base-types = { git = "https://github.com/dfinity/ic", rev = "dca3091bc0a1a7f175c57464068c86ba19a556e6" }
 ic-types = { git = "https://github.com/dfinity/ic", rev = "dca3091bc0a1a7f175c57464068c86ba19a556e6" }

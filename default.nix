@@ -336,12 +336,15 @@ rec {
       ${httpbin}/httpbin-rs --port 8003 --cert-file cert.pem --key-file key.pem &
       sleep 1
       ic-ref --pick-port --write-port-to port --cert-path "cert.pem" &
+      PID=$!
       trap kill_jobs EXIT PIPE
       sleep 1
       test -e port
       mkdir -p $out
       sleep 1
       LANG=C.UTF8 ic-ref-test --test-subnet-config "(\"bn26o-3iapb-njhsq-6mjum-ssjtx-lcwrs-id2x6-2z7ce-yaweh-xamz5-7qe\",system,1,[(0,1048575)])" --peer-subnet-config "(\"jdzfx-2szde-tnkmk-2m5zt-t6gga-pnl22-v36hx-hz5zg-r6mei-tw3q4-nae\",application,1,[(1048576,2097151)])" --endpoint "http://127.0.0.1:$(cat port)/" --httpbin "127.0.0.1:8003" --html $out/report-1.html
+      kill $PID
+      ic-ref --pick-port --write-port-to port --cert-path "cert.pem" &
       LANG=C.UTF8 ic-ref-test --test-subnet-config "(\"jdzfx-2szde-tnkmk-2m5zt-t6gga-pnl22-v36hx-hz5zg-r6mei-tw3q4-nae\",application,1,[(1048576,2097151)])" --peer-subnet-config "(\"bn26o-3iapb-njhsq-6mjum-ssjtx-lcwrs-id2x6-2z7ce-yaweh-xamz5-7qe\",system,1,[(0,1048575)])" --endpoint "http://127.0.0.1:$(cat port)/" --httpbin "127.0.0.1:8003" --html $out/report-2.html
       pids="$(jobs -p)"
       kill -INT $pids
@@ -365,6 +368,7 @@ rec {
       ${httpbin}/httpbin-rs --port 8003 --cert-file cert.pem --key-file key.pem &
       sleep 1
       ic-ref --pick-port --write-port-to port --cert-path "cert.pem" &
+      PID=$!
       trap kill_jobs EXIT PIPE
       sleep 1
       test -e port
@@ -374,6 +378,8 @@ rec {
         --peer-subnet-config "(\"jdzfx-2szde-tnkmk-2m5zt-t6gga-pnl22-v36hx-hz5zg-r6mei-tw3q4-nae\",application,1,[(1048576,2097151)])" \
         --endpoint "http://127.0.0.1:$(cat port)/" \
         --httpbin "127.0.0.1:8003"
+      kill $PID
+      ic-ref --pick-port --write-port-to port --cert-path "cert.pem" &
       LANG=C.UTF8 ic-ref-test \
         --test-subnet-config "(\"jdzfx-2szde-tnkmk-2m5zt-t6gga-pnl22-v36hx-hz5zg-r6mei-tw3q4-nae\",application,1,[(1048576,2097151)])" \
         --peer-subnet-config "(\"bn26o-3iapb-njhsq-6mjum-ssjtx-lcwrs-id2x6-2z7ce-yaweh-xamz5-7qe\",system,1,[(0,1048575)])" \

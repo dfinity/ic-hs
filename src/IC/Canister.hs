@@ -11,6 +11,7 @@
 module IC.Canister
     ( parseCanister
     , CanisterModule(..)
+    , deleteCanister
     , InitFunc, UpdateFunc, QueryFunc
     , asUpdate
     )
@@ -99,6 +100,7 @@ data EntryPoint = RuntimeInstantiate Blob String Bool Env
   | RuntimeInspectMessage MethodName EntityId Env Blob
   | RuntimeHeartbeat Env
   | RuntimeGlobalTimer Env
+  | RuntimeDelete Env
 
 blobterm :: Blob -> Term
 blobterm = TBytes . BS.toStrict
@@ -191,6 +193,10 @@ epterm (RuntimePostUpgrade cid env arg) = enumterm "RuntimePostUpgrade" $ mapter
 epterm (RuntimeInspectMessage n cid env arg) = enumterm "RuntimeInspectMessage" $ mapterm [("method", stringterm n), ("caller", cidterm cid), ("env", envterm env), ("arg", blobterm arg)]
 epterm (RuntimeHeartbeat env) = enumterm "RuntimeHeartbeat" $ mapterm [("env", envterm env)]
 epterm (RuntimeGlobalTimer env) = enumterm "RuntimeGlobalTimer" $ mapterm [("env", envterm env)]
+epterm (RuntimeDelete env) = enumterm "RuntimeDelete" $ mapterm [("env", envterm env)]
+
+deleteCanister :: CanisterId -> Env -> IO ()
+deleteCanister cid env = (\_ -> ()) <$> invoke cid (RuntimeDelete env)
 
 parseCanister :: CanisterId -> Blob -> Either String CanisterModule
 parseCanister cid bytes = do

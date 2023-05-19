@@ -267,6 +267,8 @@ icInstallCode caller r = do
 icUninstallCode :: (ICM m, CanReject m) => ICManagement m .! "uninstall_code"
 icUninstallCode r = do
     let canister_id = principalToEntityId (r .! #canister_id)
+    env <- canisterEnv canister_id
+    _ <- liftIO $ deleteCanister canister_id env
     -- empty canister, resetting selected state
     modCanister canister_id $ \can_state -> can_state
       { content = Nothing

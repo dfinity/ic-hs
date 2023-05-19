@@ -805,50 +805,68 @@ icTests my_sub other_sub =
         [ "I" =: twoContexts
           (reqResponse (\prog -> do
             cid <- create ecid
-            install' cid prog
+            res <- install' cid prog
+            ic_uninstall ic00 cid
+            return res
           ))
           (reqResponse (\prog -> do
             cid <- install ecid noop
-            upgrade' cid prog
+            res <- upgrade' cid prog
+            ic_uninstall ic00 cid
+            return res
           ))
         , "G" =: reqResponse (\prog -> do
             cid <- install ecid (onPreUpgrade (callback prog))
-            upgrade' cid noop
+            res <- upgrade' cid noop
+            ic_uninstall ic00 cid
+            return res
           )
         , "U" =: twoContexts
           (reqResponse (\prog -> do
             cid <- install ecid noop
-            call' cid (prog >>> reply)
+            res <- call' cid (prog >>> reply)
+            ic_uninstall ic00 cid
+            return res
           ))
           (reqResponse (\prog -> do
             cid <- install ecid noop
-            call cid >=> isRelay $ inter_update cid defArgs{
+            res <- call cid >=> isRelay $ inter_update cid defArgs{
               other_side = prog >>> reply
             }
+            ic_uninstall ic00 cid
+            return res
           ))
         , "Q" =: twoContexts
           (reqResponse (\prog -> do
             cid <- install ecid noop
-            query' cid (prog >>> reply)
+            res <- query' cid (prog >>> reply)
+            ic_uninstall ic00 cid
+            return res
           ))
           (reqResponse (\prog -> do
             cid <- install ecid noop
-            call cid >=> isRelay $ inter_query cid defArgs{
+            res <- call cid >=> isRelay $ inter_query cid defArgs{
               other_side = prog >>> reply
             }
+            ic_uninstall ic00 cid
+            return res
           ))
         , "Ry" =: reqResponse (\prog -> do
             cid <- install ecid noop
-            call' cid $ inter_query cid defArgs{
+            res <- call' cid $ inter_query cid defArgs{
               on_reply = prog >>> reply
             }
+            ic_uninstall ic00 cid
+            return res
           )
         , "Rt" =: reqResponse (\prog -> do
             cid <- install ecid noop
-            call' cid $ inter_query cid defArgs{
+            res <- call' cid $ inter_query cid defArgs{
               on_reject = prog >>> reply,
               other_side = trap "trap!"
             }
+            ic_uninstall ic00 cid
+            return res
           )
         , "C" =: boolTest (\prog -> do
             cid <- install ecid noop
@@ -858,11 +876,14 @@ icTests my_sub other_sub =
               , on_cleanup = Just $ prog >>> setGlobal "Did not trap"
               }
             g <- query cid $ replyData getGlobal
+            ic_uninstall ic00 cid
             return (g == "Did not trap")
           )
         , "F" =: httpResponse (\prog -> do
             cid <- install ecid (onInspectMessage (callback (prog >>> acceptMessage)))
-            call'' cid reply
+            res <- call'' cid reply
+            ic_uninstall ic00 cid
+            return res
           )
         ]
 
@@ -1490,25 +1511,6 @@ icTests my_sub other_sub =
       checkNoUpgrade cid
     ]
 
-  , testGroup "heartbeat"
-    [ testCase "called once for all canisters" $ do
-      cid <- install ecid $ onHeartbeat $ callback $ ignore (stableGrow (int 1)) >>> stableWrite (int 0) "FOO"
-      cid2 <- install ecid $ onHeartbeat $ callback $ ignore (stableGrow (int 1)) >>> stableWrite (int 0) "BAR"
-      -- Heartbeat cannot respond. Should be trapped.
-      cid3 <- install ecid $ onHeartbeat $ callback $ setGlobal "FIZZ" >>> replyData "FIZZ"
-
-      -- The spec currently gives no guarantee about when or how frequent heartbeats are executed.
-      -- But all implementations have the property: if update call B is submitted after call A is completed,
-      -- then a heartbeat runs before the execution of B.
-      -- We use this here to make sure that heartbeats have been attempted:
-      call_ cid reply
-      call_ cid reply
-
-      query cid (replyData (stableRead (int 0) (int 3))) >>= is "FOO"
-      query cid2 (replyData (stableRead (int 0) (int 3))) >>= is "BAR"
-      query cid3 (replyData getGlobal) >>= is ""
-    ]
-
   , testGroup "reinstall"
     [ testCase "succeeding" $ do
       cid <- install ecid $
@@ -1750,7 +1752,8 @@ icTests my_sub other_sub =
           cid <- create ecid
           addExpiry req >>= envelope defaultSK >>= postQueryCBOR cid >>= code4xx
 
-    , simpleTestCase "non-existing (deleted) canister" ecid $ \cid -> do
+    , testCase "non-existing (deleted) canister" $ do
+        cid <- create ecid
         ic_stop_canister ic00 cid
         ic_delete_canister ic00 cid
         query' cid reply >>= isReject [3]

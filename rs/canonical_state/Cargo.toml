@@ -1,0 +1,22 @@
+[package]
+name = "ic-canonical-state"
+version = "0.8.0"
+edition = "2021"
+
+[dependencies]
+ic-error-types = { git = "https://github.com/dfinity/ic", rev = "dca3091bc0a1a7f175c57464068c86ba19a556e6" }
+ic-base-types = { git = "https://github.com/dfinity/ic", rev = "dca3091bc0a1a7f175c57464068c86ba19a556e6" }
+ic-certification-version = { git = "https://github.com/dfinity/ic", rev = "dca3091bc0a1a7f175c57464068c86ba19a556e6" }
+ic-crypto-tree-hash = { git = "https://github.com/dfinity/ic", rev = "dca3091bc0a1a7f175c57464068c86ba19a556e6" }
+ic-protobuf = { git = "https://github.com/dfinity/ic", rev = "dca3091bc0a1a7f175c57464068c86ba19a556e6" }
+ic-registry-routing-table = { git = "https://github.com/dfinity/ic", rev = "dca3091bc0a1a7f175c57464068c86ba19a556e6" }
+ic-registry-subnet-type = { git = "https://github.com/dfinity/ic", rev = "dca3091bc0a1a7f175c57464068c86ba19a556e6" }
+ic-replicated-state = { git = "https://github.com/dfinity/ic", rev = "dca3091bc0a1a7f175c57464068c86ba19a556e6" }
+ic-types = { git = "https://github.com/dfinity/ic", rev = "dca3091bc0a1a7f175c57464068c86ba19a556e6" }
+itertools = "0.10.3"
+leb128 = "0.2.1"
+phantom_newtype = { git = "https://github.com/dfinity/ic", rev = "dca3091bc0a1a7f175c57464068c86ba19a556e6" }
+scoped_threadpool = "0.1.*"
+serde = "1.0.99"
+serde_bytes = "0.11"
+serde_cbor = "0.11.1"

@@ -1460,6 +1460,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "ic-canonical-state"
+version = "0.8.0"
+dependencies = [
+ "ic-base-types",
+ "ic-certification-version",
+ "ic-crypto-tree-hash",
+ "ic-error-types",
+ "ic-protobuf",
+ "ic-registry-routing-table",
+ "ic-registry-subnet-type",
+ "ic-replicated-state",
+ "ic-types",
+ "itertools",
+ "leb128",
+ "phantom_newtype",
+ "scoped_threadpool",
+ "serde",
+ "serde_bytes",
+ "serde_cbor",
+]
+
+[[package]]
 name = "ic-certification-version"
 version = "0.8.0"
 source = "git+https://github.com/dfinity/ic?rev=dca3091bc0a1a7f175c57464068c86ba19a556e6#dca3091bc0a1a7f175c57464068c86ba19a556e6"
@@ -1656,6 +1678,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ic-interfaces-certified-stream-store"
+version = "0.8.0"
+source = "git+https://github.com/dfinity/ic?rev=dca3091bc0a1a7f175c57464068c86ba19a556e6#dca3091bc0a1a7f175c57464068c86ba19a556e6"
+dependencies = [
+ "ic-types",
+]
+
+[[package]]
 name = "ic-interfaces-state-manager"
 version = "0.8.0"
 source = "git+https://github.com/dfinity/ic?rev=dca3091bc0a1a7f175c57464068c86ba19a556e6#dca3091bc0a1a7f175c57464068c86ba19a556e6"
@@ -1809,6 +1839,74 @@ name = "ic-stable-structures"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7d43ba7c5067d1360860e2234d93411d2126c8eac788467966ed1383161f91fc"
+
+[[package]]
+name = "ic-state-layout"
+version = "0.8.0"
+source = "git+https://github.com/dfinity/ic?rev=dca3091bc0a1a7f175c57464068c86ba19a556e6#dca3091bc0a1a7f175c57464068c86ba19a556e6"
+dependencies = [
+ "hex",
+ "ic-base-types",
+ "ic-ic00-types",
+ "ic-logger",
+ "ic-metrics",
+ "ic-protobuf",
+ "ic-replicated-state",
+ "ic-sys",
+ "ic-types",
+ "ic-utils",
+ "ic-wasm-types",
+ "libc",
+ "prometheus",
+ "prost",
+ "scoped_threadpool",
+ "serde",
+ "serde_bytes",
+ "serde_cbor",
+ "slog",
+ "tempfile",
+]
+
+[[package]]
+name = "ic-state-manager"
+version = "0.8.0"
+source = "git+https://github.com/dfinity/ic?rev=dca3091bc0a1a7f175c57464068c86ba19a556e6#dca3091bc0a1a7f175c57464068c86ba19a556e6"
+dependencies = [
+ "bit-vec 0.6.3",
+ "crossbeam-channel",
+ "hex",
+ "ic-base-types",
+ "ic-canonical-state",
+ "ic-config",
+ "ic-crypto-sha",
+ "ic-crypto-tree-hash",
+ "ic-error-types",
+ "ic-interfaces",
+ "ic-interfaces-certified-stream-store",
+ "ic-interfaces-state-manager",
+ "ic-logger",
+ "ic-metrics",
+ "ic-protobuf",
+ "ic-registry-subnet-type",
+ "ic-replicated-state",
+ "ic-state-layout",
+ "ic-sys",
+ "ic-types",
+ "ic-utils",
+ "libc",
+ "nix",
+ "parking_lot 0.12.1",
+ "prometheus",
+ "prost",
+ "rand",
+ "rand_chacha",
+ "scoped_threadpool",
+ "serde",
+ "serde_bytes",
+ "slog",
+ "tree-deserializer",
+ "uuid",
+]
 
 [[package]]
 name = "ic-sys"
@@ -2901,6 +2999,7 @@ dependencies = [
  "ic-interfaces",
  "ic-registry-subnet-type",
  "ic-replicated-state",
+ "ic-state-manager",
  "ic-system-api",
  "ic-types",
  "ic-wasm-types",
@@ -3657,6 +3756,16 @@ checksum = "97d095ae15e245a057c8e8451bab9b3ee1e1f68e9ba2b4fbc18d0ac5237835f2"
 dependencies = [
  "pin-project",
  "tracing",
+]
+
+[[package]]
+name = "tree-deserializer"
+version = "0.8.0"
+source = "git+https://github.com/dfinity/ic?rev=dca3091bc0a1a7f175c57464068c86ba19a556e6#dca3091bc0a1a7f175c57464068c86ba19a556e6"
+dependencies = [
+ "ic-crypto-tree-hash",
+ "leb128",
+ "serde",
 ]
 
 [[package]]

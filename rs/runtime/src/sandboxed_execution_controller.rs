@@ -571,7 +571,7 @@ impl SandboxedExecutionController {
         }
     }
 
-    fn get_sandbox_process(&self, canister_id: CanisterId) -> Arc<SandboxProcess> {
+    pub fn get_sandbox_process(&self, canister_id: CanisterId) -> Arc<SandboxProcess> {
         let mut guard = self.backends.lock().unwrap();
 
         if let Some(backend) = (*guard).get_mut(&canister_id) {

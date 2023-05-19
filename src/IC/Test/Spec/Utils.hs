@@ -328,7 +328,10 @@ isRelay = runGet $ Get.getWord32le >>= \case
 
 -- Shortcut for test cases that just need one canister.
 simpleTestCase :: (HasCallStack, HasAgentConfig) => String -> Blob -> (Blob -> IO ()) -> TestTree
-simpleTestCase name ecid act = testCase name $ install ecid noop >>= act
+simpleTestCase name ecid act = testCase name $ do
+  cid <- install ecid noop
+  act cid
+  ic_uninstall ic00 cid
 
 -- * Programmatic test generation
 

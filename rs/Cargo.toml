@@ -7,6 +7,7 @@ members = [
 ]
 
 [patch."https://github.com/dfinity/ic"]
+ic-canonical-state = { path = "./canonical_state" }
 ic-canister-sandbox-common = { path = "./ic_canister_sandbox_common" }
 ic-canister-sandbox-backend-lib = { path = "./ic_canister_sandbox_backend_lib" }
 ic-interfaces = { path = "./interfaces" }

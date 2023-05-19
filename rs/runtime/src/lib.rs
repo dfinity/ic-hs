@@ -22,8 +22,8 @@ use ic_interfaces::execution_environment::{ExecutionMode, SubnetAvailableMemory}
 use ic_registry_subnet_type::SubnetType;
 use ic_replicated_state::canister_state::execution_state::WasmBinary;
 use ic_replicated_state::canister_state::DEFAULT_QUEUE_CAPACITY;
-use ic_replicated_state::page_map::TestPageAllocatorFileDescriptorImpl;
 use ic_replicated_state::{ExportedFunctions, Global, Memory};
+use ic_state_manager::PageAllocatorFileDescriptorImpl;
 use ic_system_api::sandbox_safe_system_state::CanisterStatusView;
 use ic_system_api::sandbox_safe_system_state::SandboxSafeSystemState;
 use ic_system_api::sandbox_safe_system_state::SystemStateChanges;
@@ -42,6 +42,7 @@ use ic_types::{CanisterTimer, Cycles, Time};
 use ic_wasm_types::CanisterModule;
 use lazy_static::lazy_static;
 use std::collections::{BTreeMap, BTreeSet};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -123,6 +124,17 @@ struct RuntimeResponse {
 }
 
 impl RuntimeResponse {
+    pub fn noop() -> Self {
+        RuntimeResponse {
+            response: CanisterResponse::NoResponse(()),
+            cycles_accept: (0, 0),
+            cycles_mint: (0, 0),
+            new_certified_data: None,
+            new_global_timer: None,
+            new_calls: vec![],
+        }
+    }
+
     pub fn trap(m: String) -> Self {
         RuntimeResponse {
             response: CanisterResponse::CanisterTrap(m),
@@ -417,6 +429,11 @@ struct RuntimeGlobalTimer {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+struct RuntimeDelete {
+    env: Env,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
 enum RuntimeInvokeEnum {
     RuntimeInstantiate(RuntimeInstantiate),
     RuntimeInitialize(RuntimeInitialize),
@@ -429,10 +446,12 @@ enum RuntimeInvokeEnum {
     RuntimeInspectMessage(RuntimeInspectMessage),
     RuntimeHeartbeat(RuntimeHeartbeat),
     RuntimeGlobalTimer(RuntimeGlobalTimer),
+    RuntimeDelete(RuntimeDelete),
 }
 
 fn get_env(rte: &RuntimeInvokeEnum) -> Env {
     match rte {
+        RuntimeInvokeEnum::RuntimeDelete(x) => x.env.clone(),
         RuntimeInvokeEnum::RuntimeInstantiate(x) => x.env.clone(),
         RuntimeInvokeEnum::RuntimeInitialize(x) => x.env.clone(),
         RuntimeInvokeEnum::RuntimeUpdate(x) => x.env.clone(),
@@ -466,7 +485,9 @@ fn get_or_create_controller(
         embedder_config.max_sandbox_count = 10;
         let ctrl = SandboxedExecutionController::new(
             &embedder_config,
-            Arc::new(TestPageAllocatorFileDescriptorImpl::new()),
+            Arc::new(PageAllocatorFileDescriptorImpl::new(PathBuf::from(
+                prefix.clone(),
+            ))),
             &prefix,
         )
         .unwrap();
@@ -500,6 +521,13 @@ pub fn invoke(arg: &str) -> String {
     let call_ctx_id: CallContextId = CallContextId::from(0);
 
     match r.entry_point {
+        RuntimeInvokeEnum::RuntimeDelete(_) => {
+            let controller =
+                get_or_create_controller(&subnet_id, &subnet_type, &dirty_page_overhead);
+            controller.backends.lock().unwrap().remove(&canister_id);
+            state_map.remove(&canister_id);
+            return general_purpose::STANDARD.encode(to_vec(&RuntimeResponse::noop()).unwrap());
+        }
         RuntimeInvokeEnum::RuntimeInstantiate(ref x) => {
             // we only run this, if we do not have any state for canister
             if state_map.get(&canister_id).is_none() {
@@ -586,6 +614,9 @@ pub fn invoke(arg: &str) -> String {
     };
     // get controller by subnet, not by canister id
     let controller = get_or_create_controller(&subnet_id, &subnet_type, &dirty_page_overhead);
+    if state_map.get(&canister_id).is_none() {
+        return general_purpose::STANDARD.encode(to_vec(&RuntimeResponse::noop()).unwrap());
+    }
     let current_state = state_map.get_mut(&canister_id).unwrap();
 
     let exec_config = ExecutionConfig::default();
@@ -613,6 +644,7 @@ pub fn invoke(arg: &str) -> String {
     };
 
     let (method, api_type, call_ctx_available_cycles) = match r.entry_point {
+        RuntimeInvokeEnum::RuntimeDelete(_) => panic!("unreachable"),
         RuntimeInvokeEnum::RuntimeInstantiate(_) => (
             FuncRef::Method(WasmMethod::System(SystemMethod::CanisterStart)),
             ApiType::Start {
