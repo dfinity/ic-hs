@@ -192,15 +192,15 @@ let
         remove-references-to \
           -t ${nixpkgs.darwin.Libsystem} \
           -t ${nixpkgs.darwin.CF} \
-          -t ${nixpkgs.libiconv} \
-          -t ${nixpkgs.openssl} \
-          -t ${nixpkgs.libxml2} \
-          -t ${nixpkgs.libcxx} \
-          -t ${nixpkgs.libcxxabi} \
-          -t ${nixpkgs.libkrb5} \
-          -t ${nixpkgs.libunistring} \
-          -t ${nixpkgs.libssh2} \
-          -t ${nixpkgs.libidn2} \
+          -t ${nixpkgs.darwin.libiconv} \
+          -t ${nixpkgs.darwin.openssl} \
+          -t ${nixpkgs.darwin.libxml2} \
+          -t ${nixpkgs.darwin.libcxx} \
+          -t ${nixpkgs.darwin.libcxxabi} \
+          -t ${nixpkgs.darwin.libkrb5} \
+          -t ${nixpkgs.darwin.libunistring} \
+          -t ${nixpkgs.darwin.libssh2} \
+          -t ${nixpkgs.darwin.libidn2} \
           -t ${staticHaskellPackages.tasty-html.data} \
           $out/build/*
 
