@@ -40,11 +40,16 @@ jobs:
     # until https://github.com/cachix/cachix-action/issues/86 is fixed:
     - run: cachix watch-store ic-hs-test &
 
+    # run a few targets explicitly, to get easier signal in the CI view
     - if: matrix.os == 'ubuntu-latest'
       run: nix build -f default.nix --eval-store auto --store ssh-ng://eu.nixbuild.net --builders "" --max-jobs 2 --no-link --print-build-logs universal-canister
+    - if: matrix.os == 'macos-latest'
+      run: nix-build -A universal-canister
 
     - if: matrix.os == 'ubuntu-latest'
       run: nix build -f default.nix --eval-store auto --store ssh-ng://eu.nixbuild.net --builders "" --max-jobs 2 --no-link --print-build-logs ic-hs
+    - if: matrix.os == 'macos-latest'
+      run: nix-build -A ic-hs
 
     - if: matrix.os == 'ubuntu-latest'
       run: cp -r "$(nix-build -A ic-hs.doc)"/share/doc/*/html gh-page
@@ -57,6 +62,8 @@ jobs:
 
     - if: matrix.os == 'ubuntu-latest'
       run: nix build -f default.nix --eval-store auto --store ssh-ng://eu.nixbuild.net --builders "" --max-jobs 2 --no-link --print-build-logs check-generated
+    - if: matrix.os == 'macos-latest'
+      run: nix-build -A check-generated
 
     - if: matrix.os == 'ubuntu-latest'
       run: nix build -f default.nix --eval-store auto --store ssh-ng://eu.nixbuild.net --builders "" --max-jobs 2 --no-link --print-build-logs ic-ref-dist
@@ -73,9 +80,13 @@ jobs:
 
     - if: matrix.os == 'ubuntu-latest'
       run: nix build -f default.nix --eval-store auto --store ssh-ng://eu.nixbuild.net --builders "" --max-jobs 2 --no-link --print-build-logs ic-hs-shell
+    - if: matrix.os == 'macos-latest'
+      run: nix-build -A ic-hs-shell
 
     - if: matrix.os == 'ubuntu-latest'
       run: nix build -f default.nix --eval-store auto --store ssh-ng://eu.nixbuild.net --builders "" --max-jobs 2 --no-link --print-build-logs license-check
+    - if: matrix.os == 'macos-latest'
+      run: nix-build -A license-check
 
   release:
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
