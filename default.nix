@@ -303,28 +303,6 @@ rec {
 
   openssl = nixpkgs.openssl;
 
-  ic-ref-test-simple = nixpkgs.runCommandNoCC "ic-ref-test-simple" {
-      nativeBuildInputs = [ ic-hs ];
-    } ''
-      function kill_jobs () {
-        pids="$(jobs -p)"
-        kill $pids
-      }
-      ic-ref --pick-port --write-port-to port &
-      trap kill_jobs EXIT PIPE
-      sleep 1
-      test -e port
-      mkdir -p $out
-      sleep 1
-      LANG=C.UTF8 ic-ref-test --test-subnet-config "(\"bn26o-3iapb-njhsq-6mjum-ssjtx-lcwrs-id2x6-2z7ce-yaweh-xamz5-7qe\",system,1,[(0,1048575)])" --peer-subnet-config "(\"jdzfx-2szde-tnkmk-2m5zt-t6gga-pnl22-v36hx-hz5zg-r6mei-tw3q4-nae\",application,1,[(1048576,2097151)])" --endpoint "http://127.0.0.1:$(cat port)/" --html $out/report-1.html -p '($0 ~ /canister lifecycle/)'
-      pids="$(jobs -p)"
-      kill -INT $pids
-      trap - EXIT PIPE
-      mkdir -p $out/nix-support
-      echo "report test-results $out report-1.html" >> $out/nix-support/hydra-build-products
-      echo "report test-results $out report-2.html" >> $out/nix-support/hydra-build-products
-    '';
-
   ic-ref-test = nixpkgs.runCommandNoCC "ic-ref-test" {
       nativeBuildInputs = [ ic-hs ];
     } ''

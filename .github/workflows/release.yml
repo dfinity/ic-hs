@@ -74,11 +74,6 @@ jobs:
       run: nix build -f default.nix --eval-store auto --store ssh-ng://eu.nixbuild.net --builders "" --max-jobs 2 --no-link --print-build-logs ic-ref-test
 
     - if: matrix.os == 'ubuntu-latest'
-      run: nix build -f default.nix --eval-store auto --store ssh-ng://eu.nixbuild.net --builders "" --max-jobs 2 --no-link --print-build-logs ic-ref-test-simple
-    - if: matrix.os == 'macos-latest'
-      run: nix-build -A ic-ref-test-simple
-
-    - if: matrix.os == 'ubuntu-latest'
       run: nix build -f default.nix --eval-store auto --store ssh-ng://eu.nixbuild.net --builders "" --max-jobs 2 --no-link --print-build-logs ic-hs-shell
     - if: matrix.os == 'macos-latest'
       run: nix-build -A ic-hs-shell
