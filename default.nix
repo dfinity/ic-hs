@@ -334,17 +334,17 @@ rec {
       }
       ${openssl}/bin/openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -sha256 -nodes -subj '/C=CH/ST=Zurich/L=Zurich/O=DFINITY/CN=127.0.0.1'
       ${httpbin}/httpbin-rs --port 8003 --cert-file cert.pem --key-file key.pem &
-      sleep 1
       ic-ref --pick-port --write-port-to port --cert-path "cert.pem" &
       PID=$!
       trap kill_jobs EXIT PIPE
       sleep 1
       test -e port
       mkdir -p $out
-      sleep 1
       LANG=C.UTF8 ic-ref-test --test-subnet-config "(\"bn26o-3iapb-njhsq-6mjum-ssjtx-lcwrs-id2x6-2z7ce-yaweh-xamz5-7qe\",system,1,[(0,1048575)])" --peer-subnet-config "(\"jdzfx-2szde-tnkmk-2m5zt-t6gga-pnl22-v36hx-hz5zg-r6mei-tw3q4-nae\",application,1,[(1048576,2097151)])" --endpoint "http://127.0.0.1:$(cat port)/" --httpbin "127.0.0.1:8003" --html $out/report-1.html
       kill $PID
       ic-ref --pick-port --write-port-to port --cert-path "cert.pem" &
+      sleep 1
+      test -e port
       LANG=C.UTF8 ic-ref-test --test-subnet-config "(\"jdzfx-2szde-tnkmk-2m5zt-t6gga-pnl22-v36hx-hz5zg-r6mei-tw3q4-nae\",application,1,[(1048576,2097151)])" --peer-subnet-config "(\"bn26o-3iapb-njhsq-6mjum-ssjtx-lcwrs-id2x6-2z7ce-yaweh-xamz5-7qe\",system,1,[(0,1048575)])" --endpoint "http://127.0.0.1:$(cat port)/" --httpbin "127.0.0.1:8003" --html $out/report-2.html
       pids="$(jobs -p)"
       kill -INT $pids
@@ -366,13 +366,11 @@ rec {
       }
       ${openssl}/bin/openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -sha256 -nodes -subj '/C=CH/ST=Zurich/L=Zurich/O=DFINITY/CN=127.0.0.1'
       ${httpbin}/httpbin-rs --port 8003 --cert-file cert.pem --key-file key.pem &
-      sleep 1
       ic-ref --pick-port --write-port-to port --cert-path "cert.pem" &
       PID=$!
       trap kill_jobs EXIT PIPE
       sleep 1
       test -e port
-      sleep 1
       LANG=C.UTF8 ic-ref-test \
         --test-subnet-config "(\"bn26o-3iapb-njhsq-6mjum-ssjtx-lcwrs-id2x6-2z7ce-yaweh-xamz5-7qe\",system,1,[(0,1048575)])" \
         --peer-subnet-config "(\"jdzfx-2szde-tnkmk-2m5zt-t6gga-pnl22-v36hx-hz5zg-r6mei-tw3q4-nae\",application,1,[(1048576,2097151)])" \
@@ -380,6 +378,8 @@ rec {
         --httpbin "127.0.0.1:8003"
       kill $PID
       ic-ref --pick-port --write-port-to port --cert-path "cert.pem" &
+      sleep 1
+      test -e port
       LANG=C.UTF8 ic-ref-test \
         --test-subnet-config "(\"jdzfx-2szde-tnkmk-2m5zt-t6gga-pnl22-v36hx-hz5zg-r6mei-tw3q4-nae\",application,1,[(1048576,2097151)])" \
         --peer-subnet-config "(\"bn26o-3iapb-njhsq-6mjum-ssjtx-lcwrs-id2x6-2z7ce-yaweh-xamz5-7qe\",system,1,[(0,1048575)])" \
@@ -389,7 +389,6 @@ rec {
       kill -INT $pids
       trap - EXIT PIPE
       sleep 5 # wait for ic-ref.tix to be written
-
       find
       LANG=C.UTF8 hpc markup \
         --srcdir=$srcdir \
