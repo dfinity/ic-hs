@@ -184,6 +184,8 @@ let
           -p '@executable_path/libs' \
           -i ${nixpkgs.darwin.Libsystem}/lib \
           -i /usr/lib/system \
+          -i ${nixpkgs.libiconv}/lib \
+          -i ${nixpkgs.darwin.Libsystem}/lib \
           --no-codesign
 
         # there are still plenty of nix store references
