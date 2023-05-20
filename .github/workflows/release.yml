@@ -35,8 +35,6 @@ jobs:
       with:
         name: ic-hs-test
         authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
-    - if: matrix.os == 'macos-latest'
-      run: nix-env -iA nix-build-uncached -f nix/
     # until https://github.com/cachix/cachix-action/issues/86 is fixed:
     - run: cachix watch-store ic-hs-test &
 
