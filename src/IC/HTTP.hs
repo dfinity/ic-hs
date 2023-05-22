@@ -121,17 +121,20 @@ handle store req respond = case (requestMethod req, pathInfo req) of
 
     cbor status gr = respond $ responseBuilder
         status
-        [ (hContentType, "application/cbor") ]
+        [ (hContentType, "application/cbor"),
+          (hConnection, "close") ]
         (IC.HTTP.CBOR.encode gr)
 
     json status x = respond $ responseBuilder
         status
-        [ (hContentType, "application/json") ]
+        [ (hContentType, "application/json"),
+          (hConnection, "close") ]
         (JSON.fromEncoding $ JSON.toEncoding x)
 
     plain status x = respond $ responseBuilder
         status
-        [ (hContentType, "text/plain") ]
+        [ (hContentType, "text/plain"),
+          (hConnection, "close") ]
         x
 
     empty status = plain status mempty
