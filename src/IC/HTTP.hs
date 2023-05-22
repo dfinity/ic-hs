@@ -3,7 +3,7 @@
 module IC.HTTP where
 
 import Network.Wai
-import Control.Concurrent (threadDelay)
+import Control.Concurrent (threadDelay, yield)
 import Control.Concurrent.Async (withAsync)
 import Network.HTTP.Types
 import qualified Data.Text as T
@@ -43,14 +43,10 @@ withApp subnets systemTaskPeriod backingFile action =
           lift getTimestamp >>= setAllTimesTo
           processSystemTasks
     loopIC :: Store IC -> IO ()
-    loopIC store = loop 1000
+    loopIC store = forever $ do
+        yield
+        modifyStore store aux
       where
-        loop :: Int -> IO ()
-        loop backoff = do
-          threadDelay backoff
-          b <- modifyStore store aux
-          if b then loop 1000
-          else loop (2 * backoff)
         aux = do
           lift getTimestamp >>= setAllTimesTo
           runStep
@@ -107,11 +103,9 @@ handle store req respond = case (requestMethod req, pathInfo req) of
   where
     runIC :: StateT IC IO a -> IO a
     runIC a = do
-      -- it is important that this thread returns, else warp is blocked somehow
       x <- modifyStore store $ do
         -- Here we make IC.Ref use “real time”
         lift getTimestamp >>= setAllTimesTo
-        --processSystemTasks
         a
       return x
 
@@ -121,20 +115,17 @@ handle store req respond = case (requestMethod req, pathInfo req) of
 
     cbor status gr = respond $ responseBuilder
         status
-        [ (hContentType, "application/cbor"),
-          (hConnection, "close") ]
+        [ (hContentType, "application/cbor") ]
         (IC.HTTP.CBOR.encode gr)
 
     json status x = respond $ responseBuilder
         status
-        [ (hContentType, "application/json"),
-          (hConnection, "close") ]
+        [ (hContentType, "application/json") ]
         (JSON.fromEncoding $ JSON.toEncoding x)
 
     plain status x = respond $ responseBuilder
         status
-        [ (hContentType, "text/plain"),
-          (hConnection, "close") ]
+        [ (hContentType, "text/plain") ]
         x
 
     empty status = plain status mempty
