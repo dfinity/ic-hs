@@ -457,11 +457,13 @@ processMessage m = case m of
     ctxt <- getCallContext ctxt_id
     case origin ctxt of
       FromSystemTask -> error "Response from system task"
-      FromUser rid _ -> setReqStatus rid $ CallResponse $
-        -- NB: Here cycles disappear
-        case response of
-          Reject (rc, msg) -> canisterRejected (rc, msg, Nothing)
-          Reply blob -> Replied blob
+      FromUser rid _ -> do
+        setReqStatus rid $ CallResponse $
+          -- NB: Here cycles disappear
+          case response of
+            Reject (rc, msg) -> canisterRejected (rc, msg, Nothing)
+            Reply blob -> Replied blob
+        processSystemTasks
       FromCanister other_ctxt_id callback -> do
         -- Add refund to balance
         cid <- calleeOfCallID other_ctxt_id

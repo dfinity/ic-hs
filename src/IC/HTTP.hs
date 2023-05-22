@@ -43,10 +43,14 @@ withApp subnets systemTaskPeriod backingFile action =
           lift getTimestamp >>= setAllTimesTo
           processSystemTasks
     loopIC :: Store IC -> IO ()
-    loopIC store = forever $ do
-        threadDelay 10000
-        modifyStore store aux
+    loopIC store = loop 1000
       where
+        loop :: Int -> IO ()
+        loop backoff = do
+          threadDelay backoff
+          b <- modifyStore store aux
+          if b then loop 1000
+          else loop (2 * backoff)
         aux = do
           lift getTimestamp >>= setAllTimesTo
           runStep
