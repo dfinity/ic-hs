@@ -40,6 +40,7 @@ let
                 then flag + ",wasm32-unknown-unknown"
                 else flag) ++ [
                   # https://github.com/rust-lang/rust/issues/76526
+                  # fixed in Rust 1.69.0
                   "--set=build.docs=false"
                 ];
             });
