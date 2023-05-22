@@ -44,7 +44,7 @@ withApp subnets systemTaskPeriod backingFile action =
           processSystemTasks
     loopIC :: Store IC -> IO ()
     loopIC store = forever $ do
-        threadDelay 2000
+        threadDelay 10000
         modifyStore store aux
       where
         aux = do
@@ -107,7 +107,7 @@ handle store req respond = case (requestMethod req, pathInfo req) of
       x <- modifyStore store $ do
         -- Here we make IC.Ref use “real time”
         lift getTimestamp >>= setAllTimesTo
-        processSystemTasks
+        --processSystemTasks
         a
       return x
 
