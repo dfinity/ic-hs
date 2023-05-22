@@ -24,7 +24,6 @@ import Data.List.Split (chunksOf)
 import Numeric.Natural
 import Control.Monad.Except
 import Text.Printf (printf)
-import qualified Data.Set as S
 
 type (↦) = M.Map
 

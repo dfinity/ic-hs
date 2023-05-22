@@ -3,7 +3,7 @@
 module IC.HTTP where
 
 import Network.Wai
-import Control.Concurrent (threadDelay)
+import Control.Concurrent (threadDelay, yield)
 import Control.Concurrent.Async (withAsync)
 import Network.HTTP.Types
 import qualified Data.Text as T
@@ -44,7 +44,7 @@ withApp subnets systemTaskPeriod backingFile action =
           processSystemTasks
     loopIC :: Store IC -> IO ()
     loopIC store = forever $ do
-        threadDelay 10000
+        yield
         modifyStore store aux
       where
         aux = do
@@ -62,12 +62,11 @@ handle store req respond = case (requestMethod req, pathInfo req) of
         case parsePrincipal textual_ecid of
             Left err -> invalidRequest $ "cannot parse effective canister id: " <> T.pack err
             Right (Principal ecid) -> do
-              putStrLn $ "Incoming request to " ++ T.unpack verb ++ " for canister " ++ T.unpack textual_ecid
               root_key <- peekIC $ gets $ toPublicKey . secretRootKey
               case verb of
                 "call" -> withSignedCBOR root_key $ \(gr, ev) -> case callRequest gr of
                     Left err -> invalidRequest err
-                    Right cr -> runIC (T.unpack textual_ecid) $ do
+                    Right cr -> runIC $ do
                         t <- lift getTimestamp
                         runExceptT (authCallRequest t (EntityId ecid) ev cr) >>= \case
                             Left err ->
@@ -102,30 +101,17 @@ handle store req respond = case (requestMethod req, pathInfo req) of
                 _ -> notFound req
     _ -> notFound req
   where
-    runIC :: String -> StateT IC IO a -> IO a
-    runIC ecid a = do
+    runIC :: StateT IC IO a -> IO a
+    runIC a = do
       x <- modifyStore store $ do
         -- Here we make IC.Ref use “real time”
         lift getTimestamp >>= setAllTimesTo
-        --processSystemTasks
         a
-      -- begin processing in the background (it is important that
-      -- this thread returns, else warp is blocked somehow)
-      --putStrLn ("------------Entering thread for: " ++ ecid)
-      --void $ forkIO (loopIC ecid)
-      putStrLn $ "Answering request for " ++ ecid
       return x
 
     -- Not atomic, reads most recent state
     peekIC :: StateT IC IO a -> IO a
     peekIC a = peekStore store >>= evalStateT a
-
-    {-
-    loopIC :: String -> IO ()
-    loopIC ecid = putStrLn ("------------Executing step for: " ++ ecid) >> modifyStore store runStep >>= \case
-        True -> (loopIC ecid)
-        False -> putStrLn ("------------Exiting thread for: " ++ ecid) >> return ()
-    -}
 
     cbor status gr = respond $ responseBuilder
         status

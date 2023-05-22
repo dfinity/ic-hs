@@ -17,16 +17,30 @@ module IC.Test.Spec.Timer (canister_timer_tests) where
 import Data.ByteString.Builder
 import Test.Tasty
 import Test.Tasty.HUnit
+import Control.Monad
 import Data.Row as R
 import Data.Time.Clock.POSIX
 import Codec.Candid (Principal(..))
 import qualified Codec.Candid as Candid
+import Control.Concurrent
+import System.Timeout
 
 import IC.Management (InstallMode)
 import IC.Test.Universal
 import IC.Test.Agent
 import IC.Test.Agent.UnsafeCalls
 import IC.Test.Spec.Utils
+
+-- * Helpers
+
+waitFor :: HasAgentConfig => IO Bool -> IO ()
+waitFor act = do
+    result <- timeout (tc_timeout agentConfig * (10::Int) ^ (6::Int)) doActUntil
+    when (result == Nothing) $ assertFailure "Polling timed out"
+  where
+    doActUntil = do
+      stop <- act
+      unless stop (threadDelay 1000 *> doActUntil)
 
 -- * The test suite (see below for helper functions)
 

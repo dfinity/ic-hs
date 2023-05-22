@@ -885,6 +885,14 @@ icTests my_sub other_sub =
             ic_uninstall ic00 cid
             return res
           )
+        , "T" =: boolTest (\prog -> do
+            cid <- install ecid (onHeartbeat (callback (prog >>> setGlobal "Did not trap")))
+            call_ cid reply -- This assumes that after one update call returned, a heartbeat
+                            -- should have happened. Also see heartbeat tests below.
+            g <- query cid $ replyData getGlobal
+            ic_uninstall ic00 cid
+            return (g == "Did not trap")
+          )
         ]
 
       -- context builder helpers
@@ -905,7 +913,7 @@ icTests my_sub other_sub =
         ]
         where s = S.fromList (T.words trapping)
 
-      star = "I G U Q Ry Rt C F"
+      star = "I G U Q Ry Rt C F T"
       never = ""
 
     in concat
@@ -926,7 +934,7 @@ icTests my_sub other_sub =
     , t "canister_self"                star          $ ignore self
     , t "canister_cycle_balance"       star          $ ignore getBalance
     , t "canister_cycle_balance128"    star          $ ignore getBalance128
-    , t "call_new_call_perform"        "U Rt Ry"   $
+    , t "call_new_call_perform"        "U Rt Ry T"   $
         callNew "foo" "bar" "baz" "quux" >>>
         callDataAppend "foo" >>>
         callCyclesAdd (int64 0) >>>
@@ -944,7 +952,7 @@ icTests my_sub other_sub =
     , t "stable64_grow"                star              $ ignore $ stable64Grow (int64 1)
     , t "stable64_write"               star              $ stable64Write (int64 0) ""
     , t "stable64_read"                star              $ ignore $ stable64Read (int64 0) (int64 0)
-    , t "certified_data_set"           "I G U Ry Rt"   $ setCertifiedData "foo"
+    , t "certified_data_set"           "I G U Ry Rt T"   $ setCertifiedData "foo"
     , t "data_certificate_present"     star              $ ignore getCertificatePresent
     , t "msg_method_name"              "F"               $ ignore methodName
     , t "accept_message"               never               acceptMessage -- due to double accept
@@ -952,7 +960,7 @@ icTests my_sub other_sub =
     , t "performance_counter"          star              $ ignore $ performanceCounter (int 0)
     , t "is_controller"                star              $ ignore $ isController ""
     , t "canister_version"             star              $ ignore $ canisterVersion
-    , t "global_timer_set"             "I G U Ry Rt C" $ ignore $ apiGlobalTimerSet (int64 0)
+    , t "global_timer_set"             "I G U Ry Rt C T" $ ignore $ apiGlobalTimerSet (int64 0)
     , t "debug_print"                  star              $ debugPrint "hello"
     , t "trap"                         never             $ trap "this better traps"
     ]
@@ -1509,6 +1517,25 @@ icTests my_sub other_sub =
       do upgrade' cid $ inter_query cid defArgs{ other_side = noop }
         >>= isReject [5]
       checkNoUpgrade cid
+    ]
+
+  , testGroup "heartbeat"
+    [ testCase "called once for all canisters" $ do
+      cid <- install ecid $ onHeartbeat $ callback $ ignore (stableGrow (int 1)) >>> stableWrite (int 0) "FOO"
+      cid2 <- install ecid $ onHeartbeat $ callback $ ignore (stableGrow (int 1)) >>> stableWrite (int 0) "BAR"
+      -- Heartbeat cannot respond. Should be trapped.
+      cid3 <- install ecid $ onHeartbeat $ callback $ setGlobal "FIZZ" >>> replyData "FIZZ"
+
+      -- The spec currently gives no guarantee about when or how frequent heartbeats are executed.
+      -- But all implementations have the property: if update call B is submitted after call A is completed,
+      -- then a heartbeat runs before the execution of B.
+      -- We use this here to make sure that heartbeats have been attempted:
+      call_ cid reply
+      call_ cid reply
+
+      query cid (replyData (stableRead (int 0) (int 3))) >>= is "FOO"
+      query cid2 (replyData (stableRead (int 0) (int 3))) >>= is "BAR"
+      query cid3 (replyData getGlobal) >>= is ""
     ]
 
   , testGroup "reinstall"
