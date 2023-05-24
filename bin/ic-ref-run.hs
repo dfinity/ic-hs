@@ -140,7 +140,7 @@ work subnets systemTaskPeriod msg_file = do
   msgs <- parseFile msg_file
 
   let user_id = dummyUserId
-  conf <- makeRefConfig []
+  conf <- makeRefConfig [] WinterRuntime
   withStore (initialIC subs) Nothing $ \store ->
       withAsync (withRefConfig conf $ loopIC store) $ \_async ->
           forM_ msgs $ \case

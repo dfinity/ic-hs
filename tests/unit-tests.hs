@@ -30,7 +30,7 @@ import IC.Utils
 main :: IO ()
 main = do
     BLS.init
-    conf <- makeRefConfig []
+    conf <- makeRefConfig [] WinterRuntime
     defaultMain $ tests conf
 
 defaultSubnetConfig :: [SubnetConfig]
