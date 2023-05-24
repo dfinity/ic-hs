@@ -3,15 +3,22 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE DeriveGeneric #-}
 
 module IC.Canister
-    ( WasmState
+    ( RuntimeState
+    , WasmState(..)
     , parseCanister
     , CanisterModule(..)
     , InitFunc, UpdateFunc, QueryFunc
     , asUpdate
     )
     where
+
+import Codec.Serialise
+import GHC.Generics
+import Data.Aeson
 
 import qualified Data.Map as M
 import qualified Data.Text as T
@@ -34,9 +41,24 @@ import IC.Canister.Imp
 import IC.Hash
 import IC.Utils
 
--- Here we can swap out the purification machinery
-type WasmState = CanisterSnapshot
--- type WasmState = Replay ImpState
+newtype RuntimeState = RuntimeState Int
+  deriving Show
+
+deriving instance Generic RuntimeState
+instance Serialise RuntimeState where
+
+customOptions :: Options
+customOptions = defaultOptions
+    { sumEncoding = ObjectWithSingleField
+    }
+
+instance ToJSON RuntimeState where
+    toJSON     = genericToJSON customOptions
+    toEncoding = genericToEncoding customOptions
+
+data WasmState = WinterState CanisterSnapshot
+  | RustState RuntimeState
+  deriving Show
 
 type InitFunc = EntityId -> Env -> Blob -> IO (TrapOr (WasmState, CanisterActions))
 type UpdateFunc = WasmState -> IO (TrapOr (WasmState, UpdateResult))
@@ -73,8 +95,18 @@ decodeModule bytes =
     asmMagic = asBytes [0x00, 0x61, 0x73, 0x6d]
     gzipMagic = asBytes [0x1f, 0x8b, 0x08]
 
-parseCanister :: Blob -> Either String CanisterModule
-parseCanister bytes = do
+data EntryPoint = RuntimeInitialize EntityId Env Blob
+  | RuntimeUpdate MethodName EntityId Env NeedsToRespond Cycles Blob
+  | RuntimeQuery MethodName EntityId Env Blob
+  | RuntimeCallback Callback Env NeedsToRespond Cycles Response Cycles
+  | RuntimeCleanup WasmClosure Env
+  | RuntimePostUpgrade EntityId Env Blob
+  | RuntimeInspectMessage MethodName EntityId Env Blob
+  | RuntimeHeartbeat Env
+  | RuntimeGlobalTimer Env
+
+parseCanister :: RuntimeMode -> Blob -> Either String CanisterModule
+parseCanister mode bytes = do
   decodedModule <- decodeModule bytes
   wasm_mod <- either throwError pure (parseModule decodedModule)
   let icp_sections =
@@ -93,54 +125,101 @@ parseCanister bytes = do
   return $ CanisterModule
     { raw_wasm = bytes
     , raw_wasm_hash = sha256 bytes
-    , init_method = \caller env dat -> return $
-          case instantiate wasm_mod of
-            Trap err -> Trap err
-            Return wasm_state0 ->
-              invoke wasm_state0 (rawInitialize caller env dat)
+    , init_method = \caller env dat ->
+        case mode of  WinterRuntime -> return $ returnWinterState <$>
+                        case instantiate wasm_mod of
+                          Trap err -> Trap err
+                          Return wasm_state0 -> invoke wasm_state0 (rawInitialize caller env dat)
+                      RustRuntime -> do
+                        inst <- invokeInstantiate decodedModule env ""
+                        case inst of Trap err -> return $ Trap err
+                                     Return (s, new_env) -> returnRustState <$> invokeToCanisterActions s (RuntimeInitialize caller new_env dat)
     , update_methods = M.fromList
-      [ (m,
-        \caller env needs_to_respond cycles_available dat wasm_state -> return $
-        invoke wasm_state (rawUpdate m caller env needs_to_respond cycles_available dat))
+      [ (m, \caller env needs_to_respond cycles_available dat wasm_state ->
+          case wasm_state of  WinterState w -> return $ returnWinterState <$> invoke w (rawUpdate m caller env needs_to_respond cycles_available dat)
+                              RustState s -> returnRustState <$> invokeRust s (RuntimeUpdate m caller env needs_to_respond cycles_available dat))
       | n <- exportedFunctions wasm_mod
       , Just m <- pure $ stripPrefix "canister_update " n
       ]
     , query_methods = M.fromList
-      [ (m, \caller env arg wasm_state -> return $
-          snd <$> invoke wasm_state (rawQuery m caller env arg))
+      [ (m, \caller env arg wasm_state ->
+          case wasm_state of  WinterState w -> return $ snd <$> invoke w (rawQuery m caller env arg)
+                              RustState s -> invokeQuery s (RuntimeQuery m caller env arg))
       | n <- exportedFunctions wasm_mod
       , Just m <- pure $ stripPrefix "canister_query " n
       ]
-    , callbacks = \cb env needs_to_respond cycles_available res refund wasm_state -> return $
-      invoke wasm_state (rawCallback cb env needs_to_respond cycles_available res refund)
-    , cleanup = \cb env wasm_state -> return $
-      invoke wasm_state (rawCleanup cb env)
-    , pre_upgrade_method = \wasm_state caller env -> return $
-          snd <$> invoke wasm_state (rawPreUpgrade caller env)
-    , post_upgrade_method = \caller env mem dat -> return $
-          case instantiate wasm_mod of
-            Trap err -> Trap err
-            Return wasm_state0 ->
-              invoke wasm_state0 (rawPostUpgrade caller env mem dat)
-    , inspect_message = \method_name caller env arg wasm_state -> return $
-          snd <$> invoke wasm_state (rawInspectMessage method_name caller env arg)
-    , heartbeat = \env wasm_state -> return $ invoke wasm_state (rawHeartbeat env)
-    , canister_global_timer = \env wasm_state -> return $ invoke wasm_state (rawGlobalTimer env)
+    , callbacks = \cb env needs_to_respond cycles_available res refund wasm_state ->
+        case wasm_state of  WinterState w -> return $ returnWinterState <$> invoke w (rawCallback cb env needs_to_respond cycles_available res refund)
+                            RustState s -> returnRustState <$> invokeRust s (RuntimeCallback cb env needs_to_respond cycles_available res refund)
+    , cleanup = \cb env wasm_state ->
+        case wasm_state of  WinterState w -> return $ returnWinterState <$> invoke w (rawCleanup cb env)
+                            RustState s -> returnRustState <$> invokeToUnit s (RuntimeCleanup cb env)
+    , pre_upgrade_method = \wasm_state caller env ->
+        case wasm_state of  WinterState w -> return $ snd <$> invoke w (rawPreUpgrade caller env)
+                            RustState s -> invokePreUpgrade s caller env
+    , post_upgrade_method = \caller env mem dat ->
+        case mode of  WinterRuntime -> return $ returnWinterState <$>
+                        case instantiate wasm_mod of
+                          Trap err -> Trap err
+                          Return wasm_state0 -> invoke wasm_state0 (rawPostUpgrade caller env mem dat)
+                      RustRuntime -> do
+                        inst <- invokeInstantiate decodedModule env mem
+                        case inst of  Trap err -> return $ Trap err
+                                      Return (s, new_env) -> returnRustState <$> invokeToCanisterActions s (RuntimePostUpgrade caller new_env dat)
+    , inspect_message = \method_name caller env arg wasm_state ->
+        case wasm_state of  WinterState w -> return $ snd <$> invoke w (rawInspectMessage method_name caller env arg)
+                            RustState s -> invokeToNoResult s (RuntimeInspectMessage method_name caller env arg)
+    , heartbeat = \env wasm_state ->
+        case wasm_state of  WinterState w -> return $ returnWinterState <$> invoke w (rawHeartbeat env)
+                            RustState s -> returnRustState <$> invokeToNoCyclesResponse s (RuntimeHeartbeat env)
+    , canister_global_timer = \env wasm_state ->
+        case wasm_state of  WinterState w -> return $ returnWinterState <$> invoke w (rawGlobalTimer env)
+                            RustState s -> returnRustState <$> invokeToNoCyclesResponse s (RuntimeGlobalTimer env)
     , metadata = M.fromList metadata
     }
+  where
+    returnWinterState = (\(a, b) -> (WinterState a, b))
+    returnRustState = ((\(a, b) -> (RustState a, b)) <$>)
 
-instantiate :: Module -> TrapOr WasmState
+instantiate :: Module -> TrapOr CanisterSnapshot
 instantiate wasm_mod =
   either Trap Return $ snd $ createMaybe $ do
     rawInstantiate wasm_mod >>= \case
       Trap err -> return ((), Left err)
       Return rs -> return ((), Right rs)
 
-invoke :: WasmState -> CanisterEntryPoint (TrapOr r) -> TrapOr (WasmState, r)
+invoke :: CanisterSnapshot -> CanisterEntryPoint (TrapOr r) -> TrapOr (CanisterSnapshot, r)
 invoke s f =
   case perform f s of
     (_, Trap msg) -> Trap msg
     (s', Return r) -> Return (s', r)
+
+invokeRust :: RuntimeState -> EntryPoint -> IO (TrapOr (RuntimeState, UpdateResult))
+invokeRust _s _ep = error "not implemented"
+
+invokePreUpgrade :: RuntimeState -> EntityId -> Env -> IO (TrapOr (CanisterActions, Blob))
+invokePreUpgrade _s _caller _env = error "not implemented"
+
+invokeInstantiate :: Blob -> Env -> Blob -> IO (TrapOr (RuntimeState, Env))
+invokeInstantiate _decodedModule _env _stable_mem = error "not implemented"
+
+invokeToNoResult :: RuntimeState -> EntryPoint -> IO (TrapOr ())
+invokeToNoResult s ep = ((\_ -> ()) <$>) <$> invokeRust s ep
+
+invokeToUnit :: RuntimeState -> EntryPoint -> IO (TrapOr (RuntimeState, ()))
+invokeToUnit s ep = ((\(w, _) -> (w, ())) <$>) <$> invokeRust s ep
+
+invokeToCanisterActions :: RuntimeState -> EntryPoint -> IO (TrapOr (RuntimeState, CanisterActions))
+invokeToCanisterActions s ep = ((\(w, r) -> (w, snd r)) <$>) <$> invokeRust s ep
+
+invokeToNoCyclesResponse :: RuntimeState -> EntryPoint -> IO (TrapOr (RuntimeState, ([MethodCall], CanisterActions)))
+invokeToNoCyclesResponse s ep = ((\(w, (a, b)) -> (w, (ca_new_calls a, b))) <$>) <$> invokeRust s ep
+
+invokeQuery :: RuntimeState -> EntryPoint -> IO (TrapOr Response)
+invokeQuery s ep = (\res -> res >>= (\(_, r) -> response $ ca_response $ fst r)) <$> invokeRust s ep
+  where
+    response Nothing = Trap "Canister did not respond."
+    response (Just r) = Return r
 
 -- | Turns a query function into an update function
 asUpdate ::

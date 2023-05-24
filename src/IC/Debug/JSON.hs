@@ -130,6 +130,11 @@ instance ToJSON CanisterSnapshot where
     toJSON     = genericToJSON customOptions
     toEncoding = genericToEncoding customOptions
 
+deriving instance Generic WasmState
+instance ToJSON WasmState where
+    toJSON     = genericToJSON customOptions
+    toEncoding = genericToEncoding customOptions
+
 deriving instance Generic IC
 instance ToJSON IC where
     toJSON     = genericToJSON customOptions

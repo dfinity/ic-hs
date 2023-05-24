@@ -64,12 +64,14 @@ utf8_length = fromIntegral . BS.length . toUtf8
 -- ic-ref config
 data RefConfig = RefConfig
     { tc_root_certs :: [C.SignedCertificate]
+    , tc_runtime_mode :: RuntimeMode
     }
 
-makeRefConfig :: [C.SignedCertificate] -> IO RefConfig
-makeRefConfig root_certs = do
+makeRefConfig :: [C.SignedCertificate] -> RuntimeMode -> IO RefConfig
+makeRefConfig root_certs runtime_mode = do
     return RefConfig
         { tc_root_certs = root_certs
+        , tc_runtime_mode = runtime_mode
         }
 
 type HasRefConfig = (?refConfig :: RefConfig)

@@ -44,6 +44,7 @@ import IC.Management
 import IC.Crypto.Bitcoin as Bitcoin
 import IC.Ref.HTTP
 import IC.Ref.Types
+import IC.Utils
 
 invokeManagementCanister ::
   forall m. (CanReject m, ICM m, MonadIO m) => EntityId -> Maybe Subnet -> CallId -> EntryPoint -> m ()
@@ -210,7 +211,7 @@ icInstallCode :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "install_
 icInstallCode caller r = do
     let canister_id = principalToEntityId (r .! #canister_id)
     let arg = r .! #arg
-    new_can_mod <- return (parseCanister (r .! #wasm_module))
+    new_can_mod <- return (parseCanister (tc_runtime_mode refConfig) (r .! #wasm_module))
       `onErr` (\err -> reject RC_CANISTER_ERROR ("Parsing failed: " ++ err) (Just EC_INVALID_MODULE))
     was_empty <- isCanisterEmpty canister_id
 

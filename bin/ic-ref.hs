@@ -22,14 +22,14 @@ defaultPort :: Port
 defaultPort = 8001
 
 
-work :: [(SubnetType, W.Word64, String, [(W.Word64, W.Word64)])] -> Maybe String -> Int -> Maybe Int -> Maybe FilePath -> Maybe FilePath -> Bool ->  IO ()
-work subnets maybe_cert_path systemTaskPeriod portToUse writePortTo backingFile log = do
+work :: [(SubnetType, W.Word64, String, [(W.Word64, W.Word64)])] -> Maybe String -> RuntimeMode -> Int -> Maybe Int -> Maybe FilePath -> Maybe FilePath -> Bool ->  IO ()
+work subnets maybe_cert_path runtime_mode systemTaskPeriod portToUse writePortTo backingFile log = do
     let subs = map (\(t, n, nonce, ranges) -> SubnetConfig t n nonce ranges) subnets
     putStrLn "Starting ic-ref..."
     BLS.init
     certs <- case maybe_cert_path of Nothing -> return []
                                      Just ps -> C.listCertificates <$> fromJust <$> C.readCertificateStore ps
-    conf <- makeRefConfig certs
+    conf <- makeRefConfig certs runtime_mode
     withRefConfig conf $ withApp subs (systemTaskPeriod * 1000000) backingFile $ \app -> do
         let app' =  laxCorsSettings $ if log then logStdoutDev app else app
         case portToUse of
@@ -72,6 +72,8 @@ main = join . customExecParser (prefs showHelpOnError) $
       <*> infoOption (T.unpack specVersion) (long "spec-version" <> help "show spec version number")
     defaultSubnetConfig :: [(SubnetType, W.Word64, String, [(W.Word64, W.Word64)])]
     defaultSubnetConfig = [(System, 1, "sk1", [nth_canister_range 0]), (Application, 1, "sk2", [nth_canister_range 1])]
+    defaultRuntimeMode :: RuntimeMode
+    defaultRuntimeMode = WinterRuntime
     defaultSystemTaskPeriod :: Int
     defaultSystemTaskPeriod = 1
     parser :: Parser (IO ())
@@ -91,6 +93,16 @@ main = join . customExecParser (prefs showHelpOnError) $
             <> help "path to certificate file or directory"
             )
           )
+      <*>
+        (
+          (
+            option auto
+            (  long "runtime-mode"
+            <> help ("choose WASM runtime (possible values: " ++ show WinterRuntime ++ ", " ++ show RustRuntime ++ "; default: " ++ show defaultRuntimeMode ++ ")")
+            )
+          )
+        <|> pure defaultRuntimeMode
+        )
       <*>
         (
           (

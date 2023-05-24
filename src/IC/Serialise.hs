@@ -106,21 +106,26 @@ instance Serialise EntryPoint where
 instance Serialise CanisterContent where
     encode cc = encode
         ( raw_wasm (can_mod cc)
-        , wsInstances (wasm_state cc)
-        , wsStableMem (wasm_state cc)
+        , wasm
         )
+      where
+        wasm = case wasm_state cc of WinterState w -> Left (wsInstances w, wsStableMem w)
+                                     RustState s -> Right s
     decode = do
-        (wasm, insts, sm) <- decode
-        can_mod <- either fail pure $ parseCanister wasm
+        (raw, wasm) <- decode
+        let runtime_mode = either (\_ -> WinterRuntime) (\_ -> RustRuntime) wasm
+        can_mod <- either fail pure $ parseCanister runtime_mode raw
         -- There is some duplication here
-        wasm_mod <- either fail pure $ W.parseModule wasm
+        wasm_mod <- either fail pure $ W.parseModule raw
+        let wasm_state = case wasm of Left (insts, sm) -> WinterState $ CanisterSnapshot
+                                                                          { wsModule = wasm_mod
+                                                                          , wsInstances = insts
+                                                                          , wsStableMem = sm
+                                                                          }
+                                      Right s -> RustState s
         return $ CanisterContent
             { can_mod = can_mod
-            , wasm_state = CanisterSnapshot
-                { wsModule = wasm_mod
-                , wsInstances = insts
-                , wsStableMem = sm
-                }
+            , wasm_state = wasm_state
             }
 
 deriving instance Serialise EntityId
