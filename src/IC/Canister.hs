@@ -195,7 +195,7 @@ invoke s f =
     (s', Return r) -> Return (s', r)
 
 invokeRust :: RuntimeState -> EntryPoint -> IO (TrapOr (RuntimeState, UpdateResult))
-invokeRust _s _ep = error "not implemented"
+invokeWasmBox _s _ep = error "not implemented"
 
 invokePreUpgrade :: RuntimeState -> EntityId -> Env -> IO (TrapOr (CanisterActions, Blob))
 invokePreUpgrade _s _caller _env = error "not implemented"
