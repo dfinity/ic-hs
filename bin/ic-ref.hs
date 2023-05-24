@@ -71,7 +71,7 @@ main = join . customExecParser (prefs showHelpOnError) $
           infoOption (T.unpack implVersion) (long "version" <> help "show version number")
       <*> infoOption (T.unpack specVersion) (long "spec-version" <> help "show spec version number")
     defaultSubnetConfig :: [(SubnetType, W.Word64, String, [(W.Word64, W.Word64)])]
-    defaultSubnetConfig = [(System, 1, "sk1", [nth_canister_range 0]), (Application, 1, "sk2", [nth_canister_range 1])]
+    defaultSubnetConfig = [(System, 1, "sk1", [nth_canister_range 0]), (Application, 1, "sk2", [nth_canister_range 1]), (Application, 1, "sk3", [nth_canister_range 2])]
     defaultSystemTaskPeriod :: Int
     defaultSystemTaskPeriod = 1
     parser :: Parser (IO ())
