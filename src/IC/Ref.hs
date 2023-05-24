@@ -198,7 +198,8 @@ handleQuery time (QueryRequest canister_id user_id method arg) =
     f <- return (M.lookup method (query_methods can_mod))
       `orElse` reject RC_DESTINATION_INVALID "query method does not exist" (Just EC_METHOD_NOT_FOUND)
 
-    case f user_id env arg wasm_state of
+    res <- liftIO $ f user_id env arg wasm_state
+    case res of
       Trap msg -> reject RC_CANISTER_ERROR ("canister trapped: " ++ msg) (Just EC_CANISTER_TRAPPED)
       Return (Reject (rc, rm)) -> reject rc rm (Just EC_CANISTER_REJECTED)
       Return (Reply res) -> return $ Replied res
@@ -255,7 +256,8 @@ inspectIngress (CallRequest canister_id user_id method arg)
     can_mod <- getCanisterMod canister_id
     env <- canisterEnv canister_id
 
-    case inspect_message can_mod method user_id env arg wasm_state of
+    res <- liftIO $ inspect_message can_mod method user_id env arg wasm_state
+    case res of
       Trap msg -> throwError $ "canister trapped in inspect_message: " <> T.pack msg
       Return () -> return ()
 
@@ -531,32 +533,38 @@ invokeEntry ctxt_id wasm_state can_mod env entry = do
       Public method dat -> do
         caller <- callerOfCallID ctxt_id
         case lookupUpdate method can_mod of
-          Just f -> return $ f caller env needs_to_respond available dat wasm_state
+          Just f -> do
+            res <- liftIO $ f caller env needs_to_respond available dat wasm_state
+            return res
           Nothing -> do
             let reject = Reject (RC_DESTINATION_INVALID, "method does not exist: " ++ method)
             return $ Return (wasm_state, (noCallActions { ca_response = Just reject}, noCanisterActions))
       Closure cb r refund -> do
-        case callbacks can_mod cb env needs_to_respond available r refund wasm_state of
+        res <- liftIO $ callbacks can_mod cb env needs_to_respond available r refund wasm_state
+        case res of
             Trap err -> do
               rememberTrap ctxt_id err
-              return $
-                  case cleanup_callback cb of
-                      Just closure -> case cleanup can_mod closure env wasm_state of
-                          Trap err' -> Trap err'
+              case cleanup_callback cb of
+                  Just closure -> do
+                      res <- liftIO $ cleanup can_mod closure env wasm_state
+                      case res of
+                          Trap err' -> return $ Trap err'
                           Return (wasm_state', ()) ->
-                              Return (wasm_state', (noCallActions, noCanisterActions))
-                      Nothing -> Trap err
+                              return $ Return (wasm_state', (noCallActions, noCanisterActions))
+                  Nothing -> return $ Trap err
             Return (wasm_state, actions) -> return $ Return (wasm_state, actions)
-      Heartbeat -> return $ do
-        case heartbeat can_mod env wasm_state of
-            Trap _ -> Return (wasm_state, (noCallActions, noCanisterActions))
+      Heartbeat -> do
+        res <- liftIO $ heartbeat can_mod env wasm_state
+        case res of
+            Trap _ -> return $ Return (wasm_state, (noCallActions, noCanisterActions))
             Return (wasm_state, (calls, actions)) ->
-                Return (wasm_state, (noCallActions { ca_new_calls = calls }, actions))
-      GlobalTimer -> return $ do
-        case canister_global_timer can_mod env wasm_state of
-            Trap _ -> Return (wasm_state, (noCallActions, noCanisterActions))
+                return $ Return (wasm_state, (noCallActions { ca_new_calls = calls }, actions))
+      GlobalTimer -> do
+        res <- liftIO $ canister_global_timer can_mod env wasm_state
+        case res of
+            Trap _ -> return $ Return (wasm_state, (noCallActions, noCanisterActions))
             Return (wasm_state, (calls, actions)) ->
-                Return (wasm_state, (noCallActions { ca_new_calls = calls }, actions))
+                return $ Return (wasm_state, (noCallActions { ca_new_calls = calls }, actions))
   where
     lookupUpdate method can_mod
         | Just f <- M.lookup method (update_methods can_mod) = Just f

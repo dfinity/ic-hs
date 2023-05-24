@@ -218,8 +218,9 @@ icInstallCode caller r = do
       reinstall = do
         env <- canisterEnv canister_id
         let env1 = env { env_canister_version = env_canister_version env + 1, env_global_timer = 0 }
-        (wasm_state, ca) <- return (init_method new_can_mod caller env1 arg)
-          `onTrap` (\msg -> reject RC_CANISTER_ERROR ("Initialization trapped: " ++ msg) (Just EC_CANISTER_TRAPPED))
+        (wasm_state, ca) <- do
+          res <- liftIO $ init_method new_can_mod caller env1 arg
+          return res `onTrap` (\msg -> reject RC_CANISTER_ERROR ("Initialization trapped: " ++ msg) (Just EC_CANISTER_TRAPPED))
         setCanisterContent canister_id $ CanisterContent
             { can_mod = new_can_mod
             , wasm_state = wasm_state
@@ -241,13 +242,15 @@ icInstallCode caller r = do
         old_can_mod <- getCanisterMod canister_id
         env <- canisterEnv canister_id
         let env1 = env
-        (ca1, mem) <- return (pre_upgrade_method old_can_mod old_wasm_state caller env1)
-          `onTrap` (\msg -> reject RC_CANISTER_ERROR ("Pre-upgrade trapped: " ++ msg) (Just EC_CANISTER_TRAPPED))
+        (ca1, mem) <- do
+          res <- liftIO $ pre_upgrade_method old_can_mod old_wasm_state caller env1
+          return res `onTrap` (\msg -> reject RC_CANISTER_ERROR ("Pre-upgrade trapped: " ++ msg) (Just EC_CANISTER_TRAPPED))
         -- TODO: update balance in env based on ca1 here, once canister actions
         -- can change balances
         let env2 = env { env_canister_version = env_canister_version env + 1, env_global_timer = 0 }
-        (new_wasm_state, ca2) <- return (post_upgrade_method new_can_mod caller env2 mem arg)
-          `onTrap` (\msg -> reject RC_CANISTER_ERROR ("Post-upgrade trapped: " ++ msg) (Just EC_CANISTER_TRAPPED))
+        (new_wasm_state, ca2) <- do
+          res <- liftIO $ post_upgrade_method new_can_mod caller env2 mem arg
+          return res `onTrap` (\msg -> reject RC_CANISTER_ERROR ("Post-upgrade trapped: " ++ msg) (Just EC_CANISTER_TRAPPED))
 
         setCanisterContent canister_id $ CanisterContent
             { can_mod = new_can_mod

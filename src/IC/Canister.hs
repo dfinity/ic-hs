@@ -38,9 +38,9 @@ import IC.Utils
 type WasmState = CanisterSnapshot
 -- type WasmState = Replay ImpState
 
-type InitFunc = EntityId -> Env -> Blob -> TrapOr (WasmState, CanisterActions)
-type UpdateFunc = WasmState -> TrapOr (WasmState, UpdateResult)
-type QueryFunc = WasmState -> TrapOr Response
+type InitFunc = EntityId -> Env -> Blob -> IO (TrapOr (WasmState, CanisterActions))
+type UpdateFunc = WasmState -> IO (TrapOr (WasmState, UpdateResult))
+type QueryFunc = WasmState -> IO (TrapOr Response)
 
 type IsPublic = Bool
 
@@ -51,12 +51,12 @@ data CanisterModule = CanisterModule
   , update_methods :: MethodName ↦ (EntityId -> Env -> NeedsToRespond -> Cycles -> Blob -> UpdateFunc)
   , query_methods :: MethodName ↦ (EntityId -> Env -> Blob -> QueryFunc)
   , callbacks :: Callback -> Env -> NeedsToRespond -> Cycles -> Response -> Cycles -> UpdateFunc
-  , cleanup :: WasmClosure -> Env -> WasmState -> TrapOr (WasmState, ())
-  , pre_upgrade_method :: WasmState -> EntityId -> Env -> TrapOr (CanisterActions, Blob)
-  , post_upgrade_method :: EntityId -> Env -> Blob -> Blob -> TrapOr (WasmState, CanisterActions)
-  , inspect_message :: MethodName -> EntityId -> Env -> Blob -> WasmState -> TrapOr ()
-  , heartbeat :: Env -> WasmState -> TrapOr (WasmState, ([MethodCall], CanisterActions))
-  , canister_global_timer :: Env -> WasmState -> TrapOr (WasmState, ([MethodCall], CanisterActions))
+  , cleanup :: WasmClosure -> Env -> WasmState -> IO (TrapOr (WasmState, ()))
+  , pre_upgrade_method :: WasmState -> EntityId -> Env -> IO (TrapOr (CanisterActions, Blob))
+  , post_upgrade_method :: EntityId -> Env -> Blob -> Blob -> IO (TrapOr (WasmState, CanisterActions))
+  , inspect_message :: MethodName -> EntityId -> Env -> Blob -> WasmState -> IO (TrapOr ())
+  , heartbeat :: Env -> WasmState -> IO (TrapOr (WasmState, ([MethodCall], CanisterActions)))
+  , canister_global_timer :: Env -> WasmState -> IO (TrapOr (WasmState, ([MethodCall], CanisterActions)))
   , metadata :: T.Text ↦ (IsPublic, Blob)
   }
 
@@ -93,39 +93,39 @@ parseCanister bytes = do
   return $ CanisterModule
     { raw_wasm = bytes
     , raw_wasm_hash = sha256 bytes
-    , init_method = \caller env dat ->
+    , init_method = \caller env dat -> return $
           case instantiate wasm_mod of
             Trap err -> Trap err
             Return wasm_state0 ->
               invoke wasm_state0 (rawInitialize caller env dat)
     , update_methods = M.fromList
       [ (m,
-        \caller env needs_to_respond cycles_available dat wasm_state ->
+        \caller env needs_to_respond cycles_available dat wasm_state -> return $
         invoke wasm_state (rawUpdate m caller env needs_to_respond cycles_available dat))
       | n <- exportedFunctions wasm_mod
       , Just m <- pure $ stripPrefix "canister_update " n
       ]
     , query_methods = M.fromList
-      [ (m, \caller env arg wasm_state ->
+      [ (m, \caller env arg wasm_state -> return $
           snd <$> invoke wasm_state (rawQuery m caller env arg))
       | n <- exportedFunctions wasm_mod
       , Just m <- pure $ stripPrefix "canister_query " n
       ]
-    , callbacks = \cb env needs_to_respond cycles_available res refund wasm_state ->
+    , callbacks = \cb env needs_to_respond cycles_available res refund wasm_state -> return $
       invoke wasm_state (rawCallback cb env needs_to_respond cycles_available res refund)
-    , cleanup = \cb env wasm_state ->
+    , cleanup = \cb env wasm_state -> return $
       invoke wasm_state (rawCleanup cb env)
-    , pre_upgrade_method = \wasm_state caller env ->
+    , pre_upgrade_method = \wasm_state caller env -> return $
           snd <$> invoke wasm_state (rawPreUpgrade caller env)
-    , post_upgrade_method = \caller env mem dat ->
+    , post_upgrade_method = \caller env mem dat -> return $
           case instantiate wasm_mod of
             Trap err -> Trap err
             Return wasm_state0 ->
               invoke wasm_state0 (rawPostUpgrade caller env mem dat)
-    , inspect_message = \method_name caller env arg wasm_state ->
+    , inspect_message = \method_name caller env arg wasm_state -> return $
           snd <$> invoke wasm_state (rawInspectMessage method_name caller env arg)
-    , heartbeat = \env wasm_state -> invoke wasm_state (rawHeartbeat env)
-    , canister_global_timer = \env wasm_state -> invoke wasm_state (rawGlobalTimer env)
+    , heartbeat = \env wasm_state -> return $ invoke wasm_state (rawHeartbeat env)
+    , canister_global_timer = \env wasm_state -> return $ invoke wasm_state (rawGlobalTimer env)
     , metadata = M.fromList metadata
     }
 
@@ -149,5 +149,5 @@ asUpdate ::
 asUpdate f caller env (NeedsToRespond needs_to_respond) _cycles_available dat wasm_state
   | not needs_to_respond = error "asUpdate: needs_to_respond == False"
   | otherwise =
-    (\res -> (wasm_state, (noCallActions { ca_response = Just res }, noCanisterActions))) <$>
+    (\res -> (\res -> (wasm_state, (noCallActions { ca_response = Just res }, noCanisterActions))) <$> res) <$>
     f caller env dat wasm_state
