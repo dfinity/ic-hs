@@ -137,7 +137,7 @@ parseCanister mode bytes = do
     , update_methods = M.fromList
       [ (m, \caller env needs_to_respond cycles_available dat wasm_state ->
           case wasm_state of  WinterState w -> return $ returnWinterState <$> invoke w (rawUpdate m caller env needs_to_respond cycles_available dat)
-                              RustState s -> returnRustState <$> invokeRust s (RuntimeUpdate m caller env needs_to_respond cycles_available dat))
+                              RustState s -> returnRustState <$> invokeWasmBox s (RuntimeUpdate m caller env needs_to_respond cycles_available dat))
       | n <- exportedFunctions wasm_mod
       , Just m <- pure $ stripPrefix "canister_update " n
       ]
@@ -150,7 +150,7 @@ parseCanister mode bytes = do
       ]
     , callbacks = \cb env needs_to_respond cycles_available res refund wasm_state ->
         case wasm_state of  WinterState w -> return $ returnWinterState <$> invoke w (rawCallback cb env needs_to_respond cycles_available res refund)
-                            RustState s -> returnRustState <$> invokeRust s (RuntimeCallback cb env needs_to_respond cycles_available res refund)
+                            RustState s -> returnRustState <$> invokeWasmBox s (RuntimeCallback cb env needs_to_respond cycles_available res refund)
     , cleanup = \cb env wasm_state ->
         case wasm_state of  WinterState w -> return $ returnWinterState <$> invoke w (rawCleanup cb env)
                             RustState s -> returnRustState <$> invokeToUnit s (RuntimeCleanup cb env)
@@ -194,7 +194,7 @@ invoke s f =
     (_, Trap msg) -> Trap msg
     (s', Return r) -> Return (s', r)
 
-invokeRust :: RuntimeState -> EntryPoint -> IO (TrapOr (RuntimeState, UpdateResult))
+invokeWasmBox :: RuntimeState -> EntryPoint -> IO (TrapOr (RuntimeState, UpdateResult))
 invokeWasmBox _s _ep = error "not implemented"
 
 invokePreUpgrade :: RuntimeState -> EntityId -> Env -> IO (TrapOr (CanisterActions, Blob))
@@ -204,19 +204,19 @@ invokeInstantiate :: Blob -> Env -> Blob -> IO (TrapOr (RuntimeState, Env))
 invokeInstantiate _decodedModule _env _stable_mem = error "not implemented"
 
 invokeToNoResult :: RuntimeState -> EntryPoint -> IO (TrapOr ())
-invokeToNoResult s ep = ((\_ -> ()) <$>) <$> invokeRust s ep
+invokeToNoResult s ep = ((\_ -> ()) <$>) <$> invokeWasmBox s ep
 
 invokeToUnit :: RuntimeState -> EntryPoint -> IO (TrapOr (RuntimeState, ()))
-invokeToUnit s ep = ((\(w, _) -> (w, ())) <$>) <$> invokeRust s ep
+invokeToUnit s ep = ((\(w, _) -> (w, ())) <$>) <$> invokeWasmBox s ep
 
 invokeToCanisterActions :: RuntimeState -> EntryPoint -> IO (TrapOr (RuntimeState, CanisterActions))
-invokeToCanisterActions s ep = ((\(w, r) -> (w, snd r)) <$>) <$> invokeRust s ep
+invokeToCanisterActions s ep = ((\(w, r) -> (w, snd r)) <$>) <$> invokeWasmBox s ep
 
 invokeToNoCyclesResponse :: RuntimeState -> EntryPoint -> IO (TrapOr (RuntimeState, ([MethodCall], CanisterActions)))
-invokeToNoCyclesResponse s ep = ((\(w, (a, b)) -> (w, (ca_new_calls a, b))) <$>) <$> invokeRust s ep
+invokeToNoCyclesResponse s ep = ((\(w, (a, b)) -> (w, (ca_new_calls a, b))) <$>) <$> invokeWasmBox s ep
 
 invokeQuery :: RuntimeState -> EntryPoint -> IO (TrapOr Response)
-invokeQuery s ep = (\res -> res >>= (\(_, r) -> response $ ca_response $ fst r)) <$> invokeRust s ep
+invokeQuery s ep = (\res -> res >>= (\(_, r) -> response $ ca_response $ fst r)) <$> invokeWasmBox s ep
   where
     response Nothing = Trap "Canister did not respond."
     response (Just r) = Return r
