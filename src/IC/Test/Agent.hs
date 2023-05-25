@@ -336,7 +336,7 @@ delegationEnv sk1 dels content = do
     let sks = sk1 : map fst dels
 
     t <- getPOSIXTime
-    let expiry = round ((t + 60) * 1000_000_000)
+    let expiry = round ((t + 5 * 60) * 1000_000_000)
     delegations <- for (zip sks dels) $ \(sk1, (sk2,targets)) -> do
       let delegation = rec $
             [ "pubkey" =: GBlob (toPublicKey sk2)
