@@ -113,7 +113,8 @@ instance Serialise CanisterContent where
         (wasm, insts, sm) <- decode
         can_mod <- either fail pure $ parseCanister wasm
         -- There is some duplication here
-        wasm_mod <- either fail pure $ W.parseModule wasm
+        decodedModule <- either fail pure $ decodeModule wasm
+        wasm_mod <- either fail pure $ W.parseModule decodedModule
         return $ CanisterContent
             { can_mod = can_mod
             , wasm_state = CanisterSnapshot
