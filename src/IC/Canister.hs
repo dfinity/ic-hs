@@ -133,7 +133,10 @@ parseCanister mode bytes = do
                       RustRuntime -> do
                         inst <- invokeInstantiate decodedModule env ""
                         case inst of Trap err -> return $ Trap err
-                                     Return (s, new_env) -> returnRustState <$> invokeToCanisterActions s (RuntimeInitialize caller new_env dat)
+                                     Return (s, _) -> do
+                                        let cycles_used = 0 -- TODO
+                                        let new_env = env { env_balance = env_balance env - cycles_used }
+                                        returnRustState <$> invokeToCanisterActions s (RuntimeInitialize caller new_env dat)
     , update_methods = M.fromList
       [ (m, \caller env needs_to_respond cycles_available dat wasm_state ->
           case wasm_state of  WinterState w -> return $ returnWinterState <$> invoke w (rawUpdate m caller env needs_to_respond cycles_available dat)
@@ -165,7 +168,10 @@ parseCanister mode bytes = do
                       RustRuntime -> do
                         inst <- invokeInstantiate decodedModule env mem
                         case inst of  Trap err -> return $ Trap err
-                                      Return (s, new_env) -> returnRustState <$> invokeToCanisterActions s (RuntimePostUpgrade caller new_env dat)
+                                      Return (s, _) -> do
+                                          let cycles_used = 0 -- TODO
+                                          let new_env = env { env_balance = env_balance env - cycles_used }
+                                          returnRustState <$> invokeToCanisterActions s (RuntimePostUpgrade caller new_env dat)
     , inspect_message = \method_name caller env arg wasm_state ->
         case wasm_state of  WinterState w -> return $ snd <$> invoke w (rawInspectMessage method_name caller env arg)
                             RustState s -> invokeToNoResult s (RuntimeInspectMessage method_name caller env arg)
@@ -197,10 +203,14 @@ invoke s f =
 invokeWasmBox :: RuntimeState -> EntryPoint -> IO (TrapOr (RuntimeState, UpdateResult))
 invokeWasmBox _s _ep = error "not implemented"
 
+-- separate from invokeWasmBox because no other EntryPoint returns stable memory
+-- and we'd need to enforce the property that invokeWasmBox returns stable memory
+-- if and only if the EntryPoint is PreUpgrade
 invokePreUpgrade :: RuntimeState -> EntityId -> Env -> IO (TrapOr (CanisterActions, Blob))
 invokePreUpgrade _s _caller _env = error "not implemented"
 
-invokeInstantiate :: Blob -> Env -> Blob -> IO (TrapOr (RuntimeState, Env))
+-- separate from invokeWasmBox because we don't yet have a RuntimeState
+invokeInstantiate :: Blob -> Env -> Blob -> IO (TrapOr (RuntimeState, ()))
 invokeInstantiate _decodedModule _env _stable_mem = error "not implemented"
 
 invokeToNoResult :: RuntimeState -> EntryPoint -> IO (TrapOr ())
