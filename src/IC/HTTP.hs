@@ -3,7 +3,7 @@
 module IC.HTTP where
 
 import Network.Wai
-import Control.Concurrent (forkIO, threadDelay)
+import Control.Concurrent (threadDelay, yield)
 import Control.Concurrent.Async (withAsync)
 import Network.HTTP.Types
 import qualified Data.Text as T
@@ -29,18 +29,27 @@ import IC.Utils
 
 withApp :: HasRefConfig => [SubnetConfig] -> Int -> Maybe FilePath -> (Application -> IO a) -> IO a
 withApp subnets systemTaskPeriod backingFile action =
-    withStore (initialIC subnets) backingFile $ \store -> 
-      withAsync (loopIC store) $ \_async -> 
+    withStore (initialIC subnets) backingFile $ \store ->
+      withAsync (loopSystemTasks store) $ \_async ->
+      withAsync (loopIC store) $ \_async ->
         action $ handle store
   where
-    loopIC :: Store IC -> IO ()
-    loopIC store = forever $ do
+    loopSystemTasks :: Store IC -> IO ()
+    loopSystemTasks store = forever $ do
         threadDelay systemTaskPeriod
         modifyStore store aux
       where
         aux = do
           lift getTimestamp >>= setAllTimesTo
           processSystemTasks
+    loopIC :: Store IC -> IO ()
+    loopIC store = forever $ do
+        yield
+        modifyStore store aux
+      where
+        aux = do
+          lift getTimestamp >>= setAllTimesTo
+          runStep
 
 handle :: HasRefConfig => Store IC -> Application
 handle store req respond = case (requestMethod req, pathInfo req) of
@@ -97,21 +106,12 @@ handle store req respond = case (requestMethod req, pathInfo req) of
       x <- modifyStore store $ do
         -- Here we make IC.Ref use “real time”
         lift getTimestamp >>= setAllTimesTo
-        processSystemTasks
         a
-      -- begin processing in the background (it is important that
-      -- this thread returns, else warp is blocked somehow)
-      void $ forkIO loopIC
       return x
 
     -- Not atomic, reads most recent state
     peekIC :: StateT IC IO a -> IO a
     peekIC a = peekStore store >>= evalStateT a
-
-    loopIC :: IO ()
-    loopIC = modifyStore store runStep >>= \case
-        True -> loopIC
-        False -> return ()
 
     cbor status gr = respond $ responseBuilder
         status
