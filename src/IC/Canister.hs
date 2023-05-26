@@ -10,6 +10,7 @@ module IC.Canister
     ( RuntimeState
     , WasmState(..)
     , parseCanister
+    , decodeModule
     , CanisterModule(..)
     , InitFunc, UpdateFunc, QueryFunc
     , asUpdate

@@ -116,7 +116,8 @@ instance Serialise CanisterContent where
         let runtime_mode = either (\_ -> WinterRuntime) (\_ -> RustRuntime) wasm
         can_mod <- either fail pure $ parseCanister runtime_mode raw
         -- There is some duplication here
-        wasm_mod <- either fail pure $ W.parseModule raw
+        decodedModule <- either fail pure $ decodeModule wasm
+        wasm_mod <- either fail pure $ W.parseModule decodedModule
         let wasm_state = case wasm of Left (insts, sm) -> WinterState $ CanisterSnapshot
                                                                           { wsModule = wasm_mod
                                                                           , wsInstances = insts
