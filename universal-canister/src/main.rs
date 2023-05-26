@@ -1,7 +1,6 @@
 use candid::{CandidType, Decode, Deserialize, Encode, Principal};
 use std::convert::TryInto;
-// Requires rust 1.66.0.
-// use std::hint::black_box;
+use std::hint::black_box;
 use universal_canister::Ops;
 
 mod api;
@@ -125,8 +124,7 @@ fn read_int64(ops_bytes: &mut OpsBytes) -> u64 {
 fn delay(value: u64) {
     for _ in 0..value {
         // Using `black_box` to make sure this no-op cycle is not removed by the compiler optimization.
-        // Requires rust 1.66.0.
-        // black_box(0);
+        black_box(0);
     }
 }
 

@@ -2729,7 +2729,7 @@ icTests my_sub other_sub =
       let userKey = genId cid "Hello!"
 
       t <- getPOSIXTime
-      let expiry = round ((t + 60) * 1000_000_000)
+      let expiry = round ((t + 5 * 60) * 1000_000_000)
       let delegation = rec
             [ "pubkey" =: GBlob (toPublicKey otherSK)
             , "expiration" =: GNat expiry
@@ -2746,7 +2746,7 @@ icTests my_sub other_sub =
       let userKey = genId cid "Hello!"
 
       t <- getPOSIXTime
-      let expiry = round ((t + 60) * 1000_000_000)
+      let expiry = round ((t + 5 * 60) * 1000_000_000)
       let delegation = rec
             [ "pubkey" =: GBlob userKey
             , "expiration" =: GNat expiry
