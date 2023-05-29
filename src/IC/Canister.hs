@@ -78,10 +78,12 @@ instance WasmBackend CanStateId where
 instance WasmBackend CanisterSnapshot where
   instantiateCan dec_mod env stable_mem = error "not implemented"
   preUpgradeCan :: CanisterSnapshot -> EntityId -> Env -> IO (TrapOr (CanisterActions, Blob))
-  preUpgradeCan can_snap caller env = error "not implemented"
+  preUpgradeCan can_snap caller env = return $ snd <$> invoke can_snap (rawPreUpgrade caller env)
   invokeCan can_snap (RuntimeQuery m caller env arg) = return $ invoke can_snap (rawQuery m caller env arg)
   invokeCan can_snap (RuntimeCallback cb env needs_to_respond cycles_available res refund) = return $ invoke can_snap (rawCallback cb env needs_to_respond cycles_available res refund)
+  -- TODO: fix double return of CanisterSnapshot: decide on which level to return it 
   invokeCan can_snap (RuntimeUpdate m caller env needs_to_respond cycles_available dat) = return $ _ <$> invoke can_snap (rawUpdate m caller env needs_to_respond cycles_available dat)
+  invokeCan can_snap (RuntimeCleanup cb env) = return $ invoke can_snap (rawCleanup cb env)
   invokeCan _can_snap _ = undefined
 
 type InitFunc a = EntityId -> Env -> Blob -> IO (TrapOr (a, CanisterActions))
@@ -125,7 +127,7 @@ data EntryPoint r where
   RuntimeUpdate :: WasmBackend a => MethodName -> EntityId -> Env -> NeedsToRespond -> Cycles -> Blob -> EntryPoint (a, UpdateResult)
   RuntimeQuery :: MethodName -> EntityId -> Env -> Blob -> EntryPoint Response
   RuntimeCallback :: Callback -> Env -> NeedsToRespond -> Cycles -> Response -> Cycles -> EntryPoint UpdateResult
-  RuntimeCleanup :: WasmBackend a => WasmClosure -> Env -> EntryPoint a
+  RuntimeCleanup :: WasmClosure -> Env -> EntryPoint ()
   RuntimePostUpgrade :: WasmBackend a => EntityId -> Env -> Blob -> EntryPoint (a, CanisterActions)
   RuntimeInspectMessage :: MethodName -> EntityId -> Env -> Blob -> EntryPoint ()
   RuntimeHeartbeat :: WasmBackend a => Env -> EntryPoint (a, ([MethodCall], CanisterActions))
@@ -184,12 +186,8 @@ parseCanister mode bytes = do
       ]
     , callbacks = \cb env needs_to_respond cycles_available res refund wasm_state ->
         invokeCan wasm_state (RuntimeCallback cb env needs_to_respond cycles_available res refund)
-    , cleanup = \cb env wasm_state -> undefined
-        -- case wasm_state of  WinterState w -> return $ returnWinterState <$> invoke w (rawCleanup cb env)
-        --                     RustState s -> returnRustState <$> invokeToUnit s (RuntimeCleanup cb env)
-    , pre_upgrade_method = \wasm_state caller env -> undefined
-        -- case wasm_state of  WinterState w -> return $ snd <$> invoke w (rawPreUpgrade caller env)
-        --                     RustState s -> invokePreUpgrade s caller env
+    , cleanup = \cb env wasm_state -> invokeCan wasm_state (RuntimeCleanup cb env)
+    , pre_upgrade_method = \wasm_state caller env -> preUpgradeCan wasm_state caller env
     , post_upgrade_method = \caller env mem dat -> undefined
         -- case mode of  WinterRuntime -> return $ returnWinterState <$>
         --                 case instantiate wasm_mod of
