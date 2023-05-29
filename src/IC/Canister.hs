@@ -5,9 +5,13 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# OPTIONS_GHC -Wno-unused-top-binds #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE GADTs #-}
 
 module IC.Canister
-    ( RuntimeState
+    ( CanStateId
+
     , WasmState(..)
     , parseCanister
     , CanisterModule(..)
@@ -41,24 +45,40 @@ import IC.Canister.Imp
 import IC.Hash
 import IC.Utils
 
-newtype RuntimeState = RuntimeState Int
+newtype CanStateId = CanStateId Int
   deriving Show
 
-deriving instance Generic RuntimeState
-instance Serialise RuntimeState where
+deriving instance Generic CanStateId
+instance Serialise CanStateId where
 
 customOptions :: Options
 customOptions = defaultOptions
     { sumEncoding = ObjectWithSingleField
     }
 
-instance ToJSON RuntimeState where
+instance ToJSON CanStateId where
     toJSON     = genericToJSON customOptions
     toEncoding = genericToEncoding customOptions
 
 data WasmState = WinterState CanisterSnapshot
-  | RustState RuntimeState
+  | RustState CanStateId
+
   deriving Show
+
+class WasmBackend a where
+  instantiateCan :: Blob -> Env -> Blob -> IO (TrapOr a)
+  preUpgradeCan :: a -> EntityId -> Env -> IO (TrapOr (CanisterActions, Blob))
+  invokeCan :: a -> EntryPoint r -> IO (TrapOr (a, r))
+
+instance WasmBackend CanStateId where
+  instantiateCan _dec_mod _env _stable_mem = error "not implemented"
+  preUpgradeCan _sid _caller _env = error "not implemented"
+  invokeCan _sid _ep = error "not implemented"
+
+instance WasmBackend CanisterSnapshot where
+  instantiateCan dec_mod env stable_mem = return $ _
+  preUpgradeCan can_snap caller env = undefined
+  invokeCan can_snap ep = undefined
 
 type InitFunc = EntityId -> Env -> Blob -> IO (TrapOr (WasmState, CanisterActions))
 type UpdateFunc = WasmState -> IO (TrapOr (WasmState, UpdateResult))
@@ -95,15 +115,26 @@ decodeModule bytes =
     asmMagic = asBytes [0x00, 0x61, 0x73, 0x6d]
     gzipMagic = asBytes [0x1f, 0x8b, 0x08]
 
-data EntryPoint = RuntimeInitialize EntityId Env Blob
-  | RuntimeUpdate MethodName EntityId Env NeedsToRespond Cycles Blob
-  | RuntimeQuery MethodName EntityId Env Blob
-  | RuntimeCallback Callback Env NeedsToRespond Cycles Response Cycles
-  | RuntimeCleanup WasmClosure Env
-  | RuntimePostUpgrade EntityId Env Blob
-  | RuntimeInspectMessage MethodName EntityId Env Blob
-  | RuntimeHeartbeat Env
-  | RuntimeGlobalTimer Env
+data EntryPoint r where
+  RuntimeInitialize :: EntityId -> Env -> Blob -> EntryPoint (WasmState, CanisterActions)
+  RuntimeUpdate :: MethodName -> EntityId -> Env -> NeedsToRespond -> Cycles -> Blob -> EntryPoint (WasmState, UpdateResult)
+  RuntimeQuery :: MethodName -> EntityId -> Env -> Blob -> EntryPoint Response
+  RuntimeCallback :: Callback -> Env -> NeedsToRespond -> Cycles -> Response -> Cycles -> EntryPoint (WasmState, CanisterActions)
+  RuntimeCleanup :: WasmClosure -> Env -> EntryPoint WasmState
+  RuntimePostUpgrade :: EntityId -> Env -> Blob -> EntryPoint (WasmState, CanisterActions)
+  RuntimeInspectMessage :: MethodName -> EntityId -> Env -> Blob -> EntryPoint ()
+  RuntimeHeartbeat :: Env -> EntryPoint (WasmState, ([MethodCall], CanisterActions))
+  RuntimeGlobalTimer :: Env -> EntryPoint (WasmState, ([MethodCall], CanisterActions))
+
+qhelper :: MethodName -> EntityId -> Env -> Blob -> WasmState -> IO (TrapOr Response)
+qhelper m caller env arg wasm_state = case wasm_state of
+  WinterState w -> return $ snd <$> invoke w (rawQuery m caller env arg)
+  RustState s -> invokeQuery s (RuntimeQuery m caller env arg)
+
+qhelper' :: WasmBackend a => MethodName -> EntityId -> Env -> Blob -> a -> IO (TrapOr Response)
+qhelper' m caller env arg wasm_state = fmap snd <$> invokeCan wasm_state (RuntimeQuery m caller env arg)
+
+
 
 parseCanister :: RuntimeMode -> Blob -> Either String CanisterModule
 parseCanister mode bytes = do
@@ -140,7 +171,7 @@ parseCanister mode bytes = do
     , update_methods = M.fromList
       [ (m, \caller env needs_to_respond cycles_available dat wasm_state ->
           case wasm_state of  WinterState w -> return $ returnWinterState <$> invoke w (rawUpdate m caller env needs_to_respond cycles_available dat)
-                              RustState s -> returnRustState <$> invokeWasmBox s (RuntimeUpdate m caller env needs_to_respond cycles_available dat))
+                              RustState s -> returnRustState <$>   invokeWasmBox s (RuntimeUpdate m caller env needs_to_respond cycles_available dat))
       | n <- exportedFunctions wasm_mod
       , Just m <- pure $ stripPrefix "canister_update " n
       ]
@@ -200,32 +231,40 @@ invoke s f =
     (_, Trap msg) -> Trap msg
     (s', Return r) -> Return (s', r)
 
-invokeWasmBox :: RuntimeState -> EntryPoint -> IO (TrapOr (RuntimeState, UpdateResult))
+-- invokeWasmBox :: CanStateId -> EntryPoint -> IO (TrapOr (CanStateId, UpdateResult))
+invokeWasmBox :: CanStateId -> EntryPoint r -> IO (TrapOr r)
 invokeWasmBox _s _ep = error "not implemented"
 
 -- separate from invokeWasmBox because no other EntryPoint returns stable memory
 -- and we'd need to enforce the property that invokeWasmBox returns stable memory
 -- if and only if the EntryPoint is PreUpgrade
-invokePreUpgrade :: RuntimeState -> EntityId -> Env -> IO (TrapOr (CanisterActions, Blob))
+-- invokePreUpgrade :: CanStateId -> EntityId -> Env -> IO (TrapOr (CanisterActions, Blob))
+invokePreUpgrade :: CanStateId -> EntityId -> Env -> IO (TrapOr (CanisterActions, Blob))
 invokePreUpgrade _s _caller _env = error "not implemented"
 
--- separate from invokeWasmBox because we don't yet have a RuntimeState
-invokeInstantiate :: Blob -> Env -> Blob -> IO (TrapOr (RuntimeState, ()))
+-- separate from invokeWasmBox because we don't yet have a CanStateId
+-- invokeInstantiate :: Blob -> Env -> Blob -> IO (TrapOr (CanStateId, ()))
+invokeInstantiate :: Blob -> Env -> Blob -> IO (TrapOr (CanStateId, ()))
 invokeInstantiate _decodedModule _env _stable_mem = error "not implemented"
 
-invokeToNoResult :: RuntimeState -> EntryPoint -> IO (TrapOr ())
+-- invokeToNoResult :: CanStateId -> EntryPoint -> IO (TrapOr ())
+invokeToNoResult :: CanStateId -> EntryPoint r -> IO (TrapOr r)
 invokeToNoResult s ep = ((\_ -> ()) <$>) <$> invokeWasmBox s ep
 
-invokeToUnit :: RuntimeState -> EntryPoint -> IO (TrapOr (RuntimeState, ()))
+-- invokeToUnit :: CanStateId -> EntryPoint -> IO (TrapOr (CanStateId, ()))
+invokeToUnit :: CanStateId -> EntryPoint r -> IO (TrapOr r)
 invokeToUnit s ep = ((\(w, _) -> (w, ())) <$>) <$> invokeWasmBox s ep
 
-invokeToCanisterActions :: RuntimeState -> EntryPoint -> IO (TrapOr (RuntimeState, CanisterActions))
+-- invokeToCanisterActions :: CanStateId -> EntryPoint -> IO (TrapOr (CanStateId, CanisterActions))
+invokeToCanisterActions :: CanStateId -> EntryPoint r -> IO (TrapOr r)
 invokeToCanisterActions s ep = ((\(w, r) -> (w, snd r)) <$>) <$> invokeWasmBox s ep
 
-invokeToNoCyclesResponse :: RuntimeState -> EntryPoint -> IO (TrapOr (RuntimeState, ([MethodCall], CanisterActions)))
+-- invokeToNoCyclesResponse :: CanStateId -> EntryPoint -> IO (TrapOr (CanStateId, ([MethodCall], CanisterActions)))
+invokeToNoCyclesResponse :: CanStateId -> EntryPoint r -> IO (TrapOr r)
 invokeToNoCyclesResponse s ep = ((\(w, (a, b)) -> (w, (ca_new_calls a, b))) <$>) <$> invokeWasmBox s ep
 
-invokeQuery :: RuntimeState -> EntryPoint -> IO (TrapOr Response)
+-- invokeQuery :: CanStateId -> EntryPoint -> IO (TrapOr Response)
+invokeQuery :: CanStateId -> EntryPoint r -> IO (TrapOr r)
 invokeQuery s ep = (\res -> res >>= (\(_, r) -> response $ ca_response $ fst r)) <$> invokeWasmBox s ep
   where
     response Nothing = Trap "Canister did not respond."
@@ -240,3 +279,5 @@ asUpdate f caller env (NeedsToRespond needs_to_respond) _cycles_available dat wa
   | otherwise =
     (\res -> (\res -> (wasm_state, (noCallActions { ca_response = Just res }, noCanisterActions))) <$> res) <$>
     f caller env dat wasm_state
+
+
