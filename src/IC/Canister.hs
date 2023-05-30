@@ -84,6 +84,8 @@ instance WasmBackend CanisterSnapshot where
   -- TODO: fix double return of CanisterSnapshot: decide on which level to return it 
   invokeCan can_snap (RuntimeUpdate m caller env needs_to_respond cycles_available dat) = return $ _ <$> invoke can_snap (rawUpdate m caller env needs_to_respond cycles_available dat)
   invokeCan can_snap (RuntimeCleanup cb env) = return $ invoke can_snap (rawCleanup cb env)
+  invokeCan can_snap (RuntimeInspectMessage method_name caller env arg) = return $ invoke can_snap (rawInspectMessage method_name caller env arg)
+  invokeCan can_snap (RuntimeHeartbeat env) = return $ _ <$> invoke can_snap (rawHeartbeat env) --TODO
   invokeCan _can_snap _ = undefined
 
 type InitFunc a = EntityId -> Env -> Blob -> IO (TrapOr (a, CanisterActions))
@@ -200,12 +202,8 @@ parseCanister mode bytes = do
         --                                   let cycles_used = 0 -- TODO
         --                                   let new_env = env { env_balance = env_balance env - cycles_used }
         --                                   returnRustState <$> invokeToCanisterActions s (RuntimePostUpgrade caller new_env dat)
-    , inspect_message = \method_name caller env arg wasm_state -> undefined
-        -- case wasm_state of  WinterState w -> return $ snd <$> invoke w (rawInspectMessage method_name caller env arg)
-        --                     RustState s -> invokeToNoResult s (RuntimeInspectMessage method_name caller env arg)
-    , heartbeat = \env wasm_state -> undefined
-        -- case wasm_state of  WinterState w -> return $ returnWinterState <$> invoke w (rawHeartbeat env)
-        --                     RustState s -> returnRustState <$> invokeToNoCyclesResponse s (RuntimeHeartbeat env)
+    , inspect_message = \method_name caller env arg wasm_state -> fmap snd <$> invokeCan wasm_state (RuntimeInspectMessage method_name caller env arg)
+    , heartbeat = \env wasm_state -> fmap snd <$> invokeCan wasm_state (RuntimeHeartbeat env) -- TODO: fix response type
     , canister_global_timer = \env wasm_state -> undefined
         -- case wasm_state of  WinterState w -> return $ returnWinterState <$> invoke w (rawGlobalTimer env)
         --                     RustState s -> returnRustState <$> invokeToNoCyclesResponse s (RuntimeGlobalTimer env)
