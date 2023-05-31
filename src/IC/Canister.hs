@@ -88,6 +88,37 @@ parseCanister bytes = do
        | Just n <- T.stripPrefix "private " name -> return (n,(False, content))
        | otherwise -> throwError $ "Invalid custom section " <> show name
 
+  let exps = exportedFunctions wasm_mod
+  let updates = filter (isPrefixOf "canister_update ") exps
+  let queries = filter (isPrefixOf "canister_query ") exps
+  let composite_queries = filter (isPrefixOf "canister_composite_query ") exps
+
+  let maxUpdateQueryCount = 1000
+  unless (length updates + length queries + length composite_queries <= maxUpdateQueryCount) $ throwError $ "Wasm module must not export more than " ++ show maxUpdateQueryCount ++ " functions called canister_update <name>, canister_query <name>, or canister_composite_query <name>"
+
+  let maxUpdateQueryTotalLength = 20000
+  unless (sum (map length updates) + sum (map length queries) + sum (map length composite_queries) <= maxUpdateQueryTotalLength) $ throwError $ "The sum of <name> lengths in all exported functions called canister_update <name>, canister_query <name>, or canister_composite_query <name> must not exceed " ++ show maxUpdateQueryTotalLength
+
+  forM_ updates $ \n ->
+    if elem n queries then
+      throwError "Wasm module must not export canister_update <name> and canister_query <name> with the same <name>"
+    else if elem n composite_queries then
+      throwError "Wasm module must not export canister_update <name> and canister_composite_query <name> with the same <name>"
+    else
+      return ()
+
+  forM_ queries $ \n ->
+    if elem n composite_queries then
+      throwError "Wasm module must not export canister_query <name> and canister_composite_query <name> with the same <name>"
+    else
+      return ()
+
+  let maxMetadataCount = 16
+  unless (length metadata <= maxMetadataCount) $ throwError $ "Wasm module must not declare more than " ++ show maxMetadataCount ++ " custom sections whose names start with icp:"
+
+  let maxMetadataTotalLength = 1024 * 1024
+  unless (sum (map (\(_, (_, c)) -> BS.length c) metadata) <= maxMetadataTotalLength) $ throwError $ "The total size of the exported custom sections must not exceed " ++ show maxMetadataTotalLength
+
   forM_ (duplicates (map fst metadata)) $ \name ->
     throwError $ "Duplicate custom section " <> show name
 
