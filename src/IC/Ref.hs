@@ -229,7 +229,7 @@ checkEffectiveCanisterID ecid cid method arg
          throwError $ ExecutionError (RC_CANISTER_REJECT, "Management method " ++ method ++ " cannot be invoked via ingress calls", Nothing)
        | otherwise -> case Codec.Candid.decode @(R.Rec ("canister_id" R..== Principal)) arg of
                         Left err ->
-                          throwError $ ExecutionError (RC_CANISTER_ERROR, "call to management canister is not valid candid: " ++ err, Nothing)
+                          throwError $ ExecutionError (RC_CANISTER_REJECT, "Candid failed to decode: " ++ err, Nothing)
                         Right r ->
                           assertEffectiveCanisterId ecid (principalToEntityId (r .! #canister_id))
   | otherwise = assertEffectiveCanisterId ecid cid
@@ -248,7 +248,7 @@ inspectIngress (CallRequest canister_id user_id method arg)
       -> throwError $ ExecutionError (RC_CANISTER_REJECT, "Management method " ++ method ++ " cannot be invoked via ingress calls", Nothing)
       | method `elem` managementMethods
       -> case decode @(R.Rec ("canister_id" R..== Principal)) arg of
-        Left msg -> throwError $ ExecutionError (RC_CANISTER_ERROR, "Candid failed to decode: " ++ msg, Nothing)
+        Left msg -> throwError $ ExecutionError (RC_CANISTER_REJECT, "Candid failed to decode: " ++ msg, Nothing)
         Right r -> do
             let canister_id = principalToEntityId $ r .! #canister_id
             onReject ((\err -> throwError $ ExecutionError (RC_DESTINATION_INVALID, err, Nothing)) . rejectMessage) $

@@ -84,6 +84,7 @@ module IC.Test.Agent
       ingressDelay,
       is2xx,
       isErrOrReject,
+      isNoErrReject,
       isPendingOrProcessing,
       isReject,
       isReply,
@@ -709,6 +710,14 @@ isErrOrReject _codes (Left (c, msg))
 isErrOrReject [] (Right _) = assertFailure "Got HTTP response, expected HTTP error"
 isErrOrReject codes (Right res) = isReject codes res
 
+isNoErrReject :: HasCallStack => [Natural] -> HTTPErrOr ReqResponse -> IO ()
+isNoErrReject _ (Left (c, msg)) = assertFailure $ "Expected reject, got HTTP status " ++ show c ++ ": " ++ msg
+isNoErrReject _ (Right (Reply r)) =
+  assertFailure $ "Expected reject, got reply:" ++ prettyBlob r
+isNoErrReject codes (Right (Reject n msg _)) = do
+  assertBool
+    ("Reject code " ++ show n ++ " not in " ++ show codes ++ "\n" ++ T.unpack msg)
+    (n `elem` codes)
 
 isReply :: HasCallStack => ReqResponse -> IO Blob
 isReply (Reply b) = return b
