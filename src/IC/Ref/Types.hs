@@ -64,8 +64,13 @@ data CallResponse
   | Replied Blob
   deriving (Show)
 
+data ValidationError
+  = HTTPError String
+  | ExecutionError (RejectCode, String, Maybe ErrorCode)
+
 data ReqResponse
-  = QueryResponse CallResponse
+  = RequestError (RejectCode, String, Maybe ErrorCode)
+  | QueryResponse CallResponse
   | ReadStateResponse Certificate
   deriving (Show)
 

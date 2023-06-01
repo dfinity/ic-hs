@@ -425,8 +425,11 @@ submitCall' cid req = do
   let code = statusCode (responseStatus res)
   if 200 <= code && code < 300
   then do
-     assertBool "Response body not empty" (BS.null (responseBody res))
-     pure $ Right (getRequestStatus' (senderOf req) cid (requestId req))
+     if BS.null (responseBody res) then
+       pure $ Right (getRequestStatus' (senderOf req) cid (requestId req))
+     else do
+       resp <- (asRight $ decode $ responseBody res) >>= callResponse
+       pure $ Right (return $ Right $ Responded resp)
   else do
     let msg = T.unpack (T.decodeUtf8With T.lenientDecode (BS.toStrict (BS.take 1000 (responseBody res))))
     pure $ Left (code, msg)
@@ -669,6 +672,13 @@ okCBOR response = do
   asRight $ decode $ responseBody response
 
 -- * Response predicates and parsers
+
+callResponse :: GenR -> IO ReqResponse
+callResponse = asExceptT . record do
+  code <- field nat "reject_code"
+  msg <- field text "reject_message"
+  error_code <- optionalField text "error_code"
+  return $ Reject code msg error_code
 
 queryResponse :: GenR -> IO ReqResponse
 queryResponse = asExceptT . record do
