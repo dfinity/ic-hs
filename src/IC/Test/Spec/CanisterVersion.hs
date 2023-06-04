@@ -171,7 +171,7 @@ canister_version_tests ecid =
       ctr2 @?= 1
     , simpleTestCase "after failed install" ecid $ \cid -> do
       ctr1 <- query cid (replyData canister_version) >>= asWord64
-      _ <- ic_install' ic00 (enum #install) cid "" ""
+      ic_install' ic00 (enum #install) cid "" "" >>= isReject [5]
       ctr2 <- query cid (replyData canister_version) >>= asWord64
       ctr1 @?= 1
       ctr2 @?= 1
@@ -183,7 +183,7 @@ canister_version_tests ecid =
       ctr @?= 1
     , simpleTestCase "after failed reinstall" ecid $ \cid -> do
       ctr1 <- query cid (replyData canister_version) >>= asWord64
-      _ <- ic_install' ic00 (enum #reinstall) cid "" ""
+      ic_install' ic00 (enum #reinstall) cid "" "" >>= isReject [5]
       ctr2 <- query cid (replyData canister_version) >>= asWord64
       ctr1 @?= 1
       ctr2 @?= 1
@@ -195,7 +195,7 @@ canister_version_tests ecid =
       ctr2 @?= 1
     , simpleTestCase "after failed upgrade" ecid $ \cid -> do
       ctr1 <- query cid (replyData canister_version) >>= asWord64
-      _ <- ic_install' ic00 (enum #upgrade) cid "" ""
+      ic_install' ic00 (enum #upgrade) cid "" "" >>= isReject [5]
       ctr2 <- query cid (replyData canister_version) >>= asWord64
       ctr1 @?= 1
       ctr2 @?= 1
@@ -274,13 +274,13 @@ canister_version_tests ecid =
       ctr2 @?= 2 --update was executed, but callback and cleanup both trapped
     , simpleTestCase "after failed uninstall" ecid $ \cid -> do
       ctr1 <- query cid (replyData canister_version) >>= asWord64
-      _ <- ic_uninstall'' otherUser cid
+      ic_uninstall'' otherUser cid >>= isErrOrReject [5]
       ctr2 <- query cid (replyData canister_version) >>= asWord64
       ctr1 @?= 1
       ctr2 @?= 1
     , simpleTestCase "after failed change of settings" ecid $ \cid -> do
       ctr1 <- query cid (replyData canister_version) >>= asWord64
-      _ <- ic_update_settings' ic00 cid (#freezing_threshold .== 2^(70::Int))
+      ic_update_settings' ic00 cid (#freezing_threshold .== 2^(70::Int)) >>= isReject [5]
       ctr2 <- query cid (replyData canister_version) >>= asWord64
       ctr1 @?= 1
       ctr2 @?= 1
