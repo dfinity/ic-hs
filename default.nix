@@ -51,6 +51,7 @@ let wabt-tests = nixpkgs.runCommandNoCC "wabt-tests" {
 } ''
   mkdir -p $out
   python3 ${wabt-definitions}/gen.py
+  cp *.wasm $out
   for f in $(ls *.wat)
   do
     wat2wasm $f -o "$out/$f.wasm"

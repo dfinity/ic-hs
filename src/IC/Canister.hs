@@ -20,6 +20,7 @@ import qualified Data.Text.Lazy as TL
 import qualified Data.ByteString.Lazy.Char8 as BS
 import Data.Char (chr)
 import Data.List
+import Data.Maybe
 import Control.Monad
 import Data.Foldable
 import Control.Monad.Except
@@ -88,10 +89,10 @@ parseCanister bytes = do
        | Just n <- T.stripPrefix "private " name -> return (n,(False, content))
        | otherwise -> throwError $ "Invalid custom section " <> show name
 
-  let exps = exportedFunctions wasm_mod
-  let updates = filter (isPrefixOf "canister_update ") exps
-  let queries = filter (isPrefixOf "canister_query ") exps
-  let composite_queries = filter (isPrefixOf "canister_composite_query ") exps
+  let exps = map T.pack $ exportedFunctions wasm_mod
+  let updates = map T.unpack $ mapMaybe (T.stripPrefix "canister_update ") exps
+  let queries = map T.unpack $ mapMaybe (T.stripPrefix "canister_query ") exps
+  let composite_queries = map T.unpack $ mapMaybe (T.stripPrefix "canister_composite_query ") exps
 
   let maxUpdateQueryCount = 1000
   unless (length updates + length queries + length composite_queries <= maxUpdateQueryCount) $ throwError $ "Wasm module must not export more than " ++ show maxUpdateQueryCount ++ " functions called canister_update <name>, canister_query <name>, or canister_composite_query <name>"
@@ -117,7 +118,7 @@ parseCanister bytes = do
   unless (length metadata <= maxMetadataCount) $ throwError $ "Wasm module must not declare more than " ++ show maxMetadataCount ++ " custom sections whose names start with icp:"
 
   let maxMetadataTotalLength = 1024 * 1024
-  unless (sum (map (\(_, (_, c)) -> BS.length c) metadata) <= maxMetadataTotalLength) $ throwError $ "The total size of the exported custom sections must not exceed " ++ show maxMetadataTotalLength
+  unless (sum (map (\(n, (_, c)) -> T.length n + fromIntegral (BS.length c)) metadata) <= maxMetadataTotalLength) $ throwError $ "The total size of the exported custom sections must not exceed " ++ show maxMetadataTotalLength
 
   forM_ (duplicates (map fst metadata)) $ \name ->
     throwError $ "Duplicate custom section " <> show name
