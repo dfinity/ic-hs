@@ -57,6 +57,7 @@ import IC.Test.Spec.Utils
 import IC.Types(TestSubnetConfig, SubnetType(..))
 import IC.Test.Spec.HTTP
 import IC.Test.Spec.Timer
+import IC.Test.Spec.CanisterVersion
 import qualified IC.Test.Spec.TECDSA
 
 -- * The test suite (see below for helper functions)
@@ -1322,110 +1323,7 @@ icTests my_sub other_sub =
 
   , testGroup "canister global timer" $ canister_timer_tests ecid
 
-  , testGroup "canister version" $
-    let canister_version = i64tob canisterVersion in
-    let no_heartbeat = onHeartbeat (callback $ trap $ bytes "") in
-    let simpleTestCase name ecid act = testCase name $ install ecid no_heartbeat >>= act in
-    [ simpleTestCase "in query" ecid $ \cid -> do
-      ctr <- query cid (replyData canister_version) >>= asWord64
-      ctr @?= 1
-    , simpleTestCase "in update" ecid $ \cid -> do
-      ctr <- call cid (replyData canister_version) >>= asWord64
-      ctr @?= 1
-      ctr <- call cid (replyData canister_version) >>= asWord64
-      ctr @?= 2
-      ctr <- call cid (replyData canister_version) >>= asWord64
-      ctr @?= 3
-    , testCase "in install" $ do
-      cid <- install ecid $ no_heartbeat >>> setGlobal canister_version
-      ctr1 <- query cid (replyData getGlobal) >>= asWord64
-      ctr2 <- query cid (replyData canister_version) >>= asWord64
-      ctr1 @?= 1
-      ctr2 @?= 1
-    , simpleTestCase "in reinstall" ecid $ \cid -> do
-      ctr1 <- query cid (replyData canister_version) >>= asWord64
-      _ <- reinstall cid $ no_heartbeat >>> setGlobal canister_version
-      ctr2 <- query cid (replyData getGlobal) >>= asWord64
-      ctr3 <- query cid (replyData canister_version) >>= asWord64
-      ctr1 @?= 1
-      ctr2 @?= 2
-      ctr3 @?= 2
-    , testCase "in pre_upgrade" $ do
-      cid <- install ecid $
-        no_heartbeat >>>
-        ignore (stableGrow (int 1)) >>>
-        onPreUpgrade (callback $ stableWrite (int 0) canister_version)
-      ctr1 <- query cid (replyData canister_version) >>= asWord64
-      upgrade cid no_heartbeat
-      ctr2 <- query cid (replyData (stableRead (int 0) (int 8))) >>= asWord64
-      ctr3 <- query cid (replyData canister_version) >>= asWord64
-      ctr1 @?= 1
-      ctr2 @?= 1
-      ctr3 @?= 2
-    , simpleTestCase "in post_upgrade" ecid $ \cid -> do
-      ctr1 <- query cid (replyData canister_version) >>= asWord64
-      upgrade cid $ no_heartbeat >>> setGlobal canister_version
-      ctr2 <- query cid (replyData getGlobal) >>= asWord64
-      ctr3 <- query cid (replyData canister_version) >>= asWord64
-      ctr1 @?= 1
-      ctr2 @?= 2
-      ctr3 @?= 2
-    , simpleTestCase "after uninstalling canister" ecid $ \cid -> do
-      ctr1 <- query cid (replyData canister_version) >>= asWord64
-      ic_uninstall ic00 cid
-      installAt cid no_heartbeat
-      ctr2 <- query cid (replyData canister_version) >>= asWord64
-      ctr1 @?= 1
-      ctr2 @?= 3 -- code uninstalled and installed since the last query
-    , simpleTestCase "after setting controllers" ecid $ \cid -> do
-      ctr1 <- query cid (replyData canister_version) >>= asWord64
-      ic_set_controllers ic00 cid [otherUser]
-      ctr2 <- query cid (replyData canister_version) >>= asWord64
-      ctr1 @?= 1
-      ctr2 @?= 2
-    , simpleTestCase "after setting freezing threshold" ecid $ \cid -> do
-      ctr1 <- query cid (replyData canister_version) >>= asWord64
-      ic_update_settings ic00 cid (#freezing_threshold .== 2^(20::Int))
-      ctr2 <- query cid (replyData canister_version) >>= asWord64
-      ctr1 @?= 1
-      ctr2 @?= 2
-    , simpleTestCase "after failed install" ecid $ \cid -> do
-      ctr1 <- query cid (replyData canister_version) >>= asWord64
-      _ <- ic_install' ic00 (enum #install) cid "" ""
-      ctr2 <- query cid (replyData canister_version) >>= asWord64
-      ctr1 @?= 1
-      ctr2 @?= 1
-    , simpleTestCase "after failed reinstall" ecid $ \cid -> do
-      ctr1 <- query cid (replyData canister_version) >>= asWord64
-      _ <- ic_install' ic00 (enum #reinstall) cid "" ""
-      ctr2 <- query cid (replyData canister_version) >>= asWord64
-      ctr1 @?= 1
-      ctr2 @?= 1
-    , simpleTestCase "after failed upgrade" ecid $ \cid -> do
-      ctr1 <- query cid (replyData canister_version) >>= asWord64
-      _ <- ic_install' ic00 (enum #upgrade) cid "" ""
-      ctr2 <- query cid (replyData canister_version) >>= asWord64
-      ctr1 @?= 1
-      ctr2 @?= 1
-    , simpleTestCase "after failed uninstall" ecid $ \cid -> do
-      ctr1 <- query cid (replyData canister_version) >>= asWord64
-      _ <- ic_uninstall'' otherUser cid
-      ctr2 <- query cid (replyData canister_version) >>= asWord64
-      ctr1 @?= 1
-      ctr2 @?= 1
-    , simpleTestCase "after failed change of settings" ecid $ \cid -> do
-      ctr1 <- query cid (replyData canister_version) >>= asWord64
-      _ <- ic_update_settings' ic00 cid (#freezing_threshold .== 2^(70::Int))
-      ctr2 <- query cid (replyData canister_version) >>= asWord64
-      ctr1 @?= 1
-      ctr2 @?= 1
-    , simpleTestCase "after failed message execution" ecid $ \cid -> do
-      ctr1 <- query cid (replyData canister_version) >>= asWord64
-      _ <- call' cid (trap "")
-      ctr2 <- query cid (replyData canister_version) >>= asWord64
-      ctr1 @?= 1
-      ctr2 @?= 1
-    ]
+  , testGroup "canister version" $ canister_version_tests ecid
 
   , testGroup "is_controller system API" $
     [ simpleTestCase "argument is controller" ecid $ \cid -> do
