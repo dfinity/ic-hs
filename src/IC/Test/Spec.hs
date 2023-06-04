@@ -181,6 +181,17 @@ icTests my_sub other_sub =
         ic_provisional_create' ic00 ecid (Just specified_id) (Just (2^(60::Int))) empty >>= isReject [4]
     ]
 
+  , testGroup "WebAssembly module validation"
+    [ testCase "valid module" $ do
+        cid <- create ecid
+        wasm <- getTestWasm "a.wat"
+        ic_install ic00 (enum #install) cid wasm  ""
+    , testCase "invalid module" $ do
+        cid <- create ecid
+        wasm <- getTestWasm "b.wat"
+        ic_install' ic00 (enum #install) cid wasm "" >>= isReject [5]
+    ]
+
   , testCaseSteps "management requests" $ \step -> do
       step "Create (provisional)"
       can_id <- create ecid
