@@ -135,7 +135,7 @@ canister_http_calls sub =
 
     , simpleTestCase "POST call" ecid $ \cid -> do
       let b = toUtf8 $ T.pack $ "Hello, world!"
-      let hs = [(T.pack "Name1", T.pack "value1"), (T.pack "Name2", T.pack "value2")]
+      let hs = [(T.pack "name1", T.pack "value1"), (T.pack "name2", T.pack "value2")]
       resp <- ic_http_post_request (ic00viaWithCyclesRefund 0 cid) sub "anything" (Just 666) (Just b) (vec_header_from_list_text hs) Nothing cid
       (resp .! #status) @?= 200
       check_http_response resp
@@ -144,7 +144,7 @@ canister_http_calls sub =
     , simpleTestCase "HEAD call" ecid $ \cid -> do
       let n = 6666
       let b = toUtf8 $ T.pack $ replicate n 'x'
-      let hs = [(T.pack "Name1", T.pack "value1"), (T.pack "Name2", T.pack "value2")]
+      let hs = [(T.pack "name1", T.pack "value1"), (T.pack "name2", T.pack "value2")]
       resp <- ic_http_head_request (ic00viaWithCyclesRefund 0 cid) sub "anything" (Just 666) (Just b) (vec_header_from_list_text hs) Nothing cid
       (resp .! #status) @?= 200
       (resp .! #body) @?= (toUtf8 $ T.pack "")
@@ -164,7 +164,7 @@ canister_http_calls sub =
     -- "The size of an HTTP request from the canister is the total number of bytes representing the names and values of HTTP headers and the HTTP body. The maximal size for the request from the canister is 2MB (2,000,000B)."
 
     , simpleTestCase "maximum possible request size" ecid $ \cid -> do
-      let hs = [(T.pack "Name1", T.pack "value1"), (T.pack "Name2", T.pack "value2"), (T.pack "content-type", T.pack "text/html; charset=utf-8")]
+      let hs = [(T.pack "name1", T.pack "value1"), (T.pack "name2", T.pack "value2"), (T.pack "content-type", T.pack "text/html; charset=utf-8")]
       let len_hs = sum $ map (\(n, v) -> utf8_length n + utf8_length v) hs
       let b = toUtf8 $ T.pack $ replicate (fromIntegral $ max_request_bytes_limit - len_hs) 'x'
       resp <- ic_http_post_request (ic00viaWithCyclesRefund 0 cid) sub "request_size" Nothing (Just b) (vec_header_from_list_text hs) Nothing cid
@@ -174,7 +174,7 @@ canister_http_calls sub =
       assertBool ("Request size must be at least (the HTTP client can add more headers) " ++ show max_request_bytes_limit) $ n >= len_hs + fromIntegral (BS.length b)
 
     , simpleTestCase "maximum possible request size exceeded" ecid $ \cid -> do
-      let hs = [(T.pack "Name1", T.pack "value1"), (T.pack "Name2", T.pack "value2"), (T.pack "content-type", T.pack "text/html; charset=utf-8")]
+      let hs = [(T.pack "name1", T.pack "value1"), (T.pack "name2", T.pack "value2"), (T.pack "content-type", T.pack "text/html; charset=utf-8")]
       let len_hs = sum $ map (\(n, v) -> utf8_length n + utf8_length v) hs
       let b = toUtf8 $ T.pack $ replicate (fromIntegral $ max_request_bytes_limit - len_hs + 1) 'x'
       ic_http_post_request' (\fee -> ic00viaWithCyclesRefund fee cid fee) sub "request_size" Nothing (Just b) (vec_header_from_list_text hs) Nothing cid >>= isReject [4]
@@ -299,7 +299,7 @@ canister_http_calls sub =
 
     , testCase "call with simple transform" $ do
       let b = toUtf8 $ T.pack $ "Hello, world!"
-      let hs = vec_header_from_list_text [(T.pack "Name1", T.pack "value1"), (T.pack "Name2", T.pack "value2")]
+      let hs = vec_header_from_list_text [(T.pack "name1", T.pack "value1"), (T.pack "name2", T.pack "value2")]
       cid <- install ecid (onTransform (callback (replyData (bytes (Candid.encode dummyResponse)))))
       resp <- ic_http_post_request (ic00viaWithCyclesRefund 0 cid) sub "anything" (Just 666) (Just b) hs (Just ("transform", "")) cid
       (resp .! #status) @?= 202
@@ -375,7 +375,7 @@ canister_http_calls sub =
 
     , simpleTestCase "maximum number of request headers" ecid $ \cid -> do
       let b = toUtf8 $ T.pack $ "Hello, world!"
-      let hs = [(T.pack ("Name" ++ show i), T.pack ("value" ++ show i)) | i <- [0..http_headers_max_number - 1]]
+      let hs = [(T.pack ("name" ++ show i), T.pack ("value" ++ show i)) | i <- [0..http_headers_max_number - 1]]
       resp <- ic_http_post_request (ic00viaWithCyclesRefund 0 cid) sub "anything" Nothing (Just b) (vec_header_from_list_text hs) Nothing cid
       (resp .! #status) @?= 200
       check_http_response resp
@@ -383,7 +383,7 @@ canister_http_calls sub =
 
     , simpleTestCase "maximum number of request headers exceeded" ecid $ \cid -> do
       let b = toUtf8 $ T.pack $ "Hello, world!"
-      let hs = [(T.pack ("Name" ++ show i), T.pack ("value" ++ show i)) | i <- [0..http_headers_max_number]]
+      let hs = [(T.pack ("name" ++ show i), T.pack ("value" ++ show i)) | i <- [0..http_headers_max_number]]
       ic_http_post_request' (\fee -> ic00viaWithCyclesRefund fee cid fee) sub "anything" Nothing (Just b) (vec_header_from_list_text hs) Nothing cid >>= isReject [4]
 
     , simpleTestCase "maximum number of response headers" ecid $ \cid -> do
@@ -396,7 +396,7 @@ canister_http_calls sub =
           access-control-allow-credentials: true
       -}
       let n = http_headers_max_number - 6
-      let hs = [(T.pack ("Name" ++ show i), T.pack ("value" ++ show i)) | i <- [0..n - 1]]
+      let hs = [(T.pack ("name" ++ show i), T.pack ("value" ++ show i)) | i <- [0..n - 1]]
       resp <- ic_http_get_request (ic00viaWithCyclesRefund 0 cid) sub ("many_response_headers/" ++ show n) Nothing Nothing cid
       (resp .! #status) @?= 200
       assertBool "Response HTTP headers have not been received properly." $ list_subset (map_to_lower hs) (map_to_lower $ http_response_headers resp)
