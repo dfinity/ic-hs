@@ -46,33 +46,35 @@ impl Response {
     }
     fn set_content_length(&mut self) {
         self.headers
-            .push(("Content-Length".to_string(), self.body.len().to_string()));
+            .push(("content-length".to_string(), self.body.len().to_string()));
     }
     fn set_binary_content_type(&mut self) {
         self.headers.push((
-            "Content-Type".to_string(),
+            "content-type".to_string(),
             "application/octet-stream".to_string(),
         ));
     }
     fn set_utf8_content_type(&mut self) {
         self.headers.push((
-            "Content-Type".to_string(),
+            "content-type".to_string(),
             "text/plain; charset=utf-8".to_string(),
         ));
     }
     fn set_html_content_type(&mut self) {
         self.headers.push((
-            "Content-Type".to_string(),
+            "content-type".to_string(),
             "text/html; charset=utf-8".to_string(),
         ));
     }
     fn set_aux_headers(&mut self) {
         self.headers
-            .push(("Connection".to_string(), "close".to_string()));
+            .push(("date".to_string(), "Jan 1 1970 00:00:00 GMT".to_string()));
         self.headers
-            .push(("Access-Control-Allow-Origin".to_string(), "*".to_string()));
+            .push(("connection".to_string(), "close".to_string()));
+        self.headers
+            .push(("access-control-allow-origin".to_string(), "*".to_string()));
         self.headers.push((
-            "Access-Control-Allow-Credentials".to_string(),
+            "access-control-allow-credentials".to_string(),
             "true".to_string(),
         ));
     }
