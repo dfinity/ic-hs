@@ -420,6 +420,10 @@ starveCallContext ctxt_id = do
                  | otherwise                = ("canister did not respond", EC_CANISTER_DID_NOT_REPLY)
   rejectCallContext ctxt_id (RC_CANISTER_ERROR, msg, Just err)
 
+removeCallContext :: ICM m => CallId -> m ()
+removeCallContext ctxt_id = do
+  modify $ \ic -> ic { call_contexts = M.delete ctxt_id (call_contexts ic) }
+
 -- Message handling
 
 processMessage :: ICM m => Message -> m ()
@@ -600,11 +604,13 @@ willReceiveResponse :: IC -> CallId -> Bool
 willReceiveResponse ic c = c `elem`
   -- there is another call context promising to respond to this
   [ c'
-  | CallContext { needs_to_respond = NeedsToRespond True, deleted = False, origin = FromCanister c' _}
+  | CallContext { needs_to_respond = NeedsToRespond True, origin = FromCanister c' _}
       <- M.elems (call_contexts ic)
   ] ++
-  -- there is an in-flight call or response message:
-  [ call_context m | m <- toList (messages ic) ] ++
+  -- there is an in-flight call message:
+  [ c' | CallMessage c' _ <- toList (messages ic)] ++
+  -- there is an in-flight response message:
+  [ c'' | ResponseMessage c' _ _ <- toList (messages ic), FromCanister c'' _ <- return (origin (fromJust $ M.lookup c' (call_contexts ic))) ] ++
   -- there this canister is waiting for some canister to stop
   [ c'
   | CanState { run_status = IsStopping pending } <- M.elems (canisters ic)
@@ -618,6 +624,13 @@ nextStarved :: ICM m => m (Maybe CallId)
 nextStarved = gets $ \ic -> listToMaybe
   [ c
   | (c, CallContext { needs_to_respond = NeedsToRespond True } ) <- M.toList (call_contexts ic)
+  , not $ willReceiveResponse ic c
+  ]
+
+nextRemoved :: ICM m => m (Maybe CallId)
+nextRemoved = gets $ \ic -> listToMaybe
+  [ c
+  | (c, CallContext { needs_to_respond = NeedsToRespond False } ) <- M.toList (call_contexts ic)
   , not $ willReceiveResponse ic c
   ]
 
@@ -711,6 +724,7 @@ runStep = do
     [ with nextReceived processRequest
     , with popMessage processMessage
     , with nextStarved starveCallContext
+    , with nextRemoved removeCallContext
     , with nextStoppedCanister actuallyStopCanister
     ]
   where
