@@ -37,6 +37,7 @@ import IC.Canister.Snapshot
 import IC.Canister
 import IC.Ref
 import IC.Crypto
+import IC.Hash
 
 customOptions :: Options
 customOptions = defaultOptions
@@ -48,7 +49,9 @@ instance ToJSON W.Value where
     toEncoding = genericToEncoding customOptions
 
 instance ToJSON BS.ByteString where
-    toJSON = String . H.encodeHex . BS.toStrict
+    toJSON x
+      | BS.length x <= 1000 = String $ H.encodeHex $ BS.toStrict x
+      | otherwise = String $ (H.encodeHex $ BS.toStrict $ BS.take 1000 x) <> "... (sha256: 0x" <> H.encodeHex (BS.toStrict $ sha256 x) <> ")"
 
 instance ToJSONKey BS.ByteString where
     toJSONKey = toJSONKeyText (H.encodeHex . BS.toStrict)
