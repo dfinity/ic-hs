@@ -84,6 +84,7 @@ module IC.Test.Agent
       ingressDelay,
       is2xx,
       isErrOrReject,
+      isNoErrReject,
       isPendingOrProcessing,
       isReject,
       isReply,
@@ -425,8 +426,11 @@ submitCall' cid req = do
   let code = statusCode (responseStatus res)
   if 200 <= code && code < 300
   then do
-     assertBool "Response body not empty" (BS.null (responseBody res))
-     pure $ Right (getRequestStatus' (senderOf req) cid (requestId req))
+     if BS.null (responseBody res) then
+       pure $ Right (getRequestStatus' (senderOf req) cid (requestId req))
+     else do
+       resp <- (asRight $ decode $ responseBody res) >>= callResponse
+       pure $ Right (return $ Right $ Responded resp)
   else do
     let msg = T.unpack (T.decodeUtf8With T.lenientDecode (BS.toStrict (BS.take 1000 (responseBody res))))
     pure $ Left (code, msg)
@@ -670,6 +674,13 @@ okCBOR response = do
 
 -- * Response predicates and parsers
 
+callResponse :: GenR -> IO ReqResponse
+callResponse = asExceptT . record do
+  code <- field nat "reject_code"
+  msg <- field text "reject_message"
+  error_code <- optionalField text "error_code"
+  return $ Reject code msg error_code
+
 queryResponse :: GenR -> IO ReqResponse
 queryResponse = asExceptT . record do
     s <- field text "status"
@@ -699,6 +710,14 @@ isErrOrReject _codes (Left (c, msg))
 isErrOrReject [] (Right _) = assertFailure "Got HTTP response, expected HTTP error"
 isErrOrReject codes (Right res) = isReject codes res
 
+isNoErrReject :: HasCallStack => [Natural] -> HTTPErrOr ReqResponse -> IO ()
+isNoErrReject _ (Left (c, msg)) = assertFailure $ "Expected reject, got HTTP status " ++ show c ++ ": " ++ msg
+isNoErrReject _ (Right (Reply r)) =
+  assertFailure $ "Expected reject, got reply:" ++ prettyBlob r
+isNoErrReject codes (Right (Reject n msg _)) = do
+  assertBool
+    ("Reject code " ++ show n ++ " not in " ++ show codes ++ "\n" ++ T.unpack msg)
+    (n `elem` codes)
 
 isReply :: HasCallStack => ReqResponse -> IO Blob
 isReply (Reply b) = return b

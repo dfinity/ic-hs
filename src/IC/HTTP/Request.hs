@@ -149,6 +149,11 @@ entitiyId = fmap EntityId <$> blob
 
 -- Printing responses
 response :: ReqResponse -> GenR
+response (RequestError (c, s, err)) = rec $
+    [ "error_code" =: GText (T.pack $ errorCode c) | c <- maybeToList err] ++
+    [ "reject_code" =: GNat (fromIntegral (rejectCode c))
+    , "reject_message" =: GText (T.pack s)
+    ]
 response (QueryResponse (Rejected (c, s, err))) = rec $
     [ "error_code" =: GText (T.pack $ errorCode c) | c <- maybeToList err] ++
     [ "status" =: GText "rejected"

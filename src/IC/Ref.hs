@@ -118,30 +118,39 @@ isCanisterRunning cid = getRunStatus cid >>= \case
 --  * ingress message inspection
 --  * checking the correct effective id
 
-type RequestValidation m = (MonadError T.Text m, ICM m)
+type RequestValidation m = (MonadError ValidationError m, ICM m)
 
 authCallRequest :: RequestValidation m => Timestamp -> CanisterId -> EnvValidity -> CallRequest -> m ()
 authCallRequest t ecid ev r@(CallRequest canister_id user_id meth arg) = do
     checkEffectiveCanisterID ecid canister_id meth arg
-    valid_when ev t
-    valid_for ev user_id
-    valid_where ev canister_id
+    res <- runExceptT $ do
+        valid_when ev t
+        valid_for ev user_id
+        valid_where ev canister_id
+    case res of Left err -> throwError $ HTTPError $ T.unpack err
+                Right () -> return ()
     inspectIngress r
 
 authQueryRequest :: RequestValidation m => Timestamp -> CanisterId -> EnvValidity -> QueryRequest -> m ()
 authQueryRequest t ecid ev (QueryRequest canister_id user_id meth arg) = do
     checkEffectiveCanisterID ecid canister_id meth arg
-    valid_when ev t
-    valid_for ev user_id
-    valid_where ev canister_id
+    res <- runExceptT $ do
+        valid_when ev t
+        valid_for ev user_id
+        valid_where ev canister_id
+    case res of Left err -> throwError $ HTTPError $ T.unpack err
+                Right () -> return ()
 
 authReadStateRequest :: RequestValidation m => Timestamp -> CanisterId -> EnvValidity -> ReadStateRequest -> m ()
 authReadStateRequest t ecid ev (ReadStateRequest user_id paths) = do
-    valid_when ev t
-    valid_for ev user_id
+    res <- runExceptT $ do
+        valid_when ev t
+        valid_for ev user_id
+    case res of Left err -> throwError $ HTTPError $ T.unpack err
+                Right () -> return ()
     let request_ids = nub $ concat $ map request_id paths
     unless (length request_ids <= 1) $
-      throwError "Can only request one request ID in request_status paths."
+      throwError $ HTTPError "Can only request one request ID in request_status paths."
     -- Implement ACL for read requests here
     forM_ paths $ \case
       ("time":_) -> return ()
@@ -153,7 +162,7 @@ authReadStateRequest t ecid ev (ReadStateRequest user_id paths) = do
       ("canister":cid:"metadata":name:_) -> do
         assertEffectiveCanisterId ecid (EntityId cid)
         name <- case fromUtf8 name of
-            Nothing -> throwError "Invalid utf8 in metadata path"
+            Nothing -> throwError $ HTTPError "Invalid utf8 in metadata path"
             Just name -> pure name
         ex <- doesCanisterExist ecid
         when ex $ do
@@ -162,18 +171,21 @@ authReadStateRequest t ecid ev (ReadStateRequest user_id paths) = do
           case M.lookup name (metadata mod) of
             Just (False, _) -> -- private
               unless (S.member user_id cs) $
-                throwError "User is not authorized to read this metadata field"
+                throwError $ HTTPError "User is not authorized to read this metadata field"
             _ -> return () -- public or absent
-      ("request_status":rid: _) | BS.length rid /= 32 -> throwError "Request IDs must be 32 bytes in length."
+      ("request_status":rid: _) | BS.length rid /= 32 -> throwError $ HTTPError "Request IDs must be 32 bytes in length."
       ("request_status":rid: _) ->                            
         gets (findRequest rid) >>= \case
           Just (ar, (_, ecid')) -> do
             assertEffectiveCanisterId ecid ecid'
             unless (user_id == callerOfCallRequest ar) $
-              throwError "User is not authorized to read this request status"
-            valid_where ev (calleeOfCallRequest ar)
+              throwError $ HTTPError "User is not authorized to read this request status"
+            res <- runExceptT $ do
+              valid_where ev (calleeOfCallRequest ar)
+            case res of Left err -> throwError $ HTTPError $ T.unpack err
+                        Right () -> return ()
           Nothing -> return ()
-      _ -> throwError "User is not authorized to read unspecified state paths"
+      _ -> throwError $ HTTPError "User is not authorized to read unspecified state paths"
   where
     request_id :: Path -> [Label]
     request_id ("request_status":rid:_) = [rid]
@@ -214,10 +226,10 @@ checkEffectiveCanisterID ecid cid method arg
   | cid == managementCanisterId =
     if | method == "provisional_create_canister_with_cycles" -> pure ()
        | method `elem` ["create_canister", "raw_rand", "http_request", "ecdsa_public_key", "sign_with_ecdsa"] ->
-         throwError $ T.pack method <>  " cannot be invoked via ingress calls"
+         throwError $ ExecutionError (RC_CANISTER_REJECT, "Management method " ++ method ++ " cannot be invoked via ingress calls", Nothing)
        | otherwise -> case Codec.Candid.decode @(R.Rec ("canister_id" R..== Principal)) arg of
                         Left err ->
-                          throwError $ "call to management canister is not valid candid: " <> T.pack err
+                          throwError $ ExecutionError (RC_CANISTER_REJECT, "Candid failed to decode: " ++ err, Nothing)
                         Right r ->
                           assertEffectiveCanisterId ecid (principalToEntityId (r .! #canister_id))
   | otherwise = assertEffectiveCanisterId ecid cid
@@ -225,7 +237,7 @@ checkEffectiveCanisterID ecid cid method arg
 assertEffectiveCanisterId :: RequestValidation m => CanisterId -> CanisterId -> m ()
 assertEffectiveCanisterId ecid cid = do
   unless (ecid == cid) $ do
-    throwError $ "expected effective canister_id " <> T.pack (prettyID cid) <> ", got " <> T.pack (prettyID ecid)
+    throwError $ HTTPError $ "expected effective canister_id " ++ prettyID cid ++ ", got " ++ prettyID ecid
 
 inspectIngress :: RequestValidation m => CallRequest -> m ()
 inspectIngress (CallRequest canister_id user_id method arg)
@@ -233,31 +245,32 @@ inspectIngress (CallRequest canister_id user_id method arg)
     if| method `elem` ["provisional_create_canister_with_cycles", "provisional_top_up_canister"]
       -> return ()
       | method `elem` [ "raw_rand", "deposit_cycles", "http_request", "ecdsa_public_key", "sign_with_ecdsa" ]
-      -> throwError $ "Management method " <> T.pack method <> " cannot be invoked via an ingress call"
+      -> throwError $ ExecutionError (RC_CANISTER_REJECT, "Management method " ++ method ++ " cannot be invoked via ingress calls", Nothing)
       | method `elem` managementMethods
       -> case decode @(R.Rec ("canister_id" R..== Principal)) arg of
-        Left msg -> throwError $ "Candid failed to decode: " <> T.pack msg
+        Left msg -> throwError $ ExecutionError (RC_CANISTER_REJECT, "Candid failed to decode: " ++ msg, Nothing)
         Right r -> do
             let canister_id = principalToEntityId $ r .! #canister_id
-            onReject (throwError . T.pack . rejectMessage) $
+            onReject ((\err -> throwError $ ExecutionError (RC_DESTINATION_INVALID, err, Nothing)) . rejectMessage) $
                 canisterMustExist canister_id
             controllers <- getControllers canister_id
             unless (user_id `S.member` controllers) $
-                throwError "Wrong sender"
+                throwError $ ExecutionError (RC_CANISTER_ERROR, "Wrong sender", Nothing)
       | otherwise
-      -> throwError $ "Unknown management method " <> T.pack method
+      -> throwError $ ExecutionError (RC_DESTINATION_INVALID, "Unknown management method " ++ method, Nothing)
   | otherwise = do
-    onReject (throwError . T.pack . rejectMessage) $
+    onReject ((\err -> throwError $ ExecutionError (RC_DESTINATION_INVALID, err, Nothing)) . rejectMessage) $
         canisterMustExist canister_id
     empty <- isCanisterEmpty canister_id
-    when empty $ throwError "canister is empty"
+    when empty $ throwError $ ExecutionError (RC_DESTINATION_INVALID, "canister is empty", Nothing)
     wasm_state <- getCanisterState canister_id
     can_mod <- getCanisterMod canister_id
     env <- canisterEnv canister_id
 
     case inspect_message can_mod method user_id env arg wasm_state of
-      Trap msg -> throwError $ "canister trapped in inspect_message: " <> T.pack msg
-      Return () -> return ()
+      Trap msg -> throwError $ ExecutionError (RC_CANISTER_ERROR, "canister trapped in inspect_message: " ++ msg, Nothing)
+      Return False -> throwError $ ExecutionError (RC_CANISTER_REJECT, "message not accepted by inspect_message", Nothing)
+      Return True -> return ()
 
 -- The state tree
 
