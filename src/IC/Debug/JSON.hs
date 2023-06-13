@@ -51,7 +51,7 @@ instance ToJSON W.Value where
 instance ToJSON BS.ByteString where
     toJSON x
       | BS.length x <= 1000 = String $ H.encodeHex $ BS.toStrict x
-      | otherwise = String $ (H.encodeHex $ BS.toStrict $ BS.take 1000 x) <> "... (sha256: 0x" <> H.encodeHex (BS.toStrict $ sha256 x) <> ")"
+      | otherwise = String $ "too long for a debug print (sha256: 0x" <> H.encodeHex (BS.toStrict $ sha256 x) <> ")"
 
 instance ToJSONKey BS.ByteString where
     toJSONKey = toJSONKeyText (H.encodeHex . BS.toStrict)
