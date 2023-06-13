@@ -55,7 +55,7 @@ data CanisterModule = CanisterModule
   , cleanup :: WasmClosure -> Env -> WasmState -> TrapOr (WasmState, ())
   , pre_upgrade_method :: WasmState -> EntityId -> Env -> TrapOr (CanisterActions, Blob)
   , post_upgrade_method :: EntityId -> Env -> Blob -> Blob -> TrapOr (WasmState, CanisterActions)
-  , inspect_message :: MethodName -> EntityId -> Env -> Blob -> WasmState -> TrapOr ()
+  , inspect_message :: MethodName -> EntityId -> Env -> Blob -> WasmState -> TrapOr Bool
   , heartbeat :: Env -> WasmState -> TrapOr (WasmState, ([MethodCall], CanisterActions))
   , canister_global_timer :: Env -> WasmState -> TrapOr (WasmState, ([MethodCall], CanisterActions))
   , metadata :: T.Text ↦ (IsPublic, Blob)

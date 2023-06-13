@@ -1608,7 +1608,7 @@ icTests my_sub other_sub =
       query cid (replyData "Hi") >>= is "Hi"
       ic_uninstall ic00 cid
       -- should be http error, due to inspection
-      call'' cid (replyData "Hi") >>= isErrOrReject []
+      call'' cid (replyData "Hi") >>= isNoErrReject [3]
       query' cid (replyData "Hi") >>= isReject [3]
 
     , testCaseSteps "open call contexts are rejected" $ \step -> do
@@ -2343,8 +2343,8 @@ icTests my_sub other_sub =
   , testGroup "canister_inspect_message"
     [ testCase "empty canister" $ do
       cid <- create ecid
-      call'' cid reply >>= isErrOrReject []
-      callToQuery'' cid reply >>= isErrOrReject []
+      call'' cid reply >>= isNoErrReject [3]
+      callToQuery'' cid reply >>= isNoErrReject [3]
 
     , testCase "accept all" $ do
       cid <- install ecid $ onInspectMessage $ callback acceptMessage
@@ -2353,8 +2353,8 @@ icTests my_sub other_sub =
 
     , testCase "no accept_message" $ do
       cid <- install ecid $ onInspectMessage $ callback noop
-      call'' cid reply >>= isErrOrReject []
-      callToQuery'' cid reply >>= isErrOrReject []
+      call'' cid reply >>= isNoErrReject [4]
+      callToQuery'' cid reply >>= isNoErrReject [4]
       -- check that inter-canister calls still work
       cid2 <- install ecid noop
       call cid2 (inter_update cid defArgs)
@@ -2362,27 +2362,27 @@ icTests my_sub other_sub =
 
     , testCase "two calls to accept_message" $ do
       cid <- install ecid $ onInspectMessage $ callback $ acceptMessage >>> acceptMessage
-      call'' cid reply >>= isErrOrReject []
-      callToQuery'' cid reply >>= isErrOrReject []
+      call'' cid reply >>= isNoErrReject [5]
+      callToQuery'' cid reply >>= isNoErrReject [5]
 
     , testCase "trap" $ do
       cid <- install ecid $ onInspectMessage $ callback $ trap "no no no"
-      call'' cid reply >>= isErrOrReject []
-      callToQuery'' cid reply >>= isErrOrReject []
+      call'' cid reply >>= isNoErrReject [5]
+      callToQuery'' cid reply >>= isNoErrReject [5]
 
     , testCase "method_name correct" $ do
       cid <- install ecid $ onInspectMessage $ callback $
         trapIfEq methodName "update" "no no no" >>> acceptMessage
 
-      call'' cid reply >>= isErrOrReject []
+      call'' cid reply >>= isNoErrReject [5]
       callToQuery'' cid reply >>= is2xx >>= isReply >>= is ""
 
     , testCase "caller correct" $ do
       cid <- install ecid $ onInspectMessage $ callback $
         trapIfEq caller (bytes defaultUser) "no no no" >>> acceptMessage
 
-      call'' cid reply >>= isErrOrReject []
-      callToQuery'' cid reply >>= isErrOrReject []
+      call'' cid reply >>= isNoErrReject [5]
+      callToQuery'' cid reply >>= isNoErrReject [5]
 
       awaitCall' cid (callRequestAs otherUser cid reply)
         >>= is2xx >>= isReply >>= is ""
@@ -2393,29 +2393,29 @@ icTests my_sub other_sub =
       cid <- install ecid $ onInspectMessage $ callback $
         trapIfEq argData (callback reply) "no no no" >>> acceptMessage
 
-      call'' cid reply >>= isErrOrReject []
-      callToQuery'' cid reply >>= isErrOrReject []
+      call'' cid reply >>= isNoErrReject [5]
+      callToQuery'' cid reply >>= isNoErrReject [5]
 
       call cid (replyData "foo") >>= is "foo"
       callToQuery'' cid (replyData "foo") >>= is2xx >>= isReply >>= is "foo"
 
     , testCase "management canister: raw_rand not accepted" $ do
-      ic_raw_rand'' defaultUser ecid >>= isErrOrReject []
+      ic_raw_rand'' defaultUser ecid >>= isNoErrReject [4]
 
     , testCase "management canister: http_request not accepted" $ do
-      ic_http_get_request'' defaultUser >>= isErrOrReject []
+      ic_http_get_request'' defaultUser >>= isNoErrReject [4]
 
     , testCase "management canister: ecdsa_public_key not accepted" $ do
-      ic_ecdsa_public_key'' defaultUser ecid >>= isErrOrReject []
+      ic_ecdsa_public_key'' defaultUser ecid >>= isNoErrReject [4]
 
     , testCase "management canister: sign_with_ecdsa not accepted" $ do
-      ic_sign_with_ecdsa'' defaultUser ecid (sha256 "dummy") >>= isErrOrReject []
+      ic_sign_with_ecdsa'' defaultUser ecid (sha256 "dummy") >>= isNoErrReject [4]
 
     , simpleTestCase "management canister: deposit_cycles not accepted" ecid $ \cid -> do
-      ic_deposit_cycles'' defaultUser cid >>= isErrOrReject []
+      ic_deposit_cycles'' defaultUser cid >>= isNoErrReject [4]
 
     , simpleTestCase "management canister: wrong sender not accepted" ecid $ \cid -> do
-      ic_canister_status'' otherUser cid >>= isErrOrReject []
+      ic_canister_status'' otherUser cid >>= isNoErrReject [5]
     ]
 
   , testGroup "Delegation targets" $ let
