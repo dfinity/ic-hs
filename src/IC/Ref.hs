@@ -456,7 +456,7 @@ processMessage m = case m of
       wasm_state <- getCanisterState callee
       can_mod <- getCanisterMod callee
       env <- canisterEnv callee
-      invokeEntry ctxt_id wasm_state can_mod env entry >>= \case
+      invokeEntry ctxt_id callee wasm_state can_mod env entry >>= \case
         Trap msg -> do
           -- Eventually update cycle balance here
           rememberTrap ctxt_id msg
@@ -537,16 +537,21 @@ actuallyStopCanister canister_id =
 
  
 invokeEntry :: ICM m =>
-    CallId -> WasmState -> CanisterModule -> Env -> EntryPoint ->
+    CallId -> CanisterId -> WasmState -> CanisterModule -> Env -> EntryPoint ->
     m (TrapOr (WasmState, UpdateResult))
-invokeEntry ctxt_id wasm_state can_mod env entry = do
+invokeEntry ctxt_id canister_id wasm_state can_mod env entry = do
     needs_to_respond <- needsToRespondCallID ctxt_id
     available <- getCallContextCycles ctxt_id
     case entry of
       Public method dat -> do
         caller <- callerOfCallID ctxt_id
         case lookupUpdate method can_mod of
-          Just f -> return $ f caller env needs_to_respond available dat wasm_state
+          Just f ->
+            case f caller env needs_to_respond available dat wasm_state of
+              Trap err -> return $ Trap err
+              Return x -> do
+                bumpCanisterVersion canister_id
+                return $ Return x
           Nothing -> do
             let reject = Reject (RC_DESTINATION_INVALID, "method does not exist: " ++ method)
             return $ Return (wasm_state, (noCallActions { ca_response = Just reject}, noCanisterActions))
@@ -554,24 +559,32 @@ invokeEntry ctxt_id wasm_state can_mod env entry = do
         case callbacks can_mod cb env needs_to_respond available r refund wasm_state of
             Trap err -> do
               rememberTrap ctxt_id err
-              return $
-                  case cleanup_callback cb of
-                      Just closure -> case cleanup can_mod closure env wasm_state of
-                          Trap err' -> Trap err'
-                          Return (wasm_state', ()) ->
-                              Return (wasm_state', (noCallActions, noCanisterActions))
-                      Nothing -> Trap err
-            Return (wasm_state, actions) -> return $ Return (wasm_state, actions)
-      Heartbeat -> return $ do
-        case heartbeat can_mod env wasm_state of
-            Trap _ -> Return (wasm_state, (noCallActions, noCanisterActions))
-            Return (wasm_state, (calls, actions)) ->
-                Return (wasm_state, (noCallActions { ca_new_calls = calls }, actions))
-      GlobalTimer -> return $ do
-        case canister_global_timer can_mod env wasm_state of
-            Trap _ -> Return (wasm_state, (noCallActions, noCanisterActions))
-            Return (wasm_state, (calls, actions)) ->
-                Return (wasm_state, (noCallActions { ca_new_calls = calls }, actions))
+              case cleanup_callback cb of
+                  Just closure -> case cleanup can_mod closure env wasm_state of
+                      Trap err' -> return $ Trap err'
+                      Return (wasm_state', ()) -> do
+                          bumpCanisterVersion canister_id
+                          return $ Return (wasm_state', (noCallActions, noCanisterActions))
+                  Nothing -> return $ Trap err
+            Return (wasm_state, actions) -> do
+                bumpCanisterVersion canister_id
+                return $ Return (wasm_state, actions)
+      Heartbeat ->
+        if exports_heartbeat can_mod then
+          case heartbeat can_mod env wasm_state of
+            Trap _ -> return $ Return (wasm_state, (noCallActions, noCanisterActions))
+            Return (wasm_state, (calls, actions)) -> do
+                bumpCanisterVersion canister_id
+                return $ Return (wasm_state, (noCallActions { ca_new_calls = calls }, actions))
+        else return $ Return (wasm_state, (noCallActions, noCanisterActions))
+      GlobalTimer ->
+        if exports_global_timer can_mod then do
+          case canister_global_timer can_mod env wasm_state of
+            Trap _ -> return $ Return (wasm_state, (noCallActions, noCanisterActions))
+            Return (wasm_state, (calls, actions)) -> do
+                bumpCanisterVersion canister_id
+                return $ Return (wasm_state, (noCallActions { ca_new_calls = calls }, actions))
+        else return $ Return (wasm_state, (noCallActions, noCanisterActions))
   where
     lookupUpdate method can_mod
         | Just f <- M.lookup method (update_methods can_mod) = Just f

@@ -57,6 +57,7 @@ import IC.Test.Spec.Utils
 import IC.Types(TestSubnetConfig, SubnetType(..))
 import IC.Test.Spec.HTTP
 import IC.Test.Spec.Timer
+import IC.Test.Spec.CanisterVersion
 import qualified IC.Test.Spec.TECDSA
 
 -- * The test suite (see below for helper functions)
@@ -1322,100 +1323,7 @@ icTests my_sub other_sub =
 
   , testGroup "canister global timer" $ canister_timer_tests ecid
 
-  , testGroup "canister version" $
-    let canister_version = i64tob canisterVersion in
-    let no_heartbeat = onHeartbeat (callback $ trap $ bytes "") in
-    let simpleTestCase name ecid act = testCase name $ install ecid no_heartbeat >>= act in
-    [ simpleTestCase "in query" ecid $ \cid -> do
-      ctr <- query cid (replyData canister_version) >>= asWord64
-      ctr > 0 @? "Canister version must be positive."
-    , simpleTestCase "in update" ecid $ \cid -> do
-      ctr <- call cid (replyData canister_version) >>= asWord64
-      ctr > 0 @? "Canister version must be positive."
-    , testCase "in install" $ do
-      cid <- install ecid $ no_heartbeat >>> setGlobal canister_version
-      ctr1 <- query cid (replyData getGlobal) >>= asWord64
-      ctr2 <- query cid (replyData canister_version) >>= asWord64
-      ctr1 > 0 @? "Canister version must be positive"
-      ctr2 >= ctr1 @? "Canister version must be monotone"
-    , simpleTestCase "in reinstall" ecid $ \cid -> do
-      ctr1 <- query cid (replyData canister_version) >>= asWord64
-      _ <- reinstall cid $ setGlobal canister_version
-      ctr2 <- query cid (replyData getGlobal) >>= asWord64
-      ctr3 <- query cid (replyData canister_version) >>= asWord64
-      ctr1 > 0 @? "Canister version must be positive"
-      ctr2 > ctr1 @? "Canister version must be strictly monotone"
-      ctr3 >= ctr2 @? "Canister version must be monotone"
-    , testCase "in pre_upgrade" $ do
-      cid <- install ecid $
-        no_heartbeat >>>
-        ignore (stableGrow (int 1)) >>>
-        onPreUpgrade (callback $ stableWrite (int 0) canister_version)
-      ctr1 <- query cid (replyData canister_version) >>= asWord64
-      upgrade cid noop
-      ctr2 <- query cid (replyData (stableRead (int 0) (int 8))) >>= asWord64
-      ctr3 <- query cid (replyData canister_version) >>= asWord64
-      ctr1 > 0 @? "Canister version must be positive"
-      ctr2 >= ctr1 @? "Canister version must be monotone"
-      ctr3 > ctr2 @? "Canister version must be strictly monotone"
-    , simpleTestCase "in post_upgrade" ecid $ \cid -> do
-      ctr1 <- query cid (replyData canister_version) >>= asWord64
-      upgrade cid $ setGlobal canister_version
-      ctr2 <- query cid (replyData getGlobal) >>= asWord64
-      ctr3 <- query cid (replyData canister_version) >>= asWord64
-      ctr1 > 0 @? "Canister version must be positive"
-      ctr2 > ctr1 @? "Canister version must be strictly monotone"
-      ctr3 >= ctr2 @? "Canister version must be monotone"
-    , simpleTestCase "after uninstalling canister" ecid $ \cid -> do
-      ctr1 <- query cid (replyData canister_version) >>= asWord64
-      ic_uninstall ic00 cid
-      installAt cid noop
-      ctr2 <- query cid (replyData canister_version) >>= asWord64
-      ctr1 > 0 @? "Canister version must be positive"
-      ctr2 > ctr1 + 1 @? "Canister version must be strictly monotone (at least two changes)."
-    , simpleTestCase "after setting controllers" ecid $ \cid -> do
-      ctr1 <- query cid (replyData canister_version) >>= asWord64
-      ic_set_controllers ic00 cid [otherUser]
-      ctr2 <- query cid (replyData canister_version) >>= asWord64
-      ctr1 > 0 @? "Canister version must be positive"
-      ctr2 > ctr1 @? "Canister version must be strictly monotone"
-    , simpleTestCase "after setting freezing threshold" ecid $ \cid -> do
-      ctr1 <- query cid (replyData canister_version) >>= asWord64
-      ic_update_settings ic00 cid (#freezing_threshold .== 2^(20::Int))
-      ctr2 <- query cid (replyData canister_version) >>= asWord64
-      ctr1 > 0 @? "Canister version must be positive"
-      ctr2 > ctr1 @? "Canister version must be strictly monotone"
-    , simpleTestCase "after failed install" ecid $ \cid -> do
-      ctr1 <- query cid (replyData canister_version) >>= asWord64
-      _ <- ic_install' ic00 (enum #install) cid "" ""
-      ctr2 <- query cid (replyData canister_version) >>= asWord64
-      ctr1 > 0 @? "Canister version must be positive"
-      ctr1 @?= ctr2
-    , simpleTestCase "after failed reinstall" ecid $ \cid -> do
-      ctr1 <- query cid (replyData canister_version) >>= asWord64
-      _ <- ic_install' ic00 (enum #reinstall) cid "" ""
-      ctr2 <- query cid (replyData canister_version) >>= asWord64
-      ctr1 > 0 @? "Canister version must be positive"
-      ctr1 @?= ctr2
-    , simpleTestCase "after failed upgrade" ecid $ \cid -> do
-      ctr1 <- query cid (replyData canister_version) >>= asWord64
-      _ <- ic_install' ic00 (enum #upgrade) cid "" ""
-      ctr2 <- query cid (replyData canister_version) >>= asWord64
-      ctr1 > 0 @? "Canister version must be positive"
-      ctr1 @?= ctr2
-    , simpleTestCase "after failed uninstall" ecid $ \cid -> do
-      ctr1 <- query cid (replyData canister_version) >>= asWord64
-      _ <- ic_uninstall'' otherUser cid
-      ctr2 <- query cid (replyData canister_version) >>= asWord64
-      ctr1 > 0 @? "Canister version must be positive"
-      ctr1 @?= ctr2
-    , simpleTestCase "after failed change of settings" ecid $ \cid -> do
-      ctr1 <- query cid (replyData canister_version) >>= asWord64
-      _ <- ic_update_settings' ic00 cid (#freezing_threshold .== 2^(70::Int))
-      ctr2 <- query cid (replyData canister_version) >>= asWord64
-      ctr1 > 0 @? "Canister version must be positive"
-      ctr1 @?= ctr2
-    ]
+  , testGroup "canister version" $ canister_version_tests ecid
 
   , testGroup "is_controller system API" $
     [ simpleTestCase "argument is controller" ecid $ \cid -> do

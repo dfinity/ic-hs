@@ -48,6 +48,8 @@ type IsPublic = Bool
 data CanisterModule = CanisterModule
   { raw_wasm :: Blob
   , raw_wasm_hash :: Blob -- just caching, it’s worth it
+  , exports_heartbeat :: Bool
+  , exports_global_timer :: Bool
   , init_method :: InitFunc
   , update_methods :: MethodName ↦ (EntityId -> Env -> NeedsToRespond -> Cycles -> Blob -> UpdateFunc)
   , query_methods :: MethodName ↦ (EntityId -> Env -> Blob -> QueryFunc)
@@ -94,6 +96,8 @@ parseCanister bytes = do
   return $ CanisterModule
     { raw_wasm = bytes
     , raw_wasm_hash = sha256 bytes
+    , exports_heartbeat = "canister_heartbeat" `elem` exportedFunctions wasm_mod
+    , exports_global_timer = "canister_global_timer" `elem` exportedFunctions wasm_mod
     , init_method = \caller env dat ->
           case instantiate wasm_mod of
             Trap err -> Trap err

@@ -30,6 +30,8 @@ import Network.HTTP.Client
 import qualified Data.Binary.Get as Get
 import Codec.Candid (Principal(..))
 import qualified Codec.Candid as Candid
+import Control.Concurrent
+import System.Timeout
 
 import IC.HTTP.GenR
 import IC.HTTP.RequestId
@@ -43,6 +45,17 @@ import IC.Test.Agent.SafeCalls
 import IC.Management (HttpResponse, HttpHeader)
 
 type Blob = BS.ByteString
+
+-- * Helpers
+
+waitFor :: HasAgentConfig => IO Bool -> IO ()
+waitFor act = do
+    result <- timeout (tc_timeout agentConfig * (10::Int) ^ (6::Int)) doActUntil
+    when (result == Nothing) $ assertFailure "Polling timed out"
+  where
+    doActUntil = do
+      stop <- act
+      unless stop (threadDelay 1000 *> doActUntil)
 
 -- * Equality assertions
 
