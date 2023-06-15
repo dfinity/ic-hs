@@ -43,6 +43,13 @@ canister_version_tests ecid =
       ctr @?= 1
       ctr <- query cid (replyData canister_version) >>= asWord64
       ctr @?= 1
+    , simpleTestCase "in replicated query" ecid $ \cid -> do
+      ctr <- callToQuery'' cid (replyData canister_version) >>= is2xx >>= isReply >>= asWord64
+      ctr @?= 1
+      ctr <- callToQuery'' cid (replyData canister_version) >>= is2xx >>= isReply >>= asWord64
+      ctr @?= 1
+      ctr <- callToQuery'' cid (replyData canister_version) >>= is2xx >>= isReply >>= asWord64
+      ctr @?= 1
     , simpleTestCase "in update" ecid $ \cid -> do
       ctr <- call cid (replyData canister_version) >>= asWord64
       ctr @?= 1
