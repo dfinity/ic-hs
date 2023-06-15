@@ -62,6 +62,7 @@
 , tls
 , transformers
 , uglymemo
+, unliftio
 , unordered-containers
 , utf8-string
 , vector
@@ -142,6 +143,7 @@ mkDerivation {
     tls
     transformers
     uglymemo
+    unliftio
     unordered-containers
     utf8-string
     vector
