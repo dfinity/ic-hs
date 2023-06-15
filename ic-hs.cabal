@@ -171,6 +171,7 @@ library
   build-depends: tls
   build-depends: transformers
   build-depends: uglymemo
+  build-depends: unliftio
   build-depends: unordered-containers
   build-depends: utf8-string
   build-depends: vector
