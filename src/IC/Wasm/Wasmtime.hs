@@ -8,7 +8,23 @@ This is the interface at which one might plug in a different Wasm engine.
 -}
 module IC.Wasm.Wasmtime
   ( Module
-  , parseModule
+  , Instance
+  , Extern
+  , toExtern
+  , getBytes
+  , setBytes
+  , invokeExport
+  , invokeTable
+  , HostM
+  , HostFunc
+  , ModName
+  , FuncName
+  , Import
+  , Imports
+  , ValueType(..)
+  , Value(..)
+  , StackType
+  , initialize
   )
 where
 
@@ -29,6 +45,19 @@ import Control.Exception (Exception, throwIO)
 import Control.Monad.Primitive (RealWorld)
 import Wasmtime
 
+data ValueType = I32Type | I64Type
+data Value = I32 Int32 | I64 Int64
+  deriving Show
+type StackType = [ValueType]
+
+type HostFunc s = HostM s [Value]
+type HostM s = ExceptT String (ST s)
+
+type ModName = String
+type FuncName = String
+type Import s = (ModName, FuncName, StackType, StackType, [Value] -> HostFunc s)
+type Imports s = [Import s]
+
 {-
 type Instance s = (IM.IntMap (W.ModuleInst W.Phrase (ST s)), Int)
 
@@ -37,7 +66,6 @@ type HostM s = ExceptT String (ST s)
 type HostFunc s = HostM s [W.Value]
 
 type ModName = String
-type FuncName = String
 type Import s = (ModName, FuncName, W.StackType, W.StackType, [W.Value] -> HostFunc s)
 type Imports s = [Import s]
 
@@ -47,19 +75,19 @@ type Module = W.Module W.Phrase
 handleException :: Exception e => Either e r -> IO r
 handleException = either throwIO pure
 
-parseModule :: BS.ByteString -> [IO (Either Trap ())] -> IO (Module, Instance RealWorld)
-parseModule wasm imps = do
+hello :: IO (Either Trap ())
+hello = error "not implemented"
+
+initialize :: forall s. BS.ByteString -> Imports s -> IO (Instance RealWorld)
+initialize wasm imps = do
   engine <- newEngine
   store <- newStore engine
   ctx <- storeContext store
   myModule <- handleException $ newModule engine (unsafeFromByteString $ BS.toStrict wasm)
-  funcs <- mapM (newFunc ctx) imps
-  inst <- newInstance ctx myModule (V.fromList $ map toExtern funcs) >>= handleException
-  return (myModule, inst)
+  funcs <- mapM (\(mod, func, args, rets, f) -> newFunc ctx hello) imps -- TODO
+  newInstance ctx myModule (V.fromList $ map toExtern funcs) >>= handleException
 
 {-
-initialize :: forall s. Module -> Imports s -> HostM s (Instance s)
-initialize mod imps = withExceptT show $ do
   let by_mod :: [(T.Text, [(T.Text, W.StackType, W.StackType, [W.Value] -> HostFunc s)])]
       by_mod = M.toList $ M.fromListWith (<>)
         [ (T.pack m, [(T.pack n,t1,t2,f)]) | (m,n,t1,t2,f) <- imps ]
@@ -95,30 +123,16 @@ exportedFunctions wasm_mod =
   | W.Phrase _ e <- V.toList $ W._moduleExports wasm_mod
   , W.FuncExport {} <- return $ W._exportDesc e
   ]
-
-
-invokeExport :: Instance s -> FuncName -> [W.Value] -> HostM s [W.Value]
-invokeExport (mods', ref) method args = do
-  let inst = mods' IM.! ref
-  withExceptT show $
-    W.invokeByName mods' inst (T.pack method) args
-
-invokeTable :: Instance s -> Int32 -> [W.Value] -> HostM s [W.Value]
-invokeTable (mods', ref) idx args = do
-  let inst = mods' IM.! ref
-  withExceptT show $ do
-    func <- W.elem inst (0 W.@@ def) idx def
-    W.invoke mods' inst func args
-
-getBytes :: Instance s -> W.Address -> W.Size -> HostM s BS.ByteString
-getBytes (mods', ref) ptr len = do
-  let inst = mods' IM.! ref
-  let mem = V.head (W._miMemories inst)
-  withExceptT show $ W.loadBytes mem ptr len
-
-setBytes :: Instance s -> W.Address -> BS.ByteString -> HostM s ()
-setBytes (mods', ref) ptr blob = do
-  let inst = mods' IM.! ref
-  let mem = V.head (W._miMemories inst)
-  withExceptT show $ W.storeBytes mem (fromIntegral ptr) blob
 -}
+
+invokeExport :: Instance s -> FuncName -> [Value] -> HostM s [Value]
+invokeExport i method args = error "not implemented"
+
+invokeTable :: Instance s -> Int32 -> [Value] -> HostM s [Value]
+invokeTable i idx args = error "not implemented"
+
+getBytes :: Instance s -> Int32 -> Int32 -> HostM s BS.ByteString
+getBytes i ptr len = error "not implemented"
+
+setBytes :: Instance s -> Int32 -> BS.ByteString -> HostM s ()
+setBytes i ptr blob = error "not implemented"

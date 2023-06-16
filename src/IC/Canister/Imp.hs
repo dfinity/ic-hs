@@ -44,11 +44,11 @@ import Data.Functor
 import Numeric.Natural
 
 import IC.Types
-import IC.Wasm.Winter
 import IC.Wasm.Imports
 import IC.Canister.StableMemory as Mem
 import IC.Id.Fresh
 import IC.Utils
+import IC.Wasm.Wasmtime
 
 {-
 Interface Spec (Overview of imports):
@@ -775,15 +775,13 @@ data ImpState s = ImpState
   { isESRef :: ESRef s
   , isInstance :: Instance s
   , isStableMem :: Memory s
-  , isModule :: Module
+  , isModule :: BS.ByteString
   }
 
-rawInstantiate :: Module -> ST s (TrapOr (ImpState s))
+rawInstantiate :: BS.ByteString -> IO (TrapOr (ImpState RealWorld))
 rawInstantiate wasm_mod = do
   esref <- newESRef
-  result <- runExceptT $ (,)
-    <$> initialize wasm_mod (systemAPI esref)
-    <*> Mem.new
+  result <- initialize wasm_mod (systemAPI esref) <*> Mem.new
   case result of
     Left  err -> return $ Trap err
     Right (inst, sm) -> return $ Return $ ImpState esref inst sm wasm_mod
@@ -816,9 +814,7 @@ rawInitialize caller env dat (ImpState esref inst sm wasm_mod) = do
               }
 
     --  invoke canister_init
-    if "canister_init" `elem` exportedFunctions wasm_mod
-    then withES esref es $ void $ invokeExport inst "canister_init" []
-    else return ((), es)
+    withES esref es $ void $ invokeExport inst "canister_init" []
 
   case result of
     Left  err -> return $ Trap err
@@ -829,9 +825,7 @@ rawHeartbeat env (ImpState esref inst sm wasm_mod) = do
   result <- runExceptT $ do
     let es = (initialExecutionState inst sm env cantRespond EXC_T)
 
-    if "canister_heartbeat" `elem` exportedFunctions wasm_mod
-    then withES esref es $ void $ invokeExport inst "canister_heartbeat" []
-    else return ((), es)
+    withES esref es $ void $ invokeExport inst "canister_heartbeat" []
 
   case result of
     Left  err -> return $ Trap err
@@ -845,9 +839,7 @@ rawGlobalTimer env (ImpState esref inst sm wasm_mod) = do
   result <- runExceptT $ do
     let es = (initialExecutionState inst sm env cantRespond EXC_T)
 
-    if "canister_global_timer" `elem` exportedFunctions wasm_mod
-    then withES esref es $ void $ invokeExport inst "canister_global_timer" []
-    else return ((), es)
+    withES esref es $ void $ invokeExport inst "canister_global_timer" []
 
   case result of
     Left  err -> return $ Trap err
@@ -869,9 +861,7 @@ rawPreUpgrade caller env (ImpState esref inst sm wasm_mod) = do
                   }
               }
 
-    if "canister_pre_upgrade" `elem` exportedFunctions wasm_mod
-    then withES esref es $ void $ invokeExport inst "canister_pre_upgrade" []
-    else return ((), es)
+    withES esref es $ void $ invokeExport inst "canister_pre_upgrade" []
 
   case result of
     Left  err -> return $ Trap err
@@ -893,9 +883,7 @@ rawPostUpgrade caller env mem dat (ImpState esref inst sm wasm_mod) = do
               }
     lift $ Mem.imp (stableMem es) (Mem.deserialize mem)
 
-    if "canister_post_upgrade" `elem` exportedFunctions wasm_mod
-    then withES esref es $ void $ invokeExport inst "canister_post_upgrade" []
-    else return ((), es)
+    withES esref es $ void $ invokeExport inst "canister_post_upgrade" []
 
   case result of
     Left  err -> return $ Trap err
@@ -996,9 +984,7 @@ rawInspectMessage method caller env dat (ImpState esref inst sm wasm_mod) = do
               , method_name = Just method
               }
 
-    if "canister_inspect_message" `elem` exportedFunctions wasm_mod
-    then withES esref es $ void $ invokeExport inst "canister_inspect_message" []
-    else return ((), es { accepted = True } )
+    withES esref es $ void $ invokeExport inst "canister_inspect_message" []
 
   case result of
     Left err -> return $ Trap err

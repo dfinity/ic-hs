@@ -10,8 +10,6 @@ module IC.Wasm.Winter
   ( Module
   , parseModule
   , exportedFunctions
-  , Import
-  , Imports
   , HostM
   , HostFunc
   , W.Value(..)
@@ -19,12 +17,7 @@ module IC.Wasm.Winter
   , W.ValueType(..)
   , W.Address
   , W.Size
-  , getBytes
-  , setBytes
-  , initialize
   , Instance
-  , invokeExport
-  , invokeTable
   )
 where
 
@@ -74,7 +67,7 @@ parseModule = memo $ \bytes -> case runGetOrFail W.getModule bytes of
   Left  (_,_,err) -> Left err
   Right (_,_,wasm_mod) -> Right wasm_mod
 
-
+{-
 initialize :: forall s. Module -> Imports s -> HostM s (Instance s)
 initialize mod imps = withExceptT show $ do
   let by_mod :: [(T.Text, [(T.Text, W.StackType, W.StackType, [W.Value] -> HostFunc s)])]
@@ -104,7 +97,7 @@ initialize mod imps = withExceptT show $ do
   for_ start_err throwError
   let mods' = IM.insert ref inst mods
   return (mods', ref)
-
+-}
 
 exportedFunctions :: Module -> [FuncName]
 exportedFunctions wasm_mod =
@@ -113,7 +106,7 @@ exportedFunctions wasm_mod =
   , W.FuncExport {} <- return $ W._exportDesc e
   ]
 
-
+{-
 invokeExport :: Instance s -> FuncName -> [W.Value] -> HostM s [W.Value]
 invokeExport (mods', ref) method args = do
   let inst = mods' IM.! ref
@@ -138,4 +131,4 @@ setBytes (mods', ref) ptr blob = do
   let inst = mods' IM.! ref
   let mem = V.head (W._miMemories inst)
   withExceptT show $ W.storeBytes mem (fromIntegral ptr) blob
-
+-}

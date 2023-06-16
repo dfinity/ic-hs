@@ -7,10 +7,9 @@ module IC.Wasm.Imports where
 
 import Data.Int
 import Data.Word
-import IC.Wasm.Winter
+import IC.Wasm.Wasmtime
 import Text.Printf
 import Control.Monad.Except
-
 
 class WasmArg a where
     valueType :: ValueType
@@ -400,7 +399,6 @@ instance
         , toValue x12
         ]
 
-
 toImport ::
     forall a b s.
     (WasmArgs a, WasmArgs b) =>
@@ -413,4 +411,3 @@ toImport mod_name fun_name  f = (mod_name, fun_name, stackType @a, stackType @b,
         ExceptT $ return (fromValues xs)
       b <- f a
       return $ toValues b
-
