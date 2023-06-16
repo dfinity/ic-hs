@@ -29,12 +29,12 @@ let
 
           subpath = import ./gitSource.nix;
 
-          rustPackages = self.rustPackages_1_66 // {
+          rustPackages = super.rustPackages // {
             # nixpkgs's rustc does not include the wasm32-unknown-unknown target, so
             # let's add it here. With this we can build the universal canister with stock
             # nixpkgs + naersk, in particular no dependency on internal repositories.
             # But rename this so that we do not rebuild unrelated tools written in rust.
-            rustc = self.rustPackages_1_66.rustc.overrideAttrs (old: {
+            rustc = super.rustPackages.rustc.overrideAttrs (old: {
               configureFlags = self.lib.lists.forEach old.configureFlags (flag:
                 if self.lib.strings.hasPrefix "--target=" flag
                 then flag + ",wasm32-unknown-unknown"
