@@ -982,7 +982,7 @@ rawCleanup (WasmClosure fun_idx cb_env) env (ImpState esref inst sm _) = do
     Left  err -> return $ Trap err
     Right _ -> return $ Return ()
 
-rawInspectMessage :: MethodName -> EntityId -> Env -> Blob -> ImpState s -> ST s (TrapOr ())
+rawInspectMessage :: MethodName -> EntityId -> Env -> Blob -> ImpState s -> ST s (TrapOr Bool)
 rawInspectMessage method caller env dat (ImpState esref inst sm wasm_mod) = do
   result <- runExceptT $ do
     let es = (initialExecutionState inst sm env cantRespond EXC_F)
@@ -1002,6 +1002,4 @@ rawInspectMessage method caller env dat (ImpState esref inst sm wasm_mod) = do
 
   case result of
     Left err -> return $ Trap err
-    Right (_, es')
-      | not (accepted es')      -> return $ Trap "message not accepted by inspect_message"
-      | otherwise -> return $ Return ()
+    Right (_, es') -> return $ Return (accepted es')
