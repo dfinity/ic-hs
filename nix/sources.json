@@ -14,7 +14,7 @@
     },
     "http-client": {
         "branch": "mraszyk/nix",
-        "sha256": "sha256:0jm9klh5a1gvzyxxinj0yylij2rgxqlprlgin6hfrby1xvwkdps7",
+        "sha256": "0jm9klh5a1gvzyxxinj0yylij2rgxqlprlgin6hfrby1xvwkdps7",
         "type": "tarball",
         "url": "https://github.com/mraszyk/http-client/raw/mraszyk/nix/http-client.tar.gz"
     },
