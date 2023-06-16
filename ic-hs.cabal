@@ -106,6 +106,7 @@ library
   exposed-modules: IC.Utils
   exposed-modules: IC.Version
   exposed-modules: IC.Wasm.Imports
+  exposed-modules: IC.Wasm.Wasmtime
   exposed-modules: IC.Wasm.Winter
   exposed-modules: IC.Wasm.Winter.Persist
   exposed-modules: SourceId
@@ -178,6 +179,7 @@ library
   build-depends: wai-cors
   build-depends: wai-extra
   build-depends: warp
+  build-depends: wasmtime
   build-depends: wide-word
   build-depends: winter
   build-depends: word8
