@@ -69,7 +69,7 @@
 , wai-cors
 , wai-extra
 , warp
-, wasmtime-hs
+, wasmtime
 , wide-word
 , winter
 , word8
@@ -150,7 +150,7 @@ mkDerivation {
     wai-cors
     wai-extra
     warp
-    wasmtime-hs
+    wasmtime
     wide-word
     winter
     word8
