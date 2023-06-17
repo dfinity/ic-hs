@@ -64,12 +64,6 @@ instance Serialise Callback where
 deriving instance Generic MethodCall
 instance Serialise MethodCall where
 
-deriving instance Generic PInstance
-instance Serialise PInstance where
-
-deriving instance Generic PModuleInst
-instance Serialise PModuleInst where
-
 deriving instance Generic (Snapshot a)
 instance Serialise a => Serialise (Snapshot a) where
 
@@ -106,22 +100,16 @@ instance Serialise EntryPoint where
 instance Serialise CanisterContent where
     encode cc = encode
         ( raw_wasm (can_mod cc)
-        , wsInstances (wasm_state cc)
-        , wsStableMem (wasm_state cc)
         )
     decode = do
-        (wasm, insts, sm) <- decode
+        wasm <- decode
         can_mod <- either fail pure $ parseCanister wasm
         -- There is some duplication here
         decodedModule <- either fail pure $ decodeModule wasm
         wasm_mod <- either fail pure $ W.parseModule decodedModule
         return $ CanisterContent
             { can_mod = can_mod
-            , wasm_state = CanisterSnapshot
-                { wsModule = wasm_mod
-                , wsInstances = insts
-                , wsStableMem = sm
-                }
+            , wasm_state = Nothing
             }
 
 deriving instance Serialise EntityId

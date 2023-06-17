@@ -22,7 +22,7 @@ import Prelude hiding (read)
 
 import Data.ByteString.Lazy (ByteString)
 import Data.Word
-import Data.STRef
+import Data.IORef
 import Foreign.Ptr (plusPtr)
 import Foreign.ForeignPtr (withForeignPtr)
 import Control.Monad.Except
@@ -35,8 +35,8 @@ import qualified Data.ByteString.Internal as BI
 type Size = Word64
 type Address = Word64
 
-type HostM s = ExceptT String (ST s)
-type Memory s = STRef s Repr
+type HostM = ExceptT String IO
+type Memory = IORef Repr
 
 -- | Size of a WebAssembly page.
 pageSize :: Size
@@ -61,17 +61,17 @@ data Repr
   } deriving (Show)
 
 -- | Constructs a new empty memory.
-new :: HostM s (Memory s)
-new = lift $ (newSTRef $ Repr 0 [])
+new :: IO (Memory)
+new = newIORef $ Repr 0 []
 
-memorySizeInBytes :: Memory s -> ST s Size
+memorySizeInBytes :: Memory -> IO Size
 memorySizeInBytes mem = (pageSize *) <$> memorySizeInPages mem
 
-memorySizeInPages :: Memory s -> ST s Size
-memorySizeInPages mem = smSize <$> readSTRef mem
+memorySizeInPages :: Memory -> IO Size
+memorySizeInPages mem = smSize <$> readIORef mem
 
 -- | Checks that range [offset, offset + len] lies within the memory.
-checkAccess :: Memory s -> Address -> Size -> HostM s ()
+checkAccess :: Memory -> Address -> Size -> HostM ()
 checkAccess mem offset len = do
   n <- lift $ memorySizeInBytes mem
   when ((fromIntegral offset :: Integer) + fromIntegral len > fromIntegral n) $
@@ -93,38 +93,38 @@ toByteString repr offset len = BL.fromStrict $ BI.unsafeCreate (fromIntegral len
                   (fromIntegral $ copyEnd - copyStart)
 
 -- | Returns the size of stable memory in WebAssembly pages.
-size :: Memory s -> HostM s Size
-size = lift . memorySizeInPages
+size :: Memory -> IO Size
+size = memorySizeInPages
 
 -- | Attempts to grow stable memory by @delta@ pages.
-grow :: Memory s -> Size -> HostM s Size
-grow mem delta = lift $ do
-  repr <- readSTRef mem
+grow :: Memory -> Size -> IO Size
+grow mem delta = do
+  repr <- readIORef mem
   let oldSize = smSize repr
-  writeSTRef mem (repr { smSize = oldSize + delta })
+  writeIORef mem (repr { smSize = oldSize + delta })
   return oldSize
 
 -- | Reads a range of bytes from memory.
-read :: Memory s -> Address -> Size -> HostM s ByteString
+read :: Memory -> Address -> Size -> HostM ByteString
 read mem ptr len = do
   checkAccess mem ptr len
-  lift $ do
-    repr <- readSTRef mem
+  do
+    repr <- lift $ readIORef mem
     return $ toByteString repr ptr len
 
 -- | Writes a byte string at the specified offset.
-write :: Memory s -> Address -> ByteString -> HostM s ()
+write :: Memory -> Address -> ByteString -> HostM ()
 write mem ptr blob = do
   checkAccess mem ptr (fromIntegral $ BL.length blob)
-  lift $ modifySTRef' mem (\repr -> repr { smWrites = (ptr, BL.toStrict blob) : smWrites repr })
+  lift $ modifyIORef' mem (\repr -> repr { smWrites = (ptr, BL.toStrict blob) : smWrites repr })
 
 -- | Exports immutable memory representation.
-export :: Memory s -> ST s Repr
-export = readSTRef
+export :: Memory -> IO Repr
+export = readIORef
 
 -- | Sets the contents of memory to a previously exported value.
-imp :: Memory s -> Repr -> ST s ()
-imp = writeSTRef
+imp :: Memory -> Repr -> IO ()
+imp = writeIORef
 
 -- | Converts internal memory representation into a bytestring.
 serialize :: Repr -> ByteString

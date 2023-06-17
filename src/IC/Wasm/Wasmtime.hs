@@ -29,6 +29,7 @@ module IC.Wasm.Wasmtime
 where
 
 import qualified Data.ByteString.Lazy as BS
+import Control.Exception
 import Control.Monad.Except
 import qualified Data.Map as M
 import qualified Data.Vector as V
@@ -50,20 +51,20 @@ data Value = I32 Int32 | I64 Int64
   deriving Show
 type StackType = [ValueType]
 
-type HostFunc s = HostM s [Value]
-type HostM s = ExceptT String (ST s)
+type HostM = ExceptT String IO
+type HostFunc = HostM [Value]
 
 type ModName = String
 type FuncName = String
-type Import s = (ModName, FuncName, StackType, StackType, [Value] -> HostFunc s)
-type Imports s = [Import s]
+type Import = (ModName, FuncName, StackType, StackType, [Value] -> HostFunc)
+type Imports = [Import]
 
 {-
-type Instance s = (IM.IntMap (W.ModuleInst W.Phrase (ST s)), Int)
+type Instance RealWorld = (IM.IntMap (W.ModuleInst W.Phrase (ST s)), Int)
 
-type HostM s = ExceptT String (ST s)
+type HostM = ExceptT String (ST s)
 
-type HostFunc s = HostM s [W.Value]
+type HostFunc s = HostM [W.Value]
 
 type ModName = String
 type Import s = (ModName, FuncName, W.StackType, W.StackType, [W.Value] -> HostFunc s)
@@ -76,16 +77,23 @@ handleException :: Exception e => Either e r -> IO r
 handleException = either throwIO pure
 
 hello :: IO (Either Trap ())
-hello = error "not implemented"
+hello = return $ Right ()
 
-initialize :: forall s. BS.ByteString -> Imports s -> IO (Instance RealWorld)
+initialize :: BS.ByteString -> Imports -> IO (Instance RealWorld)
 initialize wasm imps = do
   engine <- newEngine
   store <- newStore engine
   ctx <- storeContext store
+  putStrLn "a"
   myModule <- handleException $ newModule engine (unsafeFromByteString $ BS.toStrict wasm)
+  putStrLn "b"
   funcs <- mapM (\(mod, func, args, rets, f) -> newFunc ctx hello) imps -- TODO
-  newInstance ctx myModule (V.fromList $ map toExtern funcs) >>= handleException
+  putStrLn "c"
+  r <- newInstance ctx myModule (V.fromList $ [])
+  putStrLn "d"
+  case r of
+    Left err -> (putStrLn $ "err") >> error "ahoj"
+    Right r -> putStrLn "ok" >> return r
 
 {-
   let by_mod :: [(T.Text, [(T.Text, W.StackType, W.StackType, [W.Value] -> HostFunc s)])]
@@ -125,14 +133,14 @@ exportedFunctions wasm_mod =
   ]
 -}
 
-invokeExport :: Instance s -> FuncName -> [Value] -> HostM s [Value]
+invokeExport :: Instance RealWorld -> FuncName -> [Value] -> HostM [Value]
 invokeExport i method args = error "not implemented"
 
-invokeTable :: Instance s -> Int32 -> [Value] -> HostM s [Value]
+invokeTable :: Instance RealWorld -> Int32 -> [Value] -> HostM [Value]
 invokeTable i idx args = error "not implemented"
 
-getBytes :: Instance s -> Int32 -> Int32 -> HostM s BS.ByteString
+getBytes :: Instance RealWorld -> Int32 -> Int32 -> HostM BS.ByteString
 getBytes i ptr len = error "not implemented"
 
-setBytes :: Instance s -> Int32 -> BS.ByteString -> HostM s ()
+setBytes :: Instance RealWorld -> Int32 -> BS.ByteString -> HostM ()
 setBytes i ptr blob = error "not implemented"

@@ -87,7 +87,7 @@ data RunStatus
 
 data CanisterContent = CanisterContent
   { can_mod :: CanisterModule
-  , wasm_state :: WasmState
+  , wasm_state :: Maybe WasmState
   }
   deriving (Show)
 
@@ -374,7 +374,7 @@ modCanisterContent cid f = do
 
 setCanisterState :: ICM m => CanisterId -> WasmState -> m ()
 setCanisterState cid wasm_state = modCanisterContent cid $
-    \cs -> cs { wasm_state = wasm_state }
+    \cs -> cs { wasm_state = Just wasm_state }
 
 getControllers :: ICM m => CanisterId -> m (S.Set EntityId)
 getControllers cid = controllers <$> getCanister cid
@@ -414,7 +414,7 @@ setRunStatus cid run_status = modCanister cid $
     \cs -> cs { run_status = run_status }
 
 getCanisterState :: ICM m => CanisterId -> m WasmState
-getCanisterState cid = wasm_state . fromJust . content <$> getCanister cid
+getCanisterState cid = fromJust . wasm_state . fromJust . content <$> getCanister cid
 
 getCanisterMod :: ICM m => CanisterId -> m CanisterModule
 getCanisterMod cid = can_mod . fromJust . content <$> getCanister cid

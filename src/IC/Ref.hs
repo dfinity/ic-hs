@@ -210,7 +210,8 @@ handleQuery time (QueryRequest canister_id user_id method arg) =
     f <- return (M.lookup method (query_methods can_mod))
       `orElse` reject RC_DESTINATION_INVALID "query method does not exist" (Just EC_METHOD_NOT_FOUND)
 
-    case f user_id env arg wasm_state of
+    r <- liftIO $ f user_id env arg wasm_state
+    case r of
       Trap msg -> reject RC_CANISTER_ERROR ("canister trapped: " ++ msg) (Just EC_CANISTER_TRAPPED)
       Return (Reject (rc, rm)) -> reject rc rm (Just EC_CANISTER_REJECTED)
       Return (Reply res) -> return $ Replied res
@@ -267,7 +268,8 @@ inspectIngress (CallRequest canister_id user_id method arg)
     can_mod <- getCanisterMod canister_id
     env <- canisterEnv canister_id
 
-    case inspect_message can_mod method user_id env arg wasm_state of
+    r <- liftIO $ inspect_message can_mod method user_id env arg wasm_state
+    case r of
       Trap msg -> throwError $ ExecutionError (RC_CANISTER_ERROR, "canister trapped in inspect_message: " ++ msg, Nothing)
       Return False -> throwError $ ExecutionError (RC_CANISTER_REJECT, "message not accepted by inspect_message", Nothing)
       Return True -> return ()
@@ -546,8 +548,9 @@ invokeEntry ctxt_id canister_id wasm_state can_mod env entry = do
       Public method dat -> do
         caller <- callerOfCallID ctxt_id
         case lookupUpdate method can_mod of
-          Just f ->
-            case f caller env needs_to_respond available dat wasm_state of
+          Just f -> do
+            r <- liftIO $ f caller env needs_to_respond available dat wasm_state
+            case r of
               Trap err -> return $ Trap err
               Return x -> do
                 bumpCanisterVersion canister_id
@@ -556,11 +559,14 @@ invokeEntry ctxt_id canister_id wasm_state can_mod env entry = do
             let reject = Reject (RC_DESTINATION_INVALID, "method does not exist: " ++ method)
             return $ Return (wasm_state, (noCallActions { ca_response = Just reject}, noCanisterActions))
       Closure cb r refund -> do
-        case callbacks can_mod cb env needs_to_respond available r refund wasm_state of
+        r <- liftIO $ callbacks can_mod cb env needs_to_respond available r refund wasm_state
+        case r of
             Trap err -> do
               rememberTrap ctxt_id err
               case cleanup_callback cb of
-                  Just closure -> case cleanup can_mod closure env wasm_state of
+                  Just closure -> do
+                    r <- liftIO $ cleanup can_mod closure env wasm_state
+                    case r of
                       Trap err' -> return $ Trap err'
                       Return (wasm_state', ()) -> do
                           bumpCanisterVersion canister_id
@@ -570,8 +576,9 @@ invokeEntry ctxt_id canister_id wasm_state can_mod env entry = do
                 bumpCanisterVersion canister_id
                 return $ Return (wasm_state, actions)
       Heartbeat ->
-        if exports_heartbeat can_mod then
-          case heartbeat can_mod env wasm_state of
+        if exports_heartbeat can_mod then do
+          r <- liftIO $ heartbeat can_mod env wasm_state
+          case r of
             Trap _ -> return $ Return (wasm_state, (noCallActions, noCanisterActions))
             Return (wasm_state, (calls, actions)) -> do
                 bumpCanisterVersion canister_id
@@ -579,7 +586,8 @@ invokeEntry ctxt_id canister_id wasm_state can_mod env entry = do
         else return $ Return (wasm_state, (noCallActions, noCanisterActions))
       GlobalTimer ->
         if exports_global_timer can_mod then do
-          case canister_global_timer can_mod env wasm_state of
+          r <- liftIO $ canister_global_timer can_mod env wasm_state
+          case r of
             Trap _ -> return $ Return (wasm_state, (noCallActions, noCanisterActions))
             Return (wasm_state, (calls, actions)) -> do
                 bumpCanisterVersion canister_id

@@ -32,6 +32,7 @@ import Control.Monad.Random.Lazy
 
 import IC.Types
 import IC.Wasm.Winter.Persist
+import IC.Canister.Imp
 import IC.Purify
 import IC.Canister.Snapshot
 import IC.Canister
@@ -113,25 +114,14 @@ instance ToJSON MethodCall where
     toJSON     = genericToJSON customOptions
     toEncoding = genericToEncoding customOptions
 
-deriving instance Generic PInstance
-instance ToJSON PInstance where
-    toJSON     = genericToJSON customOptions
-    toEncoding = genericToEncoding customOptions
-
-deriving instance Generic PModuleInst
-instance ToJSON PModuleInst where
-    toJSON     = genericToJSON customOptions
-    toEncoding = genericToEncoding customOptions
-
 deriving instance Generic (Snapshot a)
 instance ToJSON a => ToJSON (Snapshot a) where
     toJSON     = genericToJSON customOptions
     toEncoding = genericToEncoding customOptions
 
-deriving instance Generic CanisterSnapshot
-instance ToJSON CanisterSnapshot where
-    toJSON     = genericToJSON customOptions
-    toEncoding = genericToEncoding customOptions
+instance ToJSON ImpState where
+    toJSON     _ = genericToJSON customOptions ([]::[Int])
+    toEncoding _ = genericToEncoding customOptions ([]::[Int])
 
 deriving instance Generic IC
 instance ToJSON IC where

@@ -9,13 +9,13 @@ import Control.Monad.ST
 
 import qualified IC.Canister.StableMemory as Stable
 
-runHostM :: ExceptT String (ST RealWorld) a -> IO (Either String a)
-runHostM = stToIO . runExceptT
+runHostM :: ExceptT String IO a -> IO (Either String a)
+runHostM = runExceptT
 
-mkMem :: Int -> ExceptT String (ST s) (Stable.Memory s)
+mkMem :: Int -> ExceptT String IO (Stable.Memory)
 mkMem numPages = do
-  mem <- Stable.new
-  r <- Stable.grow mem (fromIntegral numPages)
+  mem <- lift $ Stable.new
+  r <- lift $ Stable.grow mem (fromIntegral numPages)
   when (r < 0) $
     throwError "grow failed"
   return mem
@@ -23,9 +23,9 @@ mkMem numPages = do
 stableMemoryTests :: TestTree
 stableMemoryTests = testGroup "Stable memory tests"
   [ testCase "grow" $ do
-      res <- runHostM $ do mem <- Stable.new
-                           old <- Stable.grow mem 5
-                           new <- Stable.size mem
+      res <- runHostM $ do mem <- lift $ Stable.new
+                           old <- lift $ Stable.grow mem 5
+                           new <- lift $ Stable.size mem
                            return (old, new)
       res @?= Right (0, 5)
   , testCase "read across multiple writes" $ do
@@ -56,9 +56,9 @@ stableMemoryTests = testGroup "Stable memory tests"
       res <- runHostM $ do mem <- mkMem 2
                            Stable.write mem 0 "ABCD"
                            blob <- lift $ Stable.serialize <$> Stable.export mem
-                           mem2 <- Stable.new
+                           mem2 <- lift $ Stable.new
                            lift $ Stable.imp mem2 $ Stable.deserialize blob
-                           size2 <- Stable.size mem2
+                           size2 <- lift $ Stable.size mem2
                            data2 <- Stable.read mem2 0 6
                            return (size2, data2)
       res @?= Right (2, "ABCD\NUL\NUL")

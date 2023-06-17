@@ -107,6 +107,7 @@ library
   exposed-modules: IC.Version
   exposed-modules: IC.Wasm.Imports
   exposed-modules: IC.Wasm.Wasmtime
+  exposed-modules: IC.Wasm.Wasmtime.Persist
   exposed-modules: IC.Wasm.Winter
   exposed-modules: IC.Wasm.Winter.Persist
   exposed-modules: SourceId

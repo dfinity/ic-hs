@@ -32,11 +32,14 @@ import qualified Data.ByteString.Builder as BS
 import qualified Data.ByteString.Lazy as BS
 import qualified Data.ByteString.Lazy.Char8 as BSC
 import qualified Data.ByteString.Lazy.UTF8 as BSU
+import Control.Exception
 import Control.Monad.Primitive
+import Control.Monad.State
 import Control.Monad.ST
 import Control.Monad.Except
 import Data.Bits
 import Data.STRef
+import Data.IORef
 import Data.Maybe
 import Data.Int -- TODO: Should be Word32 in most cases
 import Data.Word
@@ -49,6 +52,7 @@ import IC.Canister.StableMemory as Mem
 import IC.Id.Fresh
 import IC.Utils
 import IC.Wasm.Wasmtime
+import Wasmtime (WasmException)
 
 {-
 Interface Spec (Overview of imports):
@@ -169,9 +173,9 @@ data Params = Params
 -- The execution state is all information available to the
 -- canister. Some of it is immutable (could be separated here)
 
-data ExecutionState s = ExecutionState
-  { inst :: Instance s
-  , stableMem :: Memory s
+data ExecutionState = ExecutionState
+  { inst :: Instance RealWorld
+  , stableMem :: Memory
   , params :: Params
   , method_name :: Maybe MethodName
   , env :: Env
@@ -192,7 +196,7 @@ data ExecutionState s = ExecutionState
   }
 
 
-initialExecutionState :: Instance s -> Memory s -> Env -> NeedsToRespond -> ExecutionContext -> ExecutionState s
+initialExecutionState :: Instance RealWorld -> Memory -> Env -> NeedsToRespond -> ExecutionContext -> ExecutionState
 initialExecutionState inst stableMem env needs_to_respond ctxt = ExecutionState
   { inst
   , stableMem
@@ -219,79 +223,79 @@ initialExecutionState inst stableMem env needs_to_respond ctxt = ExecutionState
 -- We “always” have the 'STRef', but only within 'withES' is it actually
 -- present.
 
-type ESRef s = STRef s (Maybe (ExecutionState s))
+type ESRef = IORef (Maybe ExecutionState)
 
-newESRef :: ST s (ESRef s)
-newESRef = newSTRef Nothing
+newESRef :: IO ESRef
+newESRef = newIORef Nothing
 
 -- | runs a computation with the given initial execution state
 -- and returns the final execution state with it.
-withES :: PrimMonad m =>
-  ESRef (PrimState m) ->
-  ExecutionState (PrimState m) ->
-  m a -> m (a, ExecutionState (PrimState m))
+withES ::
+  ESRef ->
+  ExecutionState ->
+  HostM a -> HostM (a, ExecutionState)
 withES esref es f = do
-  before <- stToPrim $ readSTRef esref
+  before <- lift $ readIORef esref
   unless (isNothing before) $ error "withES with non-empty es"
-  stToPrim $ writeSTRef esref $ Just es
+  lift $ writeIORef esref $ Just es
   x <- f
-  es' <- stToPrim $ readSTRef esref
+  es' <- lift $ readIORef esref
   case es' of
     Nothing -> error "withES: ExecutionState lost"
     Just es' -> do
-      stToPrim $ writeSTRef esref Nothing
+      lift $ writeIORef esref Nothing
       return (x, es')
 
-getsES :: ESRef s -> (ExecutionState s -> b) -> HostM s b
-getsES esref f = lift (readSTRef esref) >>= \case
+getsES :: ESRef -> (ExecutionState -> b) -> HostM b
+getsES esref f = lift (readIORef esref) >>= \case
   Nothing -> throwError "System API not available yet"
   Just es -> return (f es)
 
-modES :: ESRef s -> (ExecutionState s -> ExecutionState s) -> HostM s ()
-modES esref f = lift $ modifySTRef esref (fmap f)
+modES :: ESRef -> (ExecutionState -> ExecutionState) -> HostM ()
+modES esref f = lift $ modifyIORef esref (fmap f)
 
-appendReplyData :: ESRef s -> Blob -> HostM s ()
+appendReplyData :: ESRef -> Blob -> HostM ()
 appendReplyData esref dat = modES esref $ \es ->
   es { reply_data = reply_data es <> dat }
 
-setResponse :: ESRef s -> Response -> HostM s ()
+setResponse :: ESRef -> Response -> HostM ()
 setResponse esref r = modES esref $ \es ->
   es { response = Just r }
 
-appendCall :: ESRef s -> MethodCall -> HostM s ()
+appendCall :: ESRef -> MethodCall -> HostM ()
 appendCall esref c = modES esref $ \es ->
   es { calls = calls es ++ [c] }
 
-getAvailable :: ESRef s -> HostM s Cycles
+getAvailable :: ESRef -> HostM Cycles
 getAvailable esref =
   getsES esref cycles_available >>=
     maybe (throwError "no cycles available") return
 
-getRefunded :: ESRef s -> HostM s Cycles
+getRefunded :: ESRef -> HostM Cycles
 getRefunded esref =
   getsES esref (cycles_refunded . params)  >>=
     maybe (throwError "no cycles refunded") return
 
-addBalance :: ESRef s -> Cycles -> HostM s ()
+addBalance :: ESRef -> Cycles -> HostM ()
 addBalance esref f = modES esref $ \es ->
   es { balance = balance es + f }
 
-addAccepted :: ESRef s -> Cycles -> HostM s ()
+addAccepted :: ESRef -> Cycles -> HostM ()
 addAccepted esref f = modES esref $ \es ->
   es { cycles_accepted = cycles_accepted es + f }
 
-addMinted :: ESRef s -> Cycles -> HostM s ()
+addMinted :: ESRef -> Cycles -> HostM ()
 addMinted esref f = modES esref $ \es ->
   es { cycles_minted = cycles_minted es + f }
 
-subtractBalance :: ESRef s -> Cycles -> HostM s ()
+subtractBalance :: ESRef -> Cycles -> HostM ()
 subtractBalance esref f = do
   current_balance <- getsES esref balance
   if f <= current_balance
   then modES esref $ \es -> es { balance = current_balance - f }
   else throwError "insufficient cycles to put on call"
 
-subtractAvailable :: ESRef s -> Cycles -> HostM s ()
+subtractAvailable :: ESRef -> Cycles -> HostM ()
 subtractAvailable esref f = do
   current <- getAvailable esref
   when (f > current) $ error "internal error: insufficient cycles to accept"
@@ -301,7 +305,7 @@ subtractAvailable esref f = do
 
 -- The code is defined in the where clause to scope over the 'ESRef'
 
-systemAPI :: forall s. ESRef s -> Imports s
+systemAPI :: ESRef -> Imports
 systemAPI esref =
   [ toImport' "ic0" "msg_arg_data_size" [EXC_I, EXC_U, EXC_Q, EXC_Ry, EXC_F] msg_arg_data_size
   , toImport' "ic0" "msg_arg_data_copy" [EXC_I, EXC_U, EXC_Q, EXC_Ry, EXC_F] msg_arg_data_copy
@@ -368,10 +372,10 @@ systemAPI esref =
   ]
   where
     -- Utilities
-    gets :: (ExecutionState s -> b) -> HostM s b
+    gets :: (ExecutionState -> b) -> HostM b
     gets = getsES esref
 
-    assert_context :: String -> [ExecutionContext] -> HostM s ()
+    assert_context :: String -> [ExecutionContext] -> HostM ()
     assert_context method ctxts = do
       ctxt <- gets context
       unless (ctxt `elem` ctxts) $
@@ -380,7 +384,7 @@ systemAPI esref =
     toImport' ::
         forall a b.
         (WasmArgs a, WasmArgs b) =>
-        String -> String -> [ExecutionContext] -> (a -> HostM s b) -> Import s
+        String -> String -> [ExecutionContext] -> (a -> HostM b) -> Import
     toImport' mod_name fun_name ctxts f =
       toImport mod_name fun_name $ \a -> do
         assert_context fun_name ctxts
@@ -389,10 +393,10 @@ systemAPI esref =
     star :: [ExecutionContext]
     star = [EXC_I, EXC_G, EXC_U, EXC_Q, EXC_Ry, EXC_Rt, EXC_C, EXC_F, EXC_T]
 
-    puts :: (ExecutionState s -> ExecutionState s) -> HostM s ()
+    puts :: (ExecutionState -> ExecutionState) -> HostM ()
     puts = modES esref
 
-    copy_to_canister :: Int32 -> Int32 -> Int32 -> Blob -> HostM s ()
+    copy_to_canister :: Int32 -> Int32 -> Int32 -> Blob -> HostM ()
     copy_to_canister dst offset size blob = do
       unless (offset == 0) $
         throwError "offset /= 0 not supported"
@@ -402,14 +406,14 @@ systemAPI esref =
       -- TODO Bounds checking
       setBytes i (fromIntegral dst) blob
 
-    copy_from_canister :: String -> Int32 -> Int32 -> HostM s Blob
+    copy_from_canister :: String -> Int32 -> Int32 -> HostM Blob
     copy_from_canister _name src size = do
       i <- gets inst
       getBytes i (fromIntegral src) size
 
-    size_and_copy :: HostM s Blob ->
-      ( () -> HostM s Int32
-      , (Int32, Int32, Int32) -> HostM s ()
+    size_and_copy :: HostM Blob ->
+      ( () -> HostM Int32
+      , (Int32, Int32, Int32) -> HostM ()
       )
     size_and_copy get_blob =
       ( \() ->
@@ -418,7 +422,7 @@ systemAPI esref =
         get_blob >>= \blob -> copy_to_canister dst offset size blob
       )
 
-    cycles_accept :: Natural -> HostM s Natural
+    cycles_accept :: Natural -> HostM Natural
     cycles_accept max_amount = do
       available <- getAvailable esref
       let amount = min max_amount available
@@ -428,36 +432,36 @@ systemAPI esref =
       return amount
 
     -- Unsafely print
-    putBytes :: BS.ByteString -> HostM s ()
+    putBytes :: BS.ByteString -> HostM ()
     putBytes bytes =
       unsafeIOToPrim $ BSC.putStrLn $ BSC.pack "debug.print: " <> bytes
 
     -- The system calls (in the order of the public spec)
     -- https://sdk.dfinity.org/docs/interface-spec/index.html#_system_imports
 
-    msg_arg_data_size :: () -> HostM s Int32
-    msg_arg_data_copy :: (Int32, Int32, Int32) -> HostM s ()
+    msg_arg_data_size :: () -> HostM Int32
+    msg_arg_data_copy :: (Int32, Int32, Int32) -> HostM ()
     (msg_arg_data_size, msg_arg_data_copy) = size_and_copy $
         gets (param_dat . params) >>= maybe (throwError "No argument") return
 
-    msg_caller_size :: () -> HostM s Int32
-    msg_caller_copy :: (Int32, Int32, Int32) -> HostM s ()
+    msg_caller_size :: () -> HostM Int32
+    msg_caller_copy :: (Int32, Int32, Int32) -> HostM ()
     (msg_caller_size, msg_caller_copy) = size_and_copy $
       gets (param_caller . params)
         >>= maybe (throwError "No argument") (return . rawEntityId)
 
-    msg_reject_code :: () -> HostM s Int32
+    msg_reject_code :: () -> HostM Int32
     msg_reject_code () =
       gets (reject_code . params)
         >>= maybe (throwError "No reject code") (return . fromIntegral)
 
-    msg_reject_msg_size :: () -> HostM s Int32
-    msg_reject_msg_copy :: (Int32, Int32, Int32) -> HostM s ()
+    msg_reject_msg_size :: () -> HostM Int32
+    msg_reject_msg_copy :: (Int32, Int32, Int32) -> HostM ()
     (msg_reject_msg_size, msg_reject_msg_copy) = size_and_copy $ do
       gets (reject_message . params)
         >>= maybe (throwError "No reject code") (return . BSU.fromString)
 
-    assert_not_responded :: HostM s ()
+    assert_not_responded :: HostM ()
     assert_not_responded = do
       gets needs_to_respond >>= \case
         NeedsToRespond True -> return ()
@@ -466,31 +470,31 @@ systemAPI esref =
         Nothing -> return ()
         Just  _ -> throwError "This call has already been responded to in this function"
 
-    msg_reply_data_append :: (Int32, Int32) -> HostM s ()
+    msg_reply_data_append :: (Int32, Int32) -> HostM ()
     msg_reply_data_append (src, size) = do
       assert_not_responded
       bytes <- copy_from_canister "msg_reply_data_append" src size
       appendReplyData esref bytes
 
-    msg_reply :: () -> HostM s ()
+    msg_reply :: () -> HostM ()
     msg_reply () = do
       assert_not_responded
       bytes <- gets reply_data
       setResponse esref (Reply bytes)
 
-    msg_reject :: (Int32, Int32) -> HostM s ()
+    msg_reject :: (Int32, Int32) -> HostM ()
     msg_reject (src, size) = do
       assert_not_responded
       bytes <- copy_from_canister "msg_reject" src size
       let msg = BSU.toString bytes
       setResponse esref $ Reject (RC_CANISTER_REJECT, msg)
 
-    canister_self_size :: () -> HostM s Int32
-    canister_self_copy :: (Int32, Int32, Int32) -> HostM s ()
+    canister_self_size :: () -> HostM Int32
+    canister_self_copy :: (Int32, Int32, Int32) -> HostM ()
     (canister_self_size, canister_self_copy) = size_and_copy $
       rawEntityId <$> gets (env_self . env)
 
-    canister_status :: () -> HostM s Int32
+    canister_status :: () -> HostM Int32
     canister_status () = gets (env_status . env) <&> \case
         Running -> 1
         Stopping -> 2
@@ -508,50 +512,50 @@ systemAPI esref =
     combineBitHalves :: (Word64, Word64) -> Natural
     combineBitHalves (high, low) = fromIntegral high `shiftL` 64 .|. fromIntegral low
 
-    low64BitsOrErr :: Natural -> HostM s Word64
+    low64BitsOrErr :: Natural -> HostM Word64
     low64BitsOrErr n = do
       unless (highBits n == 0) $
         throwError $ "The number of cycles does not fit in 64 bits: " ++ show n
       return $ fromIntegral $ lowBits n
 
-    msg_cycles_refunded :: () -> HostM s Word64
+    msg_cycles_refunded :: () -> HostM Word64
     msg_cycles_refunded () =  getRefunded esref >>= low64BitsOrErr
 
-    msg_cycles_available :: () -> HostM s Word64
+    msg_cycles_available :: () -> HostM Word64
     msg_cycles_available () = getAvailable esref >>= low64BitsOrErr
 
-    msg_cycles_accept :: Word64 -> HostM s Word64
+    msg_cycles_accept :: Word64 -> HostM Word64
     msg_cycles_accept max_amount = cycles_accept (fromIntegral max_amount) >>= low64BitsOrErr
 
-    canister_cycle_balance :: () -> HostM s Word64
+    canister_cycle_balance :: () -> HostM Word64
     canister_cycle_balance () = gets balance >>= low64BitsOrErr
 
-    msg_cycles_refunded128 :: Int32 -> HostM s ()
+    msg_cycles_refunded128 :: Int32 -> HostM ()
     msg_cycles_refunded128 dst = do
       i <- getsES esref inst
       amount <- getRefunded esref
       setBytes i (fromIntegral dst) (to128le amount)
 
-    msg_cycles_available128 :: Int32 -> HostM s ()
+    msg_cycles_available128 :: Int32 -> HostM ()
     msg_cycles_available128 dst = do
       i <- getsES esref inst
       amount <- getAvailable esref
       setBytes i (fromIntegral dst) (to128le amount)
 
-    msg_cycles_accept128 :: (Word64, Word64, Int32) -> HostM s ()
+    msg_cycles_accept128 :: (Word64, Word64, Int32) -> HostM ()
     msg_cycles_accept128 (max_amount_high, max_amount_low, dst) = do
       let max_amount = combineBitHalves (max_amount_high, max_amount_low)
       amount <- cycles_accept max_amount
       i <- getsES esref inst
       setBytes i (fromIntegral dst) (to128le amount)
 
-    canister_cycle_balance128 :: Int32 -> HostM s ()
+    canister_cycle_balance128 :: Int32 -> HostM ()
     canister_cycle_balance128 dst = do
       i <- getsES esref inst
       amount <- gets balance
       setBytes i (fromIntegral dst) (to128le amount)
 
-    call_new :: ( Int32, Int32, Int32, Int32, Int32, Int32, Int32, Int32 ) -> HostM s ()
+    call_new :: ( Int32, Int32, Int32, Int32, Int32, Int32, Int32, Int32 ) -> HostM ()
     call_new ( callee_src, callee_size, name_src, name_size
              , reply_fun, reply_env, reject_fun, reject_env ) = do
       discard_pending_call
@@ -567,7 +571,7 @@ systemAPI esref =
         , call_transferred_cycles = 0
         }
 
-    call_on_cleanup :: (Int32, Int32) -> HostM s ()
+    call_on_cleanup :: (Int32, Int32) -> HostM ()
     call_on_cleanup (fun, env) = do
       let cleanup_closure = WasmClosure fun env
       changePendingCall $ \pc -> do
@@ -576,22 +580,22 @@ systemAPI esref =
             throwError "call_on_cleanup invoked twice"
         return $ pc { call_callback = callback { cleanup_callback = Just cleanup_closure } }
 
-    call_data_append :: (Int32, Int32) -> HostM s ()
+    call_data_append :: (Int32, Int32) -> HostM ()
     call_data_append (src, size) = do
       arg <- copy_from_canister "call_data_append" src size
       changePendingCall $ \pc -> return $ pc { call_arg = call_arg pc <> arg }
 
-    call_cycles_add :: Word64 -> HostM s ()
+    call_cycles_add :: Word64 -> HostM ()
     call_cycles_add amount = call_cycles_add128 (0, amount)
 
-    call_cycles_add128 :: (Word64, Word64) -> HostM s ()
+    call_cycles_add128 :: (Word64, Word64) -> HostM ()
     call_cycles_add128 amount = do
       let cycles = combineBitHalves amount
       changePendingCall $ \pc -> do
         subtractBalance esref cycles
         return $ pc { call_transferred_cycles = call_transferred_cycles pc + cycles }
 
-    call_perform :: () -> HostM s Int32
+    call_perform :: () -> HostM Int32
     call_perform () = do
       pc <- getPendingCall
 
@@ -601,17 +605,17 @@ systemAPI esref =
 
     -- utilities for the pending call
 
-    setPendingCall :: MethodCall -> HostM s ()
+    setPendingCall :: MethodCall -> HostM ()
     setPendingCall pc =
       modES esref $ \es -> es { pending_call = Just pc }
 
-    getPendingCall :: HostM s MethodCall
+    getPendingCall :: HostM MethodCall
     getPendingCall =
       gets pending_call >>= \case
         Nothing -> throwError "No call in process"
         Just pc -> return pc
 
-    changePendingCall :: (MethodCall -> HostM s MethodCall) -> HostM s ()
+    changePendingCall :: (MethodCall -> HostM MethodCall) -> HostM ()
     changePendingCall act =
       getPendingCall >>= act >>= setPendingCall
 
@@ -620,29 +624,29 @@ systemAPI esref =
       forM_ mpc $ \pc -> addBalance esref (call_transferred_cycles pc)
       modES esref $ \es -> es { pending_call = Nothing }
 
-    checkStableMemorySize :: HostM s ()
+    checkStableMemorySize :: HostM ()
     checkStableMemorySize = do
       m <- gets stableMem
-      n <- Mem.size m
+      n <- lift $ Mem.size m
       when (n > 65536) $
         throwError "stable memory error: cannot use 32 bit API once stable memory is above 4GiB"
 
-    stable_size :: () -> HostM s Int32
+    stable_size :: () -> HostM Int32
     stable_size () = do
       checkStableMemorySize
       m <- gets stableMem
-      fromIntegral <$> Mem.size m
+      fromIntegral <$> lift (Mem.size m)
 
-    stable_grow :: Int32 -> HostM s Int32
+    stable_grow :: Int32 -> HostM Int32
     stable_grow delta = do
       checkStableMemorySize
       m <- gets stableMem
-      n <- Mem.size m
+      n <- lift $ Mem.size m
       if (fromIntegral delta + n) > 65536
       then return (-1)
-      else fromIntegral <$> Mem.grow m (fromIntegral delta)
+      else fromIntegral <$> lift (Mem.grow m (fromIntegral delta))
 
-    stable_write :: (Int32, Int32, Int32) -> HostM s ()
+    stable_write :: (Int32, Int32, Int32) -> HostM ()
     stable_write (dst, src, size) = do
       checkStableMemorySize
       m <- gets stableMem
@@ -650,7 +654,7 @@ systemAPI esref =
       blob <- getBytes i (fromIntegral src) size
       Mem.write m (fromIntegral dst) blob
 
-    stable_read :: (Int32, Int32, Int32) -> HostM s ()
+    stable_read :: (Int32, Int32, Int32) -> HostM ()
     stable_read (dst, src, size) = do
       checkStableMemorySize
       m <- gets stableMem
@@ -658,84 +662,84 @@ systemAPI esref =
       blob <- Mem.read m (fromIntegral src) (fromIntegral size)
       setBytes i (fromIntegral dst) blob
 
-    stable64_size :: () -> HostM s Word64
+    stable64_size :: () -> HostM Word64
     stable64_size () = do
       m <- gets stableMem
-      Mem.size m
+      lift $ Mem.size m
 
-    stable64_grow :: Word64 -> HostM s Word64
+    stable64_grow :: Word64 -> HostM Word64
     stable64_grow delta = do
       m <- gets stableMem
-      Mem.grow m delta
+      lift $ Mem.grow m delta
 
-    stable64_write :: (Word64, Word64, Word64) -> HostM s ()
+    stable64_write :: (Word64, Word64, Word64) -> HostM ()
     stable64_write (dst, src, size) = do
       m <- gets stableMem
       i <- getsES esref inst
       blob <- getBytes i (fromIntegral src) (fromIntegral size)
       Mem.write m dst blob
 
-    stable64_read :: (Word64, Word64, Word64) -> HostM s ()
+    stable64_read :: (Word64, Word64, Word64) -> HostM ()
     stable64_read (dst, src, size) = do
       m <- gets stableMem
       i <- getsES esref inst
       blob <- Mem.read m src size
       setBytes i (fromIntegral dst) blob
 
-    certified_data_set :: (Int32, Int32) -> HostM s ()
+    certified_data_set :: (Int32, Int32) -> HostM ()
     certified_data_set (src, size) = do
       when (size > 32) $ throwError "certified_data_set: too large"
       blob <- copy_from_canister "certified_data_set" src size
       modES esref $ \es -> es { new_certified_data = Just blob }
 
-    data_certificate_present :: () -> HostM s Int32
+    data_certificate_present :: () -> HostM Int32
     data_certificate_present () =
       gets (env_certificate . env) >>= \case
         Just _ -> return 1
         Nothing -> return 0
 
-    data_certificate_size :: () -> HostM s Int32
-    data_certificate_copy :: (Int32, Int32, Int32) -> HostM s ()
+    data_certificate_size :: () -> HostM Int32
+    data_certificate_copy :: (Int32, Int32, Int32) -> HostM ()
     (data_certificate_size, data_certificate_copy) = size_and_copy $
       gets (env_certificate . env) >>= \case
         Just b -> return b
         Nothing -> throwError "no certificate available"
 
-    msg_method_name_size :: () -> HostM s Int32
-    msg_method_name_copy :: (Int32, Int32, Int32) -> HostM s ()
+    msg_method_name_size :: () -> HostM Int32
+    msg_method_name_copy :: (Int32, Int32, Int32) -> HostM ()
     (msg_method_name_size, msg_method_name_copy) = size_and_copy $
       gets method_name >>=
         maybe (throwError "Cannot query method name here")
               (return . toUtf8 . T.pack)
 
-    accept_message :: () -> HostM s ()
+    accept_message :: () -> HostM ()
     accept_message () = do
       a <- gets accepted
       when a $ throwError "Message already accepted"
       modES esref $ \es -> es { accepted = True }
 
-    get_time :: () -> HostM s Word64
+    get_time :: () -> HostM Word64
     get_time () = do
         Timestamp ns <- gets (env_time . env)
         return (fromIntegral ns)
 
     -- TODO: implement once semantics of performance_counter is known.
-    performance_counter :: Int32 -> HostM s Word64
+    performance_counter :: Int32 -> HostM Word64
     performance_counter _ = return 0
 
-    is_controller :: (Int32, Int32) -> HostM s Int32
+    is_controller :: (Int32, Int32) -> HostM Int32
     is_controller (src, size) = do
       when (size > 29) $ throwError "ic0.is_controller: Argument does not represent a principal"
       blob <- copy_from_canister "is_controller" src size
       ctrls <- gets (env_controllers . env)
       return (if EntityId blob `elem` ctrls then 1 else 0)
 
-    get_canister_version :: () -> HostM s Word64
+    get_canister_version :: () -> HostM Word64
     get_canister_version () = do
         ns <- gets (env_canister_version . env)
         return (fromIntegral ns)
 
-    global_timer_set :: Word64 -> HostM s Word64
+    global_timer_set :: Word64 -> HostM Word64
     global_timer_set ts = do
         old_timer <- gets new_global_timer
         puts $ \es -> es {new_global_timer = Just ts}
@@ -743,20 +747,20 @@ systemAPI esref =
           Nothing -> gets $ fromIntegral . env_global_timer . env
           Just old_timer -> return old_timer
 
-    debug_print :: (Int32, Int32) -> HostM s ()
+    debug_print :: (Int32, Int32) -> HostM ()
     debug_print (src, size) = do
       -- TODO: This should be a non-trapping copy
       bytes <- copy_from_canister "debug_print" src size
       putBytes bytes
 
-    explicit_trap :: (Int32, Int32) -> HostM s ()
+    explicit_trap :: (Int32, Int32) -> HostM ()
     explicit_trap (src, size) = do
       -- TODO: This should be a non-trapping copy
       bytes <- copy_from_canister "trap" src size
       let msg = BSU.toString bytes
       throwError $ "canister trapped explicitly: " ++ msg
 
-    mint_cycles :: Word64 -> HostM s Word64
+    mint_cycles :: Word64 -> HostM Word64
     mint_cycles amount = do
       self <- gets (env_self . env)
       let cmc = wordToId 4
@@ -771,20 +775,29 @@ systemAPI esref =
 --  * the 'ESRef' that the system api functions are accessing
 --  * the original module (so that this ImpState can be snapshotted)
 
-data ImpState s = ImpState
-  { isESRef :: ESRef s
-  , isInstance :: Instance s
-  , isStableMem :: Memory s
+data ImpState = ImpState
+  { isESRef :: ESRef
+  , isInstance :: Instance RealWorld
+  , isStableMem :: Memory
   , isModule :: BS.ByteString
   }
 
-rawInstantiate :: BS.ByteString -> IO (TrapOr (ImpState RealWorld))
+instance Show ImpState where
+  show _ = ""
+
+rawInstantiate :: BS.ByteString -> IO (TrapOr ImpState)
 rawInstantiate wasm_mod = do
   esref <- newESRef
-  result <- initialize wasm_mod (systemAPI esref) <*> Mem.new
-  case result of
-    Left  err -> return $ Trap err
-    Right (inst, sm) -> return $ Return $ ImpState esref inst sm wasm_mod
+  putStrLn "start initialize"
+  inst <- try (initialize wasm_mod (systemAPI esref)) :: IO (Either WasmException (Instance RealWorld))
+  case inst of
+    Left e -> putStrLn $ show e
+    Right r -> return ()
+  putStrLn "done initialize"
+  sm <- Mem.new
+  case inst of
+    Left err -> return $ Trap $ show err
+    Right inst -> return $ Return $ ImpState esref inst sm wasm_mod
 
 cantRespond :: NeedsToRespond
 cantRespond = NeedsToRespond False
@@ -792,15 +805,15 @@ cantRespond = NeedsToRespond False
 canRespond :: NeedsToRespond
 canRespond = NeedsToRespond True
 
-canisterActions :: ExecutionState s -> CanisterActions
+canisterActions :: ExecutionState -> CanisterActions
 canisterActions es = CanisterActions
     { set_certified_data = new_certified_data es
     , set_global_timer = fromIntegral <$> new_global_timer es
     }
 
-type CanisterEntryPoint r = forall s. (ImpState s -> ST s r)
+type CanisterEntryPoint r = forall s. (ImpState -> IO r)
 
-rawInitialize :: EntityId -> Env -> Blob -> ImpState s -> ST s (TrapOr CanisterActions)
+rawInitialize :: EntityId -> Env -> Blob -> ImpState -> IO (TrapOr CanisterActions)
 rawInitialize caller env dat (ImpState esref inst sm wasm_mod) = do
   result <- runExceptT $ do
     let es = (initialExecutionState inst sm env cantRespond EXC_I)
@@ -814,13 +827,15 @@ rawInitialize caller env dat (ImpState esref inst sm wasm_mod) = do
               }
 
     --  invoke canister_init
+    lift $ putStrLn "init"
     withES esref es $ void $ invokeExport inst "canister_init" []
+  putStrLn "after init"
 
   case result of
     Left  err -> return $ Trap err
     Right (_, es') -> return $ Return $ canisterActions es'
 
-rawHeartbeat :: Env -> ImpState s -> ST s (TrapOr ([MethodCall], CanisterActions))
+rawHeartbeat :: Env -> ImpState -> IO (TrapOr ([MethodCall], CanisterActions))
 rawHeartbeat env (ImpState esref inst sm wasm_mod) = do
   result <- runExceptT $ do
     let es = (initialExecutionState inst sm env cantRespond EXC_T)
@@ -834,7 +849,7 @@ rawHeartbeat env (ImpState esref inst sm wasm_mod) = do
         , canisterActions es'
         )
 
-rawGlobalTimer :: Env -> ImpState s -> ST s (TrapOr ([MethodCall], CanisterActions))
+rawGlobalTimer :: Env -> ImpState -> IO (TrapOr ([MethodCall], CanisterActions))
 rawGlobalTimer env (ImpState esref inst sm wasm_mod) = do
   result <- runExceptT $ do
     let es = (initialExecutionState inst sm env cantRespond EXC_T)
@@ -848,7 +863,7 @@ rawGlobalTimer env (ImpState esref inst sm wasm_mod) = do
         , canisterActions es'
         )
 
-rawPreUpgrade :: EntityId -> Env -> ImpState s -> ST s (TrapOr (CanisterActions, Blob))
+rawPreUpgrade :: EntityId -> Env -> ImpState -> IO (TrapOr (CanisterActions, Blob))
 rawPreUpgrade caller env (ImpState esref inst sm wasm_mod) = do
   result <- runExceptT $ do
     let es = (initialExecutionState inst sm env cantRespond EXC_G)
@@ -869,7 +884,7 @@ rawPreUpgrade caller env (ImpState esref inst sm wasm_mod) = do
         stable_mem <- Mem.serialize <$> Mem.export (stableMem es')
         return $ Return (canisterActions es', stable_mem)
 
-rawPostUpgrade :: EntityId -> Env -> Blob -> Blob -> ImpState s -> ST s (TrapOr CanisterActions)
+rawPostUpgrade :: EntityId -> Env -> Blob -> Blob -> ImpState -> IO (TrapOr CanisterActions)
 rawPostUpgrade caller env mem dat (ImpState esref inst sm wasm_mod) = do
   result <- runExceptT $ do
     let es = (initialExecutionState inst sm env cantRespond EXC_I)
@@ -889,7 +904,7 @@ rawPostUpgrade caller env mem dat (ImpState esref inst sm wasm_mod) = do
     Left  err -> return $ Trap err
     Right (_, es') -> return $ Return (canisterActions es')
 
-rawQuery :: MethodName -> EntityId -> Env -> Blob -> ImpState s -> ST s (TrapOr Response)
+rawQuery :: MethodName -> EntityId -> Env -> Blob -> ImpState -> IO (TrapOr Response)
 rawQuery method caller env dat (ImpState esref inst sm _) = do
   let es = (initialExecutionState inst sm env canRespond EXC_Q)
             { params = Params
@@ -909,7 +924,7 @@ rawQuery method caller env dat (ImpState esref inst sm _) = do
       | Just r <- response es' -> return $ Return r
       | otherwise -> return $ Trap "No response"
 
-rawUpdate :: MethodName -> EntityId -> Env -> NeedsToRespond -> Cycles -> Blob -> ImpState s -> ST s (TrapOr UpdateResult)
+rawUpdate :: MethodName -> EntityId -> Env -> NeedsToRespond -> Cycles -> Blob -> ImpState -> IO (TrapOr UpdateResult)
 rawUpdate method caller env needs_to_respond cycles_available dat (ImpState esref inst sm _) = do
   let es = (initialExecutionState inst sm env needs_to_respond EXC_U)
             { params = Params
@@ -931,7 +946,7 @@ rawUpdate method caller env needs_to_respond cycles_available dat (ImpState esre
         , canisterActions es'
         )
 
-rawCallback :: Callback -> Env -> NeedsToRespond -> Cycles -> Response -> Cycles -> ImpState s -> ST s (TrapOr UpdateResult)
+rawCallback :: Callback -> Env -> NeedsToRespond -> Cycles -> Response -> Cycles -> ImpState -> IO (TrapOr UpdateResult)
 rawCallback callback env needs_to_respond cycles_available res refund (ImpState esref inst sm _) = do
   let params = case res of
         Reply dat ->
@@ -960,7 +975,7 @@ rawCallback callback env needs_to_respond cycles_available res refund (ImpState 
         )
 
 -- Needs to be separate from rawCallback, as it is its own transaction
-rawCleanup :: WasmClosure -> Env -> ImpState s -> ST s (TrapOr ())
+rawCleanup :: WasmClosure -> Env -> ImpState -> IO (TrapOr ())
 rawCleanup (WasmClosure fun_idx cb_env) env (ImpState esref inst sm _) = do
   let es = initialExecutionState inst sm env cantRespond EXC_C
 
@@ -970,7 +985,7 @@ rawCleanup (WasmClosure fun_idx cb_env) env (ImpState esref inst sm _) = do
     Left  err -> return $ Trap err
     Right _ -> return $ Return ()
 
-rawInspectMessage :: MethodName -> EntityId -> Env -> Blob -> ImpState s -> ST s (TrapOr Bool)
+rawInspectMessage :: MethodName -> EntityId -> Env -> Blob -> ImpState -> IO (TrapOr Bool)
 rawInspectMessage method caller env dat (ImpState esref inst sm wasm_mod) = do
   result <- runExceptT $ do
     let es = (initialExecutionState inst sm env cantRespond EXC_F)

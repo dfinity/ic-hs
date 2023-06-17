@@ -11,16 +11,12 @@ It is tailored to the use by ic-ref. For example it assumes that the
 table of a wasm instance is immutable.
 -}
 
-module IC.Wasm.Winter.Persist
-{-
+module IC.Wasm.Wasmtime.Persist
   ( PInstance(..)
-  , PModuleInst(..)
+  , Persistable(..)
   , persistInstance
   , resumeInstance
-  , persistMemory
-  , resumeMemory
   )
--}
   where
 
 import Control.Monad
@@ -40,25 +36,18 @@ import qualified Wasm.Runtime.Memory as W
 import qualified Wasm.Syntax.Values as W
 import qualified Wasm.Util.Source as W
 
-import IC.Wasm.Winter (Instance)
+import IC.Wasm.Wasmtime (Instance)
 
 -- |
 -- This stores data read from an instance.
-{-
-newtype PInstance = PInstance (Persisted (Instance ()))
+newtype PInstance = PInstance (Persisted (Instance RealWorld))
   deriving Show
 
-persistInstance :: Instance s -> ST s PInstance
+persistInstance :: Instance RealWorld -> IO PInstance
 persistInstance i = PInstance <$> persist i
 
-resumeInstance :: Instance s -> PInstance -> ST s ()
+resumeInstance :: Instance RealWorld -> PInstance -> IO ()
 resumeInstance i (PInstance p) = resume i p
-
-persistMemory :: W.MemoryInst (ST s) -> ST s ByteString
-persistMemory i = persist i
-
-resumeMemory :: W.MemoryInst (ST s) -> ByteString -> ST s ()
-resumeMemory i p = resume i p
 
 class Monad (M a) => Persistable a where
   type Persisted a :: Type
@@ -66,40 +55,17 @@ class Monad (M a) => Persistable a where
   persist :: a -> M a (Persisted a)
   resume :: a -> Persisted a -> M a ()
 
-instance Persistable (Stable.Memory s) where
-  type Persisted (Stable.Memory s) = Stable.Repr
-  type M (Stable.Memory s) = ST s
+instance Persistable (Stable.Memory) where
+  type Persisted (Stable.Memory) = Stable.Repr
+  type M (Stable.Memory) = IO
   persist = Stable.export
   resume = Stable.imp
 
-instance Persistable (W.MemoryInst (ST s)) where
-  type Persisted (W.MemoryInst (ST s)) = ByteString
-  type M (W.MemoryInst (ST s)) = ST s
-  persist = W.exportMemory
-  resume = W.importMemory
-
-instance Persistable (W.GlobalInst (ST s)) where
-  type Persisted (W.GlobalInst (ST s)) = W.Value
-  type M (W.GlobalInst (ST s)) = ST s
-  persist m = readMutVar (W._giContent m)
-  resume m = writeMutVar (W._giContent m)
-
-data PModuleInst = PModuleInst
-  { memories :: V.Vector (Persisted (W.MemoryInst (ST ())))
-  , globals :: V.Vector (Persisted (W.GlobalInst (ST ())))
-  }
-  deriving Show
-
-instance Persistable (W.ModuleInst W.Phrase (ST s)) where
-  type Persisted (W.ModuleInst W.Phrase (ST s)) = PModuleInst
-  type M (W.ModuleInst W.Phrase (ST s)) = ST s
-  persist inst = PModuleInst
-    <$> persist (W._miMemories inst)
-    <*> persist (W._miGlobals inst)
-  resume inst pinst = do
-    resume (W._miMemories inst) (memories pinst)
-    resume (W._miGlobals inst) (globals pinst)
-
+instance Persistable (Instance RealWorld) where
+  type Persisted (Instance RealWorld) = ()
+  type M (Instance RealWorld) = IO
+  persist i = return ()
+  resume = error "not implemented"
 
 instance Persistable a => Persistable [a] where
   type Persisted [a] = [Persisted a]
@@ -139,4 +105,3 @@ instance Persistable a => Persistable (a, Int) where
   type M (a, Int) = M a
   persist (a, _i) = persist a
   resume (a, _i) p = resume a p
--}
