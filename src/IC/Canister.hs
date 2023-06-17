@@ -98,10 +98,14 @@ parseCanister bytes = do
     , exports_global_timer = "canister_global_timer" `elem` exportedFunctions wasm_mod
     , init_method = \caller env dat -> do
         st <- instantiate decodedModule
+        putStrLn "ok"
         case st of
             Trap err -> return $ Trap err
             Return wasm_state0 ->
-              invoke wasm_state0 (rawInitialize caller env dat)
+              if "canister_init" `elem` exportedFunctions wasm_mod then
+                invoke wasm_state0 (rawInitialize caller env dat)
+              else
+                return $ Return (wasm_state0, noCanisterActions)
     , update_methods = M.fromList
       [ (m,
         \caller env needs_to_respond cycles_available dat wasm_state ->
@@ -128,8 +132,15 @@ parseCanister bytes = do
             Return wasm_state0 ->
               invoke wasm_state0 (rawPostUpgrade caller env mem dat)
     , inspect_message = \method_name caller env arg wasm_state ->
-          (snd <$>) <$> invoke wasm_state (rawInspectMessage method_name caller env arg)
-    , heartbeat = \env wasm_state -> invoke wasm_state (rawHeartbeat env)
+          if "canister_inspect_message" `elem` exportedFunctions wasm_mod then
+            (snd <$>) <$> invoke wasm_state (rawInspectMessage method_name caller env arg)
+          else
+            return $ Return True
+    , heartbeat = \env wasm_state ->
+        if "canister_heartbeat" `elem` exportedFunctions wasm_mod then
+          invoke wasm_state (rawHeartbeat env)
+        else
+          return $ Return (wasm_state, ([], noCanisterActions))
     , canister_global_timer = \env wasm_state -> invoke wasm_state (rawGlobalTimer env)
     , metadata = M.fromList metadata
     }

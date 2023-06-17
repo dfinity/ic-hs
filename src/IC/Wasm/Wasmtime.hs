@@ -29,6 +29,7 @@ module IC.Wasm.Wasmtime
 where
 
 import qualified Data.ByteString.Lazy as BS
+import Data.Either.Extra (mapLeft)
 import Control.Exception
 import Control.Monad.Except
 import qualified Data.Map as M
@@ -41,6 +42,8 @@ import Data.Default.Class (Default (..))
 import Data.Int
 import Data.Foldable
 import Data.MemoUgly
+import UnliftIO.Exception
+
 
 import Control.Exception (Exception, throwIO)
 import Control.Monad.Primitive (RealWorld)
@@ -73,27 +76,27 @@ type Imports s = [Import s]
 type Module = W.Module W.Phrase
 -}
 
-handleException :: Exception e => Either e r -> IO r
-handleException = either throwIO pure
-
 hello :: IO (Either Trap ())
 hello = return $ Right ()
 
-initialize :: BS.ByteString -> Imports -> IO (Instance RealWorld)
+msg_reply :: IO (Either Trap ())
+msg_reply = return $ Right ()
+
+initialize :: BS.ByteString -> Imports -> HostM (Instance RealWorld)
 initialize wasm imps = do
-  engine <- newEngine
-  store <- newStore engine
-  ctx <- storeContext store
-  putStrLn "a"
-  myModule <- handleException $ newModule engine (unsafeFromByteString $ BS.toStrict wasm)
-  putStrLn "b"
-  funcs <- mapM (\(mod, func, args, rets, f) -> newFunc ctx hello) imps -- TODO
-  putStrLn "c"
-  r <- newInstance ctx myModule (V.fromList $ [])
-  putStrLn "d"
+  engine <- lift $ newEngine
+  store <- lift $ newStore engine
+  ctx <- lift $ storeContext store
+  myModule <- case newModule engine (unsafeFromByteString $ BS.toStrict wasm) of
+                    Left err -> throwError (show err)
+                    Right r -> return r  
+  --let funcs = map (\(mod, func, args, rets, f) -> newFunc ctx (\x -> mapLeft newTrap <$> (runExceptT $ f x))) imps -- TODO
+  f <- lift $ newFunc ctx msg_reply
+  r <- lift (tryAny (newInstance ctx myModule (V.fromList [])) :: IO (Either SomeException (Either Trap (Instance RealWorld))))
   case r of
-    Left err -> (putStrLn $ "err") >> error "ahoj"
-    Right r -> putStrLn "ok" >> return r
+    Left err -> throwError (show err)
+    Right (Left err) -> throwError (show err)
+    Right (Right r) -> return r
 
 {-
   let by_mod :: [(T.Text, [(T.Text, W.StackType, W.StackType, [W.Value] -> HostFunc s)])]
