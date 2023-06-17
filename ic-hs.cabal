@@ -212,6 +212,28 @@ executable ic-ref
   build-depends: utf8-string
   build-depends: x509-store
 
+executable ic-wasmtime
+  import: ghc-flags
+  ghc-options: -rtsopts
+
+  hs-source-dirs: bin
+  main-is: ic-wasmtime.hs
+
+  build-depends: base >=4.12 && <5
+  build-depends: bytestring
+  build-depends: ic-hs
+  build-depends: optparse-applicative
+  build-depends: text
+  build-depends: vector
+  build-depends: unliftio
+  build-depends: wai-cors
+  build-depends: wai-extra
+  build-depends: warp
+  build-depends: wasmtime
+  build-depends: utf8-string
+  build-depends: x509-store
+  build-depends: mtl
+
 executable ic-ref-run
   import: ghc-flags
   ghc-options: -rtsopts

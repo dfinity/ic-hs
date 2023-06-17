@@ -789,11 +789,17 @@ rawInstantiate :: BS.ByteString -> IO (TrapOr ImpState)
 rawInstantiate wasm_mod = do
   esref <- newESRef
   putStrLn "start initialize"
-  inst <- runExceptT $ initialize wasm_mod (systemAPI esref)
-  sm <- Mem.new
-  putStrLn "done initialize"
+  putStrLn $ show $ BS.length wasm_mod
+  wasm_mod <- BS.readFile "/home/martin/counter/c.wasm"
+  inst <- runExceptT $ initialize wasm_mod --(systemAPI esref)
+  putStrLn "ok"
   case inst of
-    Left err -> putStrLn (show "") >> (return $ Trap $ show "") -- why show err crashes here?
+    Left e -> putStrLn e
+    Right r -> return ()
+  putStrLn "done initialize"
+  sm <- Mem.new
+  case inst of
+    Left err -> putStrLn "err" >> putStrLn ("$" ++ show err) >> (return $ Trap $ show err) -- why show err crashes here?
     Right inst -> return $ Return $ ImpState esref inst sm wasm_mod
 
 cantRespond :: NeedsToRespond

@@ -82,8 +82,8 @@ hello = return $ Right ()
 msg_reply :: IO (Either Trap ())
 msg_reply = return $ Right ()
 
-initialize :: BS.ByteString -> Imports -> HostM (Instance RealWorld)
-initialize wasm imps = do
+initialize :: BS.ByteString -> HostM (Instance RealWorld)
+initialize wasm = do
   engine <- lift $ newEngine
   store <- lift $ newStore engine
   ctx <- lift $ storeContext store
@@ -92,7 +92,7 @@ initialize wasm imps = do
                     Right r -> return r  
   --let funcs = map (\(mod, func, args, rets, f) -> newFunc ctx (\x -> mapLeft newTrap <$> (runExceptT $ f x))) imps -- TODO
   f <- lift $ newFunc ctx msg_reply
-  r <- lift (tryAny (newInstance ctx myModule (V.fromList [])) :: IO (Either SomeException (Either Trap (Instance RealWorld))))
+  r <- lift (tryAny (newInstance ctx myModule (V.fromList [toExtern f])) :: IO (Either SomeException (Either Trap (Instance RealWorld))))
   case r of
     Left err -> throwError (show err)
     Right (Left err) -> throwError (show err)
