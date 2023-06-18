@@ -40,5 +40,5 @@ work = do
 main :: IO ()
 main = do
   putStrLn "ok"
-  void $ forkIO work
-  threadDelay 1000000
+  work
+  --threadDelay 1000000
