@@ -170,6 +170,7 @@ rec {
   inherit ic-ref;
   inherit ic-ref-dist;
   inherit ic-hs-coverage;
+  inherit httpbin;
   inherit universal-canister;
 
   openssl = nixpkgs.openssl;
