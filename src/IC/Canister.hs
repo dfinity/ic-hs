@@ -21,7 +21,6 @@ import qualified Data.ByteString.Lazy.Char8 as BS
 import Data.Char (chr)
 import Data.List
 import Control.Monad
-import Control.Monad.ST
 import Data.Foldable
 import Control.Monad.Except
 import Codec.Compression.GZip (decompress)
@@ -38,7 +37,6 @@ import IC.Canister.Snapshot
 import IC.Canister.Imp
 import IC.Hash
 import IC.Utils
-import UnliftIO.Exception
 
 -- Here we can swap out the purification machinery
 type WasmState = CanisterSnapshot
@@ -115,14 +113,14 @@ parseCanister bytes = do
                             Right r -> return r
           -- the following crashes
           f <- newFunc ctx msg_reply
-          r <- tryAny (newInstance ctx myModule (Vec.fromList [toExtern f])) :: IO (Either SomeException (Either Trap (Instance RealWorld)))
-          -- the following "works" (produces proper request reject from Winter code)
-          -- r <- tryAny (newInstance ctx myModule (Vec.fromList [])) :: IO (Either SomeException (Either Trap (Instance RealWorld)))
+          r <- newInstance ctx myModule (Vec.fromList [toExtern f])
+          -- the following "hangs" (never prints "done")
+          --r <- newInstance ctx myModule (Vec.fromList [])
           -- end
+          putStrLn "done"
           void $ case r of
             Left err -> putStrLn (show err)
-            Right (Left err) -> putStrLn (show err)
-            Right (Right r) -> putStrLn "ok"
+            Right _ -> putStrLn "ok"
           return $ case instantiate wasm_mod of
             Trap err -> Trap err
             Return wasm_state0 ->

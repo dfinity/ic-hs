@@ -173,7 +173,6 @@ library
   build-depends: uglymemo
   build-depends: unordered-containers
   build-depends: utf8-string
-  build-depends: unliftio
   build-depends: vector
   build-depends: wai
   build-depends: wai-cors
