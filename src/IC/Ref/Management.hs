@@ -57,7 +57,7 @@ invokeManagementCanister caller maybeSubnet ctxt_id (Public method_name arg) =
       "start_canister" -> atomic $ onlyControllerOrSelf method_name False caller $ checkSubnet fetchCanisterId maybeSubnet icStartCanister
       "stop_canister" -> deferred $ onlyControllerOrSelf method_name False caller $ checkSubnet fetchCanisterId maybeSubnet $ icStopCanister ctxt_id
       "canister_status" -> atomic $ onlyControllerOrSelf method_name True caller $ checkSubnet fetchCanisterId maybeSubnet icCanisterStatus
-      "canister_info" -> atomic $ onlyCanisters method_name caller $ checkSubnet fetchCanisterId maybeSubnet icCanisterInfo
+      "canister_info" -> atomic $ checkSubnet fetchCanisterId maybeSubnet icCanisterInfo
       "delete_canister" -> atomic $ onlyControllerOrSelf method_name False caller $ checkSubnet fetchCanisterId maybeSubnet icDeleteCanister
       "deposit_cycles" -> atomic $ checkSubnet fetchCanisterId maybeSubnet $ icDepositCycles ctxt_id
       "provisional_create_canister_with_cycles" -> atomic $ icCreateCanisterWithCycles caller maybeSubnet ctxt_id
@@ -174,16 +174,6 @@ applySettings cid r = do
     forM_ (r .! #compute_allocation) $ setComputeAllocation cid
     forM_ (r .! #memory_allocation) $ setMemoryAllocation cid
     forM_ (r .! #freezing_threshold) $ setFreezingThreshold cid
-
-onlyCanisters ::
-  (ICM m, CanReject m) =>
-  String -> EntityId -> (R.Rec r -> m a) -> (R.Rec r -> m a)
-onlyCanisters method_name caller act r = do
-    isCan <- isCanister caller
-    if isCan then act r
-    else reject RC_CANISTER_ERROR
-        (prettyID caller <> " is not authorized to call " ++ method_name <> ", only canisters can call this method")
-        (Just EC_NOT_AUTHORIZED)
 
 onlyControllerOrSelf ::
   (ICM m, CanReject m, (r .! "canister_id") ~ Principal) =>
@@ -329,7 +319,9 @@ icUpdateCanisterSettings ctxt_id r = do
     bumpCanisterVersion canister_id
     case ((r .! #settings) .! #controllers) of
       Nothing -> return ()
-      Just new_controllers -> icAddCanisterHistory canister_id ctxt_id (r .! #sender_canister_version) (ControllersChange (map principalToEntityId $ Vec.toList new_controllers))
+      Just _ -> do
+        new_controllers <- S.toList <$> getControllers canister_id
+        icAddCanisterHistory canister_id ctxt_id (r .! #sender_canister_version) (ControllersChange new_controllers)
 
 icStartCanister :: (ICM m, CanReject m) => ICManagement m .! "start_canister"
 icStartCanister r = do

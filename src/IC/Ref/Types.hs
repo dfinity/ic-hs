@@ -241,12 +241,6 @@ getSubnetFromSubnetId sid = find (\(id, _, _, _, _) -> sid == id) <$> gets subne
 getCanisterRootKey :: CanisterId -> Bitcoin.ExtendedSecretKey
 getCanisterRootKey cid = Bitcoin.createExtendedKey $ rawEntityId cid
 
-isCanister :: ICM m => CanisterId -> m Bool
-isCanister cid = do
-  cans <- gets canisters
-  return $ case M.lookup cid cans of Nothing -> False
-                                     Just _ -> True
-
 canisterMustExist :: (CanReject m, ICM m) => CanisterId -> m ()
 canisterMustExist cid =
   gets (M.lookup cid . canisters) >>= \case

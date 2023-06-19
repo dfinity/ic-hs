@@ -22,9 +22,9 @@ import Test.Tasty.HUnit
 import qualified Data.Row as R
 import qualified Data.Vector as Vec
 import Data.Row ((.==), (.+), (.!))
+import Codec.Candid
 import Control.Monad
 
-import Codec.Candid
 import IC.Types hiding (Blob)
 import IC.Hash
 import IC.Management
@@ -76,13 +76,28 @@ canister_history_tests ecid =
       info <- get_canister_info unican cid (Just 1)
       void $ check_history info 3 [(2, ChangeFromUser (EntityId defaultUser), CodeUninstall)]
 
-    , simpleTestCase "after changing controllers many times" ecid $ \unican -> do
+    , simpleTestCase "after changing controllers" ecid $ \unican -> do
       cid <- create ecid
-      void $ forM [1..42] $ \i -> do
-        ic_set_controllers ic00 cid [defaultUser, otherUser]
+
+      ic_set_controllers ic00 cid [otherUser, defaultUser, defaultUser]
+      info <- get_canister_info unican cid (Just 1)
+      void $ check_history info 2 [(1, ChangeFromUser (EntityId defaultUser), ControllersChange [EntityId otherUser, EntityId defaultUser])]
+
+      ic_set_controllers ic00 cid [defaultUser, otherUser, defaultUser]
+      info <- get_canister_info unican cid (Just 1)
+      void $ check_history info 3 [(2, ChangeFromUser (EntityId defaultUser), ControllersChange [EntityId otherUser, EntityId defaultUser])]
+
+      return ()
+
+    , simpleTestCase "after many changes" ecid $ \unican -> do
+      cid <- create ecid
+
+      void $ forM [1..24] $ \i -> do
+        ic_set_controllers ic00 cid [defaultUser]
         info <- get_canister_info unican cid (Just 20)
-        let hist = reverse $ take 20 $ reverse $ (0, ChangeFromUser (EntityId defaultUser), Creation [(EntityId defaultUser)]) : map (\i -> (i, ChangeFromUser (EntityId defaultUser), ControllersChange [EntityId defaultUser, EntityId otherUser])) [1..i]
+        let hist = reverse $ take 20 $ reverse $ (0, ChangeFromUser (EntityId defaultUser), Creation [(EntityId defaultUser)]) : map (\i -> (i, ChangeFromUser (EntityId defaultUser), ControllersChange [EntityId defaultUser])) [1..i]
         void $ check_history info (i + 1) hist
+
       return ()
 
     , testCase "changes from canister" $ do
@@ -92,9 +107,9 @@ canister_history_tests ecid =
       info <- get_canister_info unican cid (Just 1)
       void $ check_history info 1 [(0, ChangeFromCanister (EntityId unican) Nothing, Creation [EntityId unican, EntityId defaultUser])]
 
-      ic_install_with_sender_canister_version (ic00via unican) (enum #install) cid trivialWasmModule "" (Just 2)
+      ic_install_with_sender_canister_version (ic00via unican) (enum #install) cid trivialWasmModule "" (Just 5)
       info <- get_canister_info unican cid (Just 1)
-      void $ check_history info 2 [(1, ChangeFromCanister (EntityId unican) (Just 2), CodeDeployment Install (sha256 trivialWasmModule))]
+      void $ check_history info 2 [(1, ChangeFromCanister (EntityId unican) (Just 5), CodeDeployment Install (sha256 trivialWasmModule))]
 
       return ()
 
@@ -103,5 +118,5 @@ canister_history_tests ecid =
       ic_create_with_sender_canister_version' (ic00via unican) ecid (Just 666) R.empty >>= isReject [5]
 
     , simpleTestCase "user call to canister_info" ecid $ \cid ->
-      ic_canister_info'' defaultUser cid Nothing >>= is2xx >>= isReject [5]
+      ic_canister_info'' defaultUser cid Nothing >>= is2xx >>= isReject [4]
     ]

@@ -26,6 +26,12 @@ principalToEntityId = EntityId . rawPrincipal
 entityIdToPrincipal :: EntityId -> Principal
 entityIdToPrincipal = Principal . rawEntityId
 
+type SenderCanisterVersion = [candidType|
+    record {
+      sender_canister_version : opt nat64;
+    }
+  |]
+
 type InstallMode = [candidType|
     variant {install : null; reinstall : null; upgrade : null}
   |]
