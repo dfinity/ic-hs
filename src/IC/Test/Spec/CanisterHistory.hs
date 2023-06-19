@@ -43,6 +43,7 @@ canister_history_tests ecid =
     let get_canister_info cid canister_id num_requested_changes = ic_canister_info (ic00via cid) canister_id num_requested_changes in
     let check_history resp total cs = do
           (resp .! #total_num_changes) @?= total
+          Vec.length (resp .! #recent_changes) @?= length cs
           forM (zip (Vec.toList $ resp .! #recent_changes) cs) $
             \(c, (v, o, d)) -> do
               c .! #canister_version @?= v
@@ -59,7 +60,7 @@ canister_history_tests ecid =
       info <- get_canister_info unican cid (Just 1)
       void $ check_history info 2 [(1, ChangeFromUser (EntityId defaultUser), CodeDeployment Install (sha256 universal_wasm))]
 
-      ic_install ic00 (enum #reinstall) cid trivialWasmModule ""
+      ic_install_with_sender_canister_version ic00 (enum #reinstall) cid trivialWasmModule "" (Just 666)
       info <- get_canister_info unican cid (Just 1)
       void $ check_history info 3 [(2, ChangeFromUser (EntityId defaultUser), CodeDeployment Reinstall (sha256 trivialWasmModule))]
 
@@ -119,4 +120,46 @@ canister_history_tests ecid =
 
     , simpleTestCase "user call to canister_info" ecid $ \cid ->
       ic_canister_info'' defaultUser cid Nothing >>= is2xx >>= isReject [4]
+
+    , simpleTestCase "calling canister_info" ecid $ \unican -> do
+      universal_wasm <- getTestWasm "universal-canister"
+
+      cid <- ic_provisional_create ic00 ecid Nothing Nothing R.empty
+      ic_install ic00 (enum #install) cid trivialWasmModule ""
+      ic_install ic00 (enum #reinstall) cid universal_wasm (run no_heartbeat)
+
+      info <- get_canister_info unican cid Nothing
+      info .! #controllers @?= (Vec.fromList [Principal defaultUser])
+      info .! #module_hash @?= (Just $ sha256 universal_wasm)
+
+      ic_install ic00 (enum #upgrade) cid trivialWasmModule ""
+
+      info <- get_canister_info unican cid Nothing
+      info .! #controllers @?= (Vec.fromList [Principal defaultUser])
+      info .! #module_hash @?= (Just $ sha256 trivialWasmModule)
+
+      ic_uninstall ic00 cid
+      ic_set_controllers ic00 cid [defaultUser, otherUser, defaultUser]
+
+      info <- get_canister_info unican cid Nothing
+      void $ check_history info 6 []
+      info .! #controllers @?= (Vec.fromList [Principal otherUser, Principal defaultUser])
+      info .! #module_hash @?= Nothing
+
+      let hist = [(0, ChangeFromUser (EntityId defaultUser), Creation [(EntityId defaultUser)]), (1, ChangeFromUser (EntityId defaultUser), CodeDeployment Install (sha256 trivialWasmModule)), (2, ChangeFromUser (EntityId defaultUser), CodeDeployment Reinstall (sha256 universal_wasm)), (3, ChangeFromUser (EntityId defaultUser), CodeDeployment Upgrade (sha256 trivialWasmModule)), (4, ChangeFromUser (EntityId defaultUser), CodeUninstall), (5, ChangeFromUser (EntityId defaultUser), ControllersChange [EntityId otherUser, EntityId defaultUser])]
+
+      info <- get_canister_info unican cid (Just 0)
+      void $ check_history info 6 []
+
+      info <- get_canister_info unican cid (Just 1)
+      void $ check_history info 6 [last hist]
+
+      info <- get_canister_info unican cid (Just 2)
+      void $ check_history info 6 (reverse $ take 2 $ reverse hist)
+
+      info <- get_canister_info unican cid (Just 6)
+      void $ check_history info 6 hist
+
+      info <- get_canister_info unican cid (Just 20)
+      void $ check_history info 6 hist
     ]
