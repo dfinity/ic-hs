@@ -27,6 +27,7 @@ import qualified Data.Row.Variants as V
 import qualified Data.ByteString.Lazy as BS
 import qualified Data.Vector as Vec
 import qualified Data.Set as S
+import qualified Data.Word as W
 import Data.List
 import Data.Maybe
 import Numeric.Natural
@@ -50,12 +51,13 @@ invokeManagementCanister ::
 invokeManagementCanister caller maybeSubnet ctxt_id (Public method_name arg) =
   case method_name of
       "create_canister" -> atomic $ noSubnet caller maybeSubnet $ icCreateCanister caller maybeSubnet ctxt_id
-      "install_code" -> atomic $ onlyControllerOrSelf method_name False caller $ checkSubnet fetchCanisterId maybeSubnet $ icInstallCode caller
-      "uninstall_code" -> atomic $ onlyControllerOrSelf method_name False caller $ checkSubnet fetchCanisterId maybeSubnet $ icUninstallCode
-      "update_settings" -> atomic $ onlyControllerOrSelf method_name False caller $ checkSubnet fetchCanisterId maybeSubnet icUpdateCanisterSettings
+      "install_code" -> atomic $ onlyControllerOrSelf method_name False caller $ checkSubnet fetchCanisterId maybeSubnet $ icInstallCode caller ctxt_id
+      "uninstall_code" -> atomic $ onlyControllerOrSelf method_name False caller $ checkSubnet fetchCanisterId maybeSubnet $ icUninstallCode ctxt_id
+      "update_settings" -> atomic $ onlyControllerOrSelf method_name False caller $ checkSubnet fetchCanisterId maybeSubnet $ icUpdateCanisterSettings ctxt_id
       "start_canister" -> atomic $ onlyControllerOrSelf method_name False caller $ checkSubnet fetchCanisterId maybeSubnet icStartCanister
       "stop_canister" -> deferred $ onlyControllerOrSelf method_name False caller $ checkSubnet fetchCanisterId maybeSubnet $ icStopCanister ctxt_id
       "canister_status" -> atomic $ onlyControllerOrSelf method_name True caller $ checkSubnet fetchCanisterId maybeSubnet icCanisterStatus
+      "canister_info" -> atomic $ onlyCanisters method_name caller $ checkSubnet fetchCanisterId maybeSubnet icCanisterInfo
       "delete_canister" -> atomic $ onlyControllerOrSelf method_name False caller $ checkSubnet fetchCanisterId maybeSubnet icDeleteCanister
       "deposit_cycles" -> atomic $ checkSubnet fetchCanisterId maybeSubnet $ icDepositCycles ctxt_id
       "provisional_create_canister_with_cycles" -> atomic $ icCreateCanisterWithCycles caller maybeSubnet ctxt_id
@@ -88,6 +90,23 @@ invokeManagementCanister _ _ _ Closure{} = error "closure invoked on management 
 invokeManagementCanister _ _ _ Heartbeat = error "heartbeat invoked on management canister"
 invokeManagementCanister _ _ _ GlobalTimer = error "global timer invoked on management canister"
 
+icAddCanisterHistory :: ICM m => CanisterId -> CallId -> Maybe W.Word64 -> ChangeDetails -> m ()
+icAddCanisterHistory canister_id ctxt_id sender_canister_version change_details = do
+    can_state <- getCanister canister_id
+    let timestamp_nanos = case time can_state of Timestamp t -> t
+    ctxt <- getCallContext ctxt_id
+    origin <- mapCallOrigin $ origin ctxt
+    let change = Change (fromIntegral timestamp_nanos) (fromIntegral $ canister_version can_state) origin change_details
+    addCanisterHistory canister_id change
+  where
+    mapCallOrigin (FromCanister ctxt_id' _) = do
+      caller <- calleeOfCallID ctxt_id'
+      return $ ChangeFromCanister caller sender_canister_version
+    mapCallOrigin (FromUser rid _) = do
+      caller <- callerOfRequest rid
+      return $ ChangeFromUser caller
+    mapCallOrigin FromSystemTask = error "trying to add change from SystemTask to canister history"
+
 icCreateCanister :: (ICM m, CanReject m) => EntityId -> Maybe Subnet -> CallId -> ICManagement m .! "create_canister"
 icCreateCanister caller maybe_subnet ctxt_id r = do
     forM_ (r .! #settings) validateSettings
@@ -95,6 +114,8 @@ icCreateCanister caller maybe_subnet ctxt_id r = do
     setCallContextCycles ctxt_id 0
     cid <- icCreateCanisterCommon caller maybe_subnet Nothing caller available
     forM_ (r .! #settings) $ applySettings cid
+    controllers <- S.toList <$> getControllers cid
+    icAddCanisterHistory cid ctxt_id (r .! #sender_canister_version) (Creation controllers)
     return (#canister_id .== entityIdToPrincipal cid)
 
 icCreateCanisterWithCycles :: (ICM m, CanReject m) => EntityId -> Maybe Subnet -> CallId -> ICManagement m .! "provisional_create_canister_with_cycles"
@@ -103,6 +124,8 @@ icCreateCanisterWithCycles caller maybe_subnet ctxt_id r = do
     ecid <- ecidOfCallID ctxt_id
     cid <- icCreateCanisterCommon ecid maybe_subnet (principalToEntityId <$> r .! #specified_id) caller (fromMaybe cDEFAULT_PROVISIONAL_CYCLES_BALANCE (r .! #amount))
     forM_ (r .! #settings) $ applySettings cid
+    controllers <- S.toList <$> getControllers cid
+    icAddCanisterHistory cid ctxt_id (r .! #sender_canister_version) (Creation controllers)
     return (#canister_id .== entityIdToPrincipal cid)
 
 icCreateCanisterCommon :: (ICM m, CanReject m) => EntityId -> Maybe Subnet -> Maybe EntityId -> EntityId -> Natural -> m EntityId
@@ -151,6 +174,16 @@ applySettings cid r = do
     forM_ (r .! #compute_allocation) $ setComputeAllocation cid
     forM_ (r .! #memory_allocation) $ setMemoryAllocation cid
     forM_ (r .! #freezing_threshold) $ setFreezingThreshold cid
+
+onlyCanisters ::
+  (ICM m, CanReject m) =>
+  String -> EntityId -> (R.Rec r -> m a) -> (R.Rec r -> m a)
+onlyCanisters method_name caller act r = do
+    isCan <- isCanister caller
+    if isCan then act r
+    else reject RC_CANISTER_ERROR
+        (prettyID caller <> " is not authorized to call " ++ method_name <> ", only canisters can call this method")
+        (Just EC_NOT_AUTHORIZED)
 
 onlyControllerOrSelf ::
   (ICM m, CanReject m, (r .! "canister_id") ~ Principal) =>
@@ -206,13 +239,17 @@ noSubnet caller (Just (subnet_id, _, _, _, _)) act r = do
     else
       reject RC_CANISTER_ERROR "the caller must be on the root subnet or belong to the target subnet" (Just EC_INVALID_ARGUMENT)
 
-icInstallCode :: (ICM m, CanReject m) => EntityId -> ICManagement m .! "install_code"
-icInstallCode caller r = do
+icInstallCode :: (ICM m, CanReject m) => EntityId -> CallId -> ICManagement m .! "install_code"
+icInstallCode caller ctxt_id r = do
     let canister_id = principalToEntityId (r .! #canister_id)
     let arg = r .! #arg
     new_can_mod <- return (parseCanister (r .! #wasm_module))
       `onErr` (\err -> reject RC_CANISTER_ERROR ("Parsing failed: " ++ err) (Just EC_INVALID_MODULE))
     was_empty <- isCanisterEmpty canister_id
+    let mode = R.switch (r .! #mode) $ R.empty
+              .+ #install .== (\() -> Install)
+              .+ #reinstall .== (\() -> Reinstall)
+              .+ #upgrade .== (\() -> Upgrade)
 
     let
       reinstall = do
@@ -226,6 +263,8 @@ icInstallCode caller r = do
             }
         performCanisterActions canister_id ca
         bumpCanisterVersion canister_id
+        can_state <- getCanister canister_id
+        icAddCanisterHistory canister_id ctxt_id (r .! #sender_canister_version) (CodeDeployment mode (fromJust $ module_hash can_state))
         when (set_certified_data ca == Nothing) $ setCertifiedData canister_id ""
         when (set_global_timer ca == Nothing) $ setCanisterGlobalTimer canister_id 0
 
@@ -255,6 +294,8 @@ icInstallCode caller r = do
             }
         performCanisterActions canister_id (ca1 { set_global_timer = Nothing } <> ca2)
         bumpCanisterVersion canister_id
+        can_state <- getCanister canister_id
+        icAddCanisterHistory canister_id ctxt_id (r .! #sender_canister_version) (CodeDeployment mode (fromJust $ module_hash can_state))
         when (set_global_timer ca2 == Nothing) $ setCanisterGlobalTimer canister_id 0
 
     R.switch (r .! #mode) $ R.empty
@@ -262,8 +303,8 @@ icInstallCode caller r = do
       .+ #reinstall .== (\() -> reinstall)
       .+ #upgrade .== (\() -> upgrade)
 
-icUninstallCode :: (ICM m, CanReject m) => ICManagement m .! "uninstall_code"
-icUninstallCode r = do
+icUninstallCode :: (ICM m, CanReject m) => CallId -> ICManagement m .! "uninstall_code"
+icUninstallCode ctxt_id r = do
     let canister_id = principalToEntityId (r .! #canister_id)
     -- empty canister, resetting selected state
     modCanister canister_id $ \can_state -> can_state
@@ -272,6 +313,7 @@ icUninstallCode r = do
       , canister_version = canister_version can_state + 1
       , global_timer = 0
       }
+    icAddCanisterHistory canister_id ctxt_id (r .! #sender_canister_version) CodeUninstall
     -- reject all call open contexts of this canister
     gets (M.toList . call_contexts) >>= mapM_ (\(ctxt_id, ctxt) ->
         when (canister ctxt == canister_id && needs_to_respond ctxt == NeedsToRespond True) $ do
@@ -279,12 +321,15 @@ icUninstallCode r = do
             deleteCallContext ctxt_id
         )
 
-icUpdateCanisterSettings :: (ICM m, CanReject m) => ICManagement m .! "update_settings"
-icUpdateCanisterSettings r = do
+icUpdateCanisterSettings :: (ICM m, CanReject m) => CallId -> ICManagement m .! "update_settings"
+icUpdateCanisterSettings ctxt_id r = do
     let canister_id = principalToEntityId (r .! #canister_id)
     validateSettings (r .! #settings)
     applySettings canister_id (r .! #settings)
     bumpCanisterVersion canister_id
+    case ((r .! #settings) .! #controllers) of
+      Nothing -> return ()
+      Just new_controllers -> icAddCanisterHistory canister_id ctxt_id (r .! #sender_canister_version) (ControllersChange (map principalToEntityId $ Vec.toList new_controllers))
 
 icStartCanister :: (ICM m, CanReject m) => ICManagement m .! "start_canister"
 icStartCanister r = do
@@ -335,6 +380,24 @@ icCanisterStatus r = do
       .+ #cycles .== cycles
       .+ #idle_cycles_burned_per_day .== idle_cycles_burned_per_day
 
+icCanisterInfo :: (ICM m, CanReject m) => ICManagement m .! "canister_info"
+icCanisterInfo r = do
+    let canister_id = principalToEntityId (r .! #canister_id)
+    let num_requested_changes = fromIntegral $ fromMaybe 0 (r .! #num_requested_changes)
+    can_state <- getCanister canister_id
+    let history = canister_history can_state
+    let recent_changes = reverse $ take num_requested_changes (changes history)
+    return $ R.empty
+      .+ #total_num_changes .== total_num_changes history
+      .+ #recent_changes .== Vec.fromList (map mapChange recent_changes)
+      .+ #module_hash .== module_hash can_state
+      .+ #controllers .== Vec.fromList (map entityIdToPrincipal (S.toList (controllers can_state)))
+    where
+      mapChange (Change timestamp_nanos canister_version change_origin change_details) = R.empty
+        .+ #timestamp_nanos .== timestamp_nanos
+        .+ #canister_version .== canister_version
+        .+ #origin .== mapChangeOrigin change_origin
+        .+ #details .== mapChangeDetails change_details
 
 icDeleteCanister :: (ICM m, CanReject m) => ICManagement m .! "delete_canister"
 icDeleteCanister r = do

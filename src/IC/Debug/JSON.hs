@@ -35,7 +35,7 @@ import IC.Wasm.Winter.Persist
 import IC.Purify
 import IC.Canister.Snapshot
 import IC.Canister
-import IC.Ref
+import IC.Ref.Types
 import IC.Crypto
 import IC.Hash
 
@@ -166,6 +166,31 @@ instance ToJSON CallRequest where
 
 deriving instance Generic RunStatus
 instance ToJSON RunStatus where
+    toJSON     = genericToJSON customOptions
+    toEncoding = genericToEncoding customOptions
+
+deriving instance Generic CanisterInstallMode
+instance ToJSON CanisterInstallMode where
+    toJSON     = genericToJSON customOptions
+    toEncoding = genericToEncoding customOptions
+
+deriving instance Generic ChangeOrigin
+instance ToJSON ChangeOrigin where
+    toJSON     = genericToJSON customOptions
+    toEncoding = genericToEncoding customOptions
+
+deriving instance Generic ChangeDetails
+instance ToJSON ChangeDetails where
+    toJSON     = genericToJSON customOptions
+    toEncoding = genericToEncoding customOptions
+
+deriving instance Generic Change
+instance ToJSON Change where
+    toJSON     = genericToJSON customOptions
+    toEncoding = genericToEncoding customOptions
+
+deriving instance Generic CanisterHistory
+instance ToJSON CanisterHistory where
     toJSON     = genericToJSON customOptions
     toEncoding = genericToEncoding customOptions
 

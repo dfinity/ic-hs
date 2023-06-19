@@ -58,6 +58,7 @@ import IC.Types(TestSubnetConfig, SubnetType(..))
 import IC.Test.Spec.HTTP
 import IC.Test.Spec.Timer
 import IC.Test.Spec.CanisterVersion
+import IC.Test.Spec.CanisterHistory
 import qualified IC.Test.Spec.TECDSA
 
 -- * The test suite (see below for helper functions)
@@ -150,7 +151,8 @@ icTests my_sub other_sub =
             .+ #mode .== mode
             .+ #canister_id .== Principal canister_id
             .+ #wasm_module .== wasm_module
-            .+ #arg .== arg in
+            .+ #arg .== arg
+            .+ #sender_canister_version .== Nothing in
 
       testCase "as user" $ do
         cid <- create ecid
@@ -1324,6 +1326,8 @@ icTests my_sub other_sub =
   , testGroup "canister global timer" $ canister_timer_tests ecid
 
   , testGroup "canister version" $ canister_version_tests ecid
+
+  , testGroup "canister history" $ canister_history_tests ecid
 
   , testGroup "is_controller system API" $
     [ simpleTestCase "argument is controller" ecid $ \cid -> do

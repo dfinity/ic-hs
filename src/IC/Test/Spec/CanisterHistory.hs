@@ -1,0 +1,107 @@
+{- |
+
+This module contains a test suite for the Internet Computer
+
+-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE ExplicitNamespaces #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE OverloadedLabels #-}
+{-# LANGUAGE NumericUnderscores #-}
+{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE FlexibleInstances #-}
+
+module IC.Test.Spec.CanisterHistory (canister_history_tests) where
+
+import Test.Tasty
+import Test.Tasty.HUnit
+import qualified Data.Row as R
+import qualified Data.Vector as Vec
+import Data.Row ((.==), (.+), (.!))
+import Control.Monad
+
+import Codec.Candid
+import IC.Types hiding (Blob)
+import IC.Hash
+import IC.Management
+import IC.Test.Universal
+import IC.Test.Agent
+import IC.Test.Agent.UnsafeCalls
+import IC.Test.Agent.SafeCalls
+import IC.Test.Agent.UserCalls
+import IC.Test.Spec.Utils
+
+-- * The test suite
+
+canister_history_tests :: HasAgentConfig => Blob -> [TestTree]
+canister_history_tests ecid =
+    let no_heartbeat = onHeartbeat (callback $ trap $ bytes "") in
+    let get_canister_info cid canister_id num_requested_changes = ic_canister_info (ic00via cid) canister_id num_requested_changes in
+    let check_history resp total cs = do
+          (resp .! #total_num_changes) @?= total
+          forM (zip (Vec.toList $ resp .! #recent_changes) cs) $
+            \(c, (v, o, d)) -> do
+              c .! #canister_version @?= v
+              c .! #origin @?= mapChangeOrigin o
+              c .! #details @?= mapChangeDetails d in
+    [ simpleTestCase "after creation and code deployments" ecid $ \unican -> do
+      universal_wasm <- getTestWasm "universal-canister"
+
+      cid <- ic_provisional_create ic00 ecid Nothing Nothing R.empty
+      info <- get_canister_info unican cid (Just 1)
+      void $ check_history info 1 [(0, ChangeFromUser (EntityId defaultUser), Creation [(EntityId defaultUser)])]
+
+      ic_install ic00 (enum #install) cid universal_wasm (run no_heartbeat)
+      info <- get_canister_info unican cid (Just 1)
+      void $ check_history info 2 [(1, ChangeFromUser (EntityId defaultUser), CodeDeployment Install (sha256 universal_wasm))]
+
+      ic_install ic00 (enum #reinstall) cid trivialWasmModule ""
+      info <- get_canister_info unican cid (Just 1)
+      void $ check_history info 3 [(2, ChangeFromUser (EntityId defaultUser), CodeDeployment Reinstall (sha256 trivialWasmModule))]
+
+      ic_install ic00 (enum #upgrade) cid universal_wasm (run no_heartbeat)
+      info <- get_canister_info unican cid (Just 1)
+      void $ check_history info 4 [(3, ChangeFromUser (EntityId defaultUser), CodeDeployment Upgrade (sha256 universal_wasm))]
+
+      return ()
+
+    , simpleTestCase "after uninstall" ecid $ \unican -> do
+      cid <- install ecid no_heartbeat
+
+      ic_uninstall ic00 cid
+      info <- get_canister_info unican cid (Just 1)
+      void $ check_history info 3 [(2, ChangeFromUser (EntityId defaultUser), CodeUninstall)]
+
+    , simpleTestCase "after changing controllers many times" ecid $ \unican -> do
+      cid <- create ecid
+      void $ forM [1..42] $ \i -> do
+        ic_set_controllers ic00 cid [defaultUser, otherUser]
+        info <- get_canister_info unican cid (Just 20)
+        let hist = reverse $ take 20 $ reverse $ (0, ChangeFromUser (EntityId defaultUser), Creation [(EntityId defaultUser)]) : map (\i -> (i, ChangeFromUser (EntityId defaultUser), ControllersChange [EntityId defaultUser, EntityId otherUser])) [1..i]
+        void $ check_history info (i + 1) hist
+      return ()
+
+    , testCase "changes from canister" $ do
+      unican <- install ecid no_heartbeat
+
+      cid <- ic_create (ic00via unican) ecid (R.empty .+ #controllers .== Vec.fromList [Principal unican, Principal defaultUser])
+      info <- get_canister_info unican cid (Just 1)
+      void $ check_history info 1 [(0, ChangeFromCanister (EntityId unican) Nothing, Creation [EntityId unican, EntityId defaultUser])]
+
+      ic_install_with_sender_canister_version (ic00via unican) (enum #install) cid trivialWasmModule "" (Just 2)
+      info <- get_canister_info unican cid (Just 1)
+      void $ check_history info 2 [(1, ChangeFromCanister (EntityId unican) (Just 2), CodeDeployment Install (sha256 trivialWasmModule))]
+
+      return ()
+
+    , testCase "incorrect sender_canister_version" $ do
+      unican <- install ecid no_heartbeat
+      ic_create_with_sender_canister_version' (ic00via unican) ecid (Just 666) R.empty >>= isReject [5]
+
+    , simpleTestCase "user call to canister_info" ecid $ \cid ->
+      ic_canister_info'' defaultUser cid Nothing >>= is2xx >>= isReject [5]
+    ]

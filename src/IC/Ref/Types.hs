@@ -91,6 +91,12 @@ data CanisterContent = CanisterContent
   }
   deriving (Show)
 
+data CanisterHistory = CanisterHistory {
+    changes :: [Change]
+  , total_num_changes :: W.Word64
+}
+  deriving (Show)
+
 data CanState = CanState
   { content :: Maybe CanisterContent -- absent when empty
   , run_status :: RunStatus
@@ -102,6 +108,7 @@ data CanState = CanState
   , cycle_balance :: Natural
   , certified_data :: Blob
   , canister_version :: Natural
+  , canister_history :: CanisterHistory
   , global_timer :: Natural
   -- |Not part of the spec, but in this implementation we schedule
   -- heartbeats only for canisters who have not been idle since the
@@ -234,6 +241,12 @@ getSubnetFromSubnetId sid = find (\(id, _, _, _, _) -> sid == id) <$> gets subne
 getCanisterRootKey :: CanisterId -> Bitcoin.ExtendedSecretKey
 getCanisterRootKey cid = Bitcoin.createExtendedKey $ rawEntityId cid
 
+isCanister :: ICM m => CanisterId -> m Bool
+isCanister cid = do
+  cans <- gets canisters
+  return $ case M.lookup cid cans of Nothing -> False
+                                     Just _ -> True
+
 canisterMustExist :: (CanReject m, ICM m) => CanisterId -> m ()
 canisterMustExist cid =
   gets (M.lookup cid . canisters) >>= \case
@@ -261,6 +274,7 @@ createEmptyCanister cid controllers time = modify $ \ic ->
       , cycle_balance = 0
       , certified_data = ""
       , canister_version = 0
+      , canister_history = CanisterHistory [] 0
       , global_timer = 0
       , last_action = Nothing
       }
@@ -428,6 +442,13 @@ getCanisterVersion cid = canister_version <$> getCanister cid
 bumpCanisterVersion :: ICM m => CanisterId -> m ()
 bumpCanisterVersion cid = modCanister cid $
     \cs -> cs { canister_version = canister_version cs + 1 }
+
+getCanisterHistory :: ICM m => CanisterId -> m CanisterHistory
+getCanisterHistory cid = canister_history <$> getCanister cid
+
+addCanisterHistory :: ICM m => CanisterId -> Change -> m ()
+addCanisterHistory cid c = modCanister cid $
+    \cs -> cs { canister_history = CanisterHistory (take 20 $ c : changes (canister_history cs)) (total_num_changes (canister_history cs) + 1) }
 
 getCanisterGlobalTimer :: ICM m => CanisterId -> m Natural
 getCanisterGlobalTimer cid = global_timer <$> getCanister cid
