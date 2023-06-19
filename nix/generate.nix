@@ -53,6 +53,12 @@ let
       extraCabal2nixOptions = "--no-check";
     };
 
+    wasmtime-hs = haskellSrc2nixWithDoc {
+      name = "wasmtime-hs";
+      src = pkgs.sources.wasmtime-hs;
+      src_subst = "pkgs.sources.wasmtime-hs";
+      extraCabal2nixOptions = "--no-check";
+    };
     winter = haskellSrc2nixWithDoc {
       name = "winter";
       src = pkgs.sources.winter;

@@ -173,11 +173,13 @@ library
   build-depends: uglymemo
   build-depends: unordered-containers
   build-depends: utf8-string
+  build-depends: unliftio
   build-depends: vector
   build-depends: wai
   build-depends: wai-cors
   build-depends: wai-extra
   build-depends: warp
+  build-depends: wasmtime
   build-depends: wide-word
   build-depends: winter
   build-depends: word8

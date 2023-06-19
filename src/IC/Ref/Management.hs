@@ -218,7 +218,7 @@ icInstallCode caller r = do
       reinstall = do
         env <- canisterEnv canister_id
         let env1 = env { env_canister_version = env_canister_version env + 1, env_global_timer = 0 }
-        (wasm_state, ca) <- return (init_method new_can_mod caller env1 arg)
+        (wasm_state, ca) <- liftIO (init_method new_can_mod caller env1 arg)
           `onTrap` (\msg -> reject RC_CANISTER_ERROR ("Initialization trapped: " ++ msg) (Just EC_CANISTER_TRAPPED))
         setCanisterContent canister_id $ CanisterContent
             { can_mod = new_can_mod

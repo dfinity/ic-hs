@@ -21,25 +21,30 @@ import qualified Data.ByteString.Lazy.Char8 as BS
 import Data.Char (chr)
 import Data.List
 import Control.Monad
+import Control.Monad.ST
 import Data.Foldable
 import Control.Monad.Except
 import Codec.Compression.GZip (decompress)
+import qualified Data.Vector as Vec
 
 import IC.Types
 import IC.Wasm.Winter (parseModule, exportedFunctions, Module)
 import qualified Wasm.Syntax.AST as W
+
+import Wasmtime hiding (Module)
 
 import IC.Purify
 import IC.Canister.Snapshot
 import IC.Canister.Imp
 import IC.Hash
 import IC.Utils
+import UnliftIO.Exception
 
 -- Here we can swap out the purification machinery
 type WasmState = CanisterSnapshot
 -- type WasmState = Replay ImpState
 
-type InitFunc = EntityId -> Env -> Blob -> TrapOr (WasmState, CanisterActions)
+type InitFunc = EntityId -> Env -> Blob -> IO (TrapOr (WasmState, CanisterActions))
 type UpdateFunc = WasmState -> TrapOr (WasmState, UpdateResult)
 type QueryFunc = WasmState -> TrapOr Response
 
@@ -76,6 +81,9 @@ decodeModule bytes =
     asmMagic = asBytes [0x00, 0x61, 0x73, 0x6d]
     gzipMagic = asBytes [0x1f, 0x8b, 0x08]
 
+msg_reply :: IO (Either Trap ())
+msg_reply = return $ Right ()
+
 parseCanister :: Blob -> Either String CanisterModule
 parseCanister bytes = do
   decodedModule <- decodeModule bytes
@@ -98,8 +106,24 @@ parseCanister bytes = do
     , raw_wasm_hash = sha256 bytes
     , exports_heartbeat = "canister_heartbeat" `elem` exportedFunctions wasm_mod
     , exports_global_timer = "canister_global_timer" `elem` exportedFunctions wasm_mod
-    , init_method = \caller env dat ->
-          case instantiate wasm_mod of
+    , init_method = \caller env dat -> do
+          engine <- newEngine
+          store <- newStore engine
+          ctx <- storeContext store
+          myModule <- case newModule engine (unsafeFromByteString $ BS.toStrict decodedModule) of
+                            Left err -> putStrLn (show err) >> error ""
+                            Right r -> return r
+          -- the following crashes
+          f <- newFunc ctx msg_reply
+          r <- tryAny (newInstance ctx myModule (Vec.fromList [toExtern f])) :: IO (Either SomeException (Either Trap (Instance RealWorld)))
+          -- the following "works" (produces proper request reject from Winter code)
+          -- r <- tryAny (newInstance ctx myModule (Vec.fromList [])) :: IO (Either SomeException (Either Trap (Instance RealWorld)))
+          -- end
+          void $ case r of
+            Left err -> putStrLn (show err)
+            Right (Left err) -> putStrLn (show err)
+            Right (Right r) -> putStrLn "ok"
+          return $ case instantiate wasm_mod of
             Trap err -> Trap err
             Return wasm_state0 ->
               invoke wasm_state0 (rawInitialize caller env dat)

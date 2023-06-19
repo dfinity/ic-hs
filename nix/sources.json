@@ -57,6 +57,19 @@
         "url": "https://github.com/NixOS/nixpkgs/archive/652af6eb88e1bc633bc6dc44827519f6e7284dbb.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
+    "wasmtime-hs": {
+        "branch": "master",
+        "builtin": false,
+        "description": "Haskell binding to wasmtime",
+        "homepage": "https://github.com/dfinity/wasmtime-hs",
+        "owner": "dfinity",
+        "repo": "wasmtime-hs",
+        "rev": "99e09198620626555ee68c2e41b62eaf9419f9ff",
+        "sha256": "sha256-/RJLjIsrhFCDX0NxNATvUZLnMRSFngvaShFYZlMj5ok=",
+        "type": "tarball",
+        "url": "https://github.com/dfinity/wasmtime-hs/archive/99e09198620626555ee68c2e41b62eaf9419f9ff.tar.gz",
+        "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
+    },
     "winter": {
         "branch": "master",
         "builtin": false,
