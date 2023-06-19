@@ -38,7 +38,7 @@ import qualified Data.Word as W
 import IC.Constants
 import IC.HTTP.Request
 import IC.Version
-import IC.Types
+import IC.Types hiding (CanisterInstallMode(..))
 import IC.Ref
 import IC.DRun.Parse (Ingress(..), parseFile)
 import IC.Management
@@ -149,6 +149,7 @@ work subnets systemTaskPeriod msg_file = do
                 .+ #settings .== Nothing
                 .+ #amount .== Nothing
                 .+ #specified_id .== Nothing
+                .+ #sender_canister_version .== Nothing
             Install cid filename arg -> do
               wasm <- liftIO $ B.readFile filename
               withRefConfig conf $ callManagement store (EntityId cid) user_id #install_code $ empty
@@ -156,6 +157,7 @@ work subnets systemTaskPeriod msg_file = do
                 .+ #canister_id .== Candid.Principal cid
                 .+ #wasm_module .== wasm
                 .+ #arg .== arg
+                .+ #sender_canister_version .== Nothing
             Reinstall cid filename arg -> do
               wasm <- liftIO $ B.readFile filename
               withRefConfig conf $ callManagement store (EntityId cid) user_id #install_code $ empty
@@ -163,6 +165,7 @@ work subnets systemTaskPeriod msg_file = do
                 .+ #canister_id .== Candid.Principal cid
                 .+ #wasm_module .== wasm
                 .+ #arg .== arg
+                .+ #sender_canister_version .== Nothing
             Upgrade cid filename arg -> do
               wasm <- liftIO $ B.readFile filename
               withRefConfig conf $ callManagement store (EntityId cid) user_id #install_code $ empty
@@ -170,6 +173,7 @@ work subnets systemTaskPeriod msg_file = do
                 .+ #canister_id .== Candid.Principal cid
                 .+ #wasm_module .== wasm
                 .+ #arg .== arg
+                .+ #sender_canister_version .== Nothing
             Query  cid method arg ->
               withRefConfig conf $ submitQuery store (QueryRequest (EntityId cid) user_id method arg)
             Update cid method arg ->
