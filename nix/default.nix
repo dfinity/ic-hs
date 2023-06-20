@@ -54,6 +54,10 @@ let
           # We override secp256k1 since the version in nixpkgs doesn't provide a
           # .a library needed for a static build of ic-hs.
           secp256k1 = super.callPackage ./secp256k1 {};
+
+          wasmtime = super.callPackage ./wasmtime.nix {
+            inherit (self.darwin.apple_sdk.frameworks) Security;
+          };
         })
       ];
     };

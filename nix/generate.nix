@@ -92,7 +92,7 @@ let
       pkgs.lib.flip pkgs.lib.mapAttrsToList packages (
         n: pkg: ''
           cp ${pkg}/default.nix $out/${n}.nix
-          echo '  ${n} = super.callPackage ./${n}.nix { ${pkgs.lib.optionalString (n == "ic-hs") "wasmtime = self.wasmtime-hs;"} };' >> $out/all.nix
+          echo '  ${n} = super.callPackage ./${n}.nix { };' >> $out/all.nix
         ''
       )
     ) + ''

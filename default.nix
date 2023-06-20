@@ -292,6 +292,8 @@ rec {
         nixpkgs.cabal-install
         nixpkgs.ghcid
         haskellPackages.haskell-language-server
+        nixpkgs.gdb
+        nixpkgs.valgrind
       ];
     };
 }

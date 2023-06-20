@@ -150,7 +150,6 @@ mkDerivation {
     wai-cors
     wai-extra
     warp
-    wasmtime
     wide-word
     winter
     word8
@@ -159,6 +158,7 @@ mkDerivation {
     x509-validation
     zlib
   ];
+  librarySystemDepends = [ wasmtime ];
   executableHaskellDepends = [
     async
     base
