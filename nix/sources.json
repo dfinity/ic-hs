@@ -64,10 +64,10 @@
         "homepage": "https://github.com/dfinity/wasmtime-hs",
         "owner": "dfinity",
         "repo": "wasmtime-hs",
-        "rev": "99e09198620626555ee68c2e41b62eaf9419f9ff",
-        "sha256": "sha256-/RJLjIsrhFCDX0NxNATvUZLnMRSFngvaShFYZlMj5ok=",
+        "rev": "646ca979d5f5c5f87d30ace70cb4541c50e4fbb1",
+        "sha256": "0hgqx8gq0nzvlnl1wd6mi12lcrjly1x5sxpddhv4fxf864h7k0ha",
         "type": "tarball",
-        "url": "https://github.com/dfinity/wasmtime-hs/archive/99e09198620626555ee68c2e41b62eaf9419f9ff.tar.gz",
+        "url": "https://github.com/dfinity/wasmtime-hs/archive/646ca979d5f5c5f87d30ace70cb4541c50e4fbb1.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "winter": {
