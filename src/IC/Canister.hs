@@ -108,7 +108,7 @@ parseCanister bytes = do
           engine <- newEngine
           store <- newStore engine
           ctx <- storeContext store
-          myModule <- case newModule engine (unsafeFromByteString $ BS.toStrict decodedModule) of
+          myModule <- case newModule engine (unsafeWasmFromBytes $ BS.toStrict decodedModule) of
                             Left err -> putStrLn (show err) >> error ""
                             Right r -> return r
           -- the following crashes
