@@ -79,9 +79,6 @@ decodeModule bytes =
     asmMagic = asBytes [0x00, 0x61, 0x73, 0x6d]
     gzipMagic = asBytes [0x1f, 0x8b, 0x08]
 
-msg_reply :: IO (Either Trap ())
-msg_reply = return $ Right ()
-
 parseCanister :: Blob -> Either String CanisterModule
 parseCanister bytes = do
   decodedModule <- decodeModule bytes
@@ -112,10 +109,7 @@ parseCanister bytes = do
                             Left err -> putStrLn (show err) >> error ""
                             Right r -> return r
           -- the following crashes
-          f <- newFunc ctx msg_reply
-          r <- newInstance ctx myModule (Vec.fromList [toExtern f])
-          -- the following "hangs" (never prints "done")
-          --r <- newInstance ctx myModule (Vec.fromList [])
+          r <- newInstance ctx myModule (Vec.fromList [])
           -- end
           putStrLn "done"
           void $ case r of
