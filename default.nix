@@ -151,7 +151,7 @@ let
   ic-hs-coverage = nixpkgs.haskell.lib.doCheck (nixpkgs.haskell.lib.doCoverage ic-hs);
 in
 
-  let httpbin = (naersk.buildPackage rec {
+let httpbin = (naersk.buildPackage rec {
     name = "httpbin-rs";
     root = subpath ./httpbin-rs;
     doCheck = false;
