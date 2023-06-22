@@ -1539,10 +1539,7 @@ icTests my_sub other_sub =
       release
       awaitStatus grs1 >>= isReject [4] -- still a reject
 
-    , testCaseSteps "deleted call contexts do not prevent stopping" $ \step -> do
-      -- Similar to above, but after uninstalling, imediatelly
-      -- stops and deletes. This can only work if the call
-      -- contexts are indeed deleted
+    , testCaseSteps "deleted call contexts prevent stopping" $ \step -> do
       cid <- install ecid noop
 
       step "Create message hold"
@@ -1558,21 +1555,29 @@ icTests my_sub other_sub =
       step "Long-running call is rejected"
       awaitStatus grs1 >>= isReject [4]
 
-      step "Stop now"
-      ic_stop_canister ic00 cid
+      step "Stop"
+      grs2 <- submitCall cid $ stopRequest cid
+      awaitKnown grs2 >>= isPendingOrProcessing
 
-      step "Delete now"
-      ic_delete_canister ic00 cid
+      step "Is stopping (via management)?"
+      cs <- ic_canister_status ic00 cid
+      cs .! #status @?= enum #stopping
 
-      -- deletion means query fails
-      query' cid reply >>= isReject [3]
+      step "Next stop waits, too"
+      grs3 <- submitCall cid $ stopRequest cid
+      awaitKnown grs3 >>= isPendingOrProcessing
 
-      step "Now release"
+      step "Release the held message"
       release
+
+      step "Wait for calls to complete"
       awaitStatus grs1 >>= isReject [4] -- still a reject
-      query' cid reply >>= isReject [3] -- still deleted
+      awaitStatus grs2 >>= isReply >>= is (Candid.encode ())
+      awaitStatus grs3 >>= isReply >>= is (Candid.encode ())
 
-
+      step "Is stopped (via management)?"
+      cs <- ic_canister_status ic00 cid
+      cs .! #status @?= enum #stopped
 
     , testCaseSteps "deleted call contexts are not delivered" $ \step -> do
       -- This is a tricky one: We make one long-running call,
