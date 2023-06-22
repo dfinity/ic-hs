@@ -123,10 +123,17 @@ canister_http_calls :: HasAgentConfig => TestSubnetConfig -> [TestTree]
 canister_http_calls sub =
   let (_, _, _, ((ecid_as_word64, _):_)) = sub in
   let ecid = rawEntityId $ wordToId ecid_as_word64 in
-  [
+  [ -- Corner cases
+
+    simpleTestCase "invalid domain name" ecid $ \cid ->
+      ic_http_invalid_address_request' (ic00viaWithCyclesRefund 0 cid) sub "xwWPqqbNqxxHmLXdguF4DN9xGq22nczV.com" Nothing Nothing cid >>= isReject [2]
+
+    , simpleTestCase "invalid IP address" ecid $ \cid ->
+      ic_http_invalid_address_request' (ic00viaWithCyclesRefund 0 cid) sub "240.0.0.0" Nothing Nothing cid >>= isReject [2]
+
     -- "Currently, the GET, HEAD, and POST methods are supported for HTTP requests."
 
-    simpleTestCase "GET call" ecid $ \cid -> do
+    , simpleTestCase "GET call" ecid $ \cid -> do
       let s = "hello_world"
       resp <- ic_http_get_request (ic00viaWithCyclesRefund 0 cid) sub ("ascii/" ++ s) (Just 666) Nothing cid
       (resp .! #status) @?= 200

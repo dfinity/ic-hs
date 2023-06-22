@@ -93,7 +93,10 @@ icHttpRequest caller maybe_subnet ctxt_id r = do
           let body = case r .! #body of Nothing -> ""
                                         Just b -> b
           resp <- liftIO $ sendHttpRequest getRootCerts (r .! #url) method headers body
-          if
+          case resp of
+           Left e -> reject RC_SYS_TRANSIENT e Nothing
+           Right resp ->
+            if
             | http_response_size resp > max_resp_size ->
               reject RC_SYS_FATAL ("response body size cannot exceed " ++ show max_resp_size ++ " bytes") (Just EC_CANISTER_REJECTED)
             | not (check_http_response_headers_number resp) ->
