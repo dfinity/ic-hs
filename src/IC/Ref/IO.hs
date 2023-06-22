@@ -19,10 +19,10 @@ import qualified Network.TLS.Extra.Cipher as C
 import qualified Network.HTTP.Client as C
 import qualified Network.HTTP.Client.TLS as C
 import Network.HTTP.Types.Status (statusCode)
+import Control.Exception
 import Data.CaseInsensitive (original)
 import Data.Default.Class (def)
 import Data.Row ((.==), (.+))
-import UnliftIO.Exception
 
 import IC.Management (HttpResponse)
 
@@ -41,7 +41,7 @@ sendHttpRequest certs url method headers body = do
       C.requestHeaders = headers,
       C.requestBody = C.RequestBodyLBS body
     }
-    resp <- try (C.httpLbs req m) :: IO (Either C.HttpException (C.Response LBS.ByteString))
+    resp <- try (C.httpLbs req m) :: IO (Either SomeException (C.Response LBS.ByteString))
     case resp of
       Left e -> return $ Left $ show e
       Right r -> return $ Right $ toHttpResponse r
