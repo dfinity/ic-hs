@@ -16,6 +16,7 @@
 module IC.Test.Agent.UserCalls
     (
       ic_canister_status'',
+      ic_canister_info'',
       ic_delete_canister'',
       ic_deposit_cycles'',
       ic_ecdsa_public_key'',
@@ -32,6 +33,7 @@ module IC.Test.Agent.UserCalls
 
 import qualified Data.Vector as Vec
 import qualified Data.Text as T
+import qualified Data.Word as W
 import Numeric.Natural
 import Test.Tasty.HUnit
 import Codec.Candid (Principal(..))
@@ -49,17 +51,20 @@ ic_install'' user mode canister_id wasm_module arg =
     .+ #canister_id .== Principal canister_id
     .+ #wasm_module .== wasm_module
     .+ #arg .== arg
+    .+ #sender_canister_version .== Nothing
 
 ic_uninstall'' :: HasAgentConfig => Blob -> Blob -> IO (HTTPErrOr ReqResponse)
 ic_uninstall'' user canister_id =
   callIC'' user canister_id #uninstall_code $ empty
     .+ #canister_id .== Principal canister_id
+    .+ #sender_canister_version .== Nothing
 
 ic_set_controllers'' :: HasAgentConfig => Blob -> Blob -> [Blob] -> IO (HTTPErrOr ReqResponse)
 ic_set_controllers'' user canister_id new_controllers = do
   callIC'' user canister_id #update_settings $ empty
     .+ #canister_id .== Principal canister_id
     .+ #settings .== fromPartialSettings (#controllers .== Vec.fromList (map Principal new_controllers))
+    .+ #sender_canister_version .== Nothing
 
 ic_start_canister'' :: HasAgentConfig => Blob -> Blob -> IO (HTTPErrOr ReqResponse)
 ic_start_canister'' user canister_id = do
@@ -75,6 +80,12 @@ ic_canister_status'' :: HasAgentConfig => Blob -> Blob -> IO (HTTPErrOr ReqRespo
 ic_canister_status'' user canister_id = do
   callIC'' user canister_id #canister_status $ empty
     .+ #canister_id .== Principal canister_id
+
+ic_canister_info'' :: HasAgentConfig => Blob -> Blob -> Maybe W.Word64 -> IO (HTTPErrOr ReqResponse)
+ic_canister_info'' user canister_id num_requested_changes = do
+  callIC'' user canister_id #canister_info $ empty
+    .+ #canister_id .== Principal canister_id
+    .+ #num_requested_changes .== num_requested_changes
 
 ic_delete_canister'' :: HasAgentConfig => Blob -> Blob -> IO (HTTPErrOr ReqResponse)
 ic_delete_canister'' user canister_id = do

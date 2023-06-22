@@ -225,7 +225,7 @@ checkEffectiveCanisterID :: RequestValidation m => CanisterId -> CanisterId -> M
 checkEffectiveCanisterID ecid cid method arg
   | cid == managementCanisterId =
     if | method == "provisional_create_canister_with_cycles" -> pure ()
-       | method `elem` ["create_canister", "raw_rand", "http_request", "ecdsa_public_key", "sign_with_ecdsa"] ->
+       | method `elem` ["create_canister", "canister_info", "raw_rand", "http_request", "ecdsa_public_key", "sign_with_ecdsa"] ->
          throwError $ ExecutionError (RC_CANISTER_REJECT, "Management method " ++ method ++ " cannot be invoked via ingress calls", Nothing)
        | otherwise -> case Codec.Candid.decode @(R.Rec ("canister_id" R..== Principal)) arg of
                         Left err ->
@@ -460,13 +460,14 @@ processMessage m = case m of
       wasm_state <- getCanisterState callee
       can_mod <- getCanisterMod callee
       env <- canisterEnv callee
+      sender_canister_version_from_system <- getCanisterVersion callee
       invokeEntry ctxt_id callee wasm_state can_mod env entry >>= \case
         Trap msg -> do
           -- Eventually update cycle balance here
           rememberTrap ctxt_id msg
         Return (new_state, (call_actions, canister_actions)) -> do
           modCanister callee $ \cs -> cs { last_action = Just entry }
-          performCallActions ctxt_id call_actions
+          performCallActions ctxt_id call_actions (fromIntegral sender_canister_version_from_system)
           performCanisterActions callee canister_actions
           setCanisterState callee new_state
 
@@ -495,10 +496,10 @@ processMessage m = case m of
             , entry = Closure callback response refunded_cycles
             }
 
-performCallActions :: (ICM m, CanReject m) => CallId -> CallActions -> m ()
-performCallActions ctxt_id ca = do
+performCallActions :: ICM m => CallId -> CallActions -> W.Word64 -> m ()
+performCallActions ctxt_id ca sender_canister_version_from_system = do
   updateBalances ctxt_id (ca_new_calls ca) (ca_accept ca) (ca_mint ca)
-  mapM_ (newCall ctxt_id) (ca_new_calls ca)
+  mapM_ (newCall ctxt_id sender_canister_version_from_system) (ca_new_calls ca)
   mapM_ (respondCallContext ctxt_id) (ca_response ca)
 
 
@@ -595,28 +596,50 @@ invokeEntry ctxt_id canister_id wasm_state can_mod env entry = do
         | Just f <- M.lookup method (query_methods can_mod)  = Just (asUpdate f)
         | otherwise = Nothing
 
-newCall :: (ICM m, CanReject m) => CallId -> MethodCall -> m ()
-newCall from_ctxt_id call = do
-  caller <- calleeOfCallID from_ctxt_id
-  caller_subnet_id <- getSubnetFromCanisterId caller
-  let target = call_callee call
-  target_subnet_id <- getSubnetFromSubnetId target
-  unless (isRootSubnet caller_subnet_id) $ do
-    case target_subnet_id of
-      Nothing -> return ()
-      Just _ -> reject RC_DESTINATION_INVALID "Only NNS canisters can call a subnet ID directly." (Just EC_CANISTER_NOT_FOUND)
+fetchSenderCanisterVersion ::
+  forall a. (a ~ SenderCanisterVersion) =>
+  Blob -> Maybe W.Word64
+fetchSenderCanisterVersion r = case decode @a r of Left _ -> Nothing
+                                                   Right r -> r .! #sender_canister_version
+
+validate_call :: MethodCall -> [EntityId] -> Bool -> W.Word64 -> Either (RejectCode, String) ()
+validate_call call subs isOnRootSubnet sender_canister_version = do
+  validate_subnet_message call
+  validate_sender_canister_version call
+  where
+    validate_subnet_message call =
+      when ((call_callee call `elem` subs) && not isOnRootSubnet) $
+        Left (RC_DESTINATION_INVALID, "Only NNS canisters can call a subnet ID directly.")
+    sender_canister_version_methods = ["create_canister", "update_settings", "install_code", "uninstall_code", "provisional_create_canister_with_cycles"]
+    validate_sender_canister_version call =
+      when (call_callee call `elem` (managementCanisterId : subs) && call_method_name call `elem` sender_canister_version_methods) $
+        case fetchSenderCanisterVersion (call_arg call) of
+          Nothing -> Right ()
+          Just s ->
+            unless (s == sender_canister_version) $
+              Left (RC_CANISTER_ERROR, "Canister must set sender_canister_version matching ic0.canister_version")
+
+newCall :: ICM m => CallId -> W.Word64 -> MethodCall -> m ()
+newCall from_ctxt_id sender_canister_version_from_system call = do
+  canister_id <- calleeOfCallID from_ctxt_id
+  subs <- map (\(sid, _, _, _, _) -> sid) <$> gets subnets
+  is_on_root_subnet <- fromMaybe False <$> (isRootSubnet <$>) <$> find (\(_, _, _, _, ranges) -> checkCanisterIdInRanges ranges canister_id) <$> gets subnets
   new_ctxt_id <- newCallContext $ CallContext
-    { canister = target
+    { canister = call_callee call
     , origin = FromCanister from_ctxt_id (call_callback call)
     , needs_to_respond = NeedsToRespond True
     , deleted = False
     , last_trap = Nothing
     , available_cycles = call_transferred_cycles call
     }
-  enqueueMessage $ CallMessage
-    { call_context = new_ctxt_id
-    , entry = Public (call_method_name call) (call_arg call)
-    }
+  case validate_call call subs is_on_root_subnet sender_canister_version_from_system of
+    Left err -> do
+      respondCallContext new_ctxt_id (Reject err)
+    Right () -> do
+      enqueueMessage $ CallMessage
+        { call_context = new_ctxt_id
+        , entry = Public (call_method_name call) (call_arg call)
+        }
 
 -- Scheduling
 

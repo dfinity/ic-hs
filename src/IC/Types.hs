@@ -192,6 +192,46 @@ data MethodCall = MethodCall
 
 type ExistingCanisters = [CanisterId]
 
+-- Canister history
+
+data ChangeOrigin =
+    ChangeFromUser {
+      from_user_id :: EntityId
+    }
+  | ChangeFromCanister {
+      from_canister_id :: EntityId
+    , from_canister_version :: Maybe W.Word64
+    }
+  deriving (Show)
+
+data CanisterInstallMode =
+    Install
+  | Reinstall
+  | Upgrade
+  deriving (Show)
+
+data ChangeDetails =
+    Creation {
+      creation_controllers :: [EntityId]
+    }
+  | CodeUninstall
+  | CodeDeployment {
+      deployment_mode :: CanisterInstallMode
+    , deployment_module_hash :: Blob
+    }
+  | ControllersChange {
+      new_controllers :: [EntityId]
+    }
+  deriving (Show)
+
+data Change = Change {
+    timestamp_nanos :: W.Word64
+  , new_canister_version :: W.Word64
+  , change_origin :: ChangeOrigin
+  , change_details :: ChangeDetails
+}
+  deriving (Show)
+
 -- Canister actions (independent of calls)
 data CanisterActions = CanisterActions
   { set_certified_data :: Maybe Blob

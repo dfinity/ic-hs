@@ -97,6 +97,7 @@ library
   exposed-modules: IC.Test.Spec.HTTP
   exposed-modules: IC.Test.Spec.Timer
   exposed-modules: IC.Test.Spec.CanisterVersion
+  exposed-modules: IC.Test.Spec.CanisterHistory
   exposed-modules: IC.Test.Spec.TECDSA
   exposed-modules: IC.Test.Spec.Utils
   exposed-modules: IC.Test.StableMemory
