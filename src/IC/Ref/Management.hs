@@ -317,9 +317,7 @@ icUpdateCanisterSettings ctxt_id r = do
     validateSettings (r .! #settings)
     applySettings canister_id (r .! #settings)
     bumpCanisterVersion canister_id
-    case ((r .! #settings) .! #controllers) of
-      Nothing -> return ()
-      Just _ -> do
+    void $ forM ((r .! #settings) .! #controllers) $ \_ -> do
         new_controllers <- S.toList <$> getControllers canister_id
         icAddCanisterHistory canister_id ctxt_id (r .! #sender_canister_version) (ControllersChange new_controllers)
 
