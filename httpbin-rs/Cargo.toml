@@ -9,7 +9,5 @@ edition = "2021"
 axum = "0.6.18"
 axum-server = { version = "0.5.1", features = ["tls-openssl"] }
 clap = { version = "4.0", features = ["derive"] }
-rustls = "0.21.1"
-rustls-pemfile = "1.0.2"
 serde_json = { version = "1.0" }
 tokio = { version = "1.0", features = ["rt-multi-thread"] }
