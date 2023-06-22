@@ -603,20 +603,21 @@ fetchSenderCanisterVersion r = case decode @a r of Left _ -> Nothing
                                                    Right r -> r .! #sender_canister_version
 
 validate_call :: MethodCall -> [EntityId] -> Bool -> W.Word64 -> Either (RejectCode, String) ()
-validate_call call subs isOnRootSubnet sender_canister_version =
-  validate_subnet_message call >>
-  validate_sender_canister_version call >>
-  return ()
+validate_call call subs isOnRootSubnet sender_canister_version = do
+  validate_subnet_message call
+  validate_sender_canister_version call
   where
-    validate_subnet_message call = if (call_callee call `elem` subs) && not isOnRootSubnet then Left (RC_DESTINATION_INVALID, "Only NNS canisters can call a subnet ID directly.")
-                                   else Right ()
+    validate_subnet_message call =
+      when ((call_callee call `elem` subs) && not isOnRootSubnet) $
+        Left (RC_DESTINATION_INVALID, "Only NNS canisters can call a subnet ID directly.")
     sender_canister_version_methods = ["create_canister", "update_settings", "install_code", "uninstall_code", "provisional_create_canister_with_cycles"]
     validate_sender_canister_version call =
-      if call_callee call `elem` (managementCanisterId : subs) && call_method_name call `elem` sender_canister_version_methods then
-        case fetchSenderCanisterVersion (call_arg call) of  Nothing -> Right ()
-                                                            Just s -> if s == sender_canister_version then Right ()
-                                                                      else Left (RC_CANISTER_ERROR, "Canister must set sender_canister_version matching ic0.canister_version")
-      else Right ()
+      when (call_callee call `elem` (managementCanisterId : subs) && call_method_name call `elem` sender_canister_version_methods) $
+        case fetchSenderCanisterVersion (call_arg call) of
+          Nothing -> Right ()
+          Just s ->
+            unless (s == sender_canister_version) $
+              Left (RC_CANISTER_ERROR, "Canister must set sender_canister_version matching ic0.canister_version")
 
 newCall :: ICM m => CallId -> W.Word64 -> MethodCall -> m ()
 newCall from_ctxt_id sender_canister_version_from_system call = do
