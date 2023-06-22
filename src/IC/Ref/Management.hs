@@ -93,7 +93,7 @@ invokeManagementCanister _ _ _ GlobalTimer = error "global timer invoked on mana
 icAddCanisterHistory :: ICM m => CanisterId -> CallId -> Maybe W.Word64 -> ChangeDetails -> m ()
 icAddCanisterHistory canister_id ctxt_id sender_canister_version change_details = do
     can_state <- getCanister canister_id
-    let timestamp_nanos = case time can_state of Timestamp t -> t
+    let Timestamp timestamp_nanos = time can_state
     ctxt <- getCallContext ctxt_id
     origin <- mapCallOrigin $ origin ctxt
     let change = Change (fromIntegral timestamp_nanos) (fromIntegral $ canister_version can_state) origin change_details
