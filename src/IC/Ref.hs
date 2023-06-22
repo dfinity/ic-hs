@@ -669,7 +669,6 @@ nextStoppedCanister = gets $ \ic -> listToMaybe
   , null [ ()
     | (c, ctxt) <- M.toList (call_contexts ic)
     , canister ctxt == cid
-    , needs_to_respond ctxt == NeedsToRespond True || willReceiveResponse ic c
     ]
   ]
 
