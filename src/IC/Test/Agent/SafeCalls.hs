@@ -20,6 +20,7 @@ module IC.Test.Agent.SafeCalls
       ic_delete_canister',
       ic_deposit_cycles',
       ic_ecdsa_public_key',
+      ic_http_invalid_address_request',
       ic_http_get_request',
       ic_http_post_request',
       ic_http_head_request',
@@ -138,6 +139,18 @@ ic_ecdsa_public_key' ic00 ecid canister_id path =
        .+ #curve .== enum #secp256k1
        .+ #name .== (T.pack "0")
     )
+
+ic_http_invalid_address_request' :: HasAgentConfig => IC00WithCycles -> TestSubnetConfig -> String -> Maybe W.Word64 -> Maybe (String, Blob) -> Blob -> IO ReqResponse
+ic_http_invalid_address_request' ic00 (_, subnet_type, subnet_size, _) address max_response_bytes transform canister_id =
+  callIC' (ic00 $ http_request_fee request (subnet_type, subnet_size)) "" #http_request request
+  where
+    request = empty
+      .+ #url .== (T.pack $ "https://" ++ address ++ "/")
+      .+ #max_response_bytes .== max_response_bytes
+      .+ #method .== enum #get
+      .+ #headers .== Vec.empty
+      .+ #body .== Nothing
+      .+ #transform .== (toTransformFn transform canister_id)
 
 ic_http_get_request' :: HasAgentConfig => IC00WithCycles -> TestSubnetConfig -> String -> String -> Maybe W.Word64 -> Maybe (String, Blob) -> Blob -> IO ReqResponse
 ic_http_get_request' ic00 (_, subnet_type, subnet_size, _) proto path max_response_bytes transform canister_id =
