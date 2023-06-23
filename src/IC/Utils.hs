@@ -93,21 +93,25 @@ max_response_size r = aux $ fmap fromIntegral $ r .! #max_response_bytes
 http_request_fee :: (a -> IO b) ~ (ICManagement IO .! "http_request") => a -> (SubnetType, W.Word64) -> W.Word64
 http_request_fee r (subnet_type, subnet_size) = (normalized_fee * subnet_size) `div` reference_subnet_size
   where
-    base = getHttpRequestBaseFee subnet_type
-    per_byte = getHttpRequestPerByteFee subnet_type
-    response_size_fee Nothing = max_response_bytes_limit
-    response_size_fee (Just max_response_size) = max_response_size
+    base_fee = getHttpRequestBaseFee subnet_type
+    per_subnet_size_fee = getHttpRequestPerSubnetSizeFee subnet_type
+    per_request_byte_fee = getHttpRequestPerRequestByteFee subnet_type
+    per_response_byte_fee = getHttpRequestPerResponseByteFee subnet_type
+    response_size Nothing = max_response_bytes_limit
+    response_size (Just max_response_size) = max_response_size
     transform_fee Nothing = 0
     transform_fee (Just t) = dec_var (t .! #function) + (fromIntegral $ BS.length (t .! #context))
     dec_var (Candid.FuncRef _ t) = utf8_length t
     body_fee Nothing = 0
     body_fee (Just t) = BS.length t
-    total_bytes = response_size_fee (fmap fromIntegral $ r .! #max_response_bytes)
-      + (fromIntegral $ utf8_length $ r .! #url)
+    request_size = (fromIntegral $ utf8_length $ r .! #url)
       + (fromIntegral $ sum $ map (\h -> utf8_length (h .! #name) + utf8_length (h .! #value)) $ Vec.toList $ r .! #headers)
       + (fromIntegral $ body_fee $ r .! #body)
       + (fromIntegral $ transform_fee $ r .! #transform)
-    normalized_fee = base + per_byte * total_bytes
+    subnet_size_fee = (per_subnet_size_fee * subnet_size) `div` reference_subnet_size
+    request_fee = per_request_byte_fee * request_size
+    response_fee = per_response_byte_fee * response_size (fmap fromIntegral $ r .! #max_response_bytes)
+    normalized_fee = base_fee + subnet_size_fee + request_fee + response_fee
 
 http_request_headers_total_size :: (a -> IO b) ~ (ICManagement IO .! "http_request") => Integral c => a -> c
 http_request_headers_total_size r = fromIntegral $ sum $ map (\h -> utf8_length (h .! #name) + utf8_length (h .! #value)) $ Vec.toList $ r .! #headers
