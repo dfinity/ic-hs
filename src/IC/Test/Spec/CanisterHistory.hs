@@ -105,7 +105,7 @@ canister_history_tests ecid =
     , testCase "changes from canister" $ do
       unican <- install ecid no_heartbeat
 
-      cid <- ic_create (ic00via unican) ecid (R.empty .+ #controllers .== Vec.fromList [Principal unican, Principal defaultUser])
+      cid <- ic_create (ic00viaWithCycles unican 20_000_000_000_000) ecid (R.empty .+ #controllers .== Vec.fromList [Principal unican, Principal defaultUser])
       info <- get_canister_info unican cid (Just 1)
       void $ check_history info 1 [(0, ChangeFromCanister (EntityId unican) Nothing, Creation [EntityId unican, EntityId defaultUser])]
 
