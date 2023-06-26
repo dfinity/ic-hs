@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DeriveGeneric #-}
@@ -31,7 +32,7 @@ import IC.Wasm.Winter.Persist
 import IC.Purify
 import IC.Canister.Snapshot
 import IC.Canister
-import IC.Ref
+import IC.Ref.Types
 import IC.Crypto
 import qualified IC.Crypto.BLS as BLS
 
@@ -93,6 +94,21 @@ instance Serialise CallRequest where
 
 deriving instance Generic RunStatus
 instance Serialise RunStatus where
+
+deriving instance Generic CanisterInstallMode
+instance Serialise CanisterInstallMode where
+
+deriving instance Generic ChangeOrigin
+instance Serialise ChangeOrigin where
+
+deriving instance Generic ChangeDetails
+instance Serialise ChangeDetails where
+
+deriving instance Generic Change
+instance Serialise Change where
+
+deriving instance Generic CanisterHistory
+instance Serialise CanisterHistory where
 
 deriving instance Generic CanState
 instance Serialise CanState where
