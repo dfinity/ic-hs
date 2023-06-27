@@ -555,7 +555,7 @@ invokeEntry ctxt_id canister_id wasm_state can_mod env entry = do
             case f caller env needs_to_respond available dat wasm_state of
               Trap err -> return $ Trap err
               Return x -> do
-                if bump then bumpCanisterVersion canister_id else return ()
+                when bump $ bumpCanisterVersion canister_id
                 return $ Return x
           Nothing -> do
             let reject = Reject (RC_DESTINATION_INVALID, "method does not exist: " ++ method)
