@@ -551,11 +551,11 @@ invokeEntry ctxt_id canister_id wasm_state can_mod env entry = do
       Public method dat -> do
         caller <- callerOfCallID ctxt_id
         case lookupUpdate method can_mod of
-          Just f ->
+          Just (f, bump) ->
             case f caller env needs_to_respond available dat wasm_state of
               Trap err -> return $ Trap err
               Return x -> do
-                bumpCanisterVersion canister_id
+                when bump $ bumpCanisterVersion canister_id
                 return $ Return x
           Nothing -> do
             let reject = Reject (RC_DESTINATION_INVALID, "method does not exist: " ++ method)
@@ -592,8 +592,8 @@ invokeEntry ctxt_id canister_id wasm_state can_mod env entry = do
         else return $ Return (wasm_state, (noCallActions, noCanisterActions))
   where
     lookupUpdate method can_mod
-        | Just f <- M.lookup method (update_methods can_mod) = Just f
-        | Just f <- M.lookup method (query_methods can_mod)  = Just (asUpdate f)
+        | Just f <- M.lookup method (update_methods can_mod) = Just (f, True)
+        | Just f <- M.lookup method (query_methods can_mod)  = Just (asUpdate f, False)
         | otherwise = Nothing
 
 fetchSenderCanisterVersion ::
