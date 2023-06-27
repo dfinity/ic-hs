@@ -63,7 +63,7 @@ map_to_lower = map (\(n, v) -> (T.toLower n, v))
 check_http_response :: HttpResponse -> IO ()
 check_http_response resp = do
   assertBool "HTTP response header names must be distinct" $ check_distinct_headers (resp .! #headers)
-  assertBool "HTTP header \"Content-Length\" must contain the length of the body" $
+  assertBool "HTTP header \"content-length\" must contain the length of the body" $
     case h (T.pack "content-length") of Nothing -> False
                                         Just l  -> l == (T.pack $ show $ BS.length $ resp .! #body)
   where
@@ -123,10 +123,17 @@ canister_http_calls :: HasAgentConfig => TestSubnetConfig -> [TestTree]
 canister_http_calls sub =
   let (_, _, _, ((ecid_as_word64, _):_)) = sub in
   let ecid = rawEntityId $ wordToId ecid_as_word64 in
-  [
+  [ -- Corner cases
+
+    simpleTestCase "invalid domain name" ecid $ \cid ->
+      ic_http_invalid_address_request' (ic00viaWithCyclesRefund 0 cid) sub "xwWPqqbNqxxHmLXdguF4DN9xGq22nczV.com" Nothing Nothing cid >>= isReject [2]
+
+    , simpleTestCase "invalid IP address" ecid $ \cid ->
+      ic_http_invalid_address_request' (ic00viaWithCyclesRefund 0 cid) sub "240.0.0.0" Nothing Nothing cid >>= isReject [2]
+
     -- "Currently, the GET, HEAD, and POST methods are supported for HTTP requests."
 
-    simpleTestCase "GET call" ecid $ \cid -> do
+    , simpleTestCase "GET call" ecid $ \cid -> do
       let s = "hello_world"
       resp <- ic_http_get_request (ic00viaWithCyclesRefund 0 cid) sub ("ascii/" ++ s) (Just 666) Nothing cid
       (resp .! #status) @?= 200
@@ -135,7 +142,7 @@ canister_http_calls sub =
 
     , simpleTestCase "POST call" ecid $ \cid -> do
       let b = toUtf8 $ T.pack $ "Hello, world!"
-      let hs = [(T.pack "Name1", T.pack "value1"), (T.pack "Name2", T.pack "value2")]
+      let hs = [(T.pack "name1", T.pack "value1"), (T.pack "name2", T.pack "value2")]
       resp <- ic_http_post_request (ic00viaWithCyclesRefund 0 cid) sub "anything" (Just 666) (Just b) (vec_header_from_list_text hs) Nothing cid
       (resp .! #status) @?= 200
       check_http_response resp
@@ -144,13 +151,13 @@ canister_http_calls sub =
     , simpleTestCase "HEAD call" ecid $ \cid -> do
       let n = 6666
       let b = toUtf8 $ T.pack $ replicate n 'x'
-      let hs = [(T.pack "Name1", T.pack "value1"), (T.pack "Name2", T.pack "value2")]
+      let hs = [(T.pack "name1", T.pack "value1"), (T.pack "name2", T.pack "value2")]
       resp <- ic_http_head_request (ic00viaWithCyclesRefund 0 cid) sub "anything" (Just 666) (Just b) (vec_header_from_list_text hs) Nothing cid
       (resp .! #status) @?= 200
       (resp .! #body) @?= (toUtf8 $ T.pack "")
       assertBool "HTTP response header names must be distinct" $ check_distinct_headers (resp .! #headers)
       let h = http_headers_to_map (resp .! #headers) "content-length"
-      assertBool ("Content-Length must be present and at least " ++ show n) $
+      assertBool ("content-length must be present and at least " ++ show n) $
         case h of Nothing -> False
                   Just l -> (read (T.unpack l) :: Int) >= n
 
@@ -164,7 +171,7 @@ canister_http_calls sub =
     -- "The size of an HTTP request from the canister is the total number of bytes representing the names and values of HTTP headers and the HTTP body. The maximal size for the request from the canister is 2MB (2,000,000B)."
 
     , simpleTestCase "maximum possible request size" ecid $ \cid -> do
-      let hs = [(T.pack "Name1", T.pack "value1"), (T.pack "Name2", T.pack "value2"), (T.pack "Content-Type", T.pack "text/html; charset=utf-8")]
+      let hs = [(T.pack "name1", T.pack "value1"), (T.pack "name2", T.pack "value2"), (T.pack "content-type", T.pack "text/html; charset=utf-8")]
       let len_hs = sum $ map (\(n, v) -> utf8_length n + utf8_length v) hs
       let b = toUtf8 $ T.pack $ replicate (fromIntegral $ max_request_bytes_limit - len_hs) 'x'
       resp <- ic_http_post_request (ic00viaWithCyclesRefund 0 cid) sub "request_size" Nothing (Just b) (vec_header_from_list_text hs) Nothing cid
@@ -174,7 +181,7 @@ canister_http_calls sub =
       assertBool ("Request size must be at least (the HTTP client can add more headers) " ++ show max_request_bytes_limit) $ n >= len_hs + fromIntegral (BS.length b)
 
     , simpleTestCase "maximum possible request size exceeded" ecid $ \cid -> do
-      let hs = [(T.pack "Name1", T.pack "value1"), (T.pack "Name2", T.pack "value2"), (T.pack "Content-Type", T.pack "text/html; charset=utf-8")]
+      let hs = [(T.pack "name1", T.pack "value1"), (T.pack "name2", T.pack "value2"), (T.pack "content-type", T.pack "text/html; charset=utf-8")]
       let len_hs = sum $ map (\(n, v) -> utf8_length n + utf8_length v) hs
       let b = toUtf8 $ T.pack $ replicate (fromIntegral $ max_request_bytes_limit - len_hs + 1) 'x'
       ic_http_post_request' (\fee -> ic00viaWithCyclesRefund fee cid fee) sub "request_size" Nothing (Just b) (vec_header_from_list_text hs) Nothing cid >>= isReject [4]
@@ -183,14 +190,15 @@ canister_http_calls sub =
 
     , simpleTestCase "small maximum possible response size" ecid $ \cid -> do
       let s = "hello_world"
-      {- Response headers (size: 131)
-          Content-Type: application/octet-stream
-          Content-Length: 11
-          Connection: close
-          Access-Control-Allow-Origin: *
-          Access-Control-Allow-Credentials: true
+      {- Response headers (size: 158)
+          date: Jan 1 1970 00:00:00 GMT
+          content-type: application/octet-stream
+          content-length: 11
+          connection: close
+          access-control-allow-origin: *
+          access-control-allow-credentials: true
       -}
-      let header_size = 131
+      let header_size = 158
       resp <- ic_http_get_request (ic00viaWithCyclesRefund 0 cid) sub ("ascii/" ++ s) (Just $ fromIntegral $ length s + header_size) Nothing cid
       (resp .! #status) @?= 200
       (resp .! #body) @?= BLU.fromString s
@@ -198,52 +206,56 @@ canister_http_calls sub =
 
     , simpleTestCase "small maximum possible response size exceeded" ecid $ \cid -> do
       let s = "hello_world"
-      {- Response headers (size: 131)
-          Content-Type: application/octet-stream
-          Content-Length: 11
-          Connection: close
-          Access-Control-Allow-Origin: *
-          Access-Control-Allow-Credentials: true
+      {- Response headers (size: 158)
+          date: Jan 1 1970 00:00:00 GMT
+          content-type: application/octet-stream
+          content-length: 11
+          connection: close
+          access-control-allow-origin: *
+          access-control-allow-credentials: true
       -}
-      let header_size = 131
+      let header_size = 158
       ic_http_get_request' (ic00viaWithCyclesRefund 0 cid) sub "https://" ("ascii/" ++ s) (Just $ fromIntegral $ length s + header_size - 1) Nothing cid >>= isReject [1]
 
     , simpleTestCase "small maximum possible response size (only headers)" ecid $ \cid -> do
-      {- Response headers (size: 130)
-          Content-Type: application/octet-stream
-          Content-Length: 0
-          Connection: close
-          Access-Control-Allow-Origin: *
-          Access-Control-Allow-Credentials: true
+      {- Response headers (size: 157)
+          date: Jan 1 1970 00:00:00 GMT
+          content-type: application/octet-stream
+          content-length: 0
+          connection: close
+          access-control-allow-origin: *
+          access-control-allow-credentials: true
       -}
-      let header_size = 130
+      let header_size = 157
       resp <- ic_http_get_request (ic00viaWithCyclesRefund 0 cid) sub ("equal_bytes/0") (Just header_size) Nothing cid
       (resp .! #status) @?= 200
       (resp .! #body) @?= BS.empty
       check_http_response resp
 
     , simpleTestCase "small maximum possible response size (only headers) exceeded" ecid $ \cid -> do
-      {- Response headers (size: 130)
-          Content-Type: application/octet-stream
-          Content-Length: 0
-          Connection: close
-          Access-Control-Allow-Origin: *
-          Access-Control-Allow-Credentials: true
+      {- Response headers (size: 157)
+          date: Jan 1 1970 00:00:00 GMT
+          content-type: application/octet-stream
+          content-length: 0
+          connection: close
+          access-control-allow-origin: *
+          access-control-allow-credentials: true
       -}
-      let header_size = 130
+      let header_size = 157
       ic_http_get_request' (ic00viaWithCyclesRefund 0 cid) sub "https://" ("equal_bytes/0") (Just $ header_size - 1) Nothing cid >>= isReject [1]
 
     -- "The upper limit on the maximal size for the response is 2MB (2,000,000B) and this value also applies if no maximal size value is specified."
 
     , testCase "large maximum possible response size" $ do
-      {- Response headers (size: 136)
-          Content-Type: application/octet-stream
-          Content-Length: 1999864
-          Connection: close
-          Access-Control-Allow-Origin: *
-          Access-Control-Allow-Credentials: true
+      {- Response headers (size: 163)
+          date: Jan 1 1970 00:00:00 GMT
+          content-type: application/octet-stream
+          content-length: 1999837
+          connection: close
+          access-control-allow-origin: *
+          access-control-allow-credentials: true
       -}
-      let header_size = 136
+      let header_size = 163
       cid <- install ecid (onTransform (callback (replyData (bytes (Candid.encode dummyResponse)))))
       resp <- ic_http_get_request (ic00viaWithCyclesRefund 0 cid) sub ("equal_bytes/" ++ show (max_response_bytes_limit - header_size)) Nothing (Just ("transform", "")) cid
       (resp .! #status) @?= 202
@@ -251,14 +263,15 @@ canister_http_calls sub =
       check_http_response resp
 
     , testCase "large maximum possible response size exceeded" $ do
-      {- Response headers (size: 136)
-          Content-Type: application/octet-stream
-          Content-Length: 1999865
-          Connection: close
-          Access-Control-Allow-Origin: *
-          Access-Control-Allow-Credentials: true
+      {- Response headers (size: 163)
+          date: Jan 1 1970 00:00:00 GMT
+          content-type: application/octet-stream
+          content-length: 1999838
+          connection: close
+          access-control-allow-origin: *
+          access-control-allow-credentials: true
       -}
-      let header_size = 136
+      let header_size = 163
       cid <- install ecid (onTransform (callback (replyData (bytes (Candid.encode dummyResponse)))))
       ic_http_get_request' (ic00viaWithCyclesRefund 0 cid) sub "https://" ("equal_bytes/" ++ show (max_response_bytes_limit - header_size + 1)) Nothing (Just ("transform", "")) cid >>= isReject [1]
 
@@ -293,7 +306,7 @@ canister_http_calls sub =
 
     , testCase "call with simple transform" $ do
       let b = toUtf8 $ T.pack $ "Hello, world!"
-      let hs = vec_header_from_list_text [(T.pack "Name1", T.pack "value1"), (T.pack "Name2", T.pack "value2")]
+      let hs = vec_header_from_list_text [(T.pack "name1", T.pack "value1"), (T.pack "name2", T.pack "value2")]
       cid <- install ecid (onTransform (callback (replyData (bytes (Candid.encode dummyResponse)))))
       resp <- ic_http_post_request (ic00viaWithCyclesRefund 0 cid) sub "anything" (Just 666) (Just b) hs (Just ("transform", "")) cid
       (resp .! #status) @?= 202
@@ -323,14 +336,15 @@ canister_http_calls sub =
     -- "The maximal number of bytes representing the response produced by the transform function is 2MB (2,000,000B)."
 
     , testCase "maximum possible canister response size" $ do
-      {- Response headers (size: 136)
-          Content-Type: application/octet-stream
-          Content-Length: 1999864
-          Connection: close
-          Access-Control-Allow-Origin: *
-          Access-Control-Allow-Credentials: true
+      {- Response headers (size: 163)
+          date: Jan 1 1970 00:00:00 GMT
+          content-type: application/octet-stream
+          content-length: 1999837
+          connection: close
+          access-control-allow-origin: *
+          access-control-allow-credentials: true
       -}
-      let header_size = 136
+      let header_size = 163
       let size = maximumSizeResponseBodySize
       let new_pages = int $ size `div` (64 * 1024) + 1
       let max_size = int $ size
@@ -340,14 +354,15 @@ canister_http_calls sub =
       (resp .! #body) @?= bodyOfSize maximumSizeResponseBodySize
 
     , testCase "maximum possible canister response size exceeded" $ do
-      {- Response headers (size: 136)
-          Content-Type: application/octet-stream
-          Content-Length: 1999864
-          Connection: close
-          Access-Control-Allow-Origin: *
-          Access-Control-Allow-Credentials: true
+      {- Response headers (size: 163)
+          date: Jan 1 1970 00:00:00 GMT
+          content-type: application/octet-stream
+          content-length: 1999837
+          connection: close
+          access-control-allow-origin: *
+          access-control-allow-credentials: true
       -}
-      let header_size = 136
+      let header_size = 163
       let size = maximumSizeResponseBodySize + 1
       let new_pages = int $ size `div` (64 * 1024) + 1
       let max_size = int $ size
@@ -367,7 +382,7 @@ canister_http_calls sub =
 
     , simpleTestCase "maximum number of request headers" ecid $ \cid -> do
       let b = toUtf8 $ T.pack $ "Hello, world!"
-      let hs = [(T.pack ("Name" ++ show i), T.pack ("value" ++ show i)) | i <- [0..http_headers_max_number - 1]]
+      let hs = [(T.pack ("name" ++ show i), T.pack ("value" ++ show i)) | i <- [0..http_headers_max_number - 1]]
       resp <- ic_http_post_request (ic00viaWithCyclesRefund 0 cid) sub "anything" Nothing (Just b) (vec_header_from_list_text hs) Nothing cid
       (resp .! #status) @?= 200
       check_http_response resp
@@ -375,33 +390,35 @@ canister_http_calls sub =
 
     , simpleTestCase "maximum number of request headers exceeded" ecid $ \cid -> do
       let b = toUtf8 $ T.pack $ "Hello, world!"
-      let hs = [(T.pack ("Name" ++ show i), T.pack ("value" ++ show i)) | i <- [0..http_headers_max_number]]
+      let hs = [(T.pack ("name" ++ show i), T.pack ("value" ++ show i)) | i <- [0..http_headers_max_number]]
       ic_http_post_request' (\fee -> ic00viaWithCyclesRefund fee cid fee) sub "anything" Nothing (Just b) (vec_header_from_list_text hs) Nothing cid >>= isReject [4]
 
     , simpleTestCase "maximum number of response headers" ecid $ \cid -> do
-      {- These 5 response headers are always included:
-          Content-Type: text/plain; charset=utf-8
-          Content-Length: 0
-          Connection: close
-          Access-Control-Allow-Origin: *
-          Access-Control-Allow-Credentials: true
+      {- These 6 response headers are always included:
+          date: Jan 1 1970 00:00:00 GMT
+          content-type: text/plain; charset=utf-8
+          content-length: 0
+          connection: close
+          access-control-allow-origin: *
+          access-control-allow-credentials: true
       -}
-      let n = http_headers_max_number - 5
-      let hs = [(T.pack ("Name" ++ show i), T.pack ("value" ++ show i)) | i <- [0..n - 1]]
+      let n = http_headers_max_number - 6
+      let hs = [(T.pack ("name" ++ show i), T.pack ("value" ++ show i)) | i <- [0..n - 1]]
       resp <- ic_http_get_request (ic00viaWithCyclesRefund 0 cid) sub ("many_response_headers/" ++ show n) Nothing Nothing cid
       (resp .! #status) @?= 200
       assertBool "Response HTTP headers have not been received properly." $ list_subset (map_to_lower hs) (map_to_lower $ http_response_headers resp)
       check_http_response resp
 
     , simpleTestCase "maximum number of response headers exceeded" ecid $ \cid -> do
-      {- These 5 response headers are always included:
-          Content-Type: text/plain; charset=utf-8
-          Content-Length: 0
-          Connection: close
-          Access-Control-Allow-Origin: *
-          Access-Control-Allow-Credentials: true
+      {- These 6 response headers are always included:
+          date: Jan 1 1970 00:00:00 GMT
+          content-type: text/plain; charset=utf-8
+          content-length: 0
+          connection: close
+          access-control-allow-origin: *
+          access-control-allow-credentials: true
       -}
-      let n = http_headers_max_number - 5 + 1
+      let n = http_headers_max_number - 6 + 1
       ic_http_get_request' (ic00viaWithCyclesRefund 0 cid) sub "https://" ("many_response_headers/" ++ show n) Nothing Nothing cid >>= isReject [1]
 
     -- "The following additional limits apply to HTTP requests and HTTP responses from the remote sever: the number of bytes representing a header name must not exceed 8KiB."

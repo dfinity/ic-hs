@@ -47,11 +47,21 @@ http_headers_max_total_size :: W.Word64
 http_headers_max_total_size = 48 * 1024 -- 48 KiB
 
 getHttpRequestBaseFee :: SubnetType -> W.Word64
-getHttpRequestBaseFee Application = 400000000
-getHttpRequestBaseFee VerifiedApplication = 400000000
+getHttpRequestBaseFee Application = 3000000
+getHttpRequestBaseFee VerifiedApplication = 3000000
 getHttpRequestBaseFee System = 0
 
-getHttpRequestPerByteFee :: SubnetType -> W.Word64
-getHttpRequestPerByteFee Application = 100000
-getHttpRequestPerByteFee VerifiedApplication = 100000
-getHttpRequestPerByteFee System = 0
+getHttpRequestPerSubnetSizeFee :: SubnetType -> W.Word64
+getHttpRequestPerSubnetSizeFee Application = 60000
+getHttpRequestPerSubnetSizeFee VerifiedApplication = 60000
+getHttpRequestPerSubnetSizeFee System = 0
+
+getHttpRequestPerRequestByteFee :: SubnetType -> W.Word64
+getHttpRequestPerRequestByteFee Application = 400
+getHttpRequestPerRequestByteFee VerifiedApplication = 400
+getHttpRequestPerRequestByteFee System = 0
+
+getHttpRequestPerResponseByteFee :: SubnetType -> W.Word64
+getHttpRequestPerResponseByteFee Application = 800
+getHttpRequestPerResponseByteFee VerifiedApplication = 800
+getHttpRequestPerResponseByteFee System = 0

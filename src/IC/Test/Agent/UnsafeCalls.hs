@@ -16,7 +16,9 @@
 module IC.Test.Agent.UnsafeCalls
     (
       ic_canister_status,
+      ic_canister_info,
       ic_create,
+      ic_create_with_sender_canister_version,
       ic_delete_canister,
       ic_deposit_cycles,
       ic_ecdsa_public_key,
@@ -25,25 +27,30 @@ module IC.Test.Agent.UnsafeCalls
       ic_http_head_request,
       ic_long_url_http_request,
       ic_install,
+      ic_install_with_sender_canister_version,
       ic_provisional_create,
+      ic_provisional_create_with_sender_canister_version,
       ic_raw_rand,
       ic_set_controllers,
+      ic_set_controllers_with_sender_canister_version,
       ic_sign_with_ecdsa,
       ic_start_canister,
       ic_stop_canister,
       ic_top_up,
       ic_uninstall,
+      ic_uninstall_with_sender_canister_version,
       ic_update_settings,
+      ic_update_settings_with_sender_canister_version,
     ) where
 
 import qualified Data.ByteString.Lazy as BS
 import qualified Data.Vector as Vec
 import qualified Data.Text as T
+import qualified Data.Word as W
 import Numeric.Natural
 import Test.Tasty.HUnit
 import Codec.Candid (Principal(..))
 import Data.Row
-import qualified Data.Word as W
 
 import IC.Management
 import IC.Id.Forms
@@ -52,46 +59,72 @@ import IC.Types(TestSubnetConfig)
 import IC.Utils
 import IC.Test.Agent.Calls
 
-ic_create :: (HasCallStack, HasAgentConfig, PartialSettings r) => IC00 -> Blob -> Rec r -> IO Blob
-ic_create ic00 ecid ps = do
+ic_create_with_sender_canister_version :: (HasCallStack, HasAgentConfig, PartialSettings r) => IC00 -> Blob -> Maybe W.Word64 -> Rec r -> IO Blob
+ic_create_with_sender_canister_version ic00 ecid sender_canister_version ps = do
   r <- callIC ic00 ecid #create_canister $ empty
     .+ #settings .== Just (fromPartialSettings ps)
+    .+ #sender_canister_version .== sender_canister_version
+  return (rawPrincipal (r .! #canister_id))
+
+ic_create :: (HasCallStack, HasAgentConfig, PartialSettings r) => IC00 -> Blob -> Rec r -> IO Blob
+ic_create ic00 ecid ps = ic_create_with_sender_canister_version ic00 ecid Nothing ps
+
+ic_provisional_create_with_sender_canister_version ::
+    (HasCallStack, HasAgentConfig, PartialSettings r) =>
+    IC00 -> Blob -> Maybe Principal -> Maybe Natural -> Maybe W.Word64 -> Rec r -> IO Blob
+ic_provisional_create_with_sender_canister_version ic00 ecid specified_id cycles sender_canister_version ps = do
+  r <- callIC ic00 ecid #provisional_create_canister_with_cycles $ empty
+    .+ #amount .== cycles
+    .+ #settings .== Just (fromPartialSettings ps)
+    .+ #specified_id .== specified_id
+    .+ #sender_canister_version .== sender_canister_version
   return (rawPrincipal (r .! #canister_id))
 
 ic_provisional_create ::
     (HasCallStack, HasAgentConfig, PartialSettings r) =>
     IC00 -> Blob -> Maybe Principal -> Maybe Natural -> Rec r -> IO Blob
-ic_provisional_create ic00 ecid specified_id cycles ps = do
-  r <- callIC ic00 ecid #provisional_create_canister_with_cycles $ empty
-    .+ #amount .== cycles
-    .+ #settings .== Just (fromPartialSettings ps)
-    .+ #specified_id .== specified_id
-  return (rawPrincipal (r .! #canister_id))
+ic_provisional_create ic00 ecid specified_id cycles ps = ic_provisional_create_with_sender_canister_version ic00 ecid specified_id cycles Nothing ps
 
-ic_install :: (HasCallStack, HasAgentConfig) => IC00 -> InstallMode -> Blob -> Blob -> Blob -> IO ()
-ic_install ic00 mode canister_id wasm_module arg = do
+ic_install_with_sender_canister_version :: (HasCallStack, HasAgentConfig) => IC00 -> InstallMode -> Blob -> Blob -> Blob -> Maybe W.Word64 -> IO ()
+ic_install_with_sender_canister_version ic00 mode canister_id wasm_module arg sender_canister_version = do
   callIC ic00 canister_id #install_code $ empty
     .+ #mode .== mode
     .+ #canister_id .== Principal canister_id
     .+ #wasm_module .== wasm_module
     .+ #arg .== arg
+    .+ #sender_canister_version .== sender_canister_version
 
-ic_uninstall :: (HasCallStack, HasAgentConfig) => IC00 -> Blob -> IO ()
-ic_uninstall ic00 canister_id = do
+ic_install :: (HasCallStack, HasAgentConfig) => IC00 -> InstallMode -> Blob -> Blob -> Blob -> IO ()
+ic_install ic00 mode canister_id wasm_module arg = ic_install_with_sender_canister_version ic00 mode canister_id wasm_module arg Nothing
+
+ic_uninstall_with_sender_canister_version :: (HasCallStack, HasAgentConfig) => IC00 -> Blob -> Maybe W.Word64 -> IO ()
+ic_uninstall_with_sender_canister_version ic00 canister_id sender_canister_version = do
   callIC ic00 canister_id #uninstall_code $ empty
     .+ #canister_id .== Principal canister_id
+    .+ #sender_canister_version .== sender_canister_version
 
-ic_update_settings :: (HasAgentConfig, PartialSettings r) => IC00 -> Blob -> Rec r -> IO ()
-ic_update_settings ic00 canister_id r = do
+ic_uninstall :: (HasCallStack, HasAgentConfig) => IC00 -> Blob -> IO ()
+ic_uninstall ic00 canister_id = ic_uninstall_with_sender_canister_version ic00 canister_id Nothing
+
+ic_update_settings_with_sender_canister_version :: (HasAgentConfig, PartialSettings r) => IC00 -> Blob -> Maybe W.Word64 -> Rec r -> IO ()
+ic_update_settings_with_sender_canister_version ic00 canister_id sender_canister_version r = do
   callIC ic00 canister_id #update_settings $ empty
     .+ #canister_id .== Principal canister_id
     .+ #settings .== fromPartialSettings r
+    .+ #sender_canister_version .== sender_canister_version
 
-ic_set_controllers :: HasAgentConfig => IC00 -> Blob -> [Blob] -> IO ()
-ic_set_controllers ic00 canister_id new_controllers = do
+ic_update_settings :: (HasAgentConfig, PartialSettings r) => IC00 -> Blob -> Rec r -> IO ()
+ic_update_settings ic00 canister_id r = ic_update_settings_with_sender_canister_version ic00 canister_id Nothing r
+
+ic_set_controllers_with_sender_canister_version :: HasAgentConfig => IC00 -> Blob -> Maybe W.Word64 -> [Blob] -> IO ()
+ic_set_controllers_with_sender_canister_version ic00 canister_id sender_canister_version new_controllers = do
   callIC ic00 canister_id #update_settings $ empty
     .+ #canister_id .== Principal canister_id
     .+ #settings .== fromPartialSettings (#controllers .== Vec.fromList (map Principal new_controllers))
+    .+ #sender_canister_version .== sender_canister_version
+
+ic_set_controllers :: HasAgentConfig => IC00 -> Blob -> [Blob] -> IO ()
+ic_set_controllers ic00 canister_id new_controllers = ic_set_controllers_with_sender_canister_version ic00 canister_id Nothing new_controllers
 
 ic_start_canister :: HasAgentConfig => IC00 -> Blob -> IO ()
 ic_start_canister ic00 canister_id = do
@@ -109,6 +142,14 @@ ic_canister_status ::
 ic_canister_status ic00 canister_id = do
   callIC ic00 canister_id #canister_status $ empty
     .+ #canister_id .== Principal canister_id
+
+ic_canister_info ::
+    forall a b. (a -> IO b) ~ (ICManagement IO .! "canister_info") =>
+    HasAgentConfig => IC00 -> Blob -> Maybe W.Word64 -> IO b
+ic_canister_info ic00 canister_id num_requested_changes = do
+  callIC ic00 canister_id #canister_info $ empty
+    .+ #canister_id .== Principal canister_id
+    .+ #num_requested_changes .== num_requested_changes
 
 ic_deposit_cycles :: HasAgentConfig => IC00 -> Blob -> IO ()
 ic_deposit_cycles ic00 canister_id = do

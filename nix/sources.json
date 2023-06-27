@@ -45,16 +45,16 @@
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "nixpkgs": {
-        "branch": "release-22.11",
+        "branch": "release-23.05",
         "builtin": true,
         "description": "Nixpkgs/NixOS branches that track the Nixpkgs/NixOS channels",
         "homepage": null,
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "7c786944f801745310578d1cfc019923396f830c",
-        "sha256": "0cx9cvm3qxwpzd5m2w16jvp6v6nyp845q2bn6i63i0g9m7hw4639",
+        "rev": "652af6eb88e1bc633bc6dc44827519f6e7284dbb",
+        "sha256": "0hi1a2yjkb2ljbq3jb35rqh5h3zdjmdx2vdg91g8fa5hxf7wzz70",
         "type": "tarball",
-        "url": "https://github.com/NixOS/nixpkgs/archive/7c786944f801745310578d1cfc019923396f830c.tar.gz",
+        "url": "https://github.com/NixOS/nixpkgs/archive/652af6eb88e1bc633bc6dc44827519f6e7284dbb.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "winter": {
@@ -64,10 +64,10 @@
         "homepage": "https://github.com/dfinity-side-projects/winter",
         "owner": "dfinity-side-projects",
         "repo": "winter",
-        "rev": "530d5e395bb9919187d47d3966c4d526e668b62a",
-        "sha256": "1mnyhmkilald48p4gl29hq8qqs605nv5z97ps3vln1gn901s2f9c",
+        "rev": "3b230c16397188290d12ccba07fbeac86260acf6",
+        "sha256": "0jq1ac79nbzbm0b7s3b9b5rdhhxj2j5qrj378cd5skrqwg6595kz",
         "type": "tarball",
-        "url": "https://github.com/dfinity-side-projects/winter/archive/530d5e395bb9919187d47d3966c4d526e668b62a.tar.gz",
+        "url": "https://github.com/dfinity-side-projects/winter/archive/3b230c16397188290d12ccba07fbeac86260acf6.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     }
 }

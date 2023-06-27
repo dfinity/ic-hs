@@ -57,6 +57,8 @@ import IC.Test.Spec.Utils
 import IC.Types(TestSubnetConfig, SubnetType(..))
 import IC.Test.Spec.HTTP
 import IC.Test.Spec.Timer
+import IC.Test.Spec.CanisterVersion
+import IC.Test.Spec.CanisterHistory
 import qualified IC.Test.Spec.TECDSA
 
 -- * The test suite (see below for helper functions)
@@ -149,7 +151,8 @@ icTests my_sub other_sub =
             .+ #mode .== mode
             .+ #canister_id .== Principal canister_id
             .+ #wasm_module .== wasm_module
-            .+ #arg .== arg in
+            .+ #arg .== arg
+            .+ #sender_canister_version .== Nothing in
 
       testCase "as user" $ do
         cid <- create ecid
@@ -1367,100 +1370,9 @@ icTests my_sub other_sub =
 
   , testGroup "canister global timer" $ canister_timer_tests ecid
 
-  , testGroup "canister version" $
-    let canister_version = i64tob canisterVersion in
-    let no_heartbeat = onHeartbeat (callback $ trap $ bytes "") in
-    let simpleTestCase name ecid act = testCase name $ install ecid no_heartbeat >>= act in
-    [ simpleTestCase "in query" ecid $ \cid -> do
-      ctr <- query cid (replyData canister_version) >>= asWord64
-      ctr > 0 @? "Canister version must be positive."
-    , simpleTestCase "in update" ecid $ \cid -> do
-      ctr <- call cid (replyData canister_version) >>= asWord64
-      ctr > 0 @? "Canister version must be positive."
-    , testCase "in install" $ do
-      cid <- install ecid $ no_heartbeat >>> setGlobal canister_version
-      ctr1 <- query cid (replyData getGlobal) >>= asWord64
-      ctr2 <- query cid (replyData canister_version) >>= asWord64
-      ctr1 > 0 @? "Canister version must be positive"
-      ctr2 >= ctr1 @? "Canister version must be monotone"
-    , simpleTestCase "in reinstall" ecid $ \cid -> do
-      ctr1 <- query cid (replyData canister_version) >>= asWord64
-      _ <- reinstall cid $ setGlobal canister_version
-      ctr2 <- query cid (replyData getGlobal) >>= asWord64
-      ctr3 <- query cid (replyData canister_version) >>= asWord64
-      ctr1 > 0 @? "Canister version must be positive"
-      ctr2 > ctr1 @? "Canister version must be strictly monotone"
-      ctr3 >= ctr2 @? "Canister version must be monotone"
-    , testCase "in pre_upgrade" $ do
-      cid <- install ecid $
-        no_heartbeat >>>
-        ignore (stableGrow (int 1)) >>>
-        onPreUpgrade (callback $ stableWrite (int 0) canister_version)
-      ctr1 <- query cid (replyData canister_version) >>= asWord64
-      upgrade cid noop
-      ctr2 <- query cid (replyData (stableRead (int 0) (int 8))) >>= asWord64
-      ctr3 <- query cid (replyData canister_version) >>= asWord64
-      ctr1 > 0 @? "Canister version must be positive"
-      ctr2 >= ctr1 @? "Canister version must be monotone"
-      ctr3 > ctr2 @? "Canister version must be strictly monotone"
-    , simpleTestCase "in post_upgrade" ecid $ \cid -> do
-      ctr1 <- query cid (replyData canister_version) >>= asWord64
-      upgrade cid $ setGlobal canister_version
-      ctr2 <- query cid (replyData getGlobal) >>= asWord64
-      ctr3 <- query cid (replyData canister_version) >>= asWord64
-      ctr1 > 0 @? "Canister version must be positive"
-      ctr2 > ctr1 @? "Canister version must be strictly monotone"
-      ctr3 >= ctr2 @? "Canister version must be monotone"
-    , simpleTestCase "after uninstalling canister" ecid $ \cid -> do
-      ctr1 <- query cid (replyData canister_version) >>= asWord64
-      ic_uninstall ic00 cid
-      installAt cid noop
-      ctr2 <- query cid (replyData canister_version) >>= asWord64
-      ctr1 > 0 @? "Canister version must be positive"
-      ctr2 > ctr1 + 1 @? "Canister version must be strictly monotone (at least two changes)."
-    , simpleTestCase "after setting controllers" ecid $ \cid -> do
-      ctr1 <- query cid (replyData canister_version) >>= asWord64
-      ic_set_controllers ic00 cid [otherUser]
-      ctr2 <- query cid (replyData canister_version) >>= asWord64
-      ctr1 > 0 @? "Canister version must be positive"
-      ctr2 > ctr1 @? "Canister version must be strictly monotone"
-    , simpleTestCase "after setting freezing threshold" ecid $ \cid -> do
-      ctr1 <- query cid (replyData canister_version) >>= asWord64
-      ic_update_settings ic00 cid (#freezing_threshold .== 2^(20::Int))
-      ctr2 <- query cid (replyData canister_version) >>= asWord64
-      ctr1 > 0 @? "Canister version must be positive"
-      ctr2 > ctr1 @? "Canister version must be strictly monotone"
-    , simpleTestCase "after failed install" ecid $ \cid -> do
-      ctr1 <- query cid (replyData canister_version) >>= asWord64
-      _ <- ic_install' ic00 (enum #install) cid "" ""
-      ctr2 <- query cid (replyData canister_version) >>= asWord64
-      ctr1 > 0 @? "Canister version must be positive"
-      ctr1 @?= ctr2
-    , simpleTestCase "after failed reinstall" ecid $ \cid -> do
-      ctr1 <- query cid (replyData canister_version) >>= asWord64
-      _ <- ic_install' ic00 (enum #reinstall) cid "" ""
-      ctr2 <- query cid (replyData canister_version) >>= asWord64
-      ctr1 > 0 @? "Canister version must be positive"
-      ctr1 @?= ctr2
-    , simpleTestCase "after failed upgrade" ecid $ \cid -> do
-      ctr1 <- query cid (replyData canister_version) >>= asWord64
-      _ <- ic_install' ic00 (enum #upgrade) cid "" ""
-      ctr2 <- query cid (replyData canister_version) >>= asWord64
-      ctr1 > 0 @? "Canister version must be positive"
-      ctr1 @?= ctr2
-    , simpleTestCase "after failed uninstall" ecid $ \cid -> do
-      ctr1 <- query cid (replyData canister_version) >>= asWord64
-      _ <- ic_uninstall'' otherUser cid
-      ctr2 <- query cid (replyData canister_version) >>= asWord64
-      ctr1 > 0 @? "Canister version must be positive"
-      ctr1 @?= ctr2
-    , simpleTestCase "after failed change of settings" ecid $ \cid -> do
-      ctr1 <- query cid (replyData canister_version) >>= asWord64
-      _ <- ic_update_settings' ic00 cid (#freezing_threshold .== 2^(70::Int))
-      ctr2 <- query cid (replyData canister_version) >>= asWord64
-      ctr1 > 0 @? "Canister version must be positive"
-      ctr1 @?= ctr2
-    ]
+  , testGroup "canister version" $ canister_version_tests ecid
+
+  , testGroup "canister history" $ canister_history_tests ecid
 
   , testGroup "is_controller system API" $
     [ simpleTestCase "argument is controller" ecid $ \cid -> do
@@ -1653,7 +1565,7 @@ icTests my_sub other_sub =
       query cid (replyData "Hi") >>= is "Hi"
       ic_uninstall ic00 cid
       -- should be http error, due to inspection
-      call'' cid (replyData "Hi") >>= isErrOrReject []
+      call'' cid (replyData "Hi") >>= isNoErrReject [3]
       query' cid (replyData "Hi") >>= isReject [3]
 
     , testCaseSteps "open call contexts are rejected" $ \step -> do
@@ -1676,10 +1588,7 @@ icTests my_sub other_sub =
       release
       awaitStatus grs1 >>= isReject [4] -- still a reject
 
-    , testCaseSteps "deleted call contexts do not prevent stopping" $ \step -> do
-      -- Similar to above, but after uninstalling, imediatelly
-      -- stops and deletes. This can only work if the call
-      -- contexts are indeed deleted
+    , testCaseSteps "deleted call contexts prevent stopping" $ \step -> do
       cid <- install ecid noop
 
       step "Create message hold"
@@ -1695,21 +1604,29 @@ icTests my_sub other_sub =
       step "Long-running call is rejected"
       awaitStatus grs1 >>= isReject [4]
 
-      step "Stop now"
-      ic_stop_canister ic00 cid
+      step "Stop"
+      grs2 <- submitCall cid $ stopRequest cid
+      awaitKnown grs2 >>= isPendingOrProcessing
 
-      step "Delete now"
-      ic_delete_canister ic00 cid
+      step "Is stopping (via management)?"
+      cs <- ic_canister_status ic00 cid
+      cs .! #status @?= enum #stopping
 
-      -- deletion means query fails
-      query' cid reply >>= isReject [3]
+      step "Next stop waits, too"
+      grs3 <- submitCall cid $ stopRequest cid
+      awaitKnown grs3 >>= isPendingOrProcessing
 
-      step "Now release"
+      step "Release the held message"
       release
+
+      step "Wait for calls to complete"
       awaitStatus grs1 >>= isReject [4] -- still a reject
-      query' cid reply >>= isReject [3] -- still deleted
+      awaitStatus grs2 >>= isReply >>= is (Candid.encode ())
+      awaitStatus grs3 >>= isReply >>= is (Candid.encode ())
 
-
+      step "Is stopped (via management)?"
+      cs <- ic_canister_status ic00 cid
+      cs .! #status @?= enum #stopped
 
     , testCaseSteps "deleted call contexts are not delivered" $ \step -> do
       -- This is a tricky one: We make one long-running call,
@@ -2388,8 +2305,8 @@ icTests my_sub other_sub =
   , testGroup "canister_inspect_message"
     [ testCase "empty canister" $ do
       cid <- create ecid
-      call'' cid reply >>= isErrOrReject []
-      callToQuery'' cid reply >>= isErrOrReject []
+      call'' cid reply >>= isNoErrReject [3]
+      callToQuery'' cid reply >>= isNoErrReject [3]
 
     , testCase "accept all" $ do
       cid <- install ecid $ onInspectMessage $ callback acceptMessage
@@ -2398,8 +2315,8 @@ icTests my_sub other_sub =
 
     , testCase "no accept_message" $ do
       cid <- install ecid $ onInspectMessage $ callback noop
-      call'' cid reply >>= isErrOrReject []
-      callToQuery'' cid reply >>= isErrOrReject []
+      call'' cid reply >>= isNoErrReject [4]
+      callToQuery'' cid reply >>= isNoErrReject [4]
       -- check that inter-canister calls still work
       cid2 <- install ecid noop
       call cid2 (inter_update cid defArgs)
@@ -2407,27 +2324,27 @@ icTests my_sub other_sub =
 
     , testCase "two calls to accept_message" $ do
       cid <- install ecid $ onInspectMessage $ callback $ acceptMessage >>> acceptMessage
-      call'' cid reply >>= isErrOrReject []
-      callToQuery'' cid reply >>= isErrOrReject []
+      call'' cid reply >>= isNoErrReject [5]
+      callToQuery'' cid reply >>= isNoErrReject [5]
 
     , testCase "trap" $ do
       cid <- install ecid $ onInspectMessage $ callback $ trap "no no no"
-      call'' cid reply >>= isErrOrReject []
-      callToQuery'' cid reply >>= isErrOrReject []
+      call'' cid reply >>= isNoErrReject [5]
+      callToQuery'' cid reply >>= isNoErrReject [5]
 
     , testCase "method_name correct" $ do
       cid <- install ecid $ onInspectMessage $ callback $
         trapIfEq methodName "update" "no no no" >>> acceptMessage
 
-      call'' cid reply >>= isErrOrReject []
+      call'' cid reply >>= isNoErrReject [5]
       callToQuery'' cid reply >>= is2xx >>= isReply >>= is ""
 
     , testCase "caller correct" $ do
       cid <- install ecid $ onInspectMessage $ callback $
         trapIfEq caller (bytes defaultUser) "no no no" >>> acceptMessage
 
-      call'' cid reply >>= isErrOrReject []
-      callToQuery'' cid reply >>= isErrOrReject []
+      call'' cid reply >>= isNoErrReject [5]
+      callToQuery'' cid reply >>= isNoErrReject [5]
 
       awaitCall' cid (callRequestAs otherUser cid reply)
         >>= is2xx >>= isReply >>= is ""
@@ -2438,29 +2355,29 @@ icTests my_sub other_sub =
       cid <- install ecid $ onInspectMessage $ callback $
         trapIfEq argData (callback reply) "no no no" >>> acceptMessage
 
-      call'' cid reply >>= isErrOrReject []
-      callToQuery'' cid reply >>= isErrOrReject []
+      call'' cid reply >>= isNoErrReject [5]
+      callToQuery'' cid reply >>= isNoErrReject [5]
 
       call cid (replyData "foo") >>= is "foo"
       callToQuery'' cid (replyData "foo") >>= is2xx >>= isReply >>= is "foo"
 
     , testCase "management canister: raw_rand not accepted" $ do
-      ic_raw_rand'' defaultUser ecid >>= isErrOrReject []
+      ic_raw_rand'' defaultUser ecid >>= isNoErrReject [4]
 
     , testCase "management canister: http_request not accepted" $ do
-      ic_http_get_request'' defaultUser >>= isErrOrReject []
+      ic_http_get_request'' defaultUser >>= isNoErrReject [4]
 
     , testCase "management canister: ecdsa_public_key not accepted" $ do
-      ic_ecdsa_public_key'' defaultUser ecid >>= isErrOrReject []
+      ic_ecdsa_public_key'' defaultUser ecid >>= isNoErrReject [4]
 
     , testCase "management canister: sign_with_ecdsa not accepted" $ do
-      ic_sign_with_ecdsa'' defaultUser ecid (sha256 "dummy") >>= isErrOrReject []
+      ic_sign_with_ecdsa'' defaultUser ecid (sha256 "dummy") >>= isNoErrReject [4]
 
     , simpleTestCase "management canister: deposit_cycles not accepted" ecid $ \cid -> do
-      ic_deposit_cycles'' defaultUser cid >>= isErrOrReject []
+      ic_deposit_cycles'' defaultUser cid >>= isNoErrReject [4]
 
     , simpleTestCase "management canister: wrong sender not accepted" ecid $ \cid -> do
-      ic_canister_status'' otherUser cid >>= isErrOrReject []
+      ic_canister_status'' otherUser cid >>= isNoErrReject [5]
     ]
 
   , testGroup "Delegation targets" $ let

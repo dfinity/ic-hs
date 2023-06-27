@@ -49,6 +49,8 @@ type IsPublic = Bool
 data CanisterModule = CanisterModule
   { raw_wasm :: Blob
   , raw_wasm_hash :: Blob -- just caching, it’s worth it
+  , exports_heartbeat :: Bool
+  , exports_global_timer :: Bool
   , init_method :: InitFunc
   , update_methods :: MethodName ↦ (EntityId -> Env -> NeedsToRespond -> Cycles -> Blob -> UpdateFunc)
   , query_methods :: MethodName ↦ (EntityId -> Env -> Blob -> QueryFunc)
@@ -56,7 +58,7 @@ data CanisterModule = CanisterModule
   , cleanup :: WasmClosure -> Env -> WasmState -> TrapOr (WasmState, ())
   , pre_upgrade_method :: WasmState -> EntityId -> Env -> TrapOr (CanisterActions, Blob)
   , post_upgrade_method :: EntityId -> Env -> Blob -> Blob -> TrapOr (WasmState, CanisterActions)
-  , inspect_message :: MethodName -> EntityId -> Env -> Blob -> WasmState -> TrapOr ()
+  , inspect_message :: MethodName -> EntityId -> Env -> Blob -> WasmState -> TrapOr Bool
   , heartbeat :: Env -> WasmState -> TrapOr (WasmState, ([MethodCall], CanisterActions))
   , canister_global_timer :: Env -> WasmState -> TrapOr (WasmState, ([MethodCall], CanisterActions))
   , metadata :: T.Text ↦ (IsPublic, Blob)
@@ -126,6 +128,8 @@ parseCanister bytes = do
   return $ CanisterModule
     { raw_wasm = bytes
     , raw_wasm_hash = sha256 bytes
+    , exports_heartbeat = "canister_heartbeat" `elem` exportedFunctions wasm_mod
+    , exports_global_timer = "canister_global_timer" `elem` exportedFunctions wasm_mod
     , init_method = \caller env dat ->
           case instantiate wasm_mod of
             Trap err -> Trap err

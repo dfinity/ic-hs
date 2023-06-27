@@ -35,8 +35,9 @@ import IC.Wasm.Winter.Persist
 import IC.Purify
 import IC.Canister.Snapshot
 import IC.Canister
-import IC.Ref
+import IC.Ref.Types
 import IC.Crypto
+import IC.Hash
 
 customOptions :: Options
 customOptions = defaultOptions
@@ -48,7 +49,9 @@ instance ToJSON W.Value where
     toEncoding = genericToEncoding customOptions
 
 instance ToJSON BS.ByteString where
-    toJSON = String . H.encodeHex . BS.toStrict
+    toJSON x
+      | BS.length x <= 1000 = String $ H.encodeHex $ BS.toStrict x
+      | otherwise = String $ "too long for a debug print (sha256: 0x" <> H.encodeHex (BS.toStrict $ sha256 x) <> ")"
 
 instance ToJSONKey BS.ByteString where
     toJSONKey = toJSONKeyText (H.encodeHex . BS.toStrict)
@@ -163,6 +166,31 @@ instance ToJSON CallRequest where
 
 deriving instance Generic RunStatus
 instance ToJSON RunStatus where
+    toJSON     = genericToJSON customOptions
+    toEncoding = genericToEncoding customOptions
+
+deriving instance Generic CanisterInstallMode
+instance ToJSON CanisterInstallMode where
+    toJSON     = genericToJSON customOptions
+    toEncoding = genericToEncoding customOptions
+
+deriving instance Generic ChangeOrigin
+instance ToJSON ChangeOrigin where
+    toJSON     = genericToJSON customOptions
+    toEncoding = genericToEncoding customOptions
+
+deriving instance Generic ChangeDetails
+instance ToJSON ChangeDetails where
+    toJSON     = genericToJSON customOptions
+    toEncoding = genericToEncoding customOptions
+
+deriving instance Generic Change
+instance ToJSON Change where
+    toJSON     = genericToJSON customOptions
+    toEncoding = genericToEncoding customOptions
+
+deriving instance Generic CanisterHistory
+instance ToJSON CanisterHistory where
     toJSON     = genericToJSON customOptions
     toEncoding = genericToEncoding customOptions
 

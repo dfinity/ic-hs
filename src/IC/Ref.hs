@@ -118,30 +118,39 @@ isCanisterRunning cid = getRunStatus cid >>= \case
 --  * ingress message inspection
 --  * checking the correct effective id
 
-type RequestValidation m = (MonadError T.Text m, ICM m)
+type RequestValidation m = (MonadError ValidationError m, ICM m)
 
 authCallRequest :: RequestValidation m => Timestamp -> CanisterId -> EnvValidity -> CallRequest -> m ()
 authCallRequest t ecid ev r@(CallRequest canister_id user_id meth arg) = do
     checkEffectiveCanisterID ecid canister_id meth arg
-    valid_when ev t
-    valid_for ev user_id
-    valid_where ev canister_id
+    res <- runExceptT $ do
+        valid_when ev t
+        valid_for ev user_id
+        valid_where ev canister_id
+    case res of Left err -> throwError $ HTTPError $ T.unpack err
+                Right () -> return ()
     inspectIngress r
 
 authQueryRequest :: RequestValidation m => Timestamp -> CanisterId -> EnvValidity -> QueryRequest -> m ()
 authQueryRequest t ecid ev (QueryRequest canister_id user_id meth arg) = do
     checkEffectiveCanisterID ecid canister_id meth arg
-    valid_when ev t
-    valid_for ev user_id
-    valid_where ev canister_id
+    res <- runExceptT $ do
+        valid_when ev t
+        valid_for ev user_id
+        valid_where ev canister_id
+    case res of Left err -> throwError $ HTTPError $ T.unpack err
+                Right () -> return ()
 
 authReadStateRequest :: RequestValidation m => Timestamp -> CanisterId -> EnvValidity -> ReadStateRequest -> m ()
 authReadStateRequest t ecid ev (ReadStateRequest user_id paths) = do
-    valid_when ev t
-    valid_for ev user_id
+    res <- runExceptT $ do
+        valid_when ev t
+        valid_for ev user_id
+    case res of Left err -> throwError $ HTTPError $ T.unpack err
+                Right () -> return ()
     let request_ids = nub $ concat $ map request_id paths
     unless (length request_ids <= 1) $
-      throwError "Can only request one request ID in request_status paths."
+      throwError $ HTTPError "Can only request one request ID in request_status paths."
     -- Implement ACL for read requests here
     forM_ paths $ \case
       ("time":_) -> return ()
@@ -153,7 +162,7 @@ authReadStateRequest t ecid ev (ReadStateRequest user_id paths) = do
       ("canister":cid:"metadata":name:_) -> do
         assertEffectiveCanisterId ecid (EntityId cid)
         name <- case fromUtf8 name of
-            Nothing -> throwError "Invalid utf8 in metadata path"
+            Nothing -> throwError $ HTTPError "Invalid utf8 in metadata path"
             Just name -> pure name
         ex <- doesCanisterExist ecid
         when ex $ do
@@ -162,18 +171,21 @@ authReadStateRequest t ecid ev (ReadStateRequest user_id paths) = do
           case M.lookup name (metadata mod) of
             Just (False, _) -> -- private
               unless (S.member user_id cs) $
-                throwError "User is not authorized to read this metadata field"
+                throwError $ HTTPError "User is not authorized to read this metadata field"
             _ -> return () -- public or absent
-      ("request_status":rid: _) | BS.length rid /= 32 -> throwError "Request IDs must be 32 bytes in length."
+      ("request_status":rid: _) | BS.length rid /= 32 -> throwError $ HTTPError "Request IDs must be 32 bytes in length."
       ("request_status":rid: _) ->                            
         gets (findRequest rid) >>= \case
           Just (ar, (_, ecid')) -> do
             assertEffectiveCanisterId ecid ecid'
             unless (user_id == callerOfCallRequest ar) $
-              throwError "User is not authorized to read this request status"
-            valid_where ev (calleeOfCallRequest ar)
+              throwError $ HTTPError "User is not authorized to read this request status"
+            res <- runExceptT $ do
+              valid_where ev (calleeOfCallRequest ar)
+            case res of Left err -> throwError $ HTTPError $ T.unpack err
+                        Right () -> return ()
           Nothing -> return ()
-      _ -> throwError "User is not authorized to read unspecified state paths"
+      _ -> throwError $ HTTPError "User is not authorized to read unspecified state paths"
   where
     request_id :: Path -> [Label]
     request_id ("request_status":rid:_) = [rid]
@@ -213,11 +225,11 @@ checkEffectiveCanisterID :: RequestValidation m => CanisterId -> CanisterId -> M
 checkEffectiveCanisterID ecid cid method arg
   | cid == managementCanisterId =
     if | method == "provisional_create_canister_with_cycles" -> pure ()
-       | method `elem` ["create_canister", "raw_rand", "http_request", "ecdsa_public_key", "sign_with_ecdsa"] ->
-         throwError $ T.pack method <>  " cannot be invoked via ingress calls"
+       | method `elem` ["create_canister", "canister_info", "raw_rand", "http_request", "ecdsa_public_key", "sign_with_ecdsa"] ->
+         throwError $ ExecutionError (RC_CANISTER_REJECT, "Management method " ++ method ++ " cannot be invoked via ingress calls", Nothing)
        | otherwise -> case Codec.Candid.decode @(R.Rec ("canister_id" R..== Principal)) arg of
                         Left err ->
-                          throwError $ "call to management canister is not valid candid: " <> T.pack err
+                          throwError $ ExecutionError (RC_CANISTER_REJECT, "Candid failed to decode: " ++ err, Nothing)
                         Right r ->
                           assertEffectiveCanisterId ecid (principalToEntityId (r .! #canister_id))
   | otherwise = assertEffectiveCanisterId ecid cid
@@ -225,7 +237,7 @@ checkEffectiveCanisterID ecid cid method arg
 assertEffectiveCanisterId :: RequestValidation m => CanisterId -> CanisterId -> m ()
 assertEffectiveCanisterId ecid cid = do
   unless (ecid == cid) $ do
-    throwError $ "expected effective canister_id " <> T.pack (prettyID cid) <> ", got " <> T.pack (prettyID ecid)
+    throwError $ HTTPError $ "expected effective canister_id " ++ prettyID cid ++ ", got " ++ prettyID ecid
 
 inspectIngress :: RequestValidation m => CallRequest -> m ()
 inspectIngress (CallRequest canister_id user_id method arg)
@@ -233,31 +245,32 @@ inspectIngress (CallRequest canister_id user_id method arg)
     if| method `elem` ["provisional_create_canister_with_cycles", "provisional_top_up_canister"]
       -> return ()
       | method `elem` [ "raw_rand", "deposit_cycles", "http_request", "ecdsa_public_key", "sign_with_ecdsa" ]
-      -> throwError $ "Management method " <> T.pack method <> " cannot be invoked via an ingress call"
+      -> throwError $ ExecutionError (RC_CANISTER_REJECT, "Management method " ++ method ++ " cannot be invoked via ingress calls", Nothing)
       | method `elem` managementMethods
       -> case decode @(R.Rec ("canister_id" R..== Principal)) arg of
-        Left msg -> throwError $ "Candid failed to decode: " <> T.pack msg
+        Left msg -> throwError $ ExecutionError (RC_CANISTER_REJECT, "Candid failed to decode: " ++ msg, Nothing)
         Right r -> do
             let canister_id = principalToEntityId $ r .! #canister_id
-            onReject (throwError . T.pack . rejectMessage) $
+            onReject ((\err -> throwError $ ExecutionError (RC_DESTINATION_INVALID, err, Nothing)) . rejectMessage) $
                 canisterMustExist canister_id
             controllers <- getControllers canister_id
             unless (user_id `S.member` controllers) $
-                throwError "Wrong sender"
+                throwError $ ExecutionError (RC_CANISTER_ERROR, "Wrong sender", Nothing)
       | otherwise
-      -> throwError $ "Unknown management method " <> T.pack method
+      -> throwError $ ExecutionError (RC_DESTINATION_INVALID, "Unknown management method " ++ method, Nothing)
   | otherwise = do
-    onReject (throwError . T.pack . rejectMessage) $
+    onReject ((\err -> throwError $ ExecutionError (RC_DESTINATION_INVALID, err, Nothing)) . rejectMessage) $
         canisterMustExist canister_id
     empty <- isCanisterEmpty canister_id
-    when empty $ throwError "canister is empty"
+    when empty $ throwError $ ExecutionError (RC_DESTINATION_INVALID, "canister is empty", Nothing)
     wasm_state <- getCanisterState canister_id
     can_mod <- getCanisterMod canister_id
     env <- canisterEnv canister_id
 
     case inspect_message can_mod method user_id env arg wasm_state of
-      Trap msg -> throwError $ "canister trapped in inspect_message: " <> T.pack msg
-      Return () -> return ()
+      Trap msg -> throwError $ ExecutionError (RC_CANISTER_ERROR, "canister trapped in inspect_message: " ++ msg, Nothing)
+      Return False -> throwError $ ExecutionError (RC_CANISTER_REJECT, "message not accepted by inspect_message", Nothing)
+      Return True -> return ()
 
 -- The state tree
 
@@ -420,6 +433,10 @@ starveCallContext ctxt_id = do
                  | otherwise                = ("canister did not respond", EC_CANISTER_DID_NOT_REPLY)
   rejectCallContext ctxt_id (RC_CANISTER_ERROR, msg, Just err)
 
+removeCallContext :: ICM m => CallId -> m ()
+removeCallContext ctxt_id = do
+  modify $ \ic -> ic { call_contexts = M.delete ctxt_id (call_contexts ic) }
+
 -- Message handling
 
 processMessage :: ICM m => Message -> m ()
@@ -443,13 +460,14 @@ processMessage m = case m of
       wasm_state <- getCanisterState callee
       can_mod <- getCanisterMod callee
       env <- canisterEnv callee
-      invokeEntry ctxt_id wasm_state can_mod env entry >>= \case
+      sender_canister_version_from_system <- getCanisterVersion callee
+      invokeEntry ctxt_id callee wasm_state can_mod env entry >>= \case
         Trap msg -> do
           -- Eventually update cycle balance here
           rememberTrap ctxt_id msg
         Return (new_state, (call_actions, canister_actions)) -> do
           modCanister callee $ \cs -> cs { last_action = Just entry }
-          performCallActions ctxt_id call_actions
+          performCallActions ctxt_id call_actions (fromIntegral sender_canister_version_from_system)
           performCanisterActions callee canister_actions
           setCanisterState callee new_state
 
@@ -478,10 +496,10 @@ processMessage m = case m of
             , entry = Closure callback response refunded_cycles
             }
 
-performCallActions :: (ICM m, CanReject m) => CallId -> CallActions -> m ()
-performCallActions ctxt_id ca = do
+performCallActions :: ICM m => CallId -> CallActions -> W.Word64 -> m ()
+performCallActions ctxt_id ca sender_canister_version_from_system = do
   updateBalances ctxt_id (ca_new_calls ca) (ca_accept ca) (ca_mint ca)
-  mapM_ (newCall ctxt_id) (ca_new_calls ca)
+  mapM_ (newCall ctxt_id sender_canister_version_from_system) (ca_new_calls ca)
   mapM_ (respondCallContext ctxt_id) (ca_response ca)
 
 
@@ -524,16 +542,21 @@ actuallyStopCanister canister_id =
 
  
 invokeEntry :: ICM m =>
-    CallId -> WasmState -> CanisterModule -> Env -> EntryPoint ->
+    CallId -> CanisterId -> WasmState -> CanisterModule -> Env -> EntryPoint ->
     m (TrapOr (WasmState, UpdateResult))
-invokeEntry ctxt_id wasm_state can_mod env entry = do
+invokeEntry ctxt_id canister_id wasm_state can_mod env entry = do
     needs_to_respond <- needsToRespondCallID ctxt_id
     available <- getCallContextCycles ctxt_id
     case entry of
       Public method dat -> do
         caller <- callerOfCallID ctxt_id
         case lookupUpdate method can_mod of
-          Just f -> return $ f caller env needs_to_respond available dat wasm_state
+          Just f ->
+            case f caller env needs_to_respond available dat wasm_state of
+              Trap err -> return $ Trap err
+              Return x -> do
+                bumpCanisterVersion canister_id
+                return $ Return x
           Nothing -> do
             let reject = Reject (RC_DESTINATION_INVALID, "method does not exist: " ++ method)
             return $ Return (wasm_state, (noCallActions { ca_response = Just reject}, noCanisterActions))
@@ -541,52 +564,82 @@ invokeEntry ctxt_id wasm_state can_mod env entry = do
         case callbacks can_mod cb env needs_to_respond available r refund wasm_state of
             Trap err -> do
               rememberTrap ctxt_id err
-              return $
-                  case cleanup_callback cb of
-                      Just closure -> case cleanup can_mod closure env wasm_state of
-                          Trap err' -> Trap err'
-                          Return (wasm_state', ()) ->
-                              Return (wasm_state', (noCallActions, noCanisterActions))
-                      Nothing -> Trap err
-            Return (wasm_state, actions) -> return $ Return (wasm_state, actions)
-      Heartbeat -> return $ do
-        case heartbeat can_mod env wasm_state of
-            Trap _ -> Return (wasm_state, (noCallActions, noCanisterActions))
-            Return (wasm_state, (calls, actions)) ->
-                Return (wasm_state, (noCallActions { ca_new_calls = calls }, actions))
-      GlobalTimer -> return $ do
-        case canister_global_timer can_mod env wasm_state of
-            Trap _ -> Return (wasm_state, (noCallActions, noCanisterActions))
-            Return (wasm_state, (calls, actions)) ->
-                Return (wasm_state, (noCallActions { ca_new_calls = calls }, actions))
+              case cleanup_callback cb of
+                  Just closure -> case cleanup can_mod closure env wasm_state of
+                      Trap err' -> return $ Trap err'
+                      Return (wasm_state', ()) -> do
+                          bumpCanisterVersion canister_id
+                          return $ Return (wasm_state', (noCallActions, noCanisterActions))
+                  Nothing -> return $ Trap err
+            Return (wasm_state, actions) -> do
+                bumpCanisterVersion canister_id
+                return $ Return (wasm_state, actions)
+      Heartbeat ->
+        if exports_heartbeat can_mod then
+          case heartbeat can_mod env wasm_state of
+            Trap _ -> return $ Return (wasm_state, (noCallActions, noCanisterActions))
+            Return (wasm_state, (calls, actions)) -> do
+                bumpCanisterVersion canister_id
+                return $ Return (wasm_state, (noCallActions { ca_new_calls = calls }, actions))
+        else return $ Return (wasm_state, (noCallActions, noCanisterActions))
+      GlobalTimer ->
+        if exports_global_timer can_mod then do
+          case canister_global_timer can_mod env wasm_state of
+            Trap _ -> return $ Return (wasm_state, (noCallActions, noCanisterActions))
+            Return (wasm_state, (calls, actions)) -> do
+                bumpCanisterVersion canister_id
+                return $ Return (wasm_state, (noCallActions { ca_new_calls = calls }, actions))
+        else return $ Return (wasm_state, (noCallActions, noCanisterActions))
   where
     lookupUpdate method can_mod
         | Just f <- M.lookup method (update_methods can_mod) = Just f
         | Just f <- M.lookup method (query_methods can_mod)  = Just (asUpdate f)
         | otherwise = Nothing
 
-newCall :: (ICM m, CanReject m) => CallId -> MethodCall -> m ()
-newCall from_ctxt_id call = do
-  caller <- calleeOfCallID from_ctxt_id
-  caller_subnet_id <- getSubnetFromCanisterId caller
-  let target = call_callee call
-  target_subnet_id <- getSubnetFromSubnetId target
-  unless (isRootSubnet caller_subnet_id) $ do
-    case target_subnet_id of
-      Nothing -> return ()
-      Just _ -> reject RC_DESTINATION_INVALID "Only NNS canisters can call a subnet ID directly." (Just EC_CANISTER_NOT_FOUND)
+fetchSenderCanisterVersion ::
+  forall a. (a ~ SenderCanisterVersion) =>
+  Blob -> Maybe W.Word64
+fetchSenderCanisterVersion r = case decode @a r of Left _ -> Nothing
+                                                   Right r -> r .! #sender_canister_version
+
+validate_call :: MethodCall -> [EntityId] -> Bool -> W.Word64 -> Either (RejectCode, String) ()
+validate_call call subs isOnRootSubnet sender_canister_version = do
+  validate_subnet_message call
+  validate_sender_canister_version call
+  where
+    validate_subnet_message call =
+      when ((call_callee call `elem` subs) && not isOnRootSubnet) $
+        Left (RC_DESTINATION_INVALID, "Only NNS canisters can call a subnet ID directly.")
+    sender_canister_version_methods = ["create_canister", "update_settings", "install_code", "uninstall_code", "provisional_create_canister_with_cycles"]
+    validate_sender_canister_version call =
+      when (call_callee call `elem` (managementCanisterId : subs) && call_method_name call `elem` sender_canister_version_methods) $
+        case fetchSenderCanisterVersion (call_arg call) of
+          Nothing -> Right ()
+          Just s ->
+            unless (s == sender_canister_version) $
+              Left (RC_CANISTER_ERROR, "Canister must set sender_canister_version matching ic0.canister_version")
+
+newCall :: ICM m => CallId -> W.Word64 -> MethodCall -> m ()
+newCall from_ctxt_id sender_canister_version_from_system call = do
+  canister_id <- calleeOfCallID from_ctxt_id
+  subs <- map (\(sid, _, _, _, _) -> sid) <$> gets subnets
+  is_on_root_subnet <- fromMaybe False <$> (isRootSubnet <$>) <$> find (\(_, _, _, _, ranges) -> checkCanisterIdInRanges ranges canister_id) <$> gets subnets
   new_ctxt_id <- newCallContext $ CallContext
-    { canister = target
+    { canister = call_callee call
     , origin = FromCanister from_ctxt_id (call_callback call)
     , needs_to_respond = NeedsToRespond True
     , deleted = False
     , last_trap = Nothing
     , available_cycles = call_transferred_cycles call
     }
-  enqueueMessage $ CallMessage
-    { call_context = new_ctxt_id
-    , entry = Public (call_method_name call) (call_arg call)
-    }
+  case validate_call call subs is_on_root_subnet sender_canister_version_from_system of
+    Left err -> do
+      respondCallContext new_ctxt_id (Reject err)
+    Right () -> do
+      enqueueMessage $ CallMessage
+        { call_context = new_ctxt_id
+        , entry = Public (call_method_name call) (call_arg call)
+        }
 
 -- Scheduling
 
@@ -600,11 +653,13 @@ willReceiveResponse :: IC -> CallId -> Bool
 willReceiveResponse ic c = c `elem`
   -- there is another call context promising to respond to this
   [ c'
-  | CallContext { needs_to_respond = NeedsToRespond True, deleted = False, origin = FromCanister c' _}
+  | CallContext { needs_to_respond = NeedsToRespond True, origin = FromCanister c' _}
       <- M.elems (call_contexts ic)
   ] ++
-  -- there is an in-flight call or response message:
-  [ call_context m | m <- toList (messages ic) ] ++
+  -- there is an in-flight call message:
+  [ c' | CallMessage c' _ <- toList (messages ic)] ++
+  -- there is an in-flight response message:
+  [ c'' | ResponseMessage c' _ _ <- toList (messages ic), FromCanister c'' _ <- return (origin (fromJust $ M.lookup c' (call_contexts ic))) ] ++
   -- there this canister is waiting for some canister to stop
   [ c'
   | CanState { run_status = IsStopping pending } <- M.elems (canisters ic)
@@ -621,6 +676,13 @@ nextStarved = gets $ \ic -> listToMaybe
   , not $ willReceiveResponse ic c
   ]
 
+nextRemoved :: ICM m => m (Maybe CallId)
+nextRemoved = gets $ \ic -> listToMaybe
+  [ c
+  | (c, CallContext { needs_to_respond = NeedsToRespond False } ) <- M.toList (call_contexts ic)
+  , not $ willReceiveResponse ic c
+  ]
+
 -- | Find a canister in stopping state that is, well, stopped
 nextStoppedCanister :: ICM m => m (Maybe CanisterId)
 nextStoppedCanister = gets $ \ic -> listToMaybe
@@ -630,8 +692,6 @@ nextStoppedCanister = gets $ \ic -> listToMaybe
   , null [ ()
     | (c, ctxt) <- M.toList (call_contexts ic)
     , canister ctxt == cid
-    , not (deleted ctxt)
-    , willReceiveResponse ic c
     ]
   ]
 
@@ -711,6 +771,7 @@ runStep = do
     [ with nextReceived processRequest
     , with popMessage processMessage
     , with nextStarved starveCallContext
+    , with nextRemoved removeCallContext
     , with nextStoppedCanister actuallyStopCanister
     ]
   where

@@ -16,6 +16,7 @@ import Codec.Candid (Principal(..), parsePrincipal)
 
 import IC.Types
 import IC.Ref
+import IC.Ref.Types
 import IC.HTTP.Status
 import IC.HTTP.CBOR
 import IC.HTTP.GenR
@@ -70,7 +71,8 @@ handle store req respond = case (requestMethod req, pathInfo req) of
                         t <- lift getTimestamp
                         runExceptT (authCallRequest t (EntityId ecid) ev cr) >>= \case
                             Left err ->
-                                lift $ invalidRequest err
+                                case err of HTTPError err -> lift $ invalidRequest $ T.pack err
+                                            ExecutionError (s, c, err) -> lift $ cbor status200 (IC.HTTP.Request.response (RequestError (s, c, err)))
                             Right () -> do
                                 submitRequest (requestId gr) cr (EntityId ecid)
                                 lift $ empty status202
@@ -80,7 +82,8 @@ handle store req respond = case (requestMethod req, pathInfo req) of
                         t <- lift getTimestamp
                         runExceptT (authQueryRequest t (EntityId ecid) ev qr) >>= \case
                             Left err ->
-                                lift $ invalidRequest err
+                                case err of HTTPError err -> lift $ invalidRequest $ T.pack err
+                                            ExecutionError (s, c, err) -> lift $ cbor status200 (IC.HTTP.Request.response (RequestError (s, c, err)))
                             Right () -> do
                                 t <- lift getTimestamp
                                 r <- handleQuery t qr
@@ -91,7 +94,8 @@ handle store req respond = case (requestMethod req, pathInfo req) of
                         t <- lift getTimestamp
                         runExceptT (authReadStateRequest t (EntityId ecid) ev rsr) >>= \case
                             Left err ->
-                                lift $ invalidRequest err
+                                case err of HTTPError err -> lift $ invalidRequest $ T.pack err
+                                            ExecutionError (s, c, err) -> lift $ cbor status200 (IC.HTTP.Request.response (RequestError (s, c, err)))
                             Right () -> do
                                 t <- lift getTimestamp
                                 r <- handleReadState t (EntityId ecid) rsr
