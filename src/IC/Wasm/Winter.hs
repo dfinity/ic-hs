@@ -86,15 +86,12 @@ parseModule = memo $ \bytes -> do
     unless (length globs <= maxGlobals) $ throwError $ "Wasm module must not declare more than " ++ show maxGlobals ++ " globals"
     forM_ exps $ \(n, idx) ->
       let canister_prefix = "canister_" in
-      if isPrefixOf canister_prefix n then do
+      when (isPrefixOf canister_prefix n) $ do
         let special = map (canister_prefix ++) ["init", "inspect_message", "heartbeat", "global_timer", "pre_upgrade", "post_upgrade"]
         unless (elem n special || isPrefixOf "canister_update " n || isPrefixOf "canister_query " n || isPrefixOf "canister_composite_query " n) $ throwError $ "Names of exported functions starting with " ++ canister_prefix ++ " must have the form " ++ show special ++ " or canister_update <name>, canister_query <name>, or canister_composite_query <name>"
         let ty = funcs !! (idx - nimps)
         let (args, res) = tys !! ty
         unless (args == [] && res == []) $ throwError $ "Exported functions whose names start with " ++ show canister_prefix ++ " must have type () -> ()"
-        return ()
-      else
-        return ()
     return wasm_mod
 
 

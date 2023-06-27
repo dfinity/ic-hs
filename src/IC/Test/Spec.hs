@@ -189,7 +189,7 @@ icTests my_sub other_sub =
                       wasm <- getTestWasm name
                       ic_install ic00 (enum #install) cid wasm ""
                       return cid in
-      let good name = testCase ("valid: " ++ name) $ inst name >> return () in
+      let good name = testCase ("valid: " ++ name) $ void $ inst name in
       let bad name = testCase ("invalid: " ++ name) $ do
                     cid <- create ecid
                     wasm <- getTestWasm name
@@ -214,12 +214,10 @@ icTests my_sub other_sub =
           ctr @?= 0 -- no (start) function was executed
       , testCase "empty query name" $ do
           cid <- inst "empty_query_name.wat"
-          _ <- read cid ""
-          return ()
+          void $ read cid ""
       , testCase "query name with spaces" $ do
           cid <- inst "query_name_with_spaces.wat"
-          _ <- read cid "name with spaces"
-          return ()
+          void $ read cid "name with spaces"
       , testCase "empty custom section name" $ do
           cid <- inst "empty_custom_section_name"
           cert <- getStateCert otherUser cid [["canister", cid, "metadata", ""]]

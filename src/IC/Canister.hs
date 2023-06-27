@@ -102,19 +102,12 @@ parseCanister bytes = do
   let maxUpdateQueryTotalLength = 20000
   unless (sum (map length updates) + sum (map length queries) + sum (map length composite_queries) <= maxUpdateQueryTotalLength) $ throwError $ "The sum of <name> lengths in all exported functions called canister_update <name>, canister_query <name>, or canister_composite_query <name> must not exceed " ++ show maxUpdateQueryTotalLength
 
-  forM_ updates $ \n ->
-    if elem n queries then
-      throwError "Wasm module must not export canister_update <name> and canister_query <name> with the same <name>"
-    else if elem n composite_queries then
-      throwError "Wasm module must not export canister_update <name> and canister_composite_query <name> with the same <name>"
-    else
-      return ()
+  forM_ updates $ \n -> do
+    when (elem n queries) $ throwError "Wasm module must not export canister_update <name> and canister_query <name> with the same <name>"
+    when (elem n composite_queries) $ throwError "Wasm module must not export canister_update <name> and canister_composite_query <name> with the same <name>"
 
   forM_ queries $ \n ->
-    if elem n composite_queries then
-      throwError "Wasm module must not export canister_query <name> and canister_composite_query <name> with the same <name>"
-    else
-      return ()
+    when (elem n composite_queries) $ throwError "Wasm module must not export canister_query <name> and canister_composite_query <name> with the same <name>"
 
   let maxMetadataCount = 16
   unless (length metadata <= maxMetadataCount) $ throwError $ "Wasm module must not declare more than " ++ show maxMetadataCount ++ " custom sections whose names start with icp:"
