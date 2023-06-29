@@ -16,7 +16,8 @@ import Data.ByteString.Lazy
 import Data.HashMap.Lazy
 
 data GenR
-    = GNat Natural
+    = GBool Bool
+    | GNat Natural
     | GText Text
     | GBlob ByteString
     | GRec (HashMap Text GenR)
