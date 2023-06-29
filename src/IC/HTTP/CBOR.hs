@@ -41,6 +41,7 @@ decode s =
     shorten n s = a <> (if T.null b then "" else "...")
         where (a,b) = T.splitAt n s
 
+    go (TBool b) = return $ GBool b
     go (TInt n) | n < 0 = Left "Negative integer"
     go (TInt n) = return $ GNat (fromIntegral n)
     go (TInteger n) | n < 0 = Left "Negative integer"
