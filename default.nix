@@ -43,14 +43,12 @@ let staticHaskellPackages = nixpkgs.pkgsStatic.haskellPackages.override {
 
 let python = nixpkgs.python311.withPackages(ps: with ps; []); in
 
-let wabt-definitions = nixpkgs.copyPathToStore wabt-tests/.; in
-
 let wabt-tests = nixpkgs.runCommandNoCC "wabt-tests" {
-  buildInputs = [ nixpkgs.wabt python wabt-definitions ];
+  buildInputs = [ nixpkgs.wabt python ];
   allowedRequisites = [];
 } ''
   mkdir -p $out
-  python3 ${wabt-definitions}/gen.py
+  python3 ${./wabt-tests}/gen.py
   cp *.wasm $out
   for f in $(ls *.wat)
   do
