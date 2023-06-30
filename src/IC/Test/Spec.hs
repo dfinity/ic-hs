@@ -184,6 +184,49 @@ icTests my_sub other_sub =
         ic_provisional_create' ic00 ecid (Just specified_id) (Just (2^(60::Int))) empty >>= isReject [4]
     ]
 
+    , let inst name = do
+                      cid <- create ecid
+                      wasm <- getTestWasm name
+                      ic_install ic00 (enum #install) cid wasm ""
+                      return cid in
+      let good name = testCase ("valid: " ++ name) $ void $ inst name in
+      let bad name = testCase ("invalid: " ++ name) $ do
+                    cid <- create ecid
+                    wasm <- getTestWasm name
+                    ic_install' ic00 (enum #install) cid wasm "" >>= isReject [5] in
+      let read cid m = (queryCBOR cid >=> queryResponse $ rec
+                      [ "request_type" =: GText "query"
+                      , "sender" =: GBlob defaultUser
+                      , "canister_id" =: GBlob cid
+                      , "method_name" =: GText m
+                      , "arg" =: GBlob ""
+                      ]) >>= isReply >>= asWord32 in
+      testGroup "WebAssembly module validation" $
+      map good ["empty_custom_section_name", "large_custom_sections", "long_exported_function_names.wat", "many_custom_sections", "many_exports.wat", "many_functions.wat", "many_globals.wat", "valid_import.wat"] ++
+      map bad ["duplicate_custom_section", "invalid_canister_composite_query_cq_reta.wat", "invalid_canister_composite_query_cq_retb.wat", "invalid_canister_export.wat", "invalid_canister_global_timer_reta.wat", "invalid_canister_global_timer_retb.wat", "invalid_canister_heartbeat_reta.wat", "invalid_canister_heartbeat_retb.wat", "invalid_canister_init_reta.wat", "invalid_canister_init_retb.wat", "invalid_canister_inspect_message_reta.wat", "invalid_canister_inspect_message_retb.wat", "invalid_canister_post_upgrade_reta.wat", "invalid_canister_post_upgrade_retb.wat", "invalid_canister_pre_upgrade_reta.wat", "invalid_canister_pre_upgrade_retb.wat", "invalid_canister_query_que_reta.wat", "invalid_canister_query_que_retb.wat", "invalid_canister_update_upd_reta.wat", "invalid_canister_update_upd_retb.wat", "invalid_custom_section", "invalid_empty_custom_section_name", "invalid_empty_query_name.wat", "invalid_import.wat", "name_clash_query_composite_query.wat", "name_clash_update_composite_query.wat", "name_clash_update_query.wat", "too_large_custom_sections", "too_long_exported_function_names.wat", "too_many_custom_sections", "too_many_exports.wat", "too_many_functions.wat", "too_many_globals.wat"] ++
+      [ testCase "(start) function" $ do
+          cid <- inst "start.wat"
+          ctr <- read cid "read"
+          ctr @?= 4 -- (start) function was executed
+      , testCase "no (start) function" $ do
+          cid <- inst "no_start.wat"
+          ctr <- read cid "read"
+          ctr @?= 0 -- no (start) function was executed
+      , testCase "empty query name" $ do
+          cid <- inst "empty_query_name.wat"
+          void $ read cid ""
+      , testCase "query name with spaces" $ do
+          cid <- inst "query_name_with_spaces.wat"
+          void $ read cid "name with spaces"
+      , testCase "empty custom section name" $ do
+          cid <- inst "empty_custom_section_name"
+          cert <- getStateCert otherUser cid [["canister", cid, "metadata", ""]]
+          lookupPath (cert_tree cert) ["canister", cid, "metadata", ""] @?= Found "a"
+      , testCase "custom section name with spaces" $ do
+          cid <- inst "custom_section_name_with_spaces"
+          cert <- getStateCert otherUser cid [["canister", cid, "metadata", "name with spaces"]]
+          lookupPath (cert_tree cert) ["canister", cid, "metadata", "name with spaces"] @?= Found "a"
+      ]
   , testCaseSteps "management requests" $ \step -> do
       step "Create (provisional)"
       can_id <- create ecid

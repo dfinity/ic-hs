@@ -38,6 +38,7 @@ import Control.Monad.ST
 import Data.Binary.Get (runGetOrFail)
 import Data.Default.Class (Default (..))
 import Data.Int
+import Data.List (isPrefixOf)
 import Data.Foldable
 import Data.MemoUgly
 
@@ -70,9 +71,28 @@ type Module = W.Module W.Phrase
 -- a module is parsed, eventually dropped (i.e. canister deleted), and never installed
 -- again.
 parseModule :: BS.ByteString -> Either String Module
-parseModule = memo $ \bytes -> case runGetOrFail W.getModule bytes of
-  Left  (_,_,err) -> Left err
-  Right (_,_,wasm_mod) -> Right wasm_mod
+parseModule = memo $ \bytes -> do
+    wasm_mod <- case runGetOrFail W.getModule bytes of Left (_, _, err) -> Left err
+                                                       Right (_, _, wasm_mod) -> Right wasm_mod
+    let tys = map (\w -> case w of W.Phrase _ (W.FuncType args res) -> (args, res)) $ V.toList $ W._moduleTypes wasm_mod
+    let globs = V.toList $ W._moduleGlobals wasm_mod
+    let funcs = map (\w -> case w of W.Phrase _ (W.Func (W.Phrase _ ty) _ _) -> ty) $ V.toList $ W._moduleFuncs wasm_mod
+    let imps = [e | W.Phrase _ e <- V.toList $ W._moduleImports wasm_mod, W.FuncImport {} <- return $ W._importDesc e]
+    let nimps = length imps
+    let exps = [(T.unpack (W._exportName e), idx) | W.Phrase _ e <- V.toList $ W._moduleExports wasm_mod, W.FuncExport (W.Phrase _ idx) <- return $ W._exportDesc e]
+    let maxFunctions = 50000
+    unless (length funcs <= maxFunctions) $ throwError $ "Wasm module must not declare more than " ++ show maxFunctions ++ " functions"
+    let maxGlobals = 300
+    unless (length globs <= maxGlobals) $ throwError $ "Wasm module must not declare more than " ++ show maxGlobals ++ " globals"
+    forM_ exps $ \(n, idx) ->
+      let canister_prefix = "canister_" in
+      when (isPrefixOf canister_prefix n) $ do
+        let special = map (canister_prefix ++) ["init", "inspect_message", "heartbeat", "global_timer", "pre_upgrade", "post_upgrade"]
+        unless (elem n special || isPrefixOf "canister_update " n || isPrefixOf "canister_query " n || isPrefixOf "canister_composite_query " n) $ throwError $ "Names of exported functions starting with " ++ canister_prefix ++ " must have the form " ++ show special ++ " or canister_update <name>, canister_query <name>, or canister_composite_query <name>"
+        let ty = funcs !! (idx - nimps)
+        let (args, res) = tys !! ty
+        unless (args == [] && res == []) $ throwError $ "Exported functions whose names start with " ++ show canister_prefix ++ " must have type () -> ()"
+    return wasm_mod
 
 
 initialize :: forall s. Module -> Imports s -> HostM s (Instance s)

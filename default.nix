@@ -21,6 +21,7 @@ let universal-canister = (naersk.buildPackage rec {
 }).overrideAttrs (old: {
     postFixup = (old.postFixup or "") + ''
       mv $out/bin/universal-canister.wasm $out/universal-canister.wasm
+      chmod -x $out/universal-canister.wasm
       rmdir $out/bin
     '';
 }); in
@@ -40,12 +41,28 @@ let staticHaskellPackages = nixpkgs.pkgsStatic.haskellPackages.override {
   overrides = haskellOverrides;
 }; in
 
+let python = nixpkgs.python311.withPackages(ps: with ps; []); in
+
+let wabt-tests = nixpkgs.runCommandNoCC "wabt-tests" {
+  buildInputs = [ nixpkgs.wabt python ];
+  allowedRequisites = [];
+} ''
+  mkdir -p $out
+  python3 ${./wabt-tests}/gen.py
+  cp *.wasm $out
+  for f in $(ls *.wat)
+  do
+    wat2wasm $f -o "$out/$f.wasm"
+  done
+  ''; in
+
 let
   ic-hs = nixpkgs.haskell.lib.dontCheck (
     haskellPackages.ic-hs.overrideAttrs (old: {
       installPhase = (old.installPhase or "") + ''
         mkdir $out/test-data
         cp ${universal-canister}/universal-canister.wasm $out/test-data
+        cp ${wabt-tests}/*.wasm $out/test-data
       '';
       # variant of justStaticExecutables that retains propagatedBuildInputs
       postFixup = "rm -rf $out/lib $out/share/doc";
@@ -68,7 +85,8 @@ let
         cp ${ic-ref}/bin/ic-ref $out/build
         cp ${ic-ref}/bin/ic-ref-test $out/build
         mkdir -p $out/test-data
-        cp ${ic-ref}/test-data/universal-canister.wasm $out/test-data/universal-canister.wasm
+        cp ${universal-canister}/universal-canister.wasm $out/test-data
+        cp ${wabt-tests}/*.wasm $out/test-data
         chmod u+w $out/build/ic-ref
         chmod u+w $out/build/ic-ref-test
         dylibbundler \
@@ -112,7 +130,8 @@ let
         cp ${ic-hs-static}/bin/ic-ref $out/build
         cp ${ic-hs-static}/bin/ic-ref-test $out/build
         mkdir -p $out/test-data
-        cp ${ic-hs}/test-data/universal-canister.wasm $out/test-data/universal-canister.wasm
+        cp ${universal-canister}/universal-canister.wasm $out/test-data
+        cp ${wabt-tests}/*.wasm $out/test-data
 
         # The Paths_warp module in warp contains references to warp's /nix/store path like:
         #
@@ -172,6 +191,7 @@ rec {
   inherit ic-hs-coverage;
   inherit httpbin;
   inherit universal-canister;
+  inherit wabt-tests;
 
   openssl = nixpkgs.openssl;
 
@@ -311,6 +331,7 @@ rec {
       ic-ref-test
       ic-hs-coverage
       universal-canister
+      wabt-tests
       check-generated
     ];
   };
