@@ -209,7 +209,7 @@ data AgentConfig = AgentConfig
 makeAgentConfig :: String -> String -> Int -> IO AgentConfig
 makeAgentConfig ep' httpbin' to = do
     manager <- newTlsManagerWith $ tlsManagerSettings
-      { managerResponseTimeout = responseTimeoutMicro 60_000_000 -- 60s
+      { managerResponseTimeout = responseTimeoutMicro 300_000_000 -- 300s
       }
     request <- parseRequest $ ep ++ "/api/v2/status"
     putStrLn $ "Fetching endpoint status from " ++ show ep ++ "..."
