@@ -129,9 +129,15 @@ import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.Text.Encoding.Error as T
 import qualified Text.Hex as H
+import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as BS
 import qualified Data.ByteString.Builder as BS
 import qualified Data.HashMap.Lazy as HM
+import qualified Data.X509.CertificateStore as C
+import qualified Data.X509.Validation as C
+import Network.Connection
+import Network.TLS
+import Network.TLS.Extra.Cipher
 import Network.HTTP.Client
 import Network.HTTP.Client.TLS
 import Network.HTTP.Types
@@ -176,6 +182,7 @@ import IC.HashTree hiding (Blob, Label)
 import IC.Certificate
 import IC.Certificate.Value
 import IC.Certificate.CBOR
+import Data.Default.Class (def)
 
 -- * Exceptions
 
@@ -206,9 +213,15 @@ data AgentConfig = AgentConfig
     , tc_timeout :: Int
     }
 
-makeAgentConfig :: String -> String -> Int -> IO AgentConfig
-makeAgentConfig ep' httpbin' to = do
-    manager <- newTlsManagerWith $ tlsManagerSettings
+makeAgentConfig :: Bool -> String -> String -> Int -> IO AgentConfig
+makeAgentConfig allow_self_signed_certs ep' httpbin' to = do
+    let validate = \ca_store -> if allow_self_signed_certs then \_ _ _ -> return [] else C.validateDefault (C.makeCertificateStore $ (C.listCertificates ca_store))
+    let client_params = (defaultParamsClient "" B.empty) {
+          clientHooks = def {onServerCertificate = validate}
+        , clientSupported = def { supportedCiphers = ciphersuite_default }
+        }
+    let manager_settings = mkManagerSettings (TLSSettings client_params) Nothing
+    manager <- newTlsManagerWith $ manager_settings
       { managerResponseTimeout = responseTimeoutMicro 300_000_000 -- 300s
       }
     request <- parseRequest $ ep ++ "/api/v2/status"
@@ -240,15 +253,16 @@ preFlight os = do
     let Endpoint ep = lookupOption os
     let Httpbin httpbin = lookupOption os
     let PollTimeout to = lookupOption os
-    makeAgentConfig ep httpbin to
+    let AllowSelfSignedCerts allow_self_signed_certs = lookupOption os
+    makeAgentConfig allow_self_signed_certs ep httpbin to
 
 
 newtype ReplWrapper = R (forall a. (HasAgentConfig => a) -> a)
 
 -- |  This is for use from the Haskell REPL, see README.md
-connect :: String -> String -> Int -> IO ReplWrapper
-connect ep httpbin to = do
-    agentConfig <- makeAgentConfig ep httpbin to
+connect :: Bool -> String -> String -> Int -> IO ReplWrapper
+connect allow_self_signed_certs ep httpbin to = do
+    agentConfig <- makeAgentConfig allow_self_signed_certs ep httpbin to
     let ?agentConfig = agentConfig
     return (R $ \x -> x)
 

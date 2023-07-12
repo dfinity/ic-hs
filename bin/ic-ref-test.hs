@@ -35,6 +35,7 @@ main = do
         , includingOptions [polltimeoutOption]
         , includingOptions [testSubnetOption]
         , includingOptions [peerSubnetOption]
+        , includingOptions [allowSelfSignedCertsOption]
         , antXMLRunner `composeReporters` htmlRunner `composeReporters` consoleTestReporter
         ]
       ]
