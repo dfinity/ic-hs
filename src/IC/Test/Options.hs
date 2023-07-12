@@ -56,6 +56,18 @@ instance IsOption PollTimeout where
 polltimeoutOption :: OptionDescription
 polltimeoutOption = Option (Proxy :: Proxy PollTimeout)
 
+-- Configuration: Allow self-signed certificates
+
+newtype AllowSelfSignedCerts = AllowSelfSignedCerts Bool
+
+instance IsOption AllowSelfSignedCerts where
+  defaultValue = AllowSelfSignedCerts False
+  parseValue p = Just $ AllowSelfSignedCerts $ read p
+  optionName = return "allow-self-signed-certs"
+  optionHelp = return $ "Allow self-signed certificates (default: " ++ show False ++ ")"
+allowSelfSignedCertsOption :: OptionDescription
+allowSelfSignedCertsOption = Option (Proxy :: Proxy AllowSelfSignedCerts)
+
 -- TestSubnetConfig: helper functions
 
 getSubnetIdFromNonce :: String -> EntityId
