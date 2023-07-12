@@ -222,7 +222,7 @@ makeAgentConfig allow_self_signed_certs ep' httpbin' to = do
         }
     let manager_settings = mkManagerSettings (TLSSettings client_params) Nothing
     manager <- newTlsManagerWith $ manager_settings
-      { managerResponseTimeout = responseTimeoutMicro 60_000_000 -- 60s
+      { managerResponseTimeout = responseTimeoutMicro 300_000_000 -- 300s
       }
     request <- parseRequest $ ep ++ "/api/v2/status"
     putStrLn $ "Fetching endpoint status from " ++ show ep ++ "..."
