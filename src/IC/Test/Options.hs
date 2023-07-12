@@ -65,6 +65,7 @@ instance IsOption AllowSelfSignedCerts where
   parseValue p = Just $ AllowSelfSignedCerts $ read p
   optionName = return "allow-self-signed-certs"
   optionHelp = return $ "Allow self-signed certificates (default: " ++ show False ++ ")"
+
 allowSelfSignedCertsOption :: OptionDescription
 allowSelfSignedCertsOption = Option (Proxy :: Proxy AllowSelfSignedCerts)
 
