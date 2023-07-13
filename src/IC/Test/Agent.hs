@@ -135,6 +135,7 @@ import qualified Data.ByteString.Builder as BS
 import qualified Data.HashMap.Lazy as HM
 import qualified Data.X509.CertificateStore as C
 import qualified Data.X509.Validation as C
+import qualified Data.Word as W
 import Network.Connection
 import Network.TLS
 import Network.TLS.Extra.Cipher
@@ -212,12 +213,12 @@ data AgentConfig = AgentConfig
     { tc_root_key :: Blob
     , tc_manager :: Manager
     , tc_endPoint :: String
-    , tc_nodes :: [[String]]
+    , tc_nodes :: [([String], [(W.Word64, W.Word64)])]
     , tc_httpbin :: String
     , tc_timeout :: Int
     }
 
-makeAgentConfig :: Bool -> String -> [[String]] -> String -> Int -> IO AgentConfig
+makeAgentConfig :: Bool -> String -> [([String], [(W.Word64, W.Word64)])] -> String -> Int -> IO AgentConfig
 makeAgentConfig allow_self_signed_certs ep' ns' httpbin' to = do
     let validate = \ca_store -> if allow_self_signed_certs then \_ _ _ -> return [] else C.validateDefault (C.makeCertificateStore $ (C.listCertificates ca_store))
     let client_params = (defaultParamsClient "" B.empty) {
@@ -240,7 +241,7 @@ makeAgentConfig allow_self_signed_certs ep' ns' httpbin' to = do
         { tc_root_key = status_root_key s
         , tc_manager = manager
         , tc_endPoint = ep
-        , tc_nodes = map (map (aux "node")) ns'
+        , tc_nodes = map (\(n, r) -> (map (aux "node") n, r)) ns'
         , tc_httpbin = httpbin
         , tc_timeout = to
         }
@@ -259,9 +260,9 @@ preFlight os = do
     let Httpbin httpbin = lookupOption os
     let PollTimeout to = lookupOption os
     let AllowSelfSignedCerts allow_self_signed_certs = lookupOption os
-    let TestSubnet (_, _, _, _, test_subnet) = lookupOption os
-    let PeerSubnet (_, _, _, _, peer_subnet) = lookupOption os
-    makeAgentConfig allow_self_signed_certs ep [test_subnet, peer_subnet] httpbin to
+    let TestSubnet (_, _, _, test_ranges, test_nodes) = lookupOption os
+    let PeerSubnet (_, _, _, peer_ranges, peer_nodes) = lookupOption os
+    makeAgentConfig allow_self_signed_certs ep [(test_nodes, test_ranges), (peer_nodes, peer_ranges)] httpbin to
 
 
 -- Yes, implicit arguments are frowned upon. But they are also very useful.
@@ -277,7 +278,7 @@ agentConfig = ?agentConfig
 endPoint :: HasAgentConfig => String
 endPoint = tc_endPoint agentConfig
 
-nodes :: HasAgentConfig => [[String]]
+nodes :: HasAgentConfig => [([String], [(W.Word64, W.Word64)])]
 nodes = tc_nodes agentConfig
 
 agentManager :: HasAgentConfig => Manager
@@ -438,14 +439,16 @@ waitFor act = do
       unless stop (threadDelay 1000 *> doActUntil)
 
 sync_height :: HasAgentConfig => Blob -> IO [()]
-sync_height cid = mapM (\ns -> do
-  hs <- get_heights ns
-  let h = maximum hs
-  unless (length (nub hs) <= 1) $
-    waitFor $ do
-      hs <- get_heights ns
-      return $ h <= minimum hs
-  return ()) nodes
+sync_height cid = mapM (\(ns, rs) -> do
+  let ranges = map (\(a, b) -> (wordToId' a, wordToId' b)) rs
+  when (any (\(a, b) -> a <= cid && cid <= b) ranges) $ do
+    hs <- get_heights ns
+    let h = maximum hs
+    unless (length (nub hs) <= 1) $
+      waitFor $ do
+        hs <- get_heights ns
+        return $ h <= minimum hs
+    return ()) nodes
   where
     get_heights ns = mapM (\n -> (queryCBOR' n cid $ rec
       [ "request_type" =: GText "query"
