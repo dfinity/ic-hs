@@ -122,6 +122,10 @@ type RequestValidation m = (MonadError ValidationError m, ICM m)
 
 authCallRequest :: RequestValidation m => Timestamp -> CanisterId -> EnvValidity -> CallRequest -> m ()
 authCallRequest t ecid ev r@(CallRequest canister_id user_id meth arg) = do
+    subnet <- getSubnetFromCanisterId' ecid
+    case subnet of
+      Nothing -> throwError $ HTTPError $ "Cannot route request with effective canister id " ++ prettyID ecid
+      _ -> return ()
     checkEffectiveCanisterID ecid canister_id meth arg
     res <- runExceptT $ do
         valid_when ev t
@@ -133,6 +137,10 @@ authCallRequest t ecid ev r@(CallRequest canister_id user_id meth arg) = do
 
 authQueryRequest :: RequestValidation m => Timestamp -> CanisterId -> EnvValidity -> QueryRequest -> m ()
 authQueryRequest t ecid ev (QueryRequest canister_id user_id meth arg) = do
+    subnet <- getSubnetFromCanisterId' ecid
+    case subnet of
+      Nothing -> throwError $ HTTPError $ "Cannot route request with effective canister id " ++ prettyID ecid
+      _ -> return ()
     checkEffectiveCanisterID ecid canister_id meth arg
     res <- runExceptT $ do
         valid_when ev t
@@ -143,6 +151,10 @@ authQueryRequest t ecid ev (QueryRequest canister_id user_id meth arg) = do
 
 authReadStateRequest :: RequestValidation m => Timestamp -> CanisterId -> EnvValidity -> ReadStateRequest -> m ()
 authReadStateRequest t ecid ev (ReadStateRequest user_id paths) = do
+    subnet <- getSubnetFromCanisterId' ecid
+    case subnet of
+      Nothing -> throwError $ HTTPError $ "Cannot route request with effective canister id " ++ prettyID ecid
+      _ -> return ()
     res <- runExceptT $ do
         valid_when ev t
         valid_for ev user_id
