@@ -65,8 +65,8 @@ import qualified IC.Test.Spec.TECDSA
 
 icTests :: TestSubnetConfig -> TestSubnetConfig -> AgentConfig -> TestTree
 icTests my_sub other_sub =
-  let (my_subnet_id_as_entity, my_type, _, ((ecid_as_word64, last_canister_id_as_word64):_)) = my_sub in
-  let (other_subnet_id_as_entity, _, _, ((other_ecid_as_word64, _):_)) = other_sub in
+  let (my_subnet_id_as_entity, my_type, _, ((ecid_as_word64, last_canister_id_as_word64):_), _) = my_sub in
+  let (other_subnet_id_as_entity, _, _, ((other_ecid_as_word64, _):_), _) = other_sub in
   let my_subnet_id = rawEntityId my_subnet_id_as_entity in
   let other_subnet_id = rawEntityId other_subnet_id_as_entity in
   let my_is_root = isRootTestSubnet my_sub in
@@ -194,13 +194,13 @@ icTests my_sub other_sub =
                     cid <- create ecid
                     wasm <- getTestWasm name
                     ic_install' ic00 (enum #install) cid wasm "" >>= isReject [5] in
-      let read cid m = (queryCBOR cid >=> queryResponse $ rec
-                      [ "request_type" =: GText "query"
+      let read cid m = (addNonceExpiryEnv $ rec
+                      [ "request_type" =: GText "call"
                       , "sender" =: GBlob defaultUser
                       , "canister_id" =: GBlob cid
                       , "method_name" =: GText m
                       , "arg" =: GBlob ""
-                      ]) >>= isReply >>= asWord32 in
+                      ]) >>= postCallCBOR cid >>= okCBOR >>= callResponse >>= isReply >>= asWord32 in
       testGroup "WebAssembly module validation" $
       map good ["empty_custom_section_name", "large_custom_sections", "long_exported_function_names.wat", "many_custom_sections", "many_exports.wat", "many_functions.wat", "many_globals.wat", "valid_import.wat"] ++
       map bad ["duplicate_custom_section", "invalid_canister_composite_query_cq_reta.wat", "invalid_canister_composite_query_cq_retb.wat", "invalid_canister_export.wat", "invalid_canister_global_timer_reta.wat", "invalid_canister_global_timer_retb.wat", "invalid_canister_heartbeat_reta.wat", "invalid_canister_heartbeat_retb.wat", "invalid_canister_init_reta.wat", "invalid_canister_init_retb.wat", "invalid_canister_inspect_message_reta.wat", "invalid_canister_inspect_message_retb.wat", "invalid_canister_post_upgrade_reta.wat", "invalid_canister_post_upgrade_retb.wat", "invalid_canister_pre_upgrade_reta.wat", "invalid_canister_pre_upgrade_retb.wat", "invalid_canister_query_que_reta.wat", "invalid_canister_query_que_retb.wat", "invalid_canister_update_upd_reta.wat", "invalid_canister_update_upd_retb.wat", "invalid_custom_section", "invalid_empty_custom_section_name", "invalid_empty_query_name.wat", "invalid_import.wat", "name_clash_query_composite_query.wat", "name_clash_update_composite_query.wat", "name_clash_update_query.wat", "too_large_custom_sections", "too_long_exported_function_names.wat", "too_many_custom_sections", "too_many_exports.wat", "too_many_functions.wat", "too_many_globals.wat"] ++

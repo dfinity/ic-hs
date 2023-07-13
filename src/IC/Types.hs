@@ -148,7 +148,7 @@ data SubnetConfig = SubnetConfig
     , canister_ranges :: [(W.Word64, W.Word64)]
     }
 
-type TestSubnetConfig = (EntityId, SubnetType, W.Word64, [(W.Word64, W.Word64)])
+type TestSubnetConfig = (EntityId, SubnetType, W.Word64, [(W.Word64, W.Word64)], [String])
 
 -- Abstract canisters
 

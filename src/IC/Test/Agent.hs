@@ -55,13 +55,13 @@ module IC.Test.Agent
       awaitKnown,
       awaitStatus,
       bothSame,
+      callResponse,
       certValue,
       certValueAbsent,
       code202,
       code202_or_4xx,
       code2xx,
       code4xx,
-      connect,
       decodeCert',
       defaultSK,
       defaultUser,
@@ -148,6 +148,8 @@ import Test.Tasty.Options
 import Control.Monad.Except
 import Control.Concurrent
 import Control.Exception (catch, throw, Exception)
+import Data.Default.Class (def)
+import Data.List (nub)
 import Data.Traversable
 import Data.Word
 import Data.WideWord.Word128
@@ -165,6 +167,7 @@ import qualified Data.Row.Variants as V
 import qualified Haskoin.Crypto.Signature as Haskoin
 import qualified Haskoin.Crypto.Hash as Haskoin
 import qualified Haskoin.Keys.Common as Haskoin
+import System.Timeout
 
 import IC.Version
 import IC.HTTP.GenR
@@ -182,7 +185,7 @@ import IC.HashTree hiding (Blob, Label)
 import IC.Certificate
 import IC.Certificate.Value
 import IC.Certificate.CBOR
-import Data.Default.Class (def)
+import IC.Test.Universal
 
 -- * Exceptions
 
@@ -209,12 +212,13 @@ data AgentConfig = AgentConfig
     { tc_root_key :: Blob
     , tc_manager :: Manager
     , tc_endPoint :: String
+    , tc_nodes :: [[String]]
     , tc_httpbin :: String
     , tc_timeout :: Int
     }
 
-makeAgentConfig :: Bool -> String -> String -> Int -> IO AgentConfig
-makeAgentConfig allow_self_signed_certs ep' httpbin' to = do
+makeAgentConfig :: Bool -> String -> [[String]] -> String -> Int -> IO AgentConfig
+makeAgentConfig allow_self_signed_certs ep' ns' httpbin' to = do
     let validate = \ca_store -> if allow_self_signed_certs then \_ _ _ -> return [] else C.validateDefault (C.makeCertificateStore $ (C.listCertificates ca_store))
     let client_params = (defaultParamsClient "" B.empty) {
           clientHooks = def {onServerCertificate = validate}
@@ -236,17 +240,18 @@ makeAgentConfig allow_self_signed_certs ep' httpbin' to = do
         { tc_root_key = status_root_key s
         , tc_manager = manager
         , tc_endPoint = ep
+        , tc_nodes = map (map (aux "node")) ns'
         , tc_httpbin = httpbin
         , tc_timeout = to
         }
   where
     -- strip trailing slash
-    ep | null ep'        = error "empty endpoint"
-       | last ep' == '/' = init ep'
-       | otherwise       = ep'
-    httpbin | null httpbin'        = error "empty httpbin"
-            | last httpbin' == '/' = init httpbin'
-            | otherwise            = httpbin'
+    aux msg x
+      | null x        = error $ "empty " ++ msg
+      | last x == '/' = init x
+      | otherwise     = x
+    ep = aux "endpoint" ep'
+    httpbin = aux "httpbin" httpbin'
 
 preFlight :: OptionSet -> IO AgentConfig
 preFlight os = do
@@ -254,17 +259,10 @@ preFlight os = do
     let Httpbin httpbin = lookupOption os
     let PollTimeout to = lookupOption os
     let AllowSelfSignedCerts allow_self_signed_certs = lookupOption os
-    makeAgentConfig allow_self_signed_certs ep httpbin to
+    let TestSubnet (_, _, _, _, test_subnet) = lookupOption os
+    let PeerSubnet (_, _, _, _, peer_subnet) = lookupOption os
+    makeAgentConfig allow_self_signed_certs ep [test_subnet, peer_subnet] httpbin to
 
-
-newtype ReplWrapper = R (forall a. (HasAgentConfig => a) -> a)
-
--- |  This is for use from the Haskell REPL, see README.md
-connect :: Bool -> String -> String -> Int -> IO ReplWrapper
-connect allow_self_signed_certs ep httpbin to = do
-    agentConfig <- makeAgentConfig allow_self_signed_certs ep httpbin to
-    let ?agentConfig = agentConfig
-    return (R $ \x -> x)
 
 -- Yes, implicit arguments are frowned upon. But they are also very useful.
 
@@ -278,6 +276,9 @@ agentConfig = ?agentConfig
 
 endPoint :: HasAgentConfig => String
 endPoint = tc_endPoint agentConfig
+
+nodes :: HasAgentConfig => [[String]]
+nodes = tc_nodes agentConfig
 
 agentManager :: HasAgentConfig => Manager
 agentManager = tc_manager agentConfig
@@ -405,9 +406,9 @@ asExceptT act = runExceptT act >>= asRight
 -- * Requests
 
 -- | Posting a CBOR request, returning a raw bytestring
-postCBOR :: (HasCallStack, HasAgentConfig) => String -> GenR -> IO (Response BS.ByteString)
-postCBOR path gr = do
-    request <- parseRequest $ endPoint ++ path
+postCBOR' :: (HasCallStack, HasAgentConfig) => String -> String -> GenR -> IO (Response BS.ByteString)
+postCBOR' ep path gr = do
+    request <- parseRequest $ ep ++ path
     request <- return $ request
       { method = "POST"
       , requestBody = RequestBodyLBS $ BS.toLazyByteString $ encode gr
@@ -415,14 +416,51 @@ postCBOR path gr = do
       }
     httpLbs request agentManager
 
+postCBOR :: (HasCallStack, HasAgentConfig) => String -> GenR -> IO (Response BS.ByteString)
+postCBOR = postCBOR' endPoint
+
 -- | postCBOR with url based on effective canister id
+postQueryCBOR' :: (HasCallStack, HasAgentConfig) => String -> Blob -> GenR -> IO (Response BS.ByteString)
+postQueryCBOR' ep cid = postCBOR' ep $ "/api/v2/canister/" ++ textual cid ++ "/query"
+
 postCallCBOR, postQueryCBOR, postReadStateCBOR :: (HasCallStack, HasAgentConfig) => Blob -> GenR -> IO (Response BS.ByteString)
 postCallCBOR cid      = postCBOR $ "/api/v2/canister/" ++ textual cid ++ "/call"
-postQueryCBOR cid     = postCBOR $ "/api/v2/canister/" ++ textual cid ++ "/query"
+postQueryCBOR cid     = (\r -> sync_height cid >> postQueryCBOR' endPoint cid r)
 postReadStateCBOR cid = postCBOR $ "/api/v2/canister/" ++ textual cid ++ "/read_state"
+
+waitFor :: HasAgentConfig => IO Bool -> IO ()
+waitFor act = do
+    result <- timeout (tc_timeout agentConfig * (10::Int) ^ (6::Int)) doActUntil
+    when (result == Nothing) $ assertFailure "Polling timed out"
+  where
+    doActUntil = do
+      stop <- act
+      unless stop (threadDelay 1000 *> doActUntil)
+
+sync_height :: HasAgentConfig => Blob -> IO [()]
+sync_height cid = mapM (\ns -> do
+  hs <- get_heights ns
+  let h = maximum hs
+  unless (length (nub hs) <= 1) $
+    waitFor $ do
+      hs <- get_heights ns
+      return $ h <= minimum hs
+  return ()) nodes
+  where
+    get_heights ns = mapM (\n -> (queryCBOR' n cid $ rec
+      [ "request_type" =: GText "query"
+      , "sender" =: GBlob defaultUser
+      , "canister_id" =: GBlob cid
+      , "method_name" =: GText "query"
+      , "arg" =: GBlob (run $ replyData $ i64tob canisterVersion)
+      ]) >>= queryResponse >>= isReply >>= asWord32) ns
 
 -- | Add envelope to CBOR request, add a nonce and expiry if it is not there,
 -- post to "read", return decoded CBOR
+queryCBOR' :: (HasCallStack, HasAgentConfig) => String -> Blob -> GenR -> IO GenR
+queryCBOR' ep cid req = do
+  addNonceExpiryEnv req >>= postQueryCBOR' ep cid >>= okCBOR
+
 queryCBOR :: (HasCallStack, HasAgentConfig) => Blob -> GenR -> IO GenR
 queryCBOR cid req = do
   addNonceExpiryEnv req >>= postQueryCBOR cid >>= okCBOR
