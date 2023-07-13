@@ -453,7 +453,7 @@ sync_height cid = mapM (\ns -> do
       , "canister_id" =: GBlob cid
       , "method_name" =: GText "query"
       , "arg" =: GBlob (run $ replyData $ i64tob canisterVersion)
-      ]) >>= queryResponse >>= isReply >>= asWord32) ns
+      ]) >>= queryResponse >>= isReply >>= asWord64) ns
 
 -- | Add envelope to CBOR request, add a nonce and expiry if it is not there,
 -- post to "read", return decoded CBOR
