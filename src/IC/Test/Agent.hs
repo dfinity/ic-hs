@@ -220,7 +220,7 @@ data AgentConfig = AgentConfig
     }
 
 makeAgentConfig :: Bool -> String -> [([String], [(W.Word64, W.Word64)])] -> String -> Int -> IO AgentConfig
-makeAgentConfig allow_self_signed_certs ep' ns' httpbin' to = do
+makeAgentConfig allow_self_signed_certs ep' subnets httpbin' to = do
     let validate = \ca_store -> if allow_self_signed_certs then \_ _ _ -> return [] else C.validateDefault (C.makeCertificateStore $ (C.listCertificates ca_store))
     let client_params = (defaultParamsClient "" B.empty) {
           clientHooks = def {onServerCertificate = validate}
@@ -242,7 +242,7 @@ makeAgentConfig allow_self_signed_certs ep' ns' httpbin' to = do
         { tc_root_key = status_root_key s
         , tc_manager = manager
         , tc_endPoint = ep
-        , tc_subnets = map (\(n, r) -> (map (aux "node") n, r)) ns'
+        , tc_subnets = map (\(ns, rs) -> (map (aux "node") ns, rs)) subnets
         , tc_httpbin = httpbin
         , tc_timeout = to
         }
@@ -418,10 +418,10 @@ postCBOR' ep path gr = do
       }
     httpLbs request agentManager
 
+-- | postCBOR with url based on effective canister id
 postCBOR :: (HasCallStack, HasAgentConfig) => String -> GenR -> IO (Response BS.ByteString)
 postCBOR = postCBOR' endPoint
 
--- | postCBOR with url based on effective canister id
 postReadStateCBOR' :: (HasCallStack, HasAgentConfig) => String -> Blob -> GenR -> IO (Response BS.ByteString)
 postReadStateCBOR' ep cid = postCBOR' ep $ "/api/v2/canister/" ++ textual cid ++ "/read_state"
 
