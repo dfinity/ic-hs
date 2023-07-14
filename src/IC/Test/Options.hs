@@ -101,7 +101,7 @@ instance IsOption TestSubnet where
   defaultValue = TestSubnet defaultSysTestSubnetConfig
   parseValue = Just <$> read
   optionName = return "test-subnet-config"
-  optionHelp = return $ "Test subnet configuration consisting of subnet ID, subnet type, replication factor, and canister ranges; default: " ++ show (TestSubnet defaultSysTestSubnetConfig)
+  optionHelp = return $ "Test subnet configuration consisting of subnet ID, subnet type, replication factor, canister ranges, and node addresses; default: " ++ show (TestSubnet defaultSysTestSubnetConfig)
 
 testSubnetOption :: OptionDescription
 testSubnetOption = Option (Proxy :: Proxy TestSubnet)
@@ -120,7 +120,7 @@ instance IsOption PeerSubnet where
   defaultValue = PeerSubnet defaultAppTestSubnetConfig
   parseValue = Just <$> read
   optionName = return "peer-subnet-config"
-  optionHelp = return $ "Peer subnet configuration consisting of subnet ID, subnet type, replication factor, and canister ranges; default: " ++ show (PeerSubnet defaultAppTestSubnetConfig)
+  optionHelp = return $ "Peer subnet configuration consisting of subnet ID, subnet type, replication factor, canister ranges, and node addresses; default: " ++ show (PeerSubnet defaultAppTestSubnetConfig)
 
 peerSubnetOption :: OptionDescription
 peerSubnetOption = Option (Proxy :: Proxy PeerSubnet)
