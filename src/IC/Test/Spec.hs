@@ -1094,7 +1094,7 @@ icTests my_sub other_sub =
             , "sender" =: GBlob defaultUser
             , "canister_id" =: GBlob ""
             , "method_name" =: GText "raw_rand"
-            , "arg" =: GBlob (Candid.encode R.empty)
+            , "arg" =: GBlob (Candid.encode ())
             ]
       addNonceExpiryEnv req >>= postCallCBOR "" >>= code4xx
 
@@ -1104,7 +1104,7 @@ icTests my_sub other_sub =
             , "sender" =: GBlob defaultUser
             , "canister_id" =: GBlob ""
             , "method_name" =: GText "raw_rand"
-            , "arg" =: GBlob (Candid.encode R.empty)
+            , "arg" =: GBlob (Candid.encode ())
             ]
       addNonceExpiryEnv req >>= postQueryCBOR "" >>= code4xx
 
