@@ -213,9 +213,9 @@ rec {
       sleep 1
       test -e port
       LANG=C.UTF8 ic-ref-test \
-        --test-subnet-config "(\"bn26o-3iapb-njhsq-6mjum-ssjtx-lcwrs-id2x6-2z7ce-yaweh-xamz5-7qe\",system,1,[(0,1048575)])" \
-        --peer-subnet-config "(\"jdzfx-2szde-tnkmk-2m5zt-t6gga-pnl22-v36hx-hz5zg-r6mei-tw3q4-nae\",application,1,[(1048576,2097151)])" \
-        --endpoint "http://127.0.0.1:$(cat port)/" \
+        --test-subnet-config "(\"bn26o-3iapb-njhsq-6mjum-ssjtx-lcwrs-id2x6-2z7ce-yaweh-xamz5-7qe\",system,1,[(0,1048575)],[\"http://127.0.0.1:$(cat port)\"])" \
+        --peer-subnet-config "(\"jdzfx-2szde-tnkmk-2m5zt-t6gga-pnl22-v36hx-hz5zg-r6mei-tw3q4-nae\",application,1,[(1048576,2097151)],[\"http://127.0.0.1:$(cat port)\"])" \
+        --endpoint "http://127.0.0.1:$(cat port)" \
         --httpbin "127.0.0.1:8003" --html $out/report-1.html
       trap - EXIT PIPE
       kill -INT $PID
@@ -226,9 +226,9 @@ rec {
       sleep 1
       test -e port
       LANG=C.UTF8 ic-ref-test \
-        --test-subnet-config "(\"jdzfx-2szde-tnkmk-2m5zt-t6gga-pnl22-v36hx-hz5zg-r6mei-tw3q4-nae\",application,1,[(1048576,2097151)])" \
-        --peer-subnet-config "(\"bn26o-3iapb-njhsq-6mjum-ssjtx-lcwrs-id2x6-2z7ce-yaweh-xamz5-7qe\",system,1,[(0,1048575)])" \
-        --endpoint "http://127.0.0.1:$(cat port)/" \
+        --test-subnet-config "(\"jdzfx-2szde-tnkmk-2m5zt-t6gga-pnl22-v36hx-hz5zg-r6mei-tw3q4-nae\",application,1,[(1048576,2097151)],[\"http://127.0.0.1:$(cat port)\"])" \
+        --peer-subnet-config "(\"bn26o-3iapb-njhsq-6mjum-ssjtx-lcwrs-id2x6-2z7ce-yaweh-xamz5-7qe\",system,1,[(0,1048575)],[\"http://127.0.0.1:$(cat port)\"])" \
+        --endpoint "http://127.0.0.1:$(cat port)" \
         --httpbin "127.0.0.1:8003" --html $out/report-2.html
       trap - EXIT PIPE
       kill -INT $PID
@@ -261,9 +261,9 @@ rec {
       sleep 1
       test -e port
       LANG=C.UTF8 ic-ref-test \
-        --test-subnet-config "(\"bn26o-3iapb-njhsq-6mjum-ssjtx-lcwrs-id2x6-2z7ce-yaweh-xamz5-7qe\",system,1,[(0,1048575)])" \
-        --peer-subnet-config "(\"jdzfx-2szde-tnkmk-2m5zt-t6gga-pnl22-v36hx-hz5zg-r6mei-tw3q4-nae\",application,1,[(1048576,2097151)])" \
-        --endpoint "http://127.0.0.1:$(cat port)/" \
+        --test-subnet-config "(\"bn26o-3iapb-njhsq-6mjum-ssjtx-lcwrs-id2x6-2z7ce-yaweh-xamz5-7qe\",system,1,[(0,1048575)],[\"http://127.0.0.1:$(cat port)\"])" \
+        --peer-subnet-config "(\"jdzfx-2szde-tnkmk-2m5zt-t6gga-pnl22-v36hx-hz5zg-r6mei-tw3q4-nae\",application,1,[(1048576,2097151)],[\"http://127.0.0.1:$(cat port)\"])" \
+        --endpoint "http://127.0.0.1:$(cat port)" \
         --httpbin "127.0.0.1:8003"
       trap - EXIT PIPE
       kill -INT $PID
@@ -274,9 +274,9 @@ rec {
       sleep 1
       test -e port
       LANG=C.UTF8 ic-ref-test \
-        --test-subnet-config "(\"jdzfx-2szde-tnkmk-2m5zt-t6gga-pnl22-v36hx-hz5zg-r6mei-tw3q4-nae\",application,1,[(1048576,2097151)])" \
-        --peer-subnet-config "(\"bn26o-3iapb-njhsq-6mjum-ssjtx-lcwrs-id2x6-2z7ce-yaweh-xamz5-7qe\",system,1,[(0,1048575)])" \
-        --endpoint "http://127.0.0.1:$(cat port)/" \
+        --test-subnet-config "(\"jdzfx-2szde-tnkmk-2m5zt-t6gga-pnl22-v36hx-hz5zg-r6mei-tw3q4-nae\",application,1,[(1048576,2097151)],[\"http://127.0.0.1:$(cat port)\"])" \
+        --peer-subnet-config "(\"bn26o-3iapb-njhsq-6mjum-ssjtx-lcwrs-id2x6-2z7ce-yaweh-xamz5-7qe\",system,1,[(0,1048575)],[\"http://127.0.0.1:$(cat port)\"])" \
+        --endpoint "http://127.0.0.1:$(cat port)" \
         --httpbin "127.0.0.1:8003"
       trap - EXIT PIPE
       kill -INT $PID

@@ -10,8 +10,6 @@ Also, because of the focus on testing, failures are repoted directly with HUnitâ
 
 As guidance: This modules does _not_ rely on the universal canister.
 
-This module can also be used in a REPL; see 'connect'.
-
 -}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ImplicitParams #-}
