@@ -1096,7 +1096,7 @@ icTests my_sub other_sub =
             , "method_name" =: GText "raw_rand"
             , "arg" =: GBlob (Candid.encode ())
             ]
-      addNonceExpiryEnv req >>= postCallCBOR "" >>= code4xx
+      addNonceExpiryEnv req >>= envelope defaultSK >>= postCallCBOR "" >>= code4xx
 
     , testCase "using management canister as effective canister id in query" $ do
       let req = rec
@@ -1106,7 +1106,7 @@ icTests my_sub other_sub =
             , "method_name" =: GText "raw_rand"
             , "arg" =: GBlob (Candid.encode ())
             ]
-      addNonceExpiryEnv req >>= postQueryCBOR "" >>= code4xx
+      addNonceExpiryEnv req >>= envelope defaultSK >>= postQueryCBOR "" >>= code4xx
 
     , testCase "using management canister as effective canister id in read_state" $ do
       let req = rec
@@ -1114,7 +1114,7 @@ icTests my_sub other_sub =
             , "sender" =: GBlob defaultUser
             , "paths" =: GList [GList [GBlob "time"]]
             ]
-      addExpiry req >>= envelope defaultSK >>= postReadStateCBOR "" >>= code4xx
+      addNonceExpiry req >>= envelope defaultSK >>= postReadStateCBOR "" >>= code4xx
     ]
 
   , testGroup "inter-canister calls"
