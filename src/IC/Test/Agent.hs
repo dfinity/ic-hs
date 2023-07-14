@@ -83,6 +83,7 @@ module IC.Test.Agent
       ic00WithSubnetas',
       ingressDelay,
       is2xx,
+      isErr4xx,
       isErrOrReject,
       isNoErrReject,
       isPendingOrProcessing,
@@ -109,6 +110,7 @@ module IC.Test.Agent
       textual,
       validateStateCert,
       verifySignature,
+      waitFor,
       webAuthnECDSASK,
       webAuthnECDSAUser,
       webAuthnRSASK,
@@ -186,7 +188,6 @@ import IC.HashTree hiding (Blob, Label)
 import IC.Certificate
 import IC.Certificate.Value
 import IC.Certificate.CBOR
-import IC.Test.Universal
 
 -- * Exceptions
 
@@ -213,7 +214,7 @@ data AgentConfig = AgentConfig
     { tc_root_key :: Blob
     , tc_manager :: Manager
     , tc_endPoint :: String
-    , tc_nodes :: [([String], [(W.Word64, W.Word64)])]
+    , tc_subnets :: [([String], [(W.Word64, W.Word64)])]
     , tc_httpbin :: String
     , tc_timeout :: Int
     }
@@ -241,7 +242,7 @@ makeAgentConfig allow_self_signed_certs ep' ns' httpbin' to = do
         { tc_root_key = status_root_key s
         , tc_manager = manager
         , tc_endPoint = ep
-        , tc_nodes = map (\(n, r) -> (map (aux "node") n, r)) ns'
+        , tc_subnets = map (\(n, r) -> (map (aux "node") n, r)) ns'
         , tc_httpbin = httpbin
         , tc_timeout = to
         }
@@ -278,8 +279,8 @@ agentConfig = ?agentConfig
 endPoint :: HasAgentConfig => String
 endPoint = tc_endPoint agentConfig
 
-nodes :: HasAgentConfig => [([String], [(W.Word64, W.Word64)])]
-nodes = tc_nodes agentConfig
+subnets :: HasAgentConfig => [([String], [(W.Word64, W.Word64)])]
+subnets = tc_subnets agentConfig
 
 agentManager :: HasAgentConfig => Manager
 agentManager = tc_manager agentConfig
@@ -421,13 +422,13 @@ postCBOR :: (HasCallStack, HasAgentConfig) => String -> GenR -> IO (Response BS.
 postCBOR = postCBOR' endPoint
 
 -- | postCBOR with url based on effective canister id
-postQueryCBOR' :: (HasCallStack, HasAgentConfig) => String -> Blob -> GenR -> IO (Response BS.ByteString)
-postQueryCBOR' ep cid = postCBOR' ep $ "/api/v2/canister/" ++ textual cid ++ "/query"
+postReadStateCBOR' :: (HasCallStack, HasAgentConfig) => String -> Blob -> GenR -> IO (Response BS.ByteString)
+postReadStateCBOR' ep cid = postCBOR' ep $ "/api/v2/canister/" ++ textual cid ++ "/read_state"
 
 postCallCBOR, postQueryCBOR, postReadStateCBOR :: (HasCallStack, HasAgentConfig) => Blob -> GenR -> IO (Response BS.ByteString)
 postCallCBOR cid      = postCBOR $ "/api/v2/canister/" ++ textual cid ++ "/call"
-postQueryCBOR cid     = (\r -> sync_height cid >> postQueryCBOR' endPoint cid r)
-postReadStateCBOR cid = postCBOR $ "/api/v2/canister/" ++ textual cid ++ "/read_state"
+postQueryCBOR cid     = (\r -> sync_height cid >> postCBOR ("/api/v2/canister/" ++ textual cid ++ "/query") r)
+postReadStateCBOR cid = (\r -> sync_height cid >> postReadStateCBOR' endPoint cid r)
 
 waitFor :: HasAgentConfig => IO Bool -> IO ()
 waitFor act = do
@@ -448,22 +449,14 @@ sync_height cid = mapM (\(ns, rs) -> do
       waitFor $ do
         hs <- get_heights ns
         return $ h <= minimum hs
-    return ()) nodes
+    return ()) subnets
   where
-    get_heights ns = mapM (\n -> (queryCBOR' n cid $ rec
-      [ "request_type" =: GText "query"
-      , "sender" =: GBlob defaultUser
-      , "canister_id" =: GBlob cid
-      , "method_name" =: GText "query"
-      , "arg" =: GBlob (run $ replyData $ i64tob canisterVersion)
-      ]) >>= queryResponse >>= isReply >>= asWord64) ns
+    get_heights ns = mapM (\n -> do
+      Right cert <- getStateCert'' n defaultUser cid [["time"]]
+      certValue @Natural cert ["time"]) ns
 
 -- | Add envelope to CBOR request, add a nonce and expiry if it is not there,
 -- post to "read", return decoded CBOR
-queryCBOR' :: (HasCallStack, HasAgentConfig) => String -> Blob -> GenR -> IO GenR
-queryCBOR' ep cid req = do
-  addNonceExpiryEnv req >>= postQueryCBOR' ep cid >>= okCBOR
-
 queryCBOR :: (HasCallStack, HasAgentConfig) => Blob -> GenR -> IO GenR
 queryCBOR cid req = do
   addNonceExpiryEnv req >>= postQueryCBOR cid >>= okCBOR
@@ -512,21 +505,20 @@ is2xx = \case
     Left (c,msg) -> assertFailure $ "Status " ++ show c ++ " is not 2xx:\n" ++ msg
     Right res -> pure res
 
-getStateCert' :: (HasCallStack, HasAgentConfig) => Blob -> Blob -> [[Blob]] -> IO (Response Blob)
-getStateCert' sender ecid paths = do
+getStateCert' :: (HasCallStack, HasAgentConfig) => Blob -> Blob -> [[Blob]] -> IO (HTTPErrOr Certificate)
+getStateCert' = getStateCert'' endPoint
+
+decodeCert' :: HasCallStack => Blob -> IO Certificate
+decodeCert' b = either (assertFailure . T.unpack) return $ decodeCert b
+
+getStateCert'' :: (HasCallStack, HasAgentConfig) => String -> Blob -> Blob -> [[Blob]] -> IO (HTTPErrOr Certificate)
+getStateCert'' ep sender ecid paths = do
     req <- addExpiry $ rec
       [ "request_type" =: GText "read_state"
       , "sender" =: GBlob sender
       , "paths" =: GList (map (GList . map GBlob) paths)
       ]
-    envelopeFor (senderOf req) req >>= postReadStateCBOR ecid
-
-decodeCert' :: HasCallStack => Blob -> IO Certificate
-decodeCert' b = either (assertFailure . T.unpack) return $ decodeCert b
-
-getStateCert'' :: (HasCallStack, HasAgentConfig) => Blob -> Blob -> [[Blob]] -> IO (HTTPErrOr Certificate)
-getStateCert'' sender ecid paths = do
-    response <- getStateCert' sender ecid paths
+    response <- envelopeFor (senderOf req) req >>= postReadStateCBOR' ep ecid
     let c = statusCode (responseStatus response)
     if not (200 <= c && c < 300) then return $ Left (c, "Read_state request failed.")
     else do
@@ -542,7 +534,7 @@ getStateCert'' sender ecid paths = do
       return $ Right cert
 
 getStateCert :: (HasCallStack, HasAgentConfig) => Blob -> Blob -> [[Blob]] -> IO Certificate
-getStateCert sender ecid paths = getStateCert'' sender ecid paths >>= is2xx
+getStateCert sender ecid paths = getStateCert'' endPoint sender ecid paths >>= is2xx
 
 extractCertData :: Blob -> Blob -> IO Blob
 extractCertData cid b = do
@@ -626,7 +618,7 @@ certValueAbsent cert path = case lookupPath (cert_tree cert) path of
 
 getRequestStatus' :: (HasCallStack, HasAgentConfig) => Blob -> Blob -> Blob -> IO (HTTPErrOr ReqStatus)
 getRequestStatus' sender cid rid = do
-    response <- getStateCert'' sender cid [["request_status", rid]]
+    response <- getStateCert'' endPoint sender cid [["request_status", rid]]
     case response of
       Left x -> return $ Left x
       Right cert -> do
@@ -756,6 +748,13 @@ isReject codes (Reject n msg _) = do
   assertBool
     ("Reject code " ++ show n ++ " not in " ++ show codes ++ "\n" ++ T.unpack msg)
     (n `elem` codes)
+
+isErr4xx :: HasCallStack => HTTPErrOr a -> IO ()
+isErr4xx (Left (c, msg))
+    | 400 <= c && c < 500 = return ()
+    | otherwise = assertFailure $
+        "Status " ++ show c ++ " is not 4xx:\n" ++ msg
+isErr4xx (Right _) = assertFailure "Got HTTP response, expected HTTP error"
 
 isErrOrReject :: HasCallStack => [Natural] -> HTTPErrOr ReqResponse -> IO ()
 isErrOrReject _codes (Left (c, msg))
