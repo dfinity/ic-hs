@@ -222,7 +222,7 @@ data AgentConfig = AgentConfig
     , tc_timeout :: Int
     }
 
-makeAgentConfig :: Bool -> String -> [([String], [(W.Word64, W.Word64)])] -> String -> Int -> IO AgentConfig
+makeAgentConfig :: Bool -> String -> [AgentSubnetConfig] -> String -> Int -> IO AgentConfig
 makeAgentConfig allow_self_signed_certs ep' subnets httpbin' to = do
     let validate = \ca_store -> if allow_self_signed_certs then \_ _ _ -> return [] else C.validateDefault (C.makeCertificateStore $ (C.listCertificates ca_store))
     let client_params = (defaultParamsClient "" B.empty) {
@@ -245,18 +245,20 @@ makeAgentConfig allow_self_signed_certs ep' subnets httpbin' to = do
         { tc_root_key = status_root_key s
         , tc_manager = manager
         , tc_endPoint = ep
-        , tc_subnets = map (\(ns, rs) -> AgentSubnetConfig (map (aux "node") ns) rs) subnets
+        , tc_subnets = subnets
         , tc_httpbin = httpbin
         , tc_timeout = to
         }
   where
     -- strip trailing slash
-    aux msg x
-      | null x        = error $ "empty " ++ msg
-      | last x == '/' = init x
-      | otherwise     = x
-    ep = aux "endpoint" ep'
-    httpbin = aux "httpbin" httpbin'
+    ep = fixUrl "endpoint" ep'
+    httpbin = fixUrl "httpbin" httpbin'
+
+fixUrl :: String -> String -> String
+fixUrl msg x
+    | null x        = error $ "empty " ++ msg
+    | last x == '/' = init x
+    | otherwise     = x
 
 preFlight :: OptionSet -> IO AgentConfig
 preFlight os = do
@@ -265,8 +267,10 @@ preFlight os = do
     let PollTimeout to = lookupOption os
     let AllowSelfSignedCerts allow_self_signed_certs = lookupOption os
     let TestSubnet (_, _, _, test_ranges, test_nodes) = lookupOption os
+    let test_agent_subnet_config = AgentSubnetConfig (map (fixUrl "node") test_nodes) test_ranges
     let PeerSubnet (_, _, _, peer_ranges, peer_nodes) = lookupOption os
-    makeAgentConfig allow_self_signed_certs ep [(test_nodes, test_ranges), (peer_nodes, peer_ranges)] httpbin to
+    let peer_agent_subnet_config = AgentSubnetConfig (map (fixUrl "node") peer_nodes) peer_ranges
+    makeAgentConfig allow_self_signed_certs ep [test_agent_subnet_config, peer_agent_subnet_config] httpbin to
 
 
 -- Yes, implicit arguments are frowned upon. But they are also very useful.
