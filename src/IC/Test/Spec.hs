@@ -65,8 +65,8 @@ import qualified IC.Test.Spec.TECDSA
 
 icTests :: TestSubnetConfig -> TestSubnetConfig -> AgentConfig -> TestTree
 icTests my_sub other_sub =
-  let (my_subnet_id_as_entity, my_type, _, ((ecid_as_word64, last_canister_id_as_word64):_)) = my_sub in
-  let (other_subnet_id_as_entity, _, _, ((other_ecid_as_word64, _):_)) = other_sub in
+  let (my_subnet_id_as_entity, my_type, _, ((ecid_as_word64, last_canister_id_as_word64):_), _) = my_sub in
+  let (other_subnet_id_as_entity, _, _, ((other_ecid_as_word64, _):_), _) = other_sub in
   let my_subnet_id = rawEntityId my_subnet_id_as_entity in
   let other_subnet_id = rawEntityId other_subnet_id_as_entity in
   let my_is_root = isRootTestSubnet my_sub in
@@ -194,8 +194,8 @@ icTests my_sub other_sub =
                     cid <- create ecid
                     wasm <- getTestWasm name
                     ic_install' ic00 (enum #install) cid wasm "" >>= isReject [5] in
-      let read cid m = (queryCBOR cid >=> queryResponse $ rec
-                      [ "request_type" =: GText "query"
+      let read cid m = (awaitCall cid $ rec
+                      [ "request_type" =: GText "call"
                       , "sender" =: GBlob defaultUser
                       , "canister_id" =: GBlob cid
                       , "method_name" =: GText m
@@ -1052,7 +1052,7 @@ icTests my_sub other_sub =
 
     , simpleTestCase "in read_state" ecid $ \cid -> do
         cid2 <- install ecid noop
-        getStateCert' defaultUser cid2 [["canisters", cid, "controllers"]] >>= code4xx
+        getStateCert' defaultUser cid2 [["canisters", cid, "controllers"]] >>= isErr4xx
 
     -- read_state tested in read_state group
     --
@@ -1850,7 +1850,7 @@ icTests my_sub other_sub =
 
     , testGroup "malformed request id"
         [ simpleTestCase ("rid \"" ++ shorten 8 (asHex rid) ++ "\"") ecid $ \cid -> do
-            getStateCert' defaultUser cid [["request_status", rid]] >>= code4xx
+            getStateCert' defaultUser cid [["request_status", rid]] >>= isErr4xx
         | rid <- [ "", "foo" ]
         ]
 
@@ -1869,34 +1869,34 @@ icTests my_sub other_sub =
 
     , simpleTestCase "access denied for other users request" ecid $ \cid -> do
         rid <- ensure_request_exists cid defaultUser
-        getStateCert' otherUser cid [["request_status", rid]] >>= code4xx
+        getStateCert' otherUser cid [["request_status", rid]] >>= isErr4xx
 
     , simpleTestCase "reading two statuses to same canister in one go" ecid $ \cid -> do
         rid1 <- ensure_request_exists cid defaultUser
         rid2 <- ensure_request_exists cid defaultUser
-        getStateCert' defaultUser cid [["request_status", rid1], ["request_status", rid2]] >>= code4xx
+        getStateCert' defaultUser cid [["request_status", rid1], ["request_status", rid2]] >>= isErr4xx
 
     , simpleTestCase "access denied for other users request (mixed request)" ecid $ \cid -> do
         rid1 <- ensure_request_exists cid defaultUser
         rid2 <- ensure_request_exists cid otherUser
-        getStateCert' defaultUser cid [["request_status", rid1], ["request_status", rid2]] >>= code4xx
+        getStateCert' defaultUser cid [["request_status", rid1], ["request_status", rid2]] >>= isErr4xx
 
     , simpleTestCase "access denied for two statuses to different canisters" ecid $ \cid -> do
         cid2 <- install ecid noop
         rid1 <- ensure_request_exists cid defaultUser
         rid2 <- ensure_request_exists cid2 defaultUser
-        getStateCert' defaultUser cid [["request_status", rid1], ["request_status", rid2]] >>= code4xx
+        getStateCert' defaultUser cid [["request_status", rid1], ["request_status", rid2]] >>= isErr4xx
 
     , simpleTestCase "access denied with different effective canister id" ecid $ \cid -> do
         cid2 <- install ecid noop
         rid <- ensure_provisional_create_canister_request_exists cid defaultUser
-        getStateCert' defaultUser cid2 [["request_status", rid]] >>= code4xx
+        getStateCert' defaultUser cid2 [["request_status", rid]] >>= isErr4xx
 
     , simpleTestCase "access denied for bogus path" ecid $ \cid -> do
-        getStateCert' otherUser cid [["hello", "world"]] >>= code4xx
+        getStateCert' otherUser cid [["hello", "world"]] >>= isErr4xx
 
     , simpleTestCase "access denied for fetching full state tree" ecid $ \cid -> do
-        getStateCert' otherUser cid [[]] >>= code4xx
+        getStateCert' otherUser cid [[]] >>= isErr4xx
 
     , testGroup "metadata" $
       let withCustomSection mod (name, content) = mod <> BS.singleton 0 <> sized (sized name <> content)
@@ -1918,8 +1918,8 @@ icTests my_sub other_sub =
           let mod = withSections [("icp:private test", "bar")]
           cid <- create ecid
           ic_install ic00 (enum #install) cid mod ""
-          getStateCert' otherUser cid [["canister", cid, "metadata", "test"]] >>= code4xx
-          getStateCert' anonymousUser cid [["canister", cid, "metadata", "test"]] >>= code4xx
+          getStateCert' otherUser cid [["canister", cid, "metadata", "test"]] >>= isErr4xx
+          getStateCert' anonymousUser cid [["canister", cid, "metadata", "test"]] >>= isErr4xx
           cert <- getStateCert defaultUser cid [["canister", cid, "metadata", "test"]]
           lookupPath (cert_tree cert) ["canister", cid, "metadata", "test"] @?= Found "bar"
       , testCase "duplicate public" $ do
@@ -1939,7 +1939,7 @@ icTests my_sub other_sub =
           cid <- create ecid
           ic_install' ic00 (enum #install) cid mod "" >>= isReject [5]
       , simpleTestCase "invalid utf8 in read_state" ecid $ \cid -> do
-          getStateCert' defaultUser cid [["canister", cid, "metadata", "\xe2\x28\xa1"]] >>= code4xx
+          getStateCert' defaultUser cid [["canister", cid, "metadata", "\xe2\x28\xa1"]] >>= isErr4xx
       , testCase "unicode metadata name" $ do
           let mod = withSections [("icp:public ☃️", "bar")]
           cid <- create ecid

@@ -121,7 +121,7 @@ check_http_body = aux . fromUtf8
 
 canister_http_calls :: HasAgentConfig => TestSubnetConfig -> [TestTree]
 canister_http_calls sub =
-  let (_, _, _, ((ecid_as_word64, _):_)) = sub in
+  let (_, _, _, ((ecid_as_word64, _):_), _) = sub in
   let ecid = rawEntityId $ wordToId ecid_as_word64 in
   [ -- Corner cases
 

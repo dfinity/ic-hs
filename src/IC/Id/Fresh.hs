@@ -26,6 +26,6 @@ checkCanisterIdInRanges :: [(Word64, Word64)] -> CanisterId -> Bool
 checkCanisterIdInRanges ranges cid = checkCanisterIdInRanges' (map (\(a, b) -> (wordToId' a, wordToId' b)) ranges) (rawEntityId cid)
 
 isRootTestSubnet :: TestSubnetConfig -> Bool
-isRootTestSubnet (_, _, _, ranges) = checkCanisterIdInRanges ranges nns_canister_id
+isRootTestSubnet (_, _, _, ranges, _) = checkCanisterIdInRanges ranges nns_canister_id
   where
     nns_canister_id = wordToId 0

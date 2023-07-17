@@ -46,17 +46,6 @@ import IC.Management (HttpResponse, HttpHeader)
 
 type Blob = BS.ByteString
 
--- * Helpers
-
-waitFor :: HasAgentConfig => IO Bool -> IO ()
-waitFor act = do
-    result <- timeout (tc_timeout agentConfig * (10::Int) ^ (6::Int)) doActUntil
-    when (result == Nothing) $ assertFailure "Polling timed out"
-  where
-    doActUntil = do
-      stop <- act
-      unless stop (threadDelay 1000 *> doActUntil)
-
 -- * Equality assertions
 
 is :: (HasCallStack, Eq a, Show a) => a -> a -> Assertion
