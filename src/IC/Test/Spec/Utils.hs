@@ -17,6 +17,7 @@ import qualified Data.Set as S
 import qualified Data.Vector as Vec
 import qualified Data.Word as W
 import Numeric.Natural
+import Data.IORef
 import Data.List
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -30,8 +31,7 @@ import Network.HTTP.Client
 import qualified Data.Binary.Get as Get
 import Codec.Candid (Principal(..))
 import qualified Codec.Candid as Candid
-import Control.Concurrent
-import System.Timeout
+import System.IO.Unsafe (unsafePerformIO)
 
 import IC.HTTP.GenR
 import IC.HTTP.RequestId
@@ -289,14 +289,24 @@ callTwice' :: (HasCallStack, HasAgentConfig) => Blob -> Prog -> IO ReqResponse
 callTwice' cid prog = awaitCallTwice cid (callRequest cid prog)
 
 
+counterRef :: IORef Word32
+counterRef =
+  unsafePerformIO (newIORef 0)
+{-# NOINLINE counterRef #-}
+
+incrementCount :: IO Word32
+incrementCount =
+  atomicModifyIORef' counterRef (\count -> (count + 1, count + 1))
+
 query' :: (HasCallStack, HasAgentConfig) => Blob -> Prog -> IO ReqResponse
-query' cid prog =
+query' cid prog = do
+  ctr <- incrementCount
   queryCBOR cid >=> queryResponse $ rec
     [ "request_type" =: GText "query"
     , "sender" =: GBlob defaultUser
     , "canister_id" =: GBlob cid
     , "method_name" =: GText "query"
-    , "arg" =: GBlob (run prog)
+    , "arg" =: GBlob (run ((debugPrint $ i2b $ int ctr) >>> prog))
     ]
 
 query :: (HasCallStack, HasAgentConfig) => Blob -> Prog -> IO Blob

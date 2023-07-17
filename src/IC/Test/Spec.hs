@@ -2574,10 +2574,17 @@ icTests my_sub other_sub =
               , "sender" =: GBlob defaultUser
               , "canister_id" =: GBlob cid
               , "method_name" =: GText "query"
-              , "arg" =: GBlob (run reply)
+              , "arg" =: GBlob (run ((debugPrint $ i2b $ int 0) >>> reply))
+              ]
+        bad_req <- addNonce >=> addExpiry $ rec
+              [ "request_type" =: GText "query"
+              , "sender" =: GBlob defaultUser
+              , "canister_id" =: GBlob cid
+              , "method_name" =: GText "query"
+              , "arg" =: GBlob (run ((debugPrint $ i2b $ int 1) >>> reply))
               ]
         queryCBOR cid good_req >>= queryResponse >>= isReply >>= is ""
-        env (mod_req good_req) >>= postQueryCBOR cid >>= code4xx
+        env (mod_req bad_req) >>= postQueryCBOR cid >>= code4xx
 
       , simpleTestCase "in empty read state request" ecid $ \cid -> do
           good_req <- addNonce >=> addExpiry $ readStateEmpty
