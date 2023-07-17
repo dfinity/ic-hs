@@ -208,11 +208,16 @@ cborToBlobPair r = assertFailure $ "Expected list of pairs, got: " <> show r
 
 -- * Agent configuration
 
+data AgentSubnetConfig = AgentSubnetConfig
+  { tc_node_addresses :: [String]
+  , tc_canister_ranges :: [(W.Word64, W.Word64)]
+  }
+
 data AgentConfig = AgentConfig
     { tc_root_key :: Blob
     , tc_manager :: Manager
     , tc_endPoint :: String
-    , tc_subnets :: [([String], [(W.Word64, W.Word64)])]
+    , tc_subnets :: [AgentSubnetConfig]
     , tc_httpbin :: String
     , tc_timeout :: Int
     }
@@ -240,7 +245,7 @@ makeAgentConfig allow_self_signed_certs ep' subnets httpbin' to = do
         { tc_root_key = status_root_key s
         , tc_manager = manager
         , tc_endPoint = ep
-        , tc_subnets = map (\(ns, rs) -> (map (aux "node") ns, rs)) subnets
+        , tc_subnets = map (\(ns, rs) -> AgentSubnetConfig (map (aux "node") ns) rs) subnets
         , tc_httpbin = httpbin
         , tc_timeout = to
         }
@@ -277,7 +282,7 @@ agentConfig = ?agentConfig
 endPoint :: HasAgentConfig => String
 endPoint = tc_endPoint agentConfig
 
-subnets :: HasAgentConfig => [([String], [(W.Word64, W.Word64)])]
+subnets :: HasAgentConfig => [AgentSubnetConfig]
 subnets = tc_subnets agentConfig
 
 agentManager :: HasAgentConfig => Manager
@@ -438,16 +443,15 @@ waitFor act = do
       unless stop (threadDelay 1000 *> doActUntil)
 
 sync_height :: HasAgentConfig => Blob -> IO [()]
-sync_height cid = mapM (\(ns, rs) -> do
-  let ranges = map (\(a, b) -> (wordToId' a, wordToId' b)) rs
+sync_height cid = forM subnets $ \sub -> do
+  let ranges = map (\(a, b) -> (wordToId' a, wordToId' b)) (tc_canister_ranges sub)
   when (any (\(a, b) -> a <= cid && cid <= b) ranges) $ do
-    hs <- get_heights ns
+    hs <- get_heights (tc_node_addresses sub)
     let h = maximum hs
     unless (length (nub hs) <= 1) $
       waitFor $ do
-        hs <- get_heights ns
+        hs <- get_heights (tc_node_addresses sub)
         return $ h <= minimum hs
-    return ()) subnets
   where
     get_heights ns = mapM (\n -> do
       Right cert <- getStateCert'' n defaultUser cid [["time"]]
