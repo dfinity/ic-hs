@@ -223,7 +223,7 @@ onTrap a b = a >>= \case { Trap msg -> b msg; Return x -> return x }
 
 -- Helper functions
 
-getSubnetFromCanisterId' :: (CanReject m, ICM m) => CanisterId -> m (Maybe Subnet)
+getSubnetFromCanisterId' :: ICM m => CanisterId -> m (Maybe Subnet)
 getSubnetFromCanisterId' cid = do
   subnets <- gets subnets
   return $ find (\(_, _, _, _, ranges) -> checkCanisterIdInRanges ranges cid) subnets

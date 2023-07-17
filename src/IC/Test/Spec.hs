@@ -1087,6 +1087,34 @@ icTests my_sub other_sub =
             ]
       let path = "/api/v2/canister/" ++ filter (/= '-') (textual cid1) ++ "/call"
       addNonceExpiryEnv req >>= postCBOR path >>= code4xx
+
+    , testCase "using management canister as effective canister id in update" $ do
+      let req = rec
+            [ "request_type" =: GText "call"
+            , "sender" =: GBlob defaultUser
+            , "canister_id" =: GBlob ""
+            , "method_name" =: GText "raw_rand"
+            , "arg" =: GBlob (Candid.encode ())
+            ]
+      addNonceExpiryEnv req >>= postCallCBOR "" >>= code4xx
+
+    , testCase "using management canister as effective canister id in query" $ do
+      let req = rec
+            [ "request_type" =: GText "query"
+            , "sender" =: GBlob defaultUser
+            , "canister_id" =: GBlob ""
+            , "method_name" =: GText "raw_rand"
+            , "arg" =: GBlob (Candid.encode ())
+            ]
+      addNonceExpiryEnv req >>= postQueryCBOR "" >>= code4xx
+
+    , testCase "using management canister as effective canister id in read_state" $ do
+      let req = rec
+            [ "request_type" =: GText "read_state"
+            , "sender" =: GBlob defaultUser
+            , "paths" =: GList [GList [GBlob "time"]]
+            ]
+      addNonceExpiryEnv req >>= postReadStateCBOR "" >>= code4xx
     ]
 
   , testGroup "inter-canister calls"
@@ -2363,7 +2391,7 @@ icTests my_sub other_sub =
       ic_raw_rand'' defaultUser ecid >>= isNoErrReject [4]
 
     , testCase "management canister: http_request not accepted" $ do
-      ic_http_get_request'' defaultUser >>= isNoErrReject [4]
+      ic_http_get_request'' defaultUser ecid >>= isNoErrReject [4]
 
     , testCase "management canister: ecdsa_public_key not accepted" $ do
       ic_ecdsa_public_key'' defaultUser ecid >>= isNoErrReject [4]
