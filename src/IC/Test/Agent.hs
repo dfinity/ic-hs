@@ -433,7 +433,7 @@ postReadStateCBOR' :: (HasCallStack, HasAgentConfig) => String -> Blob -> GenR -
 postReadStateCBOR' ep cid = postCBOR' ep $ "/api/v2/canister/" ++ textual cid ++ "/read_state"
 
 postCallCBOR, postQueryCBOR, postReadStateCBOR :: (HasCallStack, HasAgentConfig) => Blob -> GenR -> IO (Response BS.ByteString)
-postCallCBOR cid      = postCBOR $ "/api/v2/canister/" ++ textual cid ++ "/call"
+postCallCBOR cid      = (\r -> sync_height cid >> postCBOR ("/api/v2/canister/" ++ textual cid ++ "/call") r)
 postQueryCBOR cid     = (\r -> sync_height cid >> postCBOR ("/api/v2/canister/" ++ textual cid ++ "/query") r)
 postReadStateCBOR cid = (\r -> sync_height cid >> postReadStateCBOR' endPoint cid r)
 
