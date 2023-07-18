@@ -1,0 +1,635 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><link rel="stylesheet" type="text/css" href="style.css" /><script type="text/javascript" src="highlight.js"></script></head><body><pre><span class="hs-pragma">{-# LANGUAGE OverloadedStrings #-}</span><span>
+</span><span id="line-2"></span><span class="hs-pragma">{-# LANGUAGE ImplicitParams #-}</span><span>
+</span><span id="line-3"></span><span class="hs-pragma">{-# LANGUAGE TypeApplications #-}</span><span>
+</span><span id="line-4"></span><span class="hs-pragma">{-# LANGUAGE ConstraintKinds #-}</span><span>
+</span><span id="line-5"></span><span class="hs-pragma">{-# LANGUAGE LambdaCase #-}</span><span>
+</span><span id="line-6"></span><span class="hs-pragma">{-# LANGUAGE ScopedTypeVariables #-}</span><span>
+</span><span id="line-7"></span><span class="hs-pragma">{-# LANGUAGE RankNTypes #-}</span><span>
+</span><span id="line-8"></span><span class="hs-pragma">{-# LANGUAGE BlockArguments #-}</span><span>
+</span><span id="line-9"></span><span class="hs-pragma">{-# LANGUAGE OverloadedLabels #-}</span><span>
+</span><span id="line-10"></span><span class="hs-pragma">{-# LANGUAGE TypeOperators #-}</span><span>
+</span><span id="line-11"></span><span class="hs-pragma">{-# LANGUAGE FlexibleContexts #-}</span><span>
+</span><span id="line-12"></span><span class="hs-pragma">{-# LANGUAGE TypeFamilies #-}</span><span>
+</span><span id="line-13"></span><span class="hs-pragma">{-# LANGUAGE NumericUnderscores #-}</span><span>
+</span><span id="line-14"></span><span class="hs-pragma">{-# LANGUAGE DataKinds #-}</span><span>
+</span><span id="line-15"></span><span>
+</span><span id="line-16"></span><span class="hs-keyword">module</span><span> </span><span class="hs-identifier">IC.Test.Agent.UserCalls</span><span>
+</span><span id="line-17"></span><span>    </span><span class="hs-special">(</span><span>
+</span><span id="line-18"></span><span>      </span><span class="annot"><a href="IC.Test.Agent.UserCalls.html#ic_canister_status%27%27"><span class="hs-identifier">ic_canister_status''</span></a></span><span class="hs-special">,</span><span>
+</span><span id="line-19"></span><span>      </span><span class="annot"><a href="IC.Test.Agent.UserCalls.html#ic_canister_info%27%27"><span class="hs-identifier">ic_canister_info''</span></a></span><span class="hs-special">,</span><span>
+</span><span id="line-20"></span><span>      </span><span class="annot"><a href="IC.Test.Agent.UserCalls.html#ic_delete_canister%27%27"><span class="hs-identifier">ic_delete_canister''</span></a></span><span class="hs-special">,</span><span>
+</span><span id="line-21"></span><span>      </span><span class="annot"><a href="IC.Test.Agent.UserCalls.html#ic_deposit_cycles%27%27"><span class="hs-identifier">ic_deposit_cycles''</span></a></span><span class="hs-special">,</span><span>
+</span><span id="line-22"></span><span>      </span><span class="annot"><a href="IC.Test.Agent.UserCalls.html#ic_ecdsa_public_key%27%27"><span class="hs-identifier">ic_ecdsa_public_key''</span></a></span><span class="hs-special">,</span><span>
+</span><span id="line-23"></span><span>      </span><span class="annot"><a href="IC.Test.Agent.UserCalls.html#ic_http_get_request%27%27"><span class="hs-identifier">ic_http_get_request''</span></a></span><span class="hs-special">,</span><span>
+</span><span id="line-24"></span><span>      </span><span class="annot"><a href="IC.Test.Agent.UserCalls.html#ic_install%27%27"><span class="hs-identifier">ic_install''</span></a></span><span class="hs-special">,</span><span>
+</span><span id="line-25"></span><span>      </span><span class="annot"><a href="IC.Test.Agent.UserCalls.html#ic_raw_rand%27%27"><span class="hs-identifier">ic_raw_rand''</span></a></span><span class="hs-special">,</span><span>
+</span><span id="line-26"></span><span>      </span><span class="annot"><a href="IC.Test.Agent.UserCalls.html#ic_set_controllers%27%27"><span class="hs-identifier">ic_set_controllers''</span></a></span><span class="hs-special">,</span><span>
+</span><span id="line-27"></span><span>      </span><span class="annot"><a href="IC.Test.Agent.UserCalls.html#ic_sign_with_ecdsa%27%27"><span class="hs-identifier">ic_sign_with_ecdsa''</span></a></span><span class="hs-special">,</span><span>
+</span><span id="line-28"></span><span>      </span><span class="annot"><a href="IC.Test.Agent.UserCalls.html#ic_start_canister%27%27"><span class="hs-identifier">ic_start_canister''</span></a></span><span class="hs-special">,</span><span>
+</span><span id="line-29"></span><span>      </span><span class="annot"><a href="IC.Test.Agent.UserCalls.html#ic_stop_canister%27%27"><span class="hs-identifier">ic_stop_canister''</span></a></span><span class="hs-special">,</span><span>
+</span><span id="line-30"></span><span>      </span><span class="annot"><a href="IC.Test.Agent.UserCalls.html#ic_top_up%27%27%27"><span class="hs-identifier">ic_top_up'''</span></a></span><span class="hs-special">,</span><span>
+</span><span id="line-31"></span><span>      </span><span class="annot"><a href="IC.Test.Agent.UserCalls.html#ic_uninstall%27%27"><span class="hs-identifier">ic_uninstall''</span></a></span><span class="hs-special">,</span><span>
+</span><span id="line-32"></span><span>    </span><span class="hs-special">)</span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-33"></span><span>
+</span><span id="line-34"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><a href="file:///nix/store/aadcybz54gv18flf14ak9c3fjbcdx7d6-vector-0.12.3.1-doc/share/doc/vector-0.12.3.1/html/src/Data.Vector.html"><span class="hs-identifier">Data.Vector</span></a></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">Vec</span></span><span>
+</span><span id="line-35"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/text-1.2.5.0/src/Data.Text.html"><span class="hs-identifier">Data.Text</span></a></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">T</span></span><span>
+</span><span id="line-36"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/Data.Word.html"><span class="hs-identifier">Data.Word</span></a></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">W</span></span><span>
+</span><span id="line-37"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/Numeric.Natural.html"><span class="hs-identifier">Numeric.Natural</span></a></span><span>
+</span><span id="line-38"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="file:///nix/store/x8f35h2bgw8yxq58j3fhkgy1j7ipa21h-tasty-hunit-0.10.0.3-doc/share/doc/tasty-hunit-0.10.0.3/html/src/Test.Tasty.HUnit.html"><span class="hs-identifier">Test.Tasty.HUnit</span></a></span><span>
+</span><span id="line-39"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="file:///nix/store/jkxjsrg5143afynhvaz1h65p40k9xpg6-candid-0.4-doc/share/doc/candid-0.4/html/src/Codec.Candid.html"><span class="hs-identifier">Codec.Candid</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="file:///nix/store/jkxjsrg5143afynhvaz1h65p40k9xpg6-candid-0.4-doc/share/doc/candid-0.4/html/src/Codec.Candid.Data.html#Principal"><span class="hs-identifier">Principal</span></a></span><span class="hs-special">(</span><span class="hs-glyph">..</span><span class="hs-special">)</span><span class="hs-special">)</span><span>
+</span><span id="line-40"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.html"><span class="hs-identifier">Data.Row</span></a></span><span>
+</span><span id="line-41"></span><span>
+</span><span id="line-42"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="IC.Management.html"><span class="hs-identifier">IC.Management</span></a></span><span>
+</span><span id="line-43"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="IC.Id.Forms.html"><span class="hs-identifier">IC.Id.Forms</span></a></span><span>
+</span><span id="line-44"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="IC.Test.Agent.html"><span class="hs-identifier">IC.Test.Agent</span></a></span><span>
+</span><span id="line-45"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="IC.Test.Agent.Calls.html"><span class="hs-identifier">IC.Test.Agent.Calls</span></a></span><span>
+</span><span id="line-46"></span><span>
+</span><span id="line-47"></span><span class="annot"><a href="IC.Test.Agent.UserCalls.html#ic_install%27%27"><span class="hs-identifier hs-type">ic_install''</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="hs-special">(</span><span class="annot"><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Stack.Types.html#HasCallStack"><span class="hs-identifier hs-type">HasCallStack</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><a href="IC.Test.Agent.html#HasAgentConfig"><span class="hs-identifier hs-type">HasAgentConfig</span></a></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">=&gt;</span><span> </span><span class="annot"><a href="IC.Id.Forms.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Management.html#InstallMode"><span class="hs-identifier hs-type">InstallMode</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Id.Forms.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Id.Forms.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Id.Forms.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/ghc-prim-0.8.0/src/GHC.Types.html#IO"><span class="hs-identifier hs-type">IO</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Test.Agent.html#HTTPErrOr"><span class="hs-identifier hs-type">HTTPErrOr</span></a></span><span> </span><span class="annot"><a href="IC.Test.Agent.html#ReqResponse"><span class="hs-identifier hs-type">ReqResponse</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-48"></span><span id="ic_install%27%27"><span class="annot"><span class="annottext">ic_install'' :: (HasCallStack, HasAgentConfig) =&gt;
+Blob
+-&gt; InstallMode
+-&gt; Blob
+-&gt; Blob
+-&gt; Blob
+-&gt; IO (HTTPErrOr ReqResponse)
+</span><a href="IC.Test.Agent.UserCalls.html#ic_install%27%27"><span class="hs-identifier hs-var hs-var">ic_install''</span></a></span></span><span> </span><span id="local-6989586621679413452"><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679413452"><span class="hs-identifier hs-var">user</span></a></span></span><span> </span><span id="local-6989586621679413451"><span class="annot"><span class="annottext">InstallMode
+</span><a href="#local-6989586621679413451"><span class="hs-identifier hs-var">mode</span></a></span></span><span> </span><span id="local-6989586621679413450"><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679413450"><span class="hs-identifier hs-var">canister_id</span></a></span></span><span> </span><span id="local-6989586621679413449"><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679413449"><span class="hs-identifier hs-var">wasm_module</span></a></span></span><span> </span><span id="local-6989586621679413448"><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679413448"><span class="hs-identifier hs-var">arg</span></a></span></span><span> </span><span class="hs-glyph">=</span><span>
+</span><span id="line-49"></span><span>  </span><span class="annot"><span class="annottext">forall (s :: Symbol) a b.
+(HasAgentConfig, KnownSymbol s,
+ (a -&gt; IO b) ~ (ICManagement IO .! s), CandidArg a) =&gt;
+Blob -&gt; Blob -&gt; Label s -&gt; a -&gt; IO (HTTPErrOr ReqResponse)
+</span><a href="IC.Test.Agent.html#callIC%27%27"><span class="hs-identifier hs-var">callIC''</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679413452"><span class="hs-identifier hs-var">user</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679413450"><span class="hs-identifier hs-var">canister_id</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;install_code&quot; a =&gt; a
+</span><span class="">#install_code</span></span><span> </span><span class="annot"><span class="annottext">forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">Rec Empty
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#empty"><span class="hs-identifier hs-var">empty</span></a></span><span>
+</span><span id="line-50"></span><span>    </span><span class="annot"><span class="annottext">forall (l :: Row (*)) (r :: Row (*)).
+FreeForall l =&gt;
+Rec l -&gt; Rec r -&gt; Rec (l .+ r)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%2B"><span class="hs-operator hs-var">.+</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;mode&quot; a =&gt; a
+</span><span class="">#mode</span></span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) a.
+KnownSymbol l =&gt;
+Label l -&gt; a -&gt; Rec (l .== a)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%3D%3D"><span class="hs-operator hs-var">.==</span></a></span><span> </span><span class="annot"><span class="annottext">InstallMode
+</span><a href="#local-6989586621679413451"><span class="hs-identifier hs-var">mode</span></a></span><span>
+</span><span id="line-51"></span><span>    </span><span class="annot"><span class="annottext">forall (l :: Row (*)) (r :: Row (*)).
+FreeForall l =&gt;
+Rec l -&gt; Rec r -&gt; Rec (l .+ r)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%2B"><span class="hs-operator hs-var">.+</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;canister_id&quot; a =&gt; a
+</span><span class="">#canister_id</span></span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) a.
+KnownSymbol l =&gt;
+Label l -&gt; a -&gt; Rec (l .== a)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%3D%3D"><span class="hs-operator hs-var">.==</span></a></span><span> </span><span class="annot"><span class="annottext">Blob -&gt; Principal
+</span><a href="file:///nix/store/jkxjsrg5143afynhvaz1h65p40k9xpg6-candid-0.4-doc/share/doc/candid-0.4/html/src/Codec.Candid.Data.html#Principal"><span class="hs-identifier hs-var">Principal</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679413450"><span class="hs-identifier hs-var">canister_id</span></a></span><span>
+</span><span id="line-52"></span><span>    </span><span class="annot"><span class="annottext">forall (l :: Row (*)) (r :: Row (*)).
+FreeForall l =&gt;
+Rec l -&gt; Rec r -&gt; Rec (l .+ r)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%2B"><span class="hs-operator hs-var">.+</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;wasm_module&quot; a =&gt; a
+</span><span class="">#wasm_module</span></span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) a.
+KnownSymbol l =&gt;
+Label l -&gt; a -&gt; Rec (l .== a)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%3D%3D"><span class="hs-operator hs-var">.==</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679413449"><span class="hs-identifier hs-var">wasm_module</span></a></span><span>
+</span><span id="line-53"></span><span>    </span><span class="annot"><span class="annottext">forall (l :: Row (*)) (r :: Row (*)).
+FreeForall l =&gt;
+Rec l -&gt; Rec r -&gt; Rec (l .+ r)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%2B"><span class="hs-operator hs-var">.+</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;arg&quot; a =&gt; a
+</span><span class="">#arg</span></span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) a.
+KnownSymbol l =&gt;
+Label l -&gt; a -&gt; Rec (l .== a)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%3D%3D"><span class="hs-operator hs-var">.==</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679413448"><span class="hs-identifier hs-var">arg</span></a></span><span>
+</span><span id="line-54"></span><span>    </span><span class="annot"><span class="annottext">forall (l :: Row (*)) (r :: Row (*)).
+FreeForall l =&gt;
+Rec l -&gt; Rec r -&gt; Rec (l .+ r)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%2B"><span class="hs-operator hs-var">.+</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;sender_canister_version&quot; a =&gt; a
+</span><span class="">#sender_canister_version</span></span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) a.
+KnownSymbol l =&gt;
+Label l -&gt; a -&gt; Rec (l .== a)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%3D%3D"><span class="hs-operator hs-var">.==</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. Maybe a
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Maybe.html#Nothing"><span class="hs-identifier hs-var">Nothing</span></a></span><span>
+</span><span id="line-55"></span><span>
+</span><span id="line-56"></span><span class="annot"><a href="IC.Test.Agent.UserCalls.html#ic_uninstall%27%27"><span class="hs-identifier hs-type">ic_uninstall''</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Agent.html#HasAgentConfig"><span class="hs-identifier hs-type">HasAgentConfig</span></a></span><span> </span><span class="hs-glyph">=&gt;</span><span> </span><span class="annot"><a href="IC.Id.Forms.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Id.Forms.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/ghc-prim-0.8.0/src/GHC.Types.html#IO"><span class="hs-identifier hs-type">IO</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Test.Agent.html#HTTPErrOr"><span class="hs-identifier hs-type">HTTPErrOr</span></a></span><span> </span><span class="annot"><a href="IC.Test.Agent.html#ReqResponse"><span class="hs-identifier hs-type">ReqResponse</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-57"></span><span id="ic_uninstall%27%27"><span class="annot"><span class="annottext">ic_uninstall'' :: HasAgentConfig =&gt; Blob -&gt; Blob -&gt; IO (HTTPErrOr ReqResponse)
+</span><a href="IC.Test.Agent.UserCalls.html#ic_uninstall%27%27"><span class="hs-identifier hs-var hs-var">ic_uninstall''</span></a></span></span><span> </span><span id="local-6989586621679413351"><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679413351"><span class="hs-identifier hs-var">user</span></a></span></span><span> </span><span id="local-6989586621679413350"><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679413350"><span class="hs-identifier hs-var">canister_id</span></a></span></span><span> </span><span class="hs-glyph">=</span><span>
+</span><span id="line-58"></span><span>  </span><span class="annot"><span class="annottext">forall (s :: Symbol) a b.
+(HasAgentConfig, KnownSymbol s,
+ (a -&gt; IO b) ~ (ICManagement IO .! s), CandidArg a) =&gt;
+Blob -&gt; Blob -&gt; Label s -&gt; a -&gt; IO (HTTPErrOr ReqResponse)
+</span><a href="IC.Test.Agent.html#callIC%27%27"><span class="hs-identifier hs-var">callIC''</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679413351"><span class="hs-identifier hs-var">user</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679413350"><span class="hs-identifier hs-var">canister_id</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;uninstall_code&quot; a =&gt; a
+</span><span class="">#uninstall_code</span></span><span> </span><span class="annot"><span class="annottext">forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">Rec Empty
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#empty"><span class="hs-identifier hs-var">empty</span></a></span><span>
+</span><span id="line-59"></span><span>    </span><span class="annot"><span class="annottext">forall (l :: Row (*)) (r :: Row (*)).
+FreeForall l =&gt;
+Rec l -&gt; Rec r -&gt; Rec (l .+ r)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%2B"><span class="hs-operator hs-var">.+</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;canister_id&quot; a =&gt; a
+</span><span class="">#canister_id</span></span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) a.
+KnownSymbol l =&gt;
+Label l -&gt; a -&gt; Rec (l .== a)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%3D%3D"><span class="hs-operator hs-var">.==</span></a></span><span> </span><span class="annot"><span class="annottext">Blob -&gt; Principal
+</span><a href="file:///nix/store/jkxjsrg5143afynhvaz1h65p40k9xpg6-candid-0.4-doc/share/doc/candid-0.4/html/src/Codec.Candid.Data.html#Principal"><span class="hs-identifier hs-var">Principal</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679413350"><span class="hs-identifier hs-var">canister_id</span></a></span><span>
+</span><span id="line-60"></span><span>    </span><span class="annot"><span class="annottext">forall (l :: Row (*)) (r :: Row (*)).
+FreeForall l =&gt;
+Rec l -&gt; Rec r -&gt; Rec (l .+ r)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%2B"><span class="hs-operator hs-var">.+</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;sender_canister_version&quot; a =&gt; a
+</span><span class="">#sender_canister_version</span></span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) a.
+KnownSymbol l =&gt;
+Label l -&gt; a -&gt; Rec (l .== a)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%3D%3D"><span class="hs-operator hs-var">.==</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. Maybe a
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Maybe.html#Nothing"><span class="hs-identifier hs-var">Nothing</span></a></span><span>
+</span><span id="line-61"></span><span>
+</span><span id="line-62"></span><span class="annot"><a href="IC.Test.Agent.UserCalls.html#ic_set_controllers%27%27"><span class="hs-identifier hs-type">ic_set_controllers''</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Agent.html#HasAgentConfig"><span class="hs-identifier hs-type">HasAgentConfig</span></a></span><span> </span><span class="hs-glyph">=&gt;</span><span> </span><span class="annot"><a href="IC.Id.Forms.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Id.Forms.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-special">[</span><span class="annot"><a href="IC.Id.Forms.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span class="hs-special">]</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/ghc-prim-0.8.0/src/GHC.Types.html#IO"><span class="hs-identifier hs-type">IO</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Test.Agent.html#HTTPErrOr"><span class="hs-identifier hs-type">HTTPErrOr</span></a></span><span> </span><span class="annot"><a href="IC.Test.Agent.html#ReqResponse"><span class="hs-identifier hs-type">ReqResponse</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-63"></span><span id="ic_set_controllers%27%27"><span class="annot"><span class="annottext">ic_set_controllers'' :: HasAgentConfig =&gt;
+Blob -&gt; Blob -&gt; [Blob] -&gt; IO (HTTPErrOr ReqResponse)
+</span><a href="IC.Test.Agent.UserCalls.html#ic_set_controllers%27%27"><span class="hs-identifier hs-var hs-var">ic_set_controllers''</span></a></span></span><span> </span><span id="local-6989586621679413132"><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679413132"><span class="hs-identifier hs-var">user</span></a></span></span><span> </span><span id="local-6989586621679413131"><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679413131"><span class="hs-identifier hs-var">canister_id</span></a></span></span><span> </span><span id="local-6989586621679413130"><span class="annot"><span class="annottext">[Blob]
+</span><a href="#local-6989586621679413130"><span class="hs-identifier hs-var">new_controllers</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-64"></span><span>  </span><span class="annot"><span class="annottext">forall (s :: Symbol) a b.
+(HasAgentConfig, KnownSymbol s,
+ (a -&gt; IO b) ~ (ICManagement IO .! s), CandidArg a) =&gt;
+Blob -&gt; Blob -&gt; Label s -&gt; a -&gt; IO (HTTPErrOr ReqResponse)
+</span><a href="IC.Test.Agent.html#callIC%27%27"><span class="hs-identifier hs-var">callIC''</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679413132"><span class="hs-identifier hs-var">user</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679413131"><span class="hs-identifier hs-var">canister_id</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;update_settings&quot; a =&gt; a
+</span><span class="">#update_settings</span></span><span> </span><span class="annot"><span class="annottext">forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">Rec Empty
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#empty"><span class="hs-identifier hs-var">empty</span></a></span><span>
+</span><span id="line-65"></span><span>    </span><span class="annot"><span class="annottext">forall (l :: Row (*)) (r :: Row (*)).
+FreeForall l =&gt;
+Rec l -&gt; Rec r -&gt; Rec (l .+ r)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%2B"><span class="hs-operator hs-var">.+</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;canister_id&quot; a =&gt; a
+</span><span class="">#canister_id</span></span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) a.
+KnownSymbol l =&gt;
+Label l -&gt; a -&gt; Rec (l .== a)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%3D%3D"><span class="hs-operator hs-var">.==</span></a></span><span> </span><span class="annot"><span class="annottext">Blob -&gt; Principal
+</span><a href="file:///nix/store/jkxjsrg5143afynhvaz1h65p40k9xpg6-candid-0.4-doc/share/doc/candid-0.4/html/src/Codec.Candid.Data.html#Principal"><span class="hs-identifier hs-var">Principal</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679413131"><span class="hs-identifier hs-var">canister_id</span></a></span><span>
+</span><span id="line-66"></span><span>    </span><span class="annot"><span class="annottext">forall (l :: Row (*)) (r :: Row (*)).
+FreeForall l =&gt;
+Rec l -&gt; Rec r -&gt; Rec (l .+ r)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%2B"><span class="hs-operator hs-var">.+</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;settings&quot; a =&gt; a
+</span><span class="">#settings</span></span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) a.
+KnownSymbol l =&gt;
+Label l -&gt; a -&gt; Rec (l .== a)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%3D%3D"><span class="hs-operator hs-var">.==</span></a></span><span> </span><span class="annot"><span class="annottext">forall (r :: Row (*)). PartialSettings r =&gt; Rec r -&gt; Settings
+</span><a href="IC.Test.Agent.Calls.html#fromPartialSettings"><span class="hs-identifier hs-var">fromPartialSettings</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">forall a. IsLabel &quot;controllers&quot; a =&gt; a
+</span><span class="">#controllers</span></span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) a.
+KnownSymbol l =&gt;
+Label l -&gt; a -&gt; Rec (l .== a)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%3D%3D"><span class="hs-operator hs-var">.==</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. [a] -&gt; Vector a
+</span><a href="file:///nix/store/aadcybz54gv18flf14ak9c3fjbcdx7d6-vector-0.12.3.1-doc/share/doc/vector-0.12.3.1/html/src/Data.Vector.html#fromList"><span class="hs-identifier hs-var">Vec.fromList</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">forall a b. (a -&gt; b) -&gt; [a] -&gt; [b]
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Base.html#map"><span class="hs-identifier hs-var">map</span></a></span><span> </span><span class="annot"><span class="annottext">Blob -&gt; Principal
+</span><a href="file:///nix/store/jkxjsrg5143afynhvaz1h65p40k9xpg6-candid-0.4-doc/share/doc/candid-0.4/html/src/Codec.Candid.Data.html#Principal"><span class="hs-identifier hs-var">Principal</span></a></span><span> </span><span class="annot"><span class="annottext">[Blob]
+</span><a href="#local-6989586621679413130"><span class="hs-identifier hs-var">new_controllers</span></a></span><span class="hs-special">)</span><span class="hs-special">)</span><span>
+</span><span id="line-67"></span><span>    </span><span class="annot"><span class="annottext">forall (l :: Row (*)) (r :: Row (*)).
+FreeForall l =&gt;
+Rec l -&gt; Rec r -&gt; Rec (l .+ r)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%2B"><span class="hs-operator hs-var">.+</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;sender_canister_version&quot; a =&gt; a
+</span><span class="">#sender_canister_version</span></span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) a.
+KnownSymbol l =&gt;
+Label l -&gt; a -&gt; Rec (l .== a)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%3D%3D"><span class="hs-operator hs-var">.==</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. Maybe a
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Maybe.html#Nothing"><span class="hs-identifier hs-var">Nothing</span></a></span><span>
+</span><span id="line-68"></span><span>
+</span><span id="line-69"></span><span class="annot"><a href="IC.Test.Agent.UserCalls.html#ic_start_canister%27%27"><span class="hs-identifier hs-type">ic_start_canister''</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Agent.html#HasAgentConfig"><span class="hs-identifier hs-type">HasAgentConfig</span></a></span><span> </span><span class="hs-glyph">=&gt;</span><span> </span><span class="annot"><a href="IC.Id.Forms.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Id.Forms.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/ghc-prim-0.8.0/src/GHC.Types.html#IO"><span class="hs-identifier hs-type">IO</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Test.Agent.html#HTTPErrOr"><span class="hs-identifier hs-type">HTTPErrOr</span></a></span><span> </span><span class="annot"><a href="IC.Test.Agent.html#ReqResponse"><span class="hs-identifier hs-type">ReqResponse</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-70"></span><span id="ic_start_canister%27%27"><span class="annot"><span class="annottext">ic_start_canister'' :: HasAgentConfig =&gt; Blob -&gt; Blob -&gt; IO (HTTPErrOr ReqResponse)
+</span><a href="IC.Test.Agent.UserCalls.html#ic_start_canister%27%27"><span class="hs-identifier hs-var hs-var">ic_start_canister''</span></a></span></span><span> </span><span id="local-6989586621679413071"><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679413071"><span class="hs-identifier hs-var">user</span></a></span></span><span> </span><span id="local-6989586621679413070"><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679413070"><span class="hs-identifier hs-var">canister_id</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-71"></span><span>  </span><span class="annot"><span class="annottext">forall (s :: Symbol) a b.
+(HasAgentConfig, KnownSymbol s,
+ (a -&gt; IO b) ~ (ICManagement IO .! s), CandidArg a) =&gt;
+Blob -&gt; Blob -&gt; Label s -&gt; a -&gt; IO (HTTPErrOr ReqResponse)
+</span><a href="IC.Test.Agent.html#callIC%27%27"><span class="hs-identifier hs-var">callIC''</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679413071"><span class="hs-identifier hs-var">user</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679413070"><span class="hs-identifier hs-var">canister_id</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;start_canister&quot; a =&gt; a
+</span><span class="">#start_canister</span></span><span> </span><span class="annot"><span class="annottext">forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">Rec Empty
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#empty"><span class="hs-identifier hs-var">empty</span></a></span><span>
+</span><span id="line-72"></span><span>    </span><span class="annot"><span class="annottext">forall (l :: Row (*)) (r :: Row (*)).
+FreeForall l =&gt;
+Rec l -&gt; Rec r -&gt; Rec (l .+ r)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%2B"><span class="hs-operator hs-var">.+</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;canister_id&quot; a =&gt; a
+</span><span class="">#canister_id</span></span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) a.
+KnownSymbol l =&gt;
+Label l -&gt; a -&gt; Rec (l .== a)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%3D%3D"><span class="hs-operator hs-var">.==</span></a></span><span> </span><span class="annot"><span class="annottext">Blob -&gt; Principal
+</span><a href="file:///nix/store/jkxjsrg5143afynhvaz1h65p40k9xpg6-candid-0.4-doc/share/doc/candid-0.4/html/src/Codec.Candid.Data.html#Principal"><span class="hs-identifier hs-var">Principal</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679413070"><span class="hs-identifier hs-var">canister_id</span></a></span><span>
+</span><span id="line-73"></span><span>
+</span><span id="line-74"></span><span class="annot"><a href="IC.Test.Agent.UserCalls.html#ic_stop_canister%27%27"><span class="hs-identifier hs-type">ic_stop_canister''</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Agent.html#HasAgentConfig"><span class="hs-identifier hs-type">HasAgentConfig</span></a></span><span> </span><span class="hs-glyph">=&gt;</span><span> </span><span class="annot"><a href="IC.Id.Forms.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Id.Forms.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/ghc-prim-0.8.0/src/GHC.Types.html#IO"><span class="hs-identifier hs-type">IO</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Test.Agent.html#HTTPErrOr"><span class="hs-identifier hs-type">HTTPErrOr</span></a></span><span> </span><span class="annot"><a href="IC.Test.Agent.html#ReqResponse"><span class="hs-identifier hs-type">ReqResponse</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-75"></span><span id="ic_stop_canister%27%27"><span class="annot"><span class="annottext">ic_stop_canister'' :: HasAgentConfig =&gt; Blob -&gt; Blob -&gt; IO (HTTPErrOr ReqResponse)
+</span><a href="IC.Test.Agent.UserCalls.html#ic_stop_canister%27%27"><span class="hs-identifier hs-var hs-var">ic_stop_canister''</span></a></span></span><span> </span><span id="local-6989586621679413013"><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679413013"><span class="hs-identifier hs-var">user</span></a></span></span><span> </span><span id="local-6989586621679413012"><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679413012"><span class="hs-identifier hs-var">canister_id</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-76"></span><span>  </span><span class="annot"><span class="annottext">forall (s :: Symbol) a b.
+(HasAgentConfig, KnownSymbol s,
+ (a -&gt; IO b) ~ (ICManagement IO .! s), CandidArg a) =&gt;
+Blob -&gt; Blob -&gt; Label s -&gt; a -&gt; IO (HTTPErrOr ReqResponse)
+</span><a href="IC.Test.Agent.html#callIC%27%27"><span class="hs-identifier hs-var">callIC''</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679413013"><span class="hs-identifier hs-var">user</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679413012"><span class="hs-identifier hs-var">canister_id</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;stop_canister&quot; a =&gt; a
+</span><span class="">#stop_canister</span></span><span> </span><span class="annot"><span class="annottext">forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">Rec Empty
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#empty"><span class="hs-identifier hs-var">empty</span></a></span><span>
+</span><span id="line-77"></span><span>    </span><span class="annot"><span class="annottext">forall (l :: Row (*)) (r :: Row (*)).
+FreeForall l =&gt;
+Rec l -&gt; Rec r -&gt; Rec (l .+ r)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%2B"><span class="hs-operator hs-var">.+</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;canister_id&quot; a =&gt; a
+</span><span class="">#canister_id</span></span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) a.
+KnownSymbol l =&gt;
+Label l -&gt; a -&gt; Rec (l .== a)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%3D%3D"><span class="hs-operator hs-var">.==</span></a></span><span> </span><span class="annot"><span class="annottext">Blob -&gt; Principal
+</span><a href="file:///nix/store/jkxjsrg5143afynhvaz1h65p40k9xpg6-candid-0.4-doc/share/doc/candid-0.4/html/src/Codec.Candid.Data.html#Principal"><span class="hs-identifier hs-var">Principal</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679413012"><span class="hs-identifier hs-var">canister_id</span></a></span><span>
+</span><span id="line-78"></span><span>
+</span><span id="line-79"></span><span class="annot"><a href="IC.Test.Agent.UserCalls.html#ic_canister_status%27%27"><span class="hs-identifier hs-type">ic_canister_status''</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Agent.html#HasAgentConfig"><span class="hs-identifier hs-type">HasAgentConfig</span></a></span><span> </span><span class="hs-glyph">=&gt;</span><span> </span><span class="annot"><a href="IC.Id.Forms.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Id.Forms.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/ghc-prim-0.8.0/src/GHC.Types.html#IO"><span class="hs-identifier hs-type">IO</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Test.Agent.html#HTTPErrOr"><span class="hs-identifier hs-type">HTTPErrOr</span></a></span><span> </span><span class="annot"><a href="IC.Test.Agent.html#ReqResponse"><span class="hs-identifier hs-type">ReqResponse</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-80"></span><span id="ic_canister_status%27%27"><span class="annot"><span class="annottext">ic_canister_status'' :: HasAgentConfig =&gt; Blob -&gt; Blob -&gt; IO (HTTPErrOr ReqResponse)
+</span><a href="IC.Test.Agent.UserCalls.html#ic_canister_status%27%27"><span class="hs-identifier hs-var hs-var">ic_canister_status''</span></a></span></span><span> </span><span id="local-6989586621679412955"><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679412955"><span class="hs-identifier hs-var">user</span></a></span></span><span> </span><span id="local-6989586621679412954"><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679412954"><span class="hs-identifier hs-var">canister_id</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-81"></span><span>  </span><span class="annot"><span class="annottext">forall (s :: Symbol) a b.
+(HasAgentConfig, KnownSymbol s,
+ (a -&gt; IO b) ~ (ICManagement IO .! s), CandidArg a) =&gt;
+Blob -&gt; Blob -&gt; Label s -&gt; a -&gt; IO (HTTPErrOr ReqResponse)
+</span><a href="IC.Test.Agent.html#callIC%27%27"><span class="hs-identifier hs-var">callIC''</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679412955"><span class="hs-identifier hs-var">user</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679412954"><span class="hs-identifier hs-var">canister_id</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;canister_status&quot; a =&gt; a
+</span><span class="">#canister_status</span></span><span> </span><span class="annot"><span class="annottext">forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">Rec Empty
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#empty"><span class="hs-identifier hs-var">empty</span></a></span><span>
+</span><span id="line-82"></span><span>    </span><span class="annot"><span class="annottext">forall (l :: Row (*)) (r :: Row (*)).
+FreeForall l =&gt;
+Rec l -&gt; Rec r -&gt; Rec (l .+ r)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%2B"><span class="hs-operator hs-var">.+</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;canister_id&quot; a =&gt; a
+</span><span class="">#canister_id</span></span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) a.
+KnownSymbol l =&gt;
+Label l -&gt; a -&gt; Rec (l .== a)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%3D%3D"><span class="hs-operator hs-var">.==</span></a></span><span> </span><span class="annot"><span class="annottext">Blob -&gt; Principal
+</span><a href="file:///nix/store/jkxjsrg5143afynhvaz1h65p40k9xpg6-candid-0.4-doc/share/doc/candid-0.4/html/src/Codec.Candid.Data.html#Principal"><span class="hs-identifier hs-var">Principal</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679412954"><span class="hs-identifier hs-var">canister_id</span></a></span><span>
+</span><span id="line-83"></span><span>
+</span><span id="line-84"></span><span class="annot"><a href="IC.Test.Agent.UserCalls.html#ic_canister_info%27%27"><span class="hs-identifier hs-type">ic_canister_info''</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Agent.html#HasAgentConfig"><span class="hs-identifier hs-type">HasAgentConfig</span></a></span><span> </span><span class="hs-glyph">=&gt;</span><span> </span><span class="annot"><a href="IC.Id.Forms.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Id.Forms.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Maybe.html#Maybe"><span class="hs-identifier hs-type">Maybe</span></a></span><span> </span><span class="annot"><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Word.html#Word64"><span class="hs-identifier hs-type">W.Word64</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/ghc-prim-0.8.0/src/GHC.Types.html#IO"><span class="hs-identifier hs-type">IO</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Test.Agent.html#HTTPErrOr"><span class="hs-identifier hs-type">HTTPErrOr</span></a></span><span> </span><span class="annot"><a href="IC.Test.Agent.html#ReqResponse"><span class="hs-identifier hs-type">ReqResponse</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-85"></span><span id="ic_canister_info%27%27"><span class="annot"><span class="annottext">ic_canister_info'' :: HasAgentConfig =&gt;
+Blob -&gt; Blob -&gt; Maybe Word64 -&gt; IO (HTTPErrOr ReqResponse)
+</span><a href="IC.Test.Agent.UserCalls.html#ic_canister_info%27%27"><span class="hs-identifier hs-var hs-var">ic_canister_info''</span></a></span></span><span> </span><span id="local-6989586621679412862"><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679412862"><span class="hs-identifier hs-var">user</span></a></span></span><span> </span><span id="local-6989586621679412861"><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679412861"><span class="hs-identifier hs-var">canister_id</span></a></span></span><span> </span><span id="local-6989586621679412860"><span class="annot"><span class="annottext">Maybe Word64
+</span><a href="#local-6989586621679412860"><span class="hs-identifier hs-var">num_requested_changes</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-86"></span><span>  </span><span class="annot"><span class="annottext">forall (s :: Symbol) a b.
+(HasAgentConfig, KnownSymbol s,
+ (a -&gt; IO b) ~ (ICManagement IO .! s), CandidArg a) =&gt;
+Blob -&gt; Blob -&gt; Label s -&gt; a -&gt; IO (HTTPErrOr ReqResponse)
+</span><a href="IC.Test.Agent.html#callIC%27%27"><span class="hs-identifier hs-var">callIC''</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679412862"><span class="hs-identifier hs-var">user</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679412861"><span class="hs-identifier hs-var">canister_id</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;canister_info&quot; a =&gt; a
+</span><span class="">#canister_info</span></span><span> </span><span class="annot"><span class="annottext">forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">Rec Empty
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#empty"><span class="hs-identifier hs-var">empty</span></a></span><span>
+</span><span id="line-87"></span><span>    </span><span class="annot"><span class="annottext">forall (l :: Row (*)) (r :: Row (*)).
+FreeForall l =&gt;
+Rec l -&gt; Rec r -&gt; Rec (l .+ r)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%2B"><span class="hs-operator hs-var">.+</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;canister_id&quot; a =&gt; a
+</span><span class="">#canister_id</span></span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) a.
+KnownSymbol l =&gt;
+Label l -&gt; a -&gt; Rec (l .== a)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%3D%3D"><span class="hs-operator hs-var">.==</span></a></span><span> </span><span class="annot"><span class="annottext">Blob -&gt; Principal
+</span><a href="file:///nix/store/jkxjsrg5143afynhvaz1h65p40k9xpg6-candid-0.4-doc/share/doc/candid-0.4/html/src/Codec.Candid.Data.html#Principal"><span class="hs-identifier hs-var">Principal</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679412861"><span class="hs-identifier hs-var">canister_id</span></a></span><span>
+</span><span id="line-88"></span><span>    </span><span class="annot"><span class="annottext">forall (l :: Row (*)) (r :: Row (*)).
+FreeForall l =&gt;
+Rec l -&gt; Rec r -&gt; Rec (l .+ r)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%2B"><span class="hs-operator hs-var">.+</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;num_requested_changes&quot; a =&gt; a
+</span><span class="">#num_requested_changes</span></span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) a.
+KnownSymbol l =&gt;
+Label l -&gt; a -&gt; Rec (l .== a)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%3D%3D"><span class="hs-operator hs-var">.==</span></a></span><span> </span><span class="annot"><span class="annottext">Maybe Word64
+</span><a href="#local-6989586621679412860"><span class="hs-identifier hs-var">num_requested_changes</span></a></span><span>
+</span><span id="line-89"></span><span>
+</span><span id="line-90"></span><span class="annot"><a href="IC.Test.Agent.UserCalls.html#ic_delete_canister%27%27"><span class="hs-identifier hs-type">ic_delete_canister''</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Agent.html#HasAgentConfig"><span class="hs-identifier hs-type">HasAgentConfig</span></a></span><span> </span><span class="hs-glyph">=&gt;</span><span> </span><span class="annot"><a href="IC.Id.Forms.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Id.Forms.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/ghc-prim-0.8.0/src/GHC.Types.html#IO"><span class="hs-identifier hs-type">IO</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Test.Agent.html#HTTPErrOr"><span class="hs-identifier hs-type">HTTPErrOr</span></a></span><span> </span><span class="annot"><a href="IC.Test.Agent.html#ReqResponse"><span class="hs-identifier hs-type">ReqResponse</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-91"></span><span id="ic_delete_canister%27%27"><span class="annot"><span class="annottext">ic_delete_canister'' :: HasAgentConfig =&gt; Blob -&gt; Blob -&gt; IO (HTTPErrOr ReqResponse)
+</span><a href="IC.Test.Agent.UserCalls.html#ic_delete_canister%27%27"><span class="hs-identifier hs-var hs-var">ic_delete_canister''</span></a></span></span><span> </span><span id="local-6989586621679412803"><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679412803"><span class="hs-identifier hs-var">user</span></a></span></span><span> </span><span id="local-6989586621679412802"><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679412802"><span class="hs-identifier hs-var">canister_id</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-92"></span><span>  </span><span class="annot"><span class="annottext">forall (s :: Symbol) a b.
+(HasAgentConfig, KnownSymbol s,
+ (a -&gt; IO b) ~ (ICManagement IO .! s), CandidArg a) =&gt;
+Blob -&gt; Blob -&gt; Label s -&gt; a -&gt; IO (HTTPErrOr ReqResponse)
+</span><a href="IC.Test.Agent.html#callIC%27%27"><span class="hs-identifier hs-var">callIC''</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679412803"><span class="hs-identifier hs-var">user</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679412802"><span class="hs-identifier hs-var">canister_id</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;delete_canister&quot; a =&gt; a
+</span><span class="">#delete_canister</span></span><span> </span><span class="annot"><span class="annottext">forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">Rec Empty
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#empty"><span class="hs-identifier hs-var">empty</span></a></span><span>
+</span><span id="line-93"></span><span>    </span><span class="annot"><span class="annottext">forall (l :: Row (*)) (r :: Row (*)).
+FreeForall l =&gt;
+Rec l -&gt; Rec r -&gt; Rec (l .+ r)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%2B"><span class="hs-operator hs-var">.+</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;canister_id&quot; a =&gt; a
+</span><span class="">#canister_id</span></span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) a.
+KnownSymbol l =&gt;
+Label l -&gt; a -&gt; Rec (l .== a)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%3D%3D"><span class="hs-operator hs-var">.==</span></a></span><span> </span><span class="annot"><span class="annottext">Blob -&gt; Principal
+</span><a href="file:///nix/store/jkxjsrg5143afynhvaz1h65p40k9xpg6-candid-0.4-doc/share/doc/candid-0.4/html/src/Codec.Candid.Data.html#Principal"><span class="hs-identifier hs-var">Principal</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679412802"><span class="hs-identifier hs-var">canister_id</span></a></span><span>
+</span><span id="line-94"></span><span>
+</span><span id="line-95"></span><span class="annot"><a href="IC.Test.Agent.UserCalls.html#ic_deposit_cycles%27%27"><span class="hs-identifier hs-type">ic_deposit_cycles''</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Agent.html#HasAgentConfig"><span class="hs-identifier hs-type">HasAgentConfig</span></a></span><span> </span><span class="hs-glyph">=&gt;</span><span> </span><span class="annot"><a href="IC.Id.Forms.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Id.Forms.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/ghc-prim-0.8.0/src/GHC.Types.html#IO"><span class="hs-identifier hs-type">IO</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Test.Agent.html#HTTPErrOr"><span class="hs-identifier hs-type">HTTPErrOr</span></a></span><span> </span><span class="annot"><a href="IC.Test.Agent.html#ReqResponse"><span class="hs-identifier hs-type">ReqResponse</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-96"></span><span id="ic_deposit_cycles%27%27"><span class="annot"><span class="annottext">ic_deposit_cycles'' :: HasAgentConfig =&gt; Blob -&gt; Blob -&gt; IO (HTTPErrOr ReqResponse)
+</span><a href="IC.Test.Agent.UserCalls.html#ic_deposit_cycles%27%27"><span class="hs-identifier hs-var hs-var">ic_deposit_cycles''</span></a></span></span><span> </span><span id="local-6989586621679412745"><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679412745"><span class="hs-identifier hs-var">user</span></a></span></span><span> </span><span id="local-6989586621679412744"><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679412744"><span class="hs-identifier hs-var">canister_id</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-97"></span><span>  </span><span class="annot"><span class="annottext">forall (s :: Symbol) a b.
+(HasAgentConfig, KnownSymbol s,
+ (a -&gt; IO b) ~ (ICManagement IO .! s), CandidArg a) =&gt;
+Blob -&gt; Blob -&gt; Label s -&gt; a -&gt; IO (HTTPErrOr ReqResponse)
+</span><a href="IC.Test.Agent.html#callIC%27%27"><span class="hs-identifier hs-var">callIC''</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679412745"><span class="hs-identifier hs-var">user</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679412744"><span class="hs-identifier hs-var">canister_id</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;deposit_cycles&quot; a =&gt; a
+</span><span class="">#deposit_cycles</span></span><span> </span><span class="annot"><span class="annottext">forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">Rec Empty
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#empty"><span class="hs-identifier hs-var">empty</span></a></span><span>
+</span><span id="line-98"></span><span>    </span><span class="annot"><span class="annottext">forall (l :: Row (*)) (r :: Row (*)).
+FreeForall l =&gt;
+Rec l -&gt; Rec r -&gt; Rec (l .+ r)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%2B"><span class="hs-operator hs-var">.+</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;canister_id&quot; a =&gt; a
+</span><span class="">#canister_id</span></span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) a.
+KnownSymbol l =&gt;
+Label l -&gt; a -&gt; Rec (l .== a)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%3D%3D"><span class="hs-operator hs-var">.==</span></a></span><span> </span><span class="annot"><span class="annottext">Blob -&gt; Principal
+</span><a href="file:///nix/store/jkxjsrg5143afynhvaz1h65p40k9xpg6-candid-0.4-doc/share/doc/candid-0.4/html/src/Codec.Candid.Data.html#Principal"><span class="hs-identifier hs-var">Principal</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679412744"><span class="hs-identifier hs-var">canister_id</span></a></span><span>
+</span><span id="line-99"></span><span>
+</span><span id="line-100"></span><span class="annot"><a href="IC.Test.Agent.UserCalls.html#ic_raw_rand%27%27"><span class="hs-identifier hs-type">ic_raw_rand''</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Agent.html#HasAgentConfig"><span class="hs-identifier hs-type">HasAgentConfig</span></a></span><span> </span><span class="hs-glyph">=&gt;</span><span> </span><span class="annot"><a href="IC.Id.Forms.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Id.Forms.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/ghc-prim-0.8.0/src/GHC.Types.html#IO"><span class="hs-identifier hs-type">IO</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Test.Agent.html#HTTPErrOr"><span class="hs-identifier hs-type">HTTPErrOr</span></a></span><span> </span><span class="annot"><a href="IC.Test.Agent.html#ReqResponse"><span class="hs-identifier hs-type">ReqResponse</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-101"></span><span id="ic_raw_rand%27%27"><span class="annot"><span class="annottext">ic_raw_rand'' :: HasAgentConfig =&gt; Blob -&gt; Blob -&gt; IO (HTTPErrOr ReqResponse)
+</span><a href="IC.Test.Agent.UserCalls.html#ic_raw_rand%27%27"><span class="hs-identifier hs-var hs-var">ic_raw_rand''</span></a></span></span><span> </span><span id="local-6989586621679412727"><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679412727"><span class="hs-identifier hs-var">user</span></a></span></span><span> </span><span id="local-6989586621679412726"><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679412726"><span class="hs-identifier hs-var">ecid</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-102"></span><span>  </span><span class="annot"><span class="annottext">forall (s :: Symbol) a b.
+(HasAgentConfig, KnownSymbol s,
+ (a -&gt; IO b) ~ (ICManagement IO .! s), CandidArg a) =&gt;
+Blob -&gt; Blob -&gt; Label s -&gt; a -&gt; IO (HTTPErrOr ReqResponse)
+</span><a href="IC.Test.Agent.html#callIC%27%27"><span class="hs-identifier hs-var">callIC''</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679412727"><span class="hs-identifier hs-var">user</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679412726"><span class="hs-identifier hs-var">ecid</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;raw_rand&quot; a =&gt; a
+</span><span class="">#raw_rand</span></span><span> </span><span class="hs-special">(</span><span class="hs-special">)</span><span>
+</span><span id="line-103"></span><span>
+</span><span id="line-104"></span><span class="annot"><a href="IC.Test.Agent.UserCalls.html#ic_http_get_request%27%27"><span class="hs-identifier hs-type">ic_http_get_request''</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Agent.html#HasAgentConfig"><span class="hs-identifier hs-type">HasAgentConfig</span></a></span><span> </span><span class="hs-glyph">=&gt;</span><span> </span><span class="annot"><a href="IC.Id.Forms.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Id.Forms.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/ghc-prim-0.8.0/src/GHC.Types.html#IO"><span class="hs-identifier hs-type">IO</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Test.Agent.html#HTTPErrOr"><span class="hs-identifier hs-type">HTTPErrOr</span></a></span><span> </span><span class="annot"><a href="IC.Test.Agent.html#ReqResponse"><span class="hs-identifier hs-type">ReqResponse</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-105"></span><span id="ic_http_get_request%27%27"><span class="annot"><span class="annottext">ic_http_get_request'' :: HasAgentConfig =&gt; Blob -&gt; Blob -&gt; IO (HTTPErrOr ReqResponse)
+</span><a href="IC.Test.Agent.UserCalls.html#ic_http_get_request%27%27"><span class="hs-identifier hs-var hs-var">ic_http_get_request''</span></a></span></span><span> </span><span id="local-6989586621679412236"><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679412236"><span class="hs-identifier hs-var">user</span></a></span></span><span> </span><span id="local-6989586621679412235"><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679412235"><span class="hs-identifier hs-var">ecid</span></a></span></span><span> </span><span class="hs-glyph">=</span><span>
+</span><span id="line-106"></span><span>  </span><span class="annot"><span class="annottext">forall (s :: Symbol) a b.
+(HasAgentConfig, KnownSymbol s,
+ (a -&gt; IO b) ~ (ICManagement IO .! s), CandidArg a) =&gt;
+Blob -&gt; Blob -&gt; Label s -&gt; a -&gt; IO (HTTPErrOr ReqResponse)
+</span><a href="IC.Test.Agent.html#callIC%27%27"><span class="hs-identifier hs-var">callIC''</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679412236"><span class="hs-identifier hs-var">user</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679412235"><span class="hs-identifier hs-var">ecid</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;http_request&quot; a =&gt; a
+</span><span class="">#http_request</span></span><span> </span><span class="annot"><span class="annottext">forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">Rec Empty
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#empty"><span class="hs-identifier hs-var">empty</span></a></span><span>
+</span><span id="line-107"></span><span>    </span><span class="annot"><span class="annottext">forall (l :: Row (*)) (r :: Row (*)).
+FreeForall l =&gt;
+Rec l -&gt; Rec r -&gt; Rec (l .+ r)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%2B"><span class="hs-operator hs-var">.+</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;url&quot; a =&gt; a
+</span><span class="">#url</span></span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) a.
+KnownSymbol l =&gt;
+Label l -&gt; a -&gt; Rec (l .== a)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%3D%3D"><span class="hs-operator hs-var">.==</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">String -&gt; Text
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/text-1.2.5.0/src/Data.Text.html#pack"><span class="hs-identifier hs-var">T.pack</span></a></span><span> </span><span class="annot"><span class="annottext">forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">String
+</span><span class="hs-string">&quot;https://&quot;</span></span><span> </span><span class="annot"><span class="annottext">forall a. [a] -&gt; [a] -&gt; [a]
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Base.html#%2B%2B"><span class="hs-operator hs-var">++</span></a></span><span> </span><span class="annot"><span class="annottext">HasAgentConfig =&gt; String
+</span><a href="IC.Test.Agent.Calls.html#httpbin"><span class="hs-identifier hs-var">httpbin</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-108"></span><span>    </span><span class="annot"><span class="annottext">forall (l :: Row (*)) (r :: Row (*)).
+FreeForall l =&gt;
+Rec l -&gt; Rec r -&gt; Rec (l .+ r)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%2B"><span class="hs-operator hs-var">.+</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;max_response_bytes&quot; a =&gt; a
+</span><span class="">#max_response_bytes</span></span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) a.
+KnownSymbol l =&gt;
+Label l -&gt; a -&gt; Rec (l .== a)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%3D%3D"><span class="hs-operator hs-var">.==</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. Maybe a
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Maybe.html#Nothing"><span class="hs-identifier hs-var">Nothing</span></a></span><span>
+</span><span id="line-109"></span><span>    </span><span class="annot"><span class="annottext">forall (l :: Row (*)) (r :: Row (*)).
+FreeForall l =&gt;
+Rec l -&gt; Rec r -&gt; Rec (l .+ r)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%2B"><span class="hs-operator hs-var">.+</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;method&quot; a =&gt; a
+</span><span class="">#method</span></span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) a.
+KnownSymbol l =&gt;
+Label l -&gt; a -&gt; Rec (l .== a)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%3D%3D"><span class="hs-operator hs-var">.==</span></a></span><span> </span><span class="annot"><span class="annottext">forall (r :: Row (*)) (l :: Symbol).
+(AllUniqueLabels r, KnownSymbol l, (r .! l) ~ ()) =&gt;
+Label l -&gt; Var r
+</span><a href="IC.Test.Agent.html#enum"><span class="hs-identifier hs-var">enum</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;get&quot; a =&gt; a
+</span><span class="">#get</span></span><span>
+</span><span id="line-110"></span><span>    </span><span class="annot"><span class="annottext">forall (l :: Row (*)) (r :: Row (*)).
+FreeForall l =&gt;
+Rec l -&gt; Rec r -&gt; Rec (l .+ r)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%2B"><span class="hs-operator hs-var">.+</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;headers&quot; a =&gt; a
+</span><span class="">#headers</span></span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) a.
+KnownSymbol l =&gt;
+Label l -&gt; a -&gt; Rec (l .== a)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%3D%3D"><span class="hs-operator hs-var">.==</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. Vector a
+</span><a href="file:///nix/store/aadcybz54gv18flf14ak9c3fjbcdx7d6-vector-0.12.3.1-doc/share/doc/vector-0.12.3.1/html/src/Data.Vector.html#empty"><span class="hs-identifier hs-var">Vec.empty</span></a></span><span>
+</span><span id="line-111"></span><span>    </span><span class="annot"><span class="annottext">forall (l :: Row (*)) (r :: Row (*)).
+FreeForall l =&gt;
+Rec l -&gt; Rec r -&gt; Rec (l .+ r)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%2B"><span class="hs-operator hs-var">.+</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;body&quot; a =&gt; a
+</span><span class="">#body</span></span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) a.
+KnownSymbol l =&gt;
+Label l -&gt; a -&gt; Rec (l .== a)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%3D%3D"><span class="hs-operator hs-var">.==</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. Maybe a
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Maybe.html#Nothing"><span class="hs-identifier hs-var">Nothing</span></a></span><span>
+</span><span id="line-112"></span><span>    </span><span class="annot"><span class="annottext">forall (l :: Row (*)) (r :: Row (*)).
+FreeForall l =&gt;
+Rec l -&gt; Rec r -&gt; Rec (l .+ r)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%2B"><span class="hs-operator hs-var">.+</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;transform&quot; a =&gt; a
+</span><span class="">#transform</span></span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) a.
+KnownSymbol l =&gt;
+Label l -&gt; a -&gt; Rec (l .== a)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%3D%3D"><span class="hs-operator hs-var">.==</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. Maybe a
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Maybe.html#Nothing"><span class="hs-identifier hs-var">Nothing</span></a></span><span>
+</span><span id="line-113"></span><span>
+</span><span id="line-114"></span><span class="annot"><a href="IC.Test.Agent.UserCalls.html#ic_ecdsa_public_key%27%27"><span class="hs-identifier hs-type">ic_ecdsa_public_key''</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Agent.html#HasAgentConfig"><span class="hs-identifier hs-type">HasAgentConfig</span></a></span><span> </span><span class="hs-glyph">=&gt;</span><span> </span><span class="annot"><a href="IC.Id.Forms.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Id.Forms.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/ghc-prim-0.8.0/src/GHC.Types.html#IO"><span class="hs-identifier hs-type">IO</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Test.Agent.html#HTTPErrOr"><span class="hs-identifier hs-type">HTTPErrOr</span></a></span><span> </span><span class="annot"><a href="IC.Test.Agent.html#ReqResponse"><span class="hs-identifier hs-type">ReqResponse</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-115"></span><span id="ic_ecdsa_public_key%27%27"><span class="annot"><span class="annottext">ic_ecdsa_public_key'' :: HasAgentConfig =&gt; Blob -&gt; Blob -&gt; IO (HTTPErrOr ReqResponse)
+</span><a href="IC.Test.Agent.UserCalls.html#ic_ecdsa_public_key%27%27"><span class="hs-identifier hs-var hs-var">ic_ecdsa_public_key''</span></a></span></span><span> </span><span id="local-6989586621679412008"><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679412008"><span class="hs-identifier hs-var">user</span></a></span></span><span> </span><span id="local-6989586621679412007"><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679412007"><span class="hs-identifier hs-var">ecid</span></a></span></span><span> </span><span class="hs-glyph">=</span><span>
+</span><span id="line-116"></span><span>  </span><span class="annot"><span class="annottext">forall (s :: Symbol) a b.
+(HasAgentConfig, KnownSymbol s,
+ (a -&gt; IO b) ~ (ICManagement IO .! s), CandidArg a) =&gt;
+Blob -&gt; Blob -&gt; Label s -&gt; a -&gt; IO (HTTPErrOr ReqResponse)
+</span><a href="IC.Test.Agent.html#callIC%27%27"><span class="hs-identifier hs-var">callIC''</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679412008"><span class="hs-identifier hs-var">user</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679412007"><span class="hs-identifier hs-var">ecid</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;ecdsa_public_key&quot; a =&gt; a
+</span><span class="">#ecdsa_public_key</span></span><span> </span><span class="annot"><span class="annottext">forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">Rec Empty
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#empty"><span class="hs-identifier hs-var">empty</span></a></span><span>
+</span><span id="line-117"></span><span>    </span><span class="annot"><span class="annottext">forall (l :: Row (*)) (r :: Row (*)).
+FreeForall l =&gt;
+Rec l -&gt; Rec r -&gt; Rec (l .+ r)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%2B"><span class="hs-operator hs-var">.+</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;derivation_path&quot; a =&gt; a
+</span><span class="">#derivation_path</span></span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) a.
+KnownSymbol l =&gt;
+Label l -&gt; a -&gt; Rec (l .== a)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%3D%3D"><span class="hs-operator hs-var">.==</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. Vector a
+</span><a href="file:///nix/store/aadcybz54gv18flf14ak9c3fjbcdx7d6-vector-0.12.3.1-doc/share/doc/vector-0.12.3.1/html/src/Data.Vector.html#empty"><span class="hs-identifier hs-var">Vec.empty</span></a></span><span>
+</span><span id="line-118"></span><span>    </span><span class="annot"><span class="annottext">forall (l :: Row (*)) (r :: Row (*)).
+FreeForall l =&gt;
+Rec l -&gt; Rec r -&gt; Rec (l .+ r)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%2B"><span class="hs-operator hs-var">.+</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;canister_id&quot; a =&gt; a
+</span><span class="">#canister_id</span></span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) a.
+KnownSymbol l =&gt;
+Label l -&gt; a -&gt; Rec (l .== a)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%3D%3D"><span class="hs-operator hs-var">.==</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. Maybe a
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Maybe.html#Nothing"><span class="hs-identifier hs-var">Nothing</span></a></span><span>
+</span><span id="line-119"></span><span>    </span><span class="annot"><span class="annottext">forall (l :: Row (*)) (r :: Row (*)).
+FreeForall l =&gt;
+Rec l -&gt; Rec r -&gt; Rec (l .+ r)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%2B"><span class="hs-operator hs-var">.+</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;key_id&quot; a =&gt; a
+</span><span class="">#key_id</span></span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) a.
+KnownSymbol l =&gt;
+Label l -&gt; a -&gt; Rec (l .== a)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%3D%3D"><span class="hs-operator hs-var">.==</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Rec Empty
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#empty"><span class="hs-identifier hs-var">empty</span></a></span><span>
+</span><span id="line-120"></span><span>       </span><span class="annot"><span class="annottext">forall (l :: Row (*)) (r :: Row (*)).
+FreeForall l =&gt;
+Rec l -&gt; Rec r -&gt; Rec (l .+ r)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%2B"><span class="hs-operator hs-var">.+</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;curve&quot; a =&gt; a
+</span><span class="">#curve</span></span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) a.
+KnownSymbol l =&gt;
+Label l -&gt; a -&gt; Rec (l .== a)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%3D%3D"><span class="hs-operator hs-var">.==</span></a></span><span> </span><span class="annot"><span class="annottext">forall (r :: Row (*)) (l :: Symbol).
+(AllUniqueLabels r, KnownSymbol l, (r .! l) ~ ()) =&gt;
+Label l -&gt; Var r
+</span><a href="IC.Test.Agent.html#enum"><span class="hs-identifier hs-var">enum</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;secp256k1&quot; a =&gt; a
+</span><span class="">#secp256k1</span></span><span>
+</span><span id="line-121"></span><span>       </span><span class="annot"><span class="annottext">forall (l :: Row (*)) (r :: Row (*)).
+FreeForall l =&gt;
+Rec l -&gt; Rec r -&gt; Rec (l .+ r)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%2B"><span class="hs-operator hs-var">.+</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;name&quot; a =&gt; a
+</span><span class="">#name</span></span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) a.
+KnownSymbol l =&gt;
+Label l -&gt; a -&gt; Rec (l .== a)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%3D%3D"><span class="hs-operator hs-var">.==</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">String -&gt; Text
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/text-1.2.5.0/src/Data.Text.html#pack"><span class="hs-identifier hs-var">T.pack</span></a></span><span> </span><span class="annot"><span class="annottext">String
+</span><span class="hs-string">&quot;0&quot;</span></span><span class="hs-special">)</span><span>
+</span><span id="line-122"></span><span>    </span><span class="hs-special">)</span><span>
+</span><span id="line-123"></span><span>
+</span><span id="line-124"></span><span class="annot"><a href="IC.Test.Agent.UserCalls.html#ic_sign_with_ecdsa%27%27"><span class="hs-identifier hs-type">ic_sign_with_ecdsa''</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Agent.html#HasAgentConfig"><span class="hs-identifier hs-type">HasAgentConfig</span></a></span><span> </span><span class="hs-glyph">=&gt;</span><span> </span><span class="annot"><a href="IC.Id.Forms.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Id.Forms.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Id.Forms.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/ghc-prim-0.8.0/src/GHC.Types.html#IO"><span class="hs-identifier hs-type">IO</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Test.Agent.html#HTTPErrOr"><span class="hs-identifier hs-type">HTTPErrOr</span></a></span><span> </span><span class="annot"><a href="IC.Test.Agent.html#ReqResponse"><span class="hs-identifier hs-type">ReqResponse</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-125"></span><span id="ic_sign_with_ecdsa%27%27"><span class="annot"><span class="annottext">ic_sign_with_ecdsa'' :: HasAgentConfig =&gt;
+Blob -&gt; Blob -&gt; Blob -&gt; IO (HTTPErrOr ReqResponse)
+</span><a href="IC.Test.Agent.UserCalls.html#ic_sign_with_ecdsa%27%27"><span class="hs-identifier hs-var hs-var">ic_sign_with_ecdsa''</span></a></span></span><span> </span><span id="local-6989586621679411797"><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679411797"><span class="hs-identifier hs-var">user</span></a></span></span><span> </span><span id="local-6989586621679411796"><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679411796"><span class="hs-identifier hs-var">ecid</span></a></span></span><span> </span><span id="local-6989586621679411795"><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679411795"><span class="hs-identifier hs-var">msg</span></a></span></span><span> </span><span class="hs-glyph">=</span><span>
+</span><span id="line-126"></span><span>  </span><span class="annot"><span class="annottext">forall (s :: Symbol) a b.
+(HasAgentConfig, KnownSymbol s,
+ (a -&gt; IO b) ~ (ICManagement IO .! s), CandidArg a) =&gt;
+Blob -&gt; Blob -&gt; Label s -&gt; a -&gt; IO (HTTPErrOr ReqResponse)
+</span><a href="IC.Test.Agent.html#callIC%27%27"><span class="hs-identifier hs-var">callIC''</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679411797"><span class="hs-identifier hs-var">user</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679411796"><span class="hs-identifier hs-var">ecid</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;sign_with_ecdsa&quot; a =&gt; a
+</span><span class="">#sign_with_ecdsa</span></span><span> </span><span class="annot"><span class="annottext">forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">Rec Empty
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#empty"><span class="hs-identifier hs-var">empty</span></a></span><span>
+</span><span id="line-127"></span><span>    </span><span class="annot"><span class="annottext">forall (l :: Row (*)) (r :: Row (*)).
+FreeForall l =&gt;
+Rec l -&gt; Rec r -&gt; Rec (l .+ r)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%2B"><span class="hs-operator hs-var">.+</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;derivation_path&quot; a =&gt; a
+</span><span class="">#derivation_path</span></span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) a.
+KnownSymbol l =&gt;
+Label l -&gt; a -&gt; Rec (l .== a)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%3D%3D"><span class="hs-operator hs-var">.==</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. Vector a
+</span><a href="file:///nix/store/aadcybz54gv18flf14ak9c3fjbcdx7d6-vector-0.12.3.1-doc/share/doc/vector-0.12.3.1/html/src/Data.Vector.html#empty"><span class="hs-identifier hs-var">Vec.empty</span></a></span><span>
+</span><span id="line-128"></span><span>    </span><span class="annot"><span class="annottext">forall (l :: Row (*)) (r :: Row (*)).
+FreeForall l =&gt;
+Rec l -&gt; Rec r -&gt; Rec (l .+ r)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%2B"><span class="hs-operator hs-var">.+</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;message_hash&quot; a =&gt; a
+</span><span class="">#message_hash</span></span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) a.
+KnownSymbol l =&gt;
+Label l -&gt; a -&gt; Rec (l .== a)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%3D%3D"><span class="hs-operator hs-var">.==</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679411795"><span class="hs-identifier hs-var">msg</span></a></span><span>
+</span><span id="line-129"></span><span>    </span><span class="annot"><span class="annottext">forall (l :: Row (*)) (r :: Row (*)).
+FreeForall l =&gt;
+Rec l -&gt; Rec r -&gt; Rec (l .+ r)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%2B"><span class="hs-operator hs-var">.+</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;key_id&quot; a =&gt; a
+</span><span class="">#key_id</span></span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) a.
+KnownSymbol l =&gt;
+Label l -&gt; a -&gt; Rec (l .== a)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%3D%3D"><span class="hs-operator hs-var">.==</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Rec Empty
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#empty"><span class="hs-identifier hs-var">empty</span></a></span><span>
+</span><span id="line-130"></span><span>       </span><span class="annot"><span class="annottext">forall (l :: Row (*)) (r :: Row (*)).
+FreeForall l =&gt;
+Rec l -&gt; Rec r -&gt; Rec (l .+ r)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%2B"><span class="hs-operator hs-var">.+</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;curve&quot; a =&gt; a
+</span><span class="">#curve</span></span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) a.
+KnownSymbol l =&gt;
+Label l -&gt; a -&gt; Rec (l .== a)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%3D%3D"><span class="hs-operator hs-var">.==</span></a></span><span> </span><span class="annot"><span class="annottext">forall (r :: Row (*)) (l :: Symbol).
+(AllUniqueLabels r, KnownSymbol l, (r .! l) ~ ()) =&gt;
+Label l -&gt; Var r
+</span><a href="IC.Test.Agent.html#enum"><span class="hs-identifier hs-var">enum</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;secp256k1&quot; a =&gt; a
+</span><span class="">#secp256k1</span></span><span>
+</span><span id="line-131"></span><span>       </span><span class="annot"><span class="annottext">forall (l :: Row (*)) (r :: Row (*)).
+FreeForall l =&gt;
+Rec l -&gt; Rec r -&gt; Rec (l .+ r)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%2B"><span class="hs-operator hs-var">.+</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;name&quot; a =&gt; a
+</span><span class="">#name</span></span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) a.
+KnownSymbol l =&gt;
+Label l -&gt; a -&gt; Rec (l .== a)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%3D%3D"><span class="hs-operator hs-var">.==</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">String -&gt; Text
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/text-1.2.5.0/src/Data.Text.html#pack"><span class="hs-identifier hs-var">T.pack</span></a></span><span> </span><span class="annot"><span class="annottext">String
+</span><span class="hs-string">&quot;0&quot;</span></span><span class="hs-special">)</span><span>
+</span><span id="line-132"></span><span>    </span><span class="hs-special">)</span><span>
+</span><span id="line-133"></span><span>
+</span><span id="line-134"></span><span class="annot"><a href="IC.Test.Agent.UserCalls.html#ic_top_up%27%27%27"><span class="hs-identifier hs-type">ic_top_up'''</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Agent.html#HasAgentConfig"><span class="hs-identifier hs-type">HasAgentConfig</span></a></span><span> </span><span class="hs-glyph">=&gt;</span><span> </span><span class="annot"><a href="IC.Test.Agent.html#IC00%27"><span class="hs-identifier hs-type">IC00'</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Id.Forms.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/ghc-bignum-1.2/src/GHC.Num.Natural.html#Natural"><span class="hs-identifier hs-type">Natural</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/ghc-prim-0.8.0/src/GHC.Types.html#IO"><span class="hs-identifier hs-type">IO</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Test.Agent.html#HTTPErrOr"><span class="hs-identifier hs-type">HTTPErrOr</span></a></span><span> </span><span class="annot"><a href="IC.Test.Agent.html#ReqResponse"><span class="hs-identifier hs-type">ReqResponse</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-135"></span><span id="ic_top_up%27%27%27"><span class="annot"><span class="annottext">ic_top_up''' :: HasAgentConfig =&gt;
+IC00' -&gt; Blob -&gt; Natural -&gt; IO (HTTPErrOr ReqResponse)
+</span><a href="IC.Test.Agent.UserCalls.html#ic_top_up%27%27%27"><span class="hs-identifier hs-var hs-var">ic_top_up'''</span></a></span></span><span> </span><span id="local-6989586621679411706"><span class="annot"><span class="annottext">IC00'
+</span><a href="#local-6989586621679411706"><span class="hs-identifier hs-var">ic00'</span></a></span></span><span> </span><span id="local-6989586621679411705"><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679411705"><span class="hs-identifier hs-var">canister_id</span></a></span></span><span> </span><span id="local-6989586621679411704"><span class="annot"><span class="annottext">Natural
+</span><a href="#local-6989586621679411704"><span class="hs-identifier hs-var">amount</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-136"></span><span>  </span><span class="annot"><span class="annottext">forall (s :: Symbol) a b.
+(HasAgentConfig, KnownSymbol s,
+ (a -&gt; IO b) ~ (ICManagement IO .! s), CandidArg a) =&gt;
+IC00' -&gt; Blob -&gt; Label s -&gt; a -&gt; IO (HTTPErrOr ReqResponse)
+</span><a href="IC.Test.Agent.html#callIC%27%27%27"><span class="hs-identifier hs-var">callIC'''</span></a></span><span> </span><span class="annot"><span class="annottext">IC00'
+</span><a href="#local-6989586621679411706"><span class="hs-identifier hs-var">ic00'</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679411705"><span class="hs-identifier hs-var">canister_id</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;provisional_top_up_canister&quot; a =&gt; a
+</span><span class="">#provisional_top_up_canister</span></span><span> </span><span class="annot"><span class="annottext">forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">Rec Empty
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#empty"><span class="hs-identifier hs-var">empty</span></a></span><span>
+</span><span id="line-137"></span><span>    </span><span class="annot"><span class="annottext">forall (l :: Row (*)) (r :: Row (*)).
+FreeForall l =&gt;
+Rec l -&gt; Rec r -&gt; Rec (l .+ r)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%2B"><span class="hs-operator hs-var">.+</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;canister_id&quot; a =&gt; a
+</span><span class="">#canister_id</span></span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) a.
+KnownSymbol l =&gt;
+Label l -&gt; a -&gt; Rec (l .== a)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%3D%3D"><span class="hs-operator hs-var">.==</span></a></span><span> </span><span class="annot"><span class="annottext">Blob -&gt; Principal
+</span><a href="file:///nix/store/jkxjsrg5143afynhvaz1h65p40k9xpg6-candid-0.4-doc/share/doc/candid-0.4/html/src/Codec.Candid.Data.html#Principal"><span class="hs-identifier hs-var">Principal</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679411705"><span class="hs-identifier hs-var">canister_id</span></a></span><span>
+</span><span id="line-138"></span><span>    </span><span class="annot"><span class="annottext">forall (l :: Row (*)) (r :: Row (*)).
+FreeForall l =&gt;
+Rec l -&gt; Rec r -&gt; Rec (l .+ r)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%2B"><span class="hs-operator hs-var">.+</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;amount&quot; a =&gt; a
+</span><span class="">#amount</span></span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) a.
+KnownSymbol l =&gt;
+Label l -&gt; a -&gt; Rec (l .== a)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%3D%3D"><span class="hs-operator hs-var">.==</span></a></span><span> </span><span class="annot"><span class="annottext">Natural
+</span><a href="#local-6989586621679411704"><span class="hs-identifier hs-var">amount</span></a></span><span>
+</span><span id="line-139"></span></pre></body></html>

@@ -1,0 +1,202 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><link rel="stylesheet" type="text/css" href="style.css" /><script type="text/javascript" src="highlight.js"></script></head><body><pre><span class="hs-pragma">{-# LANGUAGE OverloadedStrings #-}</span><span>
+</span><span id="line-2"></span><span class="hs-pragma">{-# LANGUAGE TypeApplications #-}</span><span>
+</span><span id="line-3"></span><span class="hs-pragma">{-# LANGUAGE LambdaCase #-}</span><span>
+</span><span id="line-4"></span><span class="hs-pragma">{-# LANGUAGE OverloadedLabels #-}</span><span>
+</span><span id="line-5"></span><span class="hs-pragma">{-# LANGUAGE NumericUnderscores #-}</span><span>
+</span><span id="line-6"></span><span class="hs-pragma">{-# LANGUAGE TupleSections #-}</span><span>
+</span><span id="line-7"></span><span class="hs-pragma">{-# LANGUAGE NamedFieldPuns #-}</span><span>
+</span><span id="line-8"></span><span>
+</span><span id="line-9"></span><span class="hs-keyword">module</span><span> </span><span class="hs-identifier">IC.Test.Spec.TECDSA</span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Test.Spec.TECDSA.html#tests"><span class="hs-identifier">tests</span></a></span><span class="hs-special">)</span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-10"></span><span>
+</span><span id="line-11"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="file:///nix/store/5nl5lyfznc78f5v4byqwsc8cnidi0h64-tasty-1.4.3-doc/share/doc/tasty-1.4.3/html/src/Test.Tasty.html"><span class="hs-identifier">Test.Tasty</span></a></span><span>
+</span><span id="line-12"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><a href="file:///nix/store/aadcybz54gv18flf14ak9c3fjbcdx7d6-vector-0.12.3.1-doc/share/doc/vector-0.12.3.1/html/src/Data.Vector.html"><span class="hs-identifier">Data.Vector</span></a></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">Vec</span></span><span>
+</span><span id="line-13"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="IC.Test.Spec.Utils.html"><span class="hs-identifier">IC.Test.Spec.Utils</span></a></span><span>
+</span><span id="line-14"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="IC.Test.Agent.html"><span class="hs-identifier">IC.Test.Agent</span></a></span><span>
+</span><span id="line-15"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="IC.Test.Agent.UnsafeCalls.html"><span class="hs-identifier">IC.Test.Agent.UnsafeCalls</span></a></span><span>
+</span><span id="line-16"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="IC.Test.Agent.SafeCalls.html"><span class="hs-identifier">IC.Test.Agent.SafeCalls</span></a></span><span>
+</span><span id="line-17"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.html"><span class="hs-identifier">Data.Row</span></a></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">R</span></span><span>
+</span><span id="line-18"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="file:///nix/store/x8f35h2bgw8yxq58j3fhkgy1j7ipa21h-tasty-hunit-0.10.0.3-doc/share/doc/tasty-hunit-0.10.0.3/html/src/Test.Tasty.HUnit.html"><span class="hs-identifier">Test.Tasty.HUnit</span></a></span><span>
+</span><span id="line-19"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="IC.Test.Universal.html"><span class="hs-identifier">IC.Test.Universal</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Test.Universal.html#noop"><span class="hs-identifier">noop</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-20"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="IC.Hash.html"><span class="hs-identifier">IC.Hash</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Hash.html#sha256"><span class="hs-identifier">sha256</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-21"></span><span>
+</span><span id="line-22"></span><span class="annot"><a href="IC.Test.Spec.TECDSA.html#tests"><span class="hs-identifier hs-type">tests</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Test.Agent.html#HasAgentConfig"><span class="hs-identifier hs-type">HasAgentConfig</span></a></span><span> </span><span class="hs-glyph">=&gt;</span><span> </span><span class="annot"><a href="IC.Test.Spec.Utils.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="file:///nix/store/5nl5lyfznc78f5v4byqwsc8cnidi0h64-tasty-1.4.3-doc/share/doc/tasty-1.4.3/html/src/Test.Tasty.Core.html#TestTree"><span class="hs-identifier hs-type">TestTree</span></a></span><span>
+</span><span id="line-23"></span><span id="tests"><span class="annot"><span class="annottext">tests :: HasAgentConfig =&gt; Blob -&gt; TestTree
+</span><a href="IC.Test.Spec.TECDSA.html#tests"><span class="hs-identifier hs-var hs-var">tests</span></a></span></span><span> </span><span id="local-6989586621679425432"><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679425432"><span class="hs-identifier hs-var">ecid</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">TestName -&gt; [TestTree] -&gt; TestTree
+</span><a href="file:///nix/store/5nl5lyfznc78f5v4byqwsc8cnidi0h64-tasty-1.4.3-doc/share/doc/tasty-1.4.3/html/src/Test.Tasty.Core.html#testGroup"><span class="hs-identifier hs-var">testGroup</span></a></span><span> </span><span class="annot"><span class="annottext">TestName
+</span><span class="hs-string">&quot;tECDSA&quot;</span></span><span>
+</span><span id="line-24"></span><span>    </span><span class="hs-special">[</span><span> </span><span class="annot"><span class="annottext">TestName -&gt; Assertion -&gt; TestTree
+</span><a href="file:///nix/store/x8f35h2bgw8yxq58j3fhkgy1j7ipa21h-tasty-hunit-0.10.0.3-doc/share/doc/tasty-hunit-0.10.0.3/html/src/Test.Tasty.HUnit.html#testCase"><span class="hs-identifier hs-var">testCase</span></a></span><span> </span><span class="annot"><span class="annottext">TestName
+</span><span class="hs-string">&quot;sign and verify&quot;</span></span><span> </span><span class="annot"><span class="annottext">forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-25"></span><span>      </span><span id="local-6989586621679425429"><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679425429"><span class="hs-identifier hs-var">cid</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">(HasCallStack, HasAgentConfig) =&gt; Blob -&gt; Prog -&gt; IO Blob
+</span><a href="IC.Test.Spec.Utils.html#install"><span class="hs-identifier hs-var">install</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679425432"><span class="hs-identifier hs-var">ecid</span></a></span><span> </span><span class="annot"><span class="annottext">Prog
+</span><a href="IC.Test.Universal.html#noop"><span class="hs-identifier hs-var">noop</span></a></span><span>
+</span><span id="line-26"></span><span>      </span><span id="local-6989586621679425427"><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679425427"><span class="hs-identifier hs-var">cid2</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">(HasCallStack, HasAgentConfig) =&gt; Blob -&gt; Prog -&gt; IO Blob
+</span><a href="IC.Test.Spec.Utils.html#install"><span class="hs-identifier hs-var">install</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679425432"><span class="hs-identifier hs-var">ecid</span></a></span><span> </span><span class="annot"><span class="annottext">Prog
+</span><a href="IC.Test.Universal.html#noop"><span class="hs-identifier hs-var">noop</span></a></span><span>
+</span><span id="line-27"></span><span>      </span><span id="local-6989586621679425426"><span class="annot"><span class="annottext">Rec ('R '[ &quot;signature&quot; ':-&gt; Blob])
+</span><a href="#local-6989586621679425426"><span class="hs-identifier hs-var">sig1</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">forall a b.
+((a -&gt; IO b) ~ (ICManagement IO .! &quot;sign_with_ecdsa&quot;),
+ HasAgentConfig) =&gt;
+IC00 -&gt; Blob -&gt; Blob -&gt; IO b
+</span><a href="IC.Test.Agent.UnsafeCalls.html#ic_sign_with_ecdsa"><span class="hs-identifier hs-var">ic_sign_with_ecdsa</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">HasAgentConfig =&gt; Blob -&gt; IC00
+</span><a href="IC.Test.Spec.Utils.html#ic00via"><span class="hs-identifier hs-var">ic00via</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679425429"><span class="hs-identifier hs-var">cid</span></a></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679425429"><span class="hs-identifier hs-var">cid</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Blob -&gt; Blob
+</span><a href="IC.Hash.html#sha256"><span class="hs-identifier hs-var">sha256</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><span class="hs-string">&quot;internet computer&quot;</span></span><span class="hs-special">)</span><span>
+</span><span id="line-28"></span><span>      </span><span id="local-6989586621679425423"><span class="annot"><span class="annottext">Rec ('R '[ &quot;signature&quot; ':-&gt; Blob])
+</span><a href="#local-6989586621679425423"><span class="hs-identifier hs-var">sig2</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">forall a b.
+((a -&gt; IO b) ~ (ICManagement IO .! &quot;sign_with_ecdsa&quot;),
+ HasAgentConfig) =&gt;
+IC00 -&gt; Blob -&gt; Blob -&gt; IO b
+</span><a href="IC.Test.Agent.UnsafeCalls.html#ic_sign_with_ecdsa"><span class="hs-identifier hs-var">ic_sign_with_ecdsa</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">HasAgentConfig =&gt; Blob -&gt; IC00
+</span><a href="IC.Test.Spec.Utils.html#ic00via"><span class="hs-identifier hs-var">ic00via</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679425427"><span class="hs-identifier hs-var">cid2</span></a></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679425427"><span class="hs-identifier hs-var">cid2</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Blob -&gt; Blob
+</span><a href="IC.Hash.html#sha256"><span class="hs-identifier hs-var">sha256</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><span class="hs-string">&quot;internet computer&quot;</span></span><span class="hs-special">)</span><span>
+</span><span id="line-29"></span><span>      </span><span class="hs-comment">-- if canister id is unset, default to a caller id</span><span>
+</span><span id="line-30"></span><span>      </span><span id="local-6989586621679425422"><span class="annot"><span class="annottext">Rec ('R '[ &quot;chain_code&quot; ':-&gt; Blob, &quot;public_key&quot; ':-&gt; Blob])
+</span><a href="#local-6989586621679425422"><span class="hs-identifier hs-var">pk1</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">forall a b.
+((a -&gt; IO b) ~ (ICManagement IO .! &quot;ecdsa_public_key&quot;),
+ HasAgentConfig) =&gt;
+IC00 -&gt; Blob -&gt; Maybe Blob -&gt; Vector Blob -&gt; IO b
+</span><a href="IC.Test.Agent.UnsafeCalls.html#ic_ecdsa_public_key"><span class="hs-identifier hs-var">ic_ecdsa_public_key</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">HasAgentConfig =&gt; Blob -&gt; IC00
+</span><a href="IC.Test.Spec.Utils.html#ic00via"><span class="hs-identifier hs-var">ic00via</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679425429"><span class="hs-identifier hs-var">cid</span></a></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679425429"><span class="hs-identifier hs-var">cid</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. Maybe a
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Maybe.html#Nothing"><span class="hs-identifier hs-var">Nothing</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. Vector a
+</span><a href="file:///nix/store/aadcybz54gv18flf14ak9c3fjbcdx7d6-vector-0.12.3.1-doc/share/doc/vector-0.12.3.1/html/src/Data.Vector.html#empty"><span class="hs-identifier hs-var">Vec.empty</span></a></span><span>
+</span><span id="line-31"></span><span>      </span><span id="local-6989586621679425419"><span class="annot"><span class="annottext">Rec ('R '[ &quot;chain_code&quot; ':-&gt; Blob, &quot;public_key&quot; ':-&gt; Blob])
+</span><a href="#local-6989586621679425419"><span class="hs-identifier hs-var">pk2</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">forall a b.
+((a -&gt; IO b) ~ (ICManagement IO .! &quot;ecdsa_public_key&quot;),
+ HasAgentConfig) =&gt;
+IC00 -&gt; Blob -&gt; Maybe Blob -&gt; Vector Blob -&gt; IO b
+</span><a href="IC.Test.Agent.UnsafeCalls.html#ic_ecdsa_public_key"><span class="hs-identifier hs-var">ic_ecdsa_public_key</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">HasAgentConfig =&gt; Blob -&gt; IC00
+</span><a href="IC.Test.Spec.Utils.html#ic00via"><span class="hs-identifier hs-var">ic00via</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679425429"><span class="hs-identifier hs-var">cid</span></a></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679425429"><span class="hs-identifier hs-var">cid</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">forall a. a -&gt; Maybe a
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Maybe.html#Just"><span class="hs-identifier hs-var">Just</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679425427"><span class="hs-identifier hs-var">cid2</span></a></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">forall a. Vector a
+</span><a href="file:///nix/store/aadcybz54gv18flf14ak9c3fjbcdx7d6-vector-0.12.3.1-doc/share/doc/vector-0.12.3.1/html/src/Data.Vector.html#empty"><span class="hs-identifier hs-var">Vec.empty</span></a></span><span>
+</span><span id="line-32"></span><span>
+</span><span id="line-33"></span><span>      </span><span class="annot"><span class="annottext">HasCallStack =&gt; TestName -&gt; Bool -&gt; Assertion
+</span><a href="file:///nix/store/x8f35h2bgw8yxq58j3fhkgy1j7ipa21h-tasty-hunit-0.10.0.3-doc/share/doc/tasty-hunit-0.10.0.3/html/src/Test.Tasty.HUnit.Orig.html#assertBool"><span class="hs-identifier hs-var">assertBool</span></a></span><span> </span><span class="annot"><span class="annottext">TestName
+</span><span class="hs-string">&quot;incorrect signature&quot;</span></span><span> </span><span class="annot"><span class="annottext">forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">Blob -&gt; Blob -&gt; Blob -&gt; Bool
+</span><a href="IC.Test.Agent.html#verifySignature"><span class="hs-identifier hs-var">verifySignature</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Blob -&gt; Blob
+</span><a href="IC.Hash.html#sha256"><span class="hs-identifier hs-var">sha256</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><span class="hs-string">&quot;internet computer&quot;</span></span><span class="hs-special">)</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Rec ('R '[ &quot;signature&quot; ':-&gt; Blob])
+</span><a href="#local-6989586621679425426"><span class="hs-identifier hs-var">sig1</span></a></span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) (r :: Row (*)).
+KnownSymbol l =&gt;
+Rec r -&gt; Label l -&gt; r .! l
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%21"><span class="hs-operator hs-var">.!</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;signature&quot; a =&gt; a
+</span><span class="">#signature</span></span><span class="hs-special">)</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Rec ('R '[ &quot;chain_code&quot; ':-&gt; Blob, &quot;public_key&quot; ':-&gt; Blob])
+</span><a href="#local-6989586621679425422"><span class="hs-identifier hs-var">pk1</span></a></span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) (r :: Row (*)).
+KnownSymbol l =&gt;
+Rec r -&gt; Label l -&gt; r .! l
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%21"><span class="hs-operator hs-var">.!</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;public_key&quot; a =&gt; a
+</span><span class="">#public_key</span></span><span class="hs-special">)</span><span>
+</span><span id="line-34"></span><span>      </span><span class="annot"><span class="annottext">HasCallStack =&gt; TestName -&gt; Bool -&gt; Assertion
+</span><a href="file:///nix/store/x8f35h2bgw8yxq58j3fhkgy1j7ipa21h-tasty-hunit-0.10.0.3-doc/share/doc/tasty-hunit-0.10.0.3/html/src/Test.Tasty.HUnit.Orig.html#assertBool"><span class="hs-identifier hs-var">assertBool</span></a></span><span> </span><span class="annot"><span class="annottext">TestName
+</span><span class="hs-string">&quot;correct signature, should be incorrect&quot;</span></span><span> </span><span class="annot"><span class="annottext">forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">Bool -&gt; Bool
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/ghc-prim-0.8.0/src/GHC.Classes.html#not"><span class="hs-identifier hs-var">not</span></a></span><span> </span><span class="annot"><span class="annottext">forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">Blob -&gt; Blob -&gt; Blob -&gt; Bool
+</span><a href="IC.Test.Agent.html#verifySignature"><span class="hs-identifier hs-var">verifySignature</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Blob -&gt; Blob
+</span><a href="IC.Hash.html#sha256"><span class="hs-identifier hs-var">sha256</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><span class="hs-string">&quot;internet computer&quot;</span></span><span class="hs-special">)</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Rec ('R '[ &quot;signature&quot; ':-&gt; Blob])
+</span><a href="#local-6989586621679425426"><span class="hs-identifier hs-var">sig1</span></a></span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) (r :: Row (*)).
+KnownSymbol l =&gt;
+Rec r -&gt; Label l -&gt; r .! l
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%21"><span class="hs-operator hs-var">.!</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;signature&quot; a =&gt; a
+</span><span class="">#signature</span></span><span class="hs-special">)</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Rec ('R '[ &quot;chain_code&quot; ':-&gt; Blob, &quot;public_key&quot; ':-&gt; Blob])
+</span><a href="#local-6989586621679425419"><span class="hs-identifier hs-var">pk2</span></a></span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) (r :: Row (*)).
+KnownSymbol l =&gt;
+Rec r -&gt; Label l -&gt; r .! l
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%21"><span class="hs-operator hs-var">.!</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;public_key&quot; a =&gt; a
+</span><span class="">#public_key</span></span><span class="hs-special">)</span><span>
+</span><span id="line-35"></span><span>      </span><span class="annot"><span class="annottext">HasCallStack =&gt; TestName -&gt; Bool -&gt; Assertion
+</span><a href="file:///nix/store/x8f35h2bgw8yxq58j3fhkgy1j7ipa21h-tasty-hunit-0.10.0.3-doc/share/doc/tasty-hunit-0.10.0.3/html/src/Test.Tasty.HUnit.Orig.html#assertBool"><span class="hs-identifier hs-var">assertBool</span></a></span><span> </span><span class="annot"><span class="annottext">TestName
+</span><span class="hs-string">&quot;incorrect signature&quot;</span></span><span> </span><span class="annot"><span class="annottext">forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">Bool -&gt; Bool
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/ghc-prim-0.8.0/src/GHC.Classes.html#not"><span class="hs-identifier hs-var">not</span></a></span><span> </span><span class="annot"><span class="annottext">forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">Blob -&gt; Blob -&gt; Blob -&gt; Bool
+</span><a href="IC.Test.Agent.html#verifySignature"><span class="hs-identifier hs-var">verifySignature</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Blob -&gt; Blob
+</span><a href="IC.Hash.html#sha256"><span class="hs-identifier hs-var">sha256</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><span class="hs-string">&quot;internet computer&quot;</span></span><span class="hs-special">)</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Rec ('R '[ &quot;signature&quot; ':-&gt; Blob])
+</span><a href="#local-6989586621679425423"><span class="hs-identifier hs-var">sig2</span></a></span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) (r :: Row (*)).
+KnownSymbol l =&gt;
+Rec r -&gt; Label l -&gt; r .! l
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%21"><span class="hs-operator hs-var">.!</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;signature&quot; a =&gt; a
+</span><span class="">#signature</span></span><span class="hs-special">)</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Rec ('R '[ &quot;chain_code&quot; ':-&gt; Blob, &quot;public_key&quot; ':-&gt; Blob])
+</span><a href="#local-6989586621679425422"><span class="hs-identifier hs-var">pk1</span></a></span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) (r :: Row (*)).
+KnownSymbol l =&gt;
+Rec r -&gt; Label l -&gt; r .! l
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%21"><span class="hs-operator hs-var">.!</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;public_key&quot; a =&gt; a
+</span><span class="">#public_key</span></span><span class="hs-special">)</span><span>
+</span><span id="line-36"></span><span>      </span><span class="annot"><span class="annottext">HasCallStack =&gt; TestName -&gt; Bool -&gt; Assertion
+</span><a href="file:///nix/store/x8f35h2bgw8yxq58j3fhkgy1j7ipa21h-tasty-hunit-0.10.0.3-doc/share/doc/tasty-hunit-0.10.0.3/html/src/Test.Tasty.HUnit.Orig.html#assertBool"><span class="hs-identifier hs-var">assertBool</span></a></span><span> </span><span class="annot"><span class="annottext">TestName
+</span><span class="hs-string">&quot;correct signature, should be incorrect&quot;</span></span><span> </span><span class="annot"><span class="annottext">forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">Blob -&gt; Blob -&gt; Blob -&gt; Bool
+</span><a href="IC.Test.Agent.html#verifySignature"><span class="hs-identifier hs-var">verifySignature</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Blob -&gt; Blob
+</span><a href="IC.Hash.html#sha256"><span class="hs-identifier hs-var">sha256</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><span class="hs-string">&quot;internet computer&quot;</span></span><span class="hs-special">)</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Rec ('R '[ &quot;signature&quot; ':-&gt; Blob])
+</span><a href="#local-6989586621679425423"><span class="hs-identifier hs-var">sig2</span></a></span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) (r :: Row (*)).
+KnownSymbol l =&gt;
+Rec r -&gt; Label l -&gt; r .! l
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%21"><span class="hs-operator hs-var">.!</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;signature&quot; a =&gt; a
+</span><span class="">#signature</span></span><span class="hs-special">)</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Rec ('R '[ &quot;chain_code&quot; ':-&gt; Blob, &quot;public_key&quot; ':-&gt; Blob])
+</span><a href="#local-6989586621679425419"><span class="hs-identifier hs-var">pk2</span></a></span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) (r :: Row (*)).
+KnownSymbol l =&gt;
+Rec r -&gt; Label l -&gt; r .! l
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%21"><span class="hs-operator hs-var">.!</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;public_key&quot; a =&gt; a
+</span><span class="">#public_key</span></span><span class="hs-special">)</span><span>
+</span><span id="line-37"></span><span>
+</span><span id="line-38"></span><span>    </span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">(HasCallStack, HasAgentConfig) =&gt;
+TestName -&gt; Blob -&gt; (Blob -&gt; Assertion) -&gt; TestTree
+</span><a href="IC.Test.Spec.Utils.html#simpleTestCase"><span class="hs-identifier hs-var">simpleTestCase</span></a></span><span> </span><span class="annot"><span class="annottext">TestName
+</span><span class="hs-string">&quot;invalid derivation path&quot;</span></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679425432"><span class="hs-identifier hs-var">ecid</span></a></span><span> </span><span class="annot"><span class="annottext">forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="hs-glyph">\</span><span id="local-6989586621679425413"><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679425413"><span class="hs-identifier hs-var">cid</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-39"></span><span>      </span><span class="annot"><span class="annottext">HasAgentConfig =&gt;
+IC00 -&gt; Blob -&gt; Maybe Blob -&gt; Vector Blob -&gt; IO ReqResponse
+</span><a href="IC.Test.Agent.SafeCalls.html#ic_ecdsa_public_key%27"><span class="hs-identifier hs-var">ic_ecdsa_public_key'</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">HasAgentConfig =&gt; Blob -&gt; IC00
+</span><a href="IC.Test.Spec.Utils.html#ic00via"><span class="hs-identifier hs-var">ic00via</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679425413"><span class="hs-identifier hs-var">cid</span></a></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679425413"><span class="hs-identifier hs-var">cid</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. Maybe a
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Maybe.html#Nothing"><span class="hs-identifier hs-var">Nothing</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">forall a. a -&gt; Vector a
+</span><a href="file:///nix/store/aadcybz54gv18flf14ak9c3fjbcdx7d6-vector-0.12.3.1-doc/share/doc/vector-0.12.3.1/html/src/Data.Vector.html#singleton"><span class="hs-identifier hs-var">Vec.singleton</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><span class="hs-string">&quot;clearly not Word32&quot;</span></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">forall (m :: * -&gt; *) a b. Monad m =&gt; m a -&gt; (a -&gt; m b) -&gt; m b
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Base.html#%3E%3E%3D"><span class="hs-operator hs-var">&gt;&gt;=</span></a></span><span> </span><span class="annot"><span class="annottext">HasCallStack =&gt; [Natural] -&gt; ReqResponse -&gt; Assertion
+</span><a href="IC.Test.Agent.html#isReject"><span class="hs-identifier hs-var">isReject</span></a></span><span> </span><span class="hs-special">[</span><span class="annot"><span class="annottext">Natural
+</span><span class="hs-number">5</span></span><span class="hs-special">]</span><span>
+</span><span id="line-40"></span><span>
+</span><span id="line-41"></span><span>    </span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">(HasCallStack, HasAgentConfig) =&gt;
+TestName -&gt; Blob -&gt; (Blob -&gt; Assertion) -&gt; TestTree
+</span><a href="IC.Test.Spec.Utils.html#simpleTestCase"><span class="hs-identifier hs-var">simpleTestCase</span></a></span><span> </span><span class="annot"><span class="annottext">TestName
+</span><span class="hs-string">&quot;id of non-existent canister&quot;</span></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679425432"><span class="hs-identifier hs-var">ecid</span></a></span><span> </span><span class="annot"><span class="annottext">forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="hs-glyph">\</span><span id="local-6989586621679425409"><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679425409"><span class="hs-identifier hs-var">cid</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-42"></span><span>      </span><span class="annot"><span class="annottext">HasAgentConfig =&gt;
+IC00 -&gt; Blob -&gt; Maybe Blob -&gt; Vector Blob -&gt; IO ReqResponse
+</span><a href="IC.Test.Agent.SafeCalls.html#ic_ecdsa_public_key%27"><span class="hs-identifier hs-var">ic_ecdsa_public_key'</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">HasAgentConfig =&gt; Blob -&gt; IC00
+</span><a href="IC.Test.Spec.Utils.html#ic00via"><span class="hs-identifier hs-var">ic00via</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679425409"><span class="hs-identifier hs-var">cid</span></a></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679425409"><span class="hs-identifier hs-var">cid</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">forall a. a -&gt; Maybe a
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Maybe.html#Just"><span class="hs-identifier hs-var">Just</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><span class="hs-string">&quot;Clearly not a valid EntityId&quot;</span></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">forall a. Vector a
+</span><a href="file:///nix/store/aadcybz54gv18flf14ak9c3fjbcdx7d6-vector-0.12.3.1-doc/share/doc/vector-0.12.3.1/html/src/Data.Vector.html#empty"><span class="hs-identifier hs-var">Vec.empty</span></a></span><span> </span><span class="annot"><span class="annottext">forall (m :: * -&gt; *) a b. Monad m =&gt; m a -&gt; (a -&gt; m b) -&gt; m b
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Base.html#%3E%3E%3D"><span class="hs-operator hs-var">&gt;&gt;=</span></a></span><span> </span><span class="annot"><span class="annottext">HasCallStack =&gt; [Natural] -&gt; ReqResponse -&gt; Assertion
+</span><a href="IC.Test.Agent.html#isReject"><span class="hs-identifier hs-var">isReject</span></a></span><span> </span><span class="hs-special">[</span><span class="annot"><span class="annottext">Natural
+</span><span class="hs-number">3</span></span><span class="hs-special">]</span><span>
+</span><span id="line-43"></span><span>    </span><span class="hs-special">]</span><span>
+</span><span id="line-44"></span></pre></body></html>

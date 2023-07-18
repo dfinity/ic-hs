@@ -1,0 +1,257 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><link rel="stylesheet" type="text/css" href="style.css" /><script type="text/javascript" src="highlight.js"></script></head><body><pre><span class="hs-comment">{-
+Plumbing related to Candid and the management canister.
+-}</span><span>
+</span><span id="line-4"></span><span class="hs-pragma">{-# LANGUAGE TypeFamilies #-}</span><span>
+</span><span id="line-5"></span><span class="hs-pragma">{-# LANGUAGE TypeApplications #-}</span><span>
+</span><span id="line-6"></span><span class="hs-pragma">{-# LANGUAGE DataKinds #-}</span><span>
+</span><span id="line-7"></span><span class="hs-pragma">{-# LANGUAGE OverloadedLabels #-}</span><span>
+</span><span id="line-8"></span><span class="hs-pragma">{-# LANGUAGE TypeOperators #-}</span><span>
+</span><span id="line-9"></span><span class="hs-pragma">{-# LANGUAGE UndecidableInstances #-}</span><span>
+</span><span id="line-10"></span><span class="hs-pragma">{-# LANGUAGE QuasiQuotes #-}</span><span>
+</span><span id="line-11"></span><span class="hs-pragma">{-# OPTIONS_GHC -Wno-orphans #-}</span><span>
+</span><span id="line-12"></span><span class="hs-keyword">module</span><span> </span><span class="hs-identifier">IC.Management</span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-13"></span><span>
+</span><span id="line-14"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="file:///nix/store/jkxjsrg5143afynhvaz1h65p40k9xpg6-candid-0.4-doc/share/doc/candid-0.4/html/src/Codec.Candid.html"><span class="hs-identifier">Codec.Candid</span></a></span><span>
+</span><span id="line-15"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="IC.Types.html"><span class="hs-identifier">IC.Types</span></a></span><span>
+</span><span id="line-16"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Internal.html"><span class="hs-identifier">Data.Row.Internal</span></a></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">R</span></span><span>
+</span><span id="line-17"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.html"><span class="hs-identifier">Data.Row</span></a></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">R</span></span><span>
+</span><span id="line-18"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Variants.html"><span class="hs-identifier">Data.Row.Variants</span></a></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">V</span></span><span>
+</span><span id="line-19"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><a href="file:///nix/store/aadcybz54gv18flf14ak9c3fjbcdx7d6-vector-0.12.3.1-doc/share/doc/vector-0.12.3.1/html/src/Data.Vector.html"><span class="hs-identifier">Data.Vector</span></a></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">Vec</span></span><span>
+</span><span id="line-20"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.html"><span class="hs-identifier">Data.Row</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%3D%3D"><span class="hs-operator">(.==)</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%2B"><span class="hs-operator">(.+)</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-21"></span><span>
+</span><span id="line-22"></span><span class="hs-comment">-- This needs cleaning up</span><span>
+</span><span id="line-23"></span><span class="annot"><a href="IC.Management.html#principalToEntityId"><span class="hs-identifier hs-type">principalToEntityId</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="file:///nix/store/jkxjsrg5143afynhvaz1h65p40k9xpg6-candid-0.4-doc/share/doc/candid-0.4/html/src/Codec.Candid.Data.html#Principal"><span class="hs-identifier hs-type">Principal</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Types.html#EntityId"><span class="hs-identifier hs-type">EntityId</span></a></span><span>
+</span><span id="line-24"></span><span id="principalToEntityId"><span class="annot"><span class="annottext">principalToEntityId :: Principal -&gt; EntityId
+</span><a href="IC.Management.html#principalToEntityId"><span class="hs-identifier hs-var hs-var">principalToEntityId</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">ByteString -&gt; EntityId
+</span><a href="IC.Types.html#EntityId"><span class="hs-identifier hs-var">EntityId</span></a></span><span> </span><span class="annot"><span class="annottext">forall b c a. (b -&gt; c) -&gt; (a -&gt; b) -&gt; a -&gt; c
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Base.html#."><span class="hs-operator hs-var">.</span></a></span><span> </span><span class="annot"><span class="annottext">Principal -&gt; ByteString
+</span><a href="file:///nix/store/jkxjsrg5143afynhvaz1h65p40k9xpg6-candid-0.4-doc/share/doc/candid-0.4/html/src/Codec.Candid.Data.html#rawPrincipal"><span class="hs-identifier hs-var">rawPrincipal</span></a></span><span>
+</span><span id="line-25"></span><span>
+</span><span id="line-26"></span><span class="annot"><a href="IC.Management.html#entityIdToPrincipal"><span class="hs-identifier hs-type">entityIdToPrincipal</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Types.html#EntityId"><span class="hs-identifier hs-type">EntityId</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="file:///nix/store/jkxjsrg5143afynhvaz1h65p40k9xpg6-candid-0.4-doc/share/doc/candid-0.4/html/src/Codec.Candid.Data.html#Principal"><span class="hs-identifier hs-type">Principal</span></a></span><span>
+</span><span id="line-27"></span><span id="entityIdToPrincipal"><span class="annot"><span class="annottext">entityIdToPrincipal :: EntityId -&gt; Principal
+</span><a href="IC.Management.html#entityIdToPrincipal"><span class="hs-identifier hs-var hs-var">entityIdToPrincipal</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">ByteString -&gt; Principal
+</span><a href="file:///nix/store/jkxjsrg5143afynhvaz1h65p40k9xpg6-candid-0.4-doc/share/doc/candid-0.4/html/src/Codec.Candid.Data.html#Principal"><span class="hs-identifier hs-var">Principal</span></a></span><span> </span><span class="annot"><span class="annottext">forall b c a. (b -&gt; c) -&gt; (a -&gt; b) -&gt; a -&gt; c
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Base.html#."><span class="hs-operator hs-var">.</span></a></span><span> </span><span class="annot"><span class="annottext">EntityId -&gt; ByteString
+</span><a href="IC.Types.html#rawEntityId"><span class="hs-identifier hs-var">rawEntityId</span></a></span><span>
+</span><span id="line-28"></span><span>
+</span><span id="line-29"></span><span class="hs-keyword">type</span><span> </span><span id="SenderCanisterVersion"><span class="annot"><a href="IC.Management.html#SenderCanisterVersion"><span class="hs-identifier hs-var">SenderCanisterVersion</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="">[candidType|
+    record {
+      sender_canister_version : opt nat64;
+    }
+  |]</span></span><span>
+</span><span id="line-34"></span><span>
+</span><span id="line-35"></span><span class="hs-keyword">type</span><span> </span><span id="InstallMode"><span class="annot"><a href="IC.Management.html#InstallMode"><span class="hs-identifier hs-var">InstallMode</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="">[candidType|
+    variant {install : null; reinstall : null; upgrade : null}
+  |]</span></span><span>
+</span><span id="line-38"></span><span>
+</span><span id="line-39"></span><span class="hs-keyword">type</span><span> </span><span id="RunState"><span class="annot"><a href="IC.Management.html#RunState"><span class="hs-identifier hs-var">RunState</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="">[candidType|
+    variant { running; stopping; stopped }
+  |]</span></span><span>
+</span><span id="line-42"></span><span>
+</span><span id="line-43"></span><span class="hs-keyword">type</span><span> </span><span id="Settings"><span class="annot"><a href="IC.Management.html#Settings"><span class="hs-identifier hs-var">Settings</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="">[candidType|
+    record {
+      controllers : opt vec principal;
+      compute_allocation : opt nat;
+      memory_allocation : opt nat;
+      freezing_threshold : opt nat;
+    }
+  |]</span></span><span>
+</span><span id="line-51"></span><span>
+</span><span id="line-52"></span><span class="hs-keyword">type</span><span> </span><span id="HttpHeader"><span class="annot"><a href="IC.Management.html#HttpHeader"><span class="hs-identifier hs-var">HttpHeader</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="">[candidType|
+    record { name: text; value: text }
+  |]</span></span><span>
+</span><span id="line-55"></span><span>
+</span><span id="line-56"></span><span class="hs-keyword">type</span><span> </span><span id="HttpResponse"><span class="annot"><a href="IC.Management.html#HttpResponse"><span class="hs-identifier hs-var">HttpResponse</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="">[candidType|
+    record {
+      status: nat;
+      headers: vec record { name : text; value : text };
+      body: blob;
+    }
+  |]</span></span><span>
+</span><span id="line-63"></span><span>
+</span><span id="line-64"></span><span class="hs-keyword">type</span><span> </span><span id="CandidChangeOrigin"><span class="annot"><a href="IC.Management.html#CandidChangeOrigin"><span class="hs-identifier hs-var">CandidChangeOrigin</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="">[candidType|
+    variant {
+      from_user : record {
+        user_id : principal;
+      };
+      from_canister : record {
+        canister_id : principal;
+        canister_version : opt nat64;
+      };
+    }
+  |]</span></span><span>
+</span><span id="line-75"></span><span>
+</span><span id="line-76"></span><span class="annot"><a href="IC.Management.html#mapChangeOrigin"><span class="hs-identifier hs-type">mapChangeOrigin</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Types.html#ChangeOrigin"><span class="hs-identifier hs-type">ChangeOrigin</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Management.html#CandidChangeOrigin"><span class="hs-identifier hs-type">CandidChangeOrigin</span></a></span><span>
+</span><span id="line-77"></span><span id="mapChangeOrigin"><span class="annot"><span class="annottext">mapChangeOrigin :: ChangeOrigin -&gt; CandidChangeOrigin
+</span><a href="IC.Management.html#mapChangeOrigin"><span class="hs-identifier hs-var hs-var">mapChangeOrigin</span></a></span></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Types.html#ChangeFromUser"><span class="hs-identifier hs-type">ChangeFromUser</span></a></span><span> </span><span id="local-6989586621679384317"><span class="annot"><span class="annottext">EntityId
+</span><a href="#local-6989586621679384317"><span class="hs-identifier hs-var">user_id</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) (r :: Row (*)).
+(AllUniqueLabels r, KnownSymbol l) =&gt;
+Label l -&gt; (r .! l) -&gt; Var r
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Variants.html#IsJust"><span class="hs-identifier hs-var">V.IsJust</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;from_user&quot; a =&gt; a
+</span><span class="">#from_user</span></span><span> </span><span class="annot"><span class="annottext">forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">Rec Empty
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#empty"><span class="hs-identifier hs-var">R.empty</span></a></span><span>
+</span><span id="line-78"></span><span>  </span><span class="annot"><span class="annottext">forall (l :: Row (*)) (r :: Row (*)).
+FreeForall l =&gt;
+Rec l -&gt; Rec r -&gt; Rec (l .+ r)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%2B"><span class="hs-operator hs-var">.+</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;user_id&quot; a =&gt; a
+</span><span class="">#user_id</span></span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) a.
+KnownSymbol l =&gt;
+Label l -&gt; a -&gt; Rec (l .== a)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%3D%3D"><span class="hs-operator hs-var">.==</span></a></span><span> </span><span class="annot"><span class="annottext">EntityId -&gt; Principal
+</span><a href="IC.Management.html#entityIdToPrincipal"><span class="hs-identifier hs-var">entityIdToPrincipal</span></a></span><span> </span><span class="annot"><span class="annottext">EntityId
+</span><a href="#local-6989586621679384317"><span class="hs-identifier hs-var">user_id</span></a></span><span>
+</span><span id="line-79"></span><span class="annot"><a href="IC.Management.html#mapChangeOrigin"><span class="hs-identifier hs-var">mapChangeOrigin</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Types.html#ChangeFromCanister"><span class="hs-identifier hs-type">ChangeFromCanister</span></a></span><span> </span><span id="local-6989586621679384313"><span class="annot"><span class="annottext">EntityId
+</span><a href="#local-6989586621679384313"><span class="hs-identifier hs-var">canister_id</span></a></span></span><span> </span><span id="local-6989586621679384312"><span class="annot"><span class="annottext">Maybe Word64
+</span><a href="#local-6989586621679384312"><span class="hs-identifier hs-var">canister_version</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) (r :: Row (*)).
+(AllUniqueLabels r, KnownSymbol l) =&gt;
+Label l -&gt; (r .! l) -&gt; Var r
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Variants.html#IsJust"><span class="hs-identifier hs-var">V.IsJust</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;from_canister&quot; a =&gt; a
+</span><span class="">#from_canister</span></span><span> </span><span class="annot"><span class="annottext">forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">Rec Empty
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#empty"><span class="hs-identifier hs-var">R.empty</span></a></span><span>
+</span><span id="line-80"></span><span>  </span><span class="annot"><span class="annottext">forall (l :: Row (*)) (r :: Row (*)).
+FreeForall l =&gt;
+Rec l -&gt; Rec r -&gt; Rec (l .+ r)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%2B"><span class="hs-operator hs-var">.+</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;canister_id&quot; a =&gt; a
+</span><span class="">#canister_id</span></span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) a.
+KnownSymbol l =&gt;
+Label l -&gt; a -&gt; Rec (l .== a)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%3D%3D"><span class="hs-operator hs-var">.==</span></a></span><span> </span><span class="annot"><span class="annottext">EntityId -&gt; Principal
+</span><a href="IC.Management.html#entityIdToPrincipal"><span class="hs-identifier hs-var">entityIdToPrincipal</span></a></span><span> </span><span class="annot"><span class="annottext">EntityId
+</span><a href="#local-6989586621679384313"><span class="hs-identifier hs-var">canister_id</span></a></span><span>
+</span><span id="line-81"></span><span>  </span><span class="annot"><span class="annottext">forall (l :: Row (*)) (r :: Row (*)).
+FreeForall l =&gt;
+Rec l -&gt; Rec r -&gt; Rec (l .+ r)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%2B"><span class="hs-operator hs-var">.+</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;canister_version&quot; a =&gt; a
+</span><span class="">#canister_version</span></span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) a.
+KnownSymbol l =&gt;
+Label l -&gt; a -&gt; Rec (l .== a)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%3D%3D"><span class="hs-operator hs-var">.==</span></a></span><span> </span><span class="annot"><span class="annottext">Maybe Word64
+</span><a href="#local-6989586621679384312"><span class="hs-identifier hs-var">canister_version</span></a></span><span>
+</span><span id="line-82"></span><span>
+</span><span id="line-83"></span><span class="hs-keyword">type</span><span> </span><span id="CandidChangeDetails"><span class="annot"><a href="IC.Management.html#CandidChangeDetails"><span class="hs-identifier hs-var">CandidChangeDetails</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="">[candidType|
+    variant {
+        creation : record {
+        controllers : vec principal;
+      };
+      code_uninstall;
+      code_deployment : record {
+        mode : variant {install; reinstall; upgrade};
+        module_hash : blob;
+      };
+      controllers_change : record {
+        controllers : vec principal;
+      };
+    }
+  |]</span></span><span>
+</span><span id="line-98"></span><span>
+</span><span id="line-99"></span><span class="annot"><a href="IC.Management.html#mapChangeDetails"><span class="hs-identifier hs-type">mapChangeDetails</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Types.html#ChangeDetails"><span class="hs-identifier hs-type">ChangeDetails</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Management.html#CandidChangeDetails"><span class="hs-identifier hs-type">CandidChangeDetails</span></a></span><span>
+</span><span id="line-100"></span><span id="mapChangeDetails"><span class="annot"><span class="annottext">mapChangeDetails :: ChangeDetails -&gt; CandidChangeDetails
+</span><a href="IC.Management.html#mapChangeDetails"><span class="hs-identifier hs-var hs-var">mapChangeDetails</span></a></span></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Types.html#Creation"><span class="hs-identifier hs-type">Creation</span></a></span><span> </span><span id="local-6989586621679384309"><span class="annot"><span class="annottext">[EntityId]
+</span><a href="#local-6989586621679384309"><span class="hs-identifier hs-var">controllers</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) (r :: Row (*)).
+(AllUniqueLabels r, KnownSymbol l) =&gt;
+Label l -&gt; (r .! l) -&gt; Var r
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Variants.html#IsJust"><span class="hs-identifier hs-var">V.IsJust</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;creation&quot; a =&gt; a
+</span><span class="">#creation</span></span><span> </span><span class="annot"><span class="annottext">forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">Rec Empty
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#empty"><span class="hs-identifier hs-var">R.empty</span></a></span><span>
+</span><span id="line-101"></span><span>  </span><span class="annot"><span class="annottext">forall (l :: Row (*)) (r :: Row (*)).
+FreeForall l =&gt;
+Rec l -&gt; Rec r -&gt; Rec (l .+ r)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%2B"><span class="hs-operator hs-var">.+</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;controllers&quot; a =&gt; a
+</span><span class="">#controllers</span></span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) a.
+KnownSymbol l =&gt;
+Label l -&gt; a -&gt; Rec (l .== a)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%3D%3D"><span class="hs-operator hs-var">.==</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. [a] -&gt; Vector a
+</span><a href="file:///nix/store/aadcybz54gv18flf14ak9c3fjbcdx7d6-vector-0.12.3.1-doc/share/doc/vector-0.12.3.1/html/src/Data.Vector.html#fromList"><span class="hs-identifier hs-var">Vec.fromList</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">forall a b. (a -&gt; b) -&gt; [a] -&gt; [b]
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Base.html#map"><span class="hs-identifier hs-var">map</span></a></span><span> </span><span class="annot"><span class="annottext">EntityId -&gt; Principal
+</span><a href="IC.Management.html#entityIdToPrincipal"><span class="hs-identifier hs-var">entityIdToPrincipal</span></a></span><span> </span><span class="annot"><span class="annottext">[EntityId]
+</span><a href="#local-6989586621679384309"><span class="hs-identifier hs-var">controllers</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-102"></span><span class="annot"><a href="IC.Management.html#mapChangeDetails"><span class="hs-identifier hs-var">mapChangeDetails</span></a></span><span> </span><span class="annot"><span class="annottext">ChangeDetails
+</span><a href="IC.Types.html#CodeUninstall"><span class="hs-identifier hs-var">CodeUninstall</span></a></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) (r :: Row (*)).
+(AllUniqueLabels r, KnownSymbol l) =&gt;
+Label l -&gt; (r .! l) -&gt; Var r
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Variants.html#IsJust"><span class="hs-identifier hs-var">V.IsJust</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;code_uninstall&quot; a =&gt; a
+</span><span class="">#code_uninstall</span></span><span> </span><span class="hs-special">(</span><span class="hs-special">)</span><span>
+</span><span id="line-103"></span><span class="annot"><a href="IC.Management.html#mapChangeDetails"><span class="hs-identifier hs-var">mapChangeDetails</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Types.html#CodeDeployment"><span class="hs-identifier hs-type">CodeDeployment</span></a></span><span> </span><span id="local-6989586621679384305"><span class="annot"><span class="annottext">CanisterInstallMode
+</span><a href="#local-6989586621679384305"><span class="hs-identifier hs-var">mode</span></a></span></span><span> </span><span id="local-6989586621679384304"><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679384304"><span class="hs-identifier hs-var">module_hash</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) (r :: Row (*)).
+(AllUniqueLabels r, KnownSymbol l) =&gt;
+Label l -&gt; (r .! l) -&gt; Var r
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Variants.html#IsJust"><span class="hs-identifier hs-var">V.IsJust</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;code_deployment&quot; a =&gt; a
+</span><span class="">#code_deployment</span></span><span> </span><span class="annot"><span class="annottext">forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">Rec Empty
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#empty"><span class="hs-identifier hs-var">R.empty</span></a></span><span>
+</span><span id="line-104"></span><span>  </span><span class="annot"><span class="annottext">forall (l :: Row (*)) (r :: Row (*)).
+FreeForall l =&gt;
+Rec l -&gt; Rec r -&gt; Rec (l .+ r)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%2B"><span class="hs-operator hs-var">.+</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;mode&quot; a =&gt; a
+</span><span class="">#mode</span></span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) a.
+KnownSymbol l =&gt;
+Label l -&gt; a -&gt; Rec (l .== a)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%3D%3D"><span class="hs-operator hs-var">.==</span></a></span><span> </span><span class="annot"><span class="annottext">forall {r :: Row (*)}.
+((r .! &quot;install&quot;) ~ (), (r .! &quot;reinstall&quot;) ~ (),
+ (r .! &quot;upgrade&quot;) ~ (), AllUniqueLabels r) =&gt;
+CanisterInstallMode -&gt; Var r
+</span><a href="#local-6989586621679384303"><span class="hs-identifier hs-var">mapInstallMode</span></a></span><span> </span><span class="annot"><span class="annottext">CanisterInstallMode
+</span><a href="#local-6989586621679384305"><span class="hs-identifier hs-var">mode</span></a></span><span>
+</span><span id="line-105"></span><span>  </span><span class="annot"><span class="annottext">forall (l :: Row (*)) (r :: Row (*)).
+FreeForall l =&gt;
+Rec l -&gt; Rec r -&gt; Rec (l .+ r)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%2B"><span class="hs-operator hs-var">.+</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;module_hash&quot; a =&gt; a
+</span><span class="">#module_hash</span></span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) a.
+KnownSymbol l =&gt;
+Label l -&gt; a -&gt; Rec (l .== a)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%3D%3D"><span class="hs-operator hs-var">.==</span></a></span><span> </span><span class="annot"><span class="annottext">ByteString
+</span><a href="#local-6989586621679384304"><span class="hs-identifier hs-var">module_hash</span></a></span><span>
+</span><span id="line-106"></span><span>  </span><span class="hs-keyword">where</span><span>
+</span><span id="line-107"></span><span>    </span><span id="local-6989586621679384303"><span class="annot"><span class="annottext">mapInstallMode :: CanisterInstallMode -&gt; Var r
+</span><a href="#local-6989586621679384303"><span class="hs-identifier hs-var hs-var">mapInstallMode</span></a></span></span><span> </span><span class="annot"><span class="annottext">CanisterInstallMode
+</span><a href="IC.Types.html#Reinstall"><span class="hs-identifier hs-var">Reinstall</span></a></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) (r :: Row (*)).
+(AllUniqueLabels r, KnownSymbol l) =&gt;
+Label l -&gt; (r .! l) -&gt; Var r
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Variants.html#IsJust"><span class="hs-identifier hs-var">V.IsJust</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;reinstall&quot; a =&gt; a
+</span><span class="">#reinstall</span></span><span> </span><span class="hs-special">(</span><span class="hs-special">)</span><span>
+</span><span id="line-108"></span><span>    </span><span class="annot"><a href="#local-6989586621679384303"><span class="hs-identifier hs-var">mapInstallMode</span></a></span><span> </span><span class="annot"><span class="annottext">CanisterInstallMode
+</span><a href="IC.Types.html#Install"><span class="hs-identifier hs-var">Install</span></a></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) (r :: Row (*)).
+(AllUniqueLabels r, KnownSymbol l) =&gt;
+Label l -&gt; (r .! l) -&gt; Var r
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Variants.html#IsJust"><span class="hs-identifier hs-var">V.IsJust</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;install&quot; a =&gt; a
+</span><span class="">#install</span></span><span> </span><span class="hs-special">(</span><span class="hs-special">)</span><span>
+</span><span id="line-109"></span><span>    </span><span class="annot"><a href="#local-6989586621679384303"><span class="hs-identifier hs-var">mapInstallMode</span></a></span><span> </span><span class="annot"><span class="annottext">CanisterInstallMode
+</span><a href="IC.Types.html#Upgrade"><span class="hs-identifier hs-var">Upgrade</span></a></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) (r :: Row (*)).
+(AllUniqueLabels r, KnownSymbol l) =&gt;
+Label l -&gt; (r .! l) -&gt; Var r
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Variants.html#IsJust"><span class="hs-identifier hs-var">V.IsJust</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;upgrade&quot; a =&gt; a
+</span><span class="">#upgrade</span></span><span> </span><span class="hs-special">(</span><span class="hs-special">)</span><span>
+</span><span id="line-110"></span><span class="annot"><a href="IC.Management.html#mapChangeDetails"><span class="hs-identifier hs-var">mapChangeDetails</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Types.html#ControllersChange"><span class="hs-identifier hs-type">ControllersChange</span></a></span><span> </span><span id="local-6989586621679384279"><span class="annot"><span class="annottext">[EntityId]
+</span><a href="#local-6989586621679384279"><span class="hs-identifier hs-var">controllers</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) (r :: Row (*)).
+(AllUniqueLabels r, KnownSymbol l) =&gt;
+Label l -&gt; (r .! l) -&gt; Var r
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Variants.html#IsJust"><span class="hs-identifier hs-var">V.IsJust</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;controllers_change&quot; a =&gt; a
+</span><span class="">#controllers_change</span></span><span> </span><span class="annot"><span class="annottext">forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">Rec Empty
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#empty"><span class="hs-identifier hs-var">R.empty</span></a></span><span>
+</span><span id="line-111"></span><span>  </span><span class="annot"><span class="annottext">forall (l :: Row (*)) (r :: Row (*)).
+FreeForall l =&gt;
+Rec l -&gt; Rec r -&gt; Rec (l .+ r)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%2B"><span class="hs-operator hs-var">.+</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. IsLabel &quot;controllers&quot; a =&gt; a
+</span><span class="">#controllers</span></span><span> </span><span class="annot"><span class="annottext">forall (l :: Symbol) a.
+KnownSymbol l =&gt;
+Label l -&gt; a -&gt; Rec (l .== a)
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Records.html#.%3D%3D"><span class="hs-operator hs-var">.==</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. [a] -&gt; Vector a
+</span><a href="file:///nix/store/aadcybz54gv18flf14ak9c3fjbcdx7d6-vector-0.12.3.1-doc/share/doc/vector-0.12.3.1/html/src/Data.Vector.html#fromList"><span class="hs-identifier hs-var">Vec.fromList</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">forall a b. (a -&gt; b) -&gt; [a] -&gt; [b]
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Base.html#map"><span class="hs-identifier hs-var">map</span></a></span><span> </span><span class="annot"><span class="annottext">EntityId -&gt; Principal
+</span><a href="IC.Management.html#entityIdToPrincipal"><span class="hs-identifier hs-var">entityIdToPrincipal</span></a></span><span> </span><span class="annot"><span class="annottext">[EntityId]
+</span><a href="#local-6989586621679384279"><span class="hs-identifier hs-var">controllers</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-112"></span><span>
+</span><span id="line-113"></span><span class="hs-keyword">type</span><span> </span><span id="ICManagement"><span class="annot"><a href="IC.Management.html#ICManagement"><span class="hs-identifier hs-var">ICManagement</span></a></span></span><span> </span><span id="local-6989586621679384278"><span class="annot"><a href="#local-6989586621679384278"><span class="hs-identifier hs-type">m</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="">[candidFile|ic.did|]</span></span><span>
+</span><span id="line-114"></span><span>
+</span><span id="line-115"></span><span class="annot"><a href="IC.Management.html#managementMethods"><span class="hs-identifier hs-type">managementMethods</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="hs-special">[</span><span class="annot"><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Base.html#String"><span class="hs-identifier hs-type">String</span></a></span><span class="hs-special">]</span><span>
+</span><span id="line-116"></span><span id="managementMethods"><span class="annot"><span class="annottext">managementMethods :: [String]
+</span><a href="IC.Management.html#managementMethods"><span class="hs-identifier hs-var hs-var">managementMethods</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">forall {k} (&#961; :: Row k) (c :: k -&gt; Constraint) s.
+(IsString s, Forall &#961; c) =&gt;
+[s]
+</span><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Internal.html#labels"><span class="hs-identifier hs-var">R.labels</span></a></span><span> </span><span class="hs-glyph">@</span><span class="hs-special">(</span><span class="annot"><a href="IC.Management.html#ICManagement"><span class="hs-identifier hs-type">ICManagement</span></a></span><span> </span><span class="annot"><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/ghc-prim-0.8.0/src/GHC.Types.html#IO"><span class="hs-identifier hs-type">IO</span></a></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">@</span><span class="annot"><a href="file:///nix/store/nnzz8gzyw0qnn3bhw2mz58w4is6jbk20-row-types-1.0.1.2-doc/share/doc/row-types-1.0.1.2/html/src/Data.Row.Internal.html#Unconstrained1"><span class="hs-identifier hs-type">R.Unconstrained1</span></a></span><span>
+</span><span id="line-117"></span></pre></body></html>

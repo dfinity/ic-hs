@@ -1,0 +1,45 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><link rel="stylesheet" type="text/css" href="style.css" /><script type="text/javascript" src="highlight.js"></script></head><body><pre><span class="hs-keyword">module</span><span> </span><span class="hs-identifier">IC.Certificate</span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-2"></span><span>
+</span><span id="line-3"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="IC.HashTree.html"><span class="hs-identifier">IC.HashTree</span></a></span><span>
+</span><span id="line-4"></span><span>
+</span><span id="line-5"></span><span class="hs-keyword">data</span><span> </span><span id="Certificate"><span class="annot"><a href="IC.Certificate.html#Certificate"><span class="hs-identifier hs-var">Certificate</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span id="Certificate"><span class="annot"><a href="IC.Certificate.html#Certificate"><span class="hs-identifier hs-var">Certificate</span></a></span></span><span>
+</span><span id="line-6"></span><span>    </span><span class="hs-special">{</span><span> </span><span id="cert_tree"><span class="annot"><span class="annottext">Certificate -&gt; HashTree
+</span><a href="IC.Certificate.html#cert_tree"><span class="hs-identifier hs-var hs-var">cert_tree</span></a></span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.HashTree.html#HashTree"><span class="hs-identifier hs-type">HashTree</span></a></span><span>
+</span><span id="line-7"></span><span>    </span><span class="hs-special">,</span><span> </span><span id="cert_sig"><span class="annot"><span class="annottext">Certificate -&gt; Blob
+</span><a href="IC.Certificate.html#cert_sig"><span class="hs-identifier hs-var hs-var">cert_sig</span></a></span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.HashTree.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span>
+</span><span id="line-8"></span><span>    </span><span class="hs-special">,</span><span> </span><span id="cert_delegation"><span class="annot"><span class="annottext">Certificate -&gt; Maybe Delegation
+</span><a href="IC.Certificate.html#cert_delegation"><span class="hs-identifier hs-var hs-var">cert_delegation</span></a></span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Maybe.html#Maybe"><span class="hs-identifier hs-type">Maybe</span></a></span><span> </span><span class="annot"><a href="IC.Certificate.html#Delegation"><span class="hs-identifier hs-type">Delegation</span></a></span><span>
+</span><span id="line-9"></span><span>    </span><span class="hs-special">}</span><span>
+</span><span id="line-10"></span><span>  </span><span class="hs-keyword">deriving</span><span> </span><span class="hs-special">(</span><span id="local-6989586621679381275"><span id="local-6989586621679381277"><span id="local-6989586621679381288"><span class="annot"><span class="annottext">Int -&gt; Certificate -&gt; ShowS
+[Certificate] -&gt; ShowS
+Certificate -&gt; String
+forall a.
+(Int -&gt; a -&gt; ShowS) -&gt; (a -&gt; String) -&gt; ([a] -&gt; ShowS) -&gt; Show a
+showList :: [Certificate] -&gt; ShowS
+$cshowList :: [Certificate] -&gt; ShowS
+show :: Certificate -&gt; String
+$cshow :: Certificate -&gt; String
+showsPrec :: Int -&gt; Certificate -&gt; ShowS
+$cshowsPrec :: Int -&gt; Certificate -&gt; ShowS
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Show.html#Show"><span class="hs-identifier hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var">Show</span></a></span></span></span></span><span class="hs-special">)</span><span>
+</span><span id="line-11"></span><span>
+</span><span id="line-12"></span><span class="hs-keyword">data</span><span> </span><span id="Delegation"><span class="annot"><a href="IC.Certificate.html#Delegation"><span class="hs-identifier hs-var">Delegation</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span id="Delegation"><span class="annot"><a href="IC.Certificate.html#Delegation"><span class="hs-identifier hs-var">Delegation</span></a></span></span><span>
+</span><span id="line-13"></span><span>    </span><span class="hs-special">{</span><span> </span><span id="del_subnet_id"><span class="annot"><span class="annottext">Delegation -&gt; Blob
+</span><a href="IC.Certificate.html#del_subnet_id"><span class="hs-identifier hs-var hs-var">del_subnet_id</span></a></span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.HashTree.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span>
+</span><span id="line-14"></span><span>    </span><span class="hs-special">,</span><span> </span><span id="del_certificate"><span class="annot"><span class="annottext">Delegation -&gt; Blob
+</span><a href="IC.Certificate.html#del_certificate"><span class="hs-identifier hs-var hs-var">del_certificate</span></a></span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.HashTree.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span>
+</span><span id="line-15"></span><span>    </span><span class="hs-special">}</span><span>
+</span><span id="line-16"></span><span>  </span><span class="hs-keyword">deriving</span><span> </span><span class="hs-special">(</span><span id="local-6989586621679381262"><span id="local-6989586621679381264"><span id="local-6989586621679381269"><span class="annot"><span class="annottext">Int -&gt; Delegation -&gt; ShowS
+[Delegation] -&gt; ShowS
+Delegation -&gt; String
+forall a.
+(Int -&gt; a -&gt; ShowS) -&gt; (a -&gt; String) -&gt; ([a] -&gt; ShowS) -&gt; Show a
+showList :: [Delegation] -&gt; ShowS
+$cshowList :: [Delegation] -&gt; ShowS
+show :: Delegation -&gt; String
+$cshow :: Delegation -&gt; String
+showsPrec :: Int -&gt; Delegation -&gt; ShowS
+$cshowsPrec :: Int -&gt; Delegation -&gt; ShowS
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Show.html#Show"><span class="hs-identifier hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var">Show</span></a></span></span></span></span><span class="hs-special">)</span><span>
+</span><span id="line-17"></span><span>
+</span><span id="line-18"></span></pre></body></html>

@@ -1,0 +1,159 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><link rel="stylesheet" type="text/css" href="style.css" /><script type="text/javascript" src="highlight.js"></script></head><body><pre><span class="hs-pragma">{-# LANGUAGE RecordWildCards #-}</span><span>
+</span><span id="line-2"></span><span class="hs-pragma">{-# LANGUAGE OverloadedStrings #-}</span><span>
+</span><span id="line-3"></span><span class="hs-pragma">{-# LANGUAGE PatternSynonyms #-}</span><span>
+</span><span id="line-4"></span><span class="hs-pragma">{-# LANGUAGE ViewPatterns #-}</span><span>
+</span><span id="line-5"></span><span class="hs-pragma">{-# LANGUAGE LambdaCase #-}</span><span>
+</span><span id="line-6"></span><span>
+</span><span id="line-7"></span><span class="hs-keyword">module</span><span> </span><span class="hs-identifier">IC.Certificate.CBOR</span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Certificate.CBOR.html#encodeCert"><span class="hs-identifier">encodeCert</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><a href="IC.Certificate.CBOR.html#decodeCert"><span class="hs-identifier">decodeCert</span></a></span><span class="hs-special">)</span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-8"></span><span>
+</span><span id="line-9"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/text-1.2.5.0/src/Data.Text.html"><span class="hs-identifier">Data.Text</span></a></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">T</span></span><span>
+</span><span id="line-10"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="file:///nix/store/hcyi2x1vrk4ynrfamjr6b8bmnbgzxxca-cborg-0.2.8.0-doc/share/doc/cborg-0.2.8.0/html/src/Codec.CBOR.Term.html"><span class="hs-identifier">Codec.CBOR.Term</span></a></span><span>
+</span><span id="line-11"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="file:///nix/store/hcyi2x1vrk4ynrfamjr6b8bmnbgzxxca-cborg-0.2.8.0-doc/share/doc/cborg-0.2.8.0/html/src/Codec.CBOR.Write.html"><span class="hs-identifier">Codec.CBOR.Write</span></a></span><span>
+</span><span id="line-12"></span><span>
+</span><span id="line-13"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="IC.Certificate.html"><span class="hs-identifier">IC.Certificate</span></a></span><span>
+</span><span id="line-14"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="IC.CBOR.Parser.html"><span class="hs-identifier">IC.CBOR.Parser</span></a></span><span>
+</span><span id="line-15"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="IC.CBOR.Patterns.html"><span class="hs-identifier">IC.CBOR.Patterns</span></a></span><span>
+</span><span id="line-16"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="IC.HashTree.html"><span class="hs-identifier">IC.HashTree</span></a></span><span>
+</span><span id="line-17"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="IC.HashTree.CBOR.html"><span class="hs-identifier">IC.HashTree.CBOR</span></a></span><span>
+</span><span id="line-18"></span><span>
+</span><span id="line-19"></span><span class="annot"><a href="IC.Certificate.CBOR.html#encodeCert"><span class="hs-identifier hs-type">encodeCert</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Certificate.html#Certificate"><span class="hs-identifier hs-type">Certificate</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.HashTree.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span>
+</span><span id="line-20"></span><span id="encodeCert"><span class="annot"><span class="annottext">encodeCert :: Certificate -&gt; Blob
+</span><a href="IC.Certificate.CBOR.html#encodeCert"><span class="hs-identifier hs-var hs-var">encodeCert</span></a></span></span><span> </span><span class="annot"><a href="IC.Certificate.html#Certificate"><span class="hs-identifier hs-type">Certificate</span></a></span><span class="hs-special">{</span><span id="local-6989586621679381418"><span id="local-6989586621679381419"><span id="local-6989586621679381420"><span class="annot"><span class="annottext">Maybe Delegation
+Blob
+HashTree
+cert_delegation :: Certificate -&gt; Maybe Delegation
+cert_sig :: Certificate -&gt; Blob
+cert_tree :: Certificate -&gt; HashTree
+cert_delegation :: Maybe Delegation
+cert_sig :: Blob
+cert_tree :: HashTree
+</span><a href="IC.Certificate.html#cert_delegation"><span class="hs-glyph hs-var hs-var hs-var hs-var hs-var hs-var">..</span></a></span></span></span></span><span class="hs-special">}</span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Encoding -&gt; Blob
+</span><a href="file:///nix/store/hcyi2x1vrk4ynrfamjr6b8bmnbgzxxca-cborg-0.2.8.0-doc/share/doc/cborg-0.2.8.0/html/src/Codec.CBOR.Write.html#toLazyByteString"><span class="hs-identifier hs-var">toLazyByteString</span></a></span><span> </span><span class="annot"><span class="annottext">forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">Term -&gt; Encoding
+</span><a href="file:///nix/store/hcyi2x1vrk4ynrfamjr6b8bmnbgzxxca-cborg-0.2.8.0-doc/share/doc/cborg-0.2.8.0/html/src/Codec.CBOR.Term.html#encodeTerm"><span class="hs-identifier hs-var">encodeTerm</span></a></span><span> </span><span class="annot"><span class="annottext">forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">Word64 -&gt; Term -&gt; Term
+</span><a href="file:///nix/store/hcyi2x1vrk4ynrfamjr6b8bmnbgzxxca-cborg-0.2.8.0-doc/share/doc/cborg-0.2.8.0/html/src/Codec.CBOR.Term.html#TTagged"><span class="hs-identifier hs-var">TTagged</span></a></span><span> </span><span class="annot"><span class="annottext">Word64
+</span><span class="hs-number">55799</span></span><span> </span><span class="annot"><span class="annottext">forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">[(Term, Term)] -&gt; Term
+</span><a href="file:///nix/store/hcyi2x1vrk4ynrfamjr6b8bmnbgzxxca-cborg-0.2.8.0-doc/share/doc/cborg-0.2.8.0/html/src/Codec.CBOR.Term.html#TMap"><span class="hs-identifier hs-var">TMap</span></a></span><span> </span><span class="annot"><span class="annottext">forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span>
+</span><span id="line-21"></span><span>    </span><span class="hs-special">[</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Text -&gt; Term
+</span><a href="file:///nix/store/hcyi2x1vrk4ynrfamjr6b8bmnbgzxxca-cborg-0.2.8.0-doc/share/doc/cborg-0.2.8.0/html/src/Codec.CBOR.Term.html#TString"><span class="hs-identifier hs-var">TString</span></a></span><span> </span><span class="annot"><span class="annottext">Text
+</span><span class="hs-string">&quot;tree&quot;</span></span><span class="hs-special">,</span><span>  </span><span class="annot"><span class="annottext">HashTree -&gt; Term
+</span><a href="IC.HashTree.CBOR.html#encodeHashTree"><span class="hs-identifier hs-var">encodeHashTree</span></a></span><span> </span><span class="annot"><span class="annottext">HashTree
+</span><a href="#local-6989586621679381420"><span class="hs-identifier hs-var">cert_tree</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-22"></span><span>    </span><span class="hs-special">,</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Text -&gt; Term
+</span><a href="file:///nix/store/hcyi2x1vrk4ynrfamjr6b8bmnbgzxxca-cborg-0.2.8.0-doc/share/doc/cborg-0.2.8.0/html/src/Codec.CBOR.Term.html#TString"><span class="hs-identifier hs-var">TString</span></a></span><span> </span><span class="annot"><span class="annottext">Text
+</span><span class="hs-string">&quot;signature&quot;</span></span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">Blob -&gt; Term
+</span><a href="IC.CBOR.Patterns.html#TBlob"><span class="hs-identifier hs-var">TBlob</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679381419"><span class="hs-identifier hs-var">cert_sig</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-23"></span><span>    </span><span class="hs-special">]</span><span> </span><span class="annot"><span class="annottext">forall a. [a] -&gt; [a] -&gt; [a]
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Base.html#%2B%2B"><span class="hs-operator hs-var">++</span></a></span><span>
+</span><span id="line-24"></span><span>    </span><span class="hs-special">[</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Text -&gt; Term
+</span><a href="file:///nix/store/hcyi2x1vrk4ynrfamjr6b8bmnbgzxxca-cborg-0.2.8.0-doc/share/doc/cborg-0.2.8.0/html/src/Codec.CBOR.Term.html#TString"><span class="hs-identifier hs-var">TString</span></a></span><span> </span><span class="annot"><span class="annottext">Text
+</span><span class="hs-string">&quot;delegation&quot;</span></span><span class="hs-special">,</span><span>  </span><span class="annot"><span class="annottext">[(Term, Term)] -&gt; Term
+</span><a href="file:///nix/store/hcyi2x1vrk4ynrfamjr6b8bmnbgzxxca-cborg-0.2.8.0-doc/share/doc/cborg-0.2.8.0/html/src/Codec.CBOR.Term.html#TMap"><span class="hs-identifier hs-var">TMap</span></a></span><span>
+</span><span id="line-25"></span><span>      </span><span class="hs-special">[</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Text -&gt; Term
+</span><a href="file:///nix/store/hcyi2x1vrk4ynrfamjr6b8bmnbgzxxca-cborg-0.2.8.0-doc/share/doc/cborg-0.2.8.0/html/src/Codec.CBOR.Term.html#TString"><span class="hs-identifier hs-var">TString</span></a></span><span> </span><span class="annot"><span class="annottext">Text
+</span><span class="hs-string">&quot;subnet_id&quot;</span></span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">Blob -&gt; Term
+</span><a href="IC.CBOR.Patterns.html#TBlob"><span class="hs-identifier hs-var">TBlob</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679381407"><span class="hs-identifier hs-var">del_subnet_id</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-26"></span><span>      </span><span class="hs-special">,</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Text -&gt; Term
+</span><a href="file:///nix/store/hcyi2x1vrk4ynrfamjr6b8bmnbgzxxca-cborg-0.2.8.0-doc/share/doc/cborg-0.2.8.0/html/src/Codec.CBOR.Term.html#TString"><span class="hs-identifier hs-var">TString</span></a></span><span> </span><span class="annot"><span class="annottext">Text
+</span><span class="hs-string">&quot;certificate&quot;</span></span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">Blob -&gt; Term
+</span><a href="IC.CBOR.Patterns.html#TBlob"><span class="hs-identifier hs-var">TBlob</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679381406"><span class="hs-identifier hs-var">del_certificate</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-27"></span><span>      </span><span class="hs-special">]</span><span class="hs-special">)</span><span>
+</span><span id="line-28"></span><span>    </span><span class="hs-glyph">|</span><span> </span><span class="annot"><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Maybe.html#Just"><span class="hs-identifier hs-type">Just</span></a></span><span> </span><span class="annot"><a href="IC.Certificate.html#Delegation"><span class="hs-identifier hs-type">Delegation</span></a></span><span class="hs-special">{</span><span id="local-6989586621679381406"><span id="local-6989586621679381407"><span class="annot"><span class="annottext">Blob
+del_certificate :: Delegation -&gt; Blob
+del_subnet_id :: Delegation -&gt; Blob
+del_certificate :: Blob
+del_subnet_id :: Blob
+</span><a href="IC.Certificate.html#del_certificate"><span class="hs-glyph hs-var hs-var hs-var hs-var">..</span></a></span></span></span><span class="hs-special">}</span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">forall (f :: * -&gt; *) a. Applicative f =&gt; a -&gt; f a
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Base.html#pure"><span class="hs-identifier hs-var">pure</span></a></span><span> </span><span class="annot"><span class="annottext">Maybe Delegation
+</span><a href="#local-6989586621679381418"><span class="hs-identifier hs-var">cert_delegation</span></a></span><span>
+</span><span id="line-29"></span><span>    </span><span class="hs-special">]</span><span>
+</span><span id="line-30"></span><span>
+</span><span id="line-31"></span><span class="annot"><a href="IC.Certificate.CBOR.html#decodeCert"><span class="hs-identifier hs-type">decodeCert</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.HashTree.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/Data.Either.html#Either"><span class="hs-identifier hs-type">Either</span></a></span><span> </span><span class="annot"><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/text-1.2.5.0/src/Data.Text.Internal.html#Text"><span class="hs-identifier hs-type">T.Text</span></a></span><span> </span><span class="annot"><a href="IC.Certificate.html#Certificate"><span class="hs-identifier hs-type">Certificate</span></a></span><span>
+</span><span id="line-32"></span><span id="decodeCert"><span class="annot"><span class="annottext">decodeCert :: Blob -&gt; Either Text Certificate
+</span><a href="IC.Certificate.CBOR.html#decodeCert"><span class="hs-identifier hs-var hs-var">decodeCert</span></a></span></span><span> </span><span id="local-6989586621679381402"><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679381402"><span class="hs-identifier hs-var">s</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-33"></span><span>    </span><span id="local-6989586621679381401"><span class="annot"><span class="annottext">[(Term, Term)]
+</span><a href="#local-6989586621679381401"><span class="hs-identifier hs-var">kv</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">Blob -&gt; Either Text Term
+</span><a href="IC.CBOR.Parser.html#decodeWithTag"><span class="hs-identifier hs-var">decodeWithTag</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679381402"><span class="hs-identifier hs-var">s</span></a></span><span> </span><span class="annot"><span class="annottext">forall (m :: * -&gt; *) a b. Monad m =&gt; m a -&gt; (a -&gt; m b) -&gt; m b
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Base.html#%3E%3E%3D"><span class="hs-operator hs-var">&gt;&gt;=</span></a></span><span> </span><span class="annot"><span class="annottext">Text -&gt; Term -&gt; Either Text [(Term, Term)]
+</span><a href="IC.CBOR.Parser.html#parseMap"><span class="hs-identifier hs-var">parseMap</span></a></span><span> </span><span class="annot"><span class="annottext">Text
+</span><span class="hs-string">&quot;certificate&quot;</span></span><span>
+</span><span id="line-34"></span><span>    </span><span id="local-6989586621679381398"><span class="annot"><span class="annottext">HashTree
+</span><a href="#local-6989586621679381398"><span class="hs-identifier hs-var">cert_tree</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">forall a. Text -&gt; [(Term, a)] -&gt; Either Text a
+</span><a href="IC.CBOR.Parser.html#parseField"><span class="hs-identifier hs-var">parseField</span></a></span><span> </span><span class="annot"><span class="annottext">Text
+</span><span class="hs-string">&quot;tree&quot;</span></span><span> </span><span class="annot"><span class="annottext">[(Term, Term)]
+</span><a href="#local-6989586621679381401"><span class="hs-identifier hs-var">kv</span></a></span><span> </span><span class="annot"><span class="annottext">forall (m :: * -&gt; *) a b. Monad m =&gt; m a -&gt; (a -&gt; m b) -&gt; m b
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Base.html#%3E%3E%3D"><span class="hs-operator hs-var">&gt;&gt;=</span></a></span><span> </span><span class="annot"><span class="annottext">Term -&gt; Either Text HashTree
+</span><a href="IC.HashTree.CBOR.html#parseHashTree"><span class="hs-identifier hs-var">parseHashTree</span></a></span><span>
+</span><span id="line-35"></span><span>    </span><span id="local-6989586621679381395"><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679381395"><span class="hs-identifier hs-var">cert_sig</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">forall a. Text -&gt; [(Term, a)] -&gt; Either Text a
+</span><a href="IC.CBOR.Parser.html#parseField"><span class="hs-identifier hs-var">parseField</span></a></span><span> </span><span class="annot"><span class="annottext">Text
+</span><span class="hs-string">&quot;signature&quot;</span></span><span> </span><span class="annot"><span class="annottext">[(Term, Term)]
+</span><a href="#local-6989586621679381401"><span class="hs-identifier hs-var">kv</span></a></span><span> </span><span class="annot"><span class="annottext">forall (m :: * -&gt; *) a b. Monad m =&gt; m a -&gt; (a -&gt; m b) -&gt; m b
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Base.html#%3E%3E%3D"><span class="hs-operator hs-var">&gt;&gt;=</span></a></span><span> </span><span class="annot"><span class="annottext">Text -&gt; Term -&gt; Either Text Blob
+</span><a href="IC.CBOR.Parser.html#parseBlob"><span class="hs-identifier hs-var">parseBlob</span></a></span><span> </span><span class="annot"><span class="annottext">Text
+</span><span class="hs-string">&quot;signature&quot;</span></span><span>
+</span><span id="line-36"></span><span>    </span><span id="local-6989586621679381393"><span class="annot"><span class="annottext">Maybe Delegation
+</span><a href="#local-6989586621679381393"><span class="hs-identifier hs-var">cert_delegation</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">forall a. Text -&gt; [(Term, a)] -&gt; Either Text (Maybe a)
+</span><a href="IC.CBOR.Parser.html#optionalField"><span class="hs-identifier hs-var">optionalField</span></a></span><span> </span><span class="annot"><span class="annottext">Text
+</span><span class="hs-string">&quot;delegation&quot;</span></span><span> </span><span class="annot"><span class="annottext">[(Term, Term)]
+</span><a href="#local-6989586621679381401"><span class="hs-identifier hs-var">kv</span></a></span><span> </span><span class="annot"><span class="annottext">forall (m :: * -&gt; *) a b. Monad m =&gt; m a -&gt; (a -&gt; m b) -&gt; m b
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Base.html#%3E%3E%3D"><span class="hs-operator hs-var">&gt;&gt;=</span></a></span><span> </span><span class="annot"><span class="annottext">forall (t :: * -&gt; *) (m :: * -&gt; *) a b.
+(Traversable t, Monad m) =&gt;
+(a -&gt; m b) -&gt; t a -&gt; m (t b)
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/Data.Traversable.html#mapM"><span class="hs-identifier hs-var">mapM</span></a></span><span> </span><span class="annot"><span class="annottext">Term -&gt; Either Text Delegation
+</span><a href="IC.Certificate.CBOR.html#parseDelegation"><span class="hs-identifier hs-var">parseDelegation</span></a></span><span>
+</span><span id="line-37"></span><span>    </span><span class="annot"><span class="annottext">forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Base.html#return"><span class="hs-identifier hs-var">return</span></a></span><span> </span><span class="annot"><span class="annottext">forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><a href="IC.Certificate.html#Certificate"><span class="hs-identifier hs-type">Certificate</span></a></span><span class="hs-special">{</span><span class="annot"><span class="annottext">Maybe Delegation
+Blob
+HashTree
+cert_delegation :: Maybe Delegation
+cert_sig :: Blob
+cert_tree :: HashTree
+cert_delegation :: Maybe Delegation
+cert_sig :: Blob
+cert_tree :: HashTree
+</span><a href="#local-6989586621679381393"><span class="hs-glyph hs-var hs-var hs-var hs-var hs-var hs-var">..</span></a></span><span class="hs-special">}</span><span>
+</span><span id="line-38"></span><span>
+</span><span id="line-39"></span><span class="annot"><a href="IC.Certificate.CBOR.html#parseDelegation"><span class="hs-identifier hs-type">parseDelegation</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="file:///nix/store/hcyi2x1vrk4ynrfamjr6b8bmnbgzxxca-cborg-0.2.8.0-doc/share/doc/cborg-0.2.8.0/html/src/Codec.CBOR.Term.html#Term"><span class="hs-identifier hs-type">Term</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/Data.Either.html#Either"><span class="hs-identifier hs-type">Either</span></a></span><span> </span><span class="annot"><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/text-1.2.5.0/src/Data.Text.Internal.html#Text"><span class="hs-identifier hs-type">T.Text</span></a></span><span> </span><span class="annot"><a href="IC.Certificate.html#Delegation"><span class="hs-identifier hs-type">Delegation</span></a></span><span>
+</span><span id="line-40"></span><span id="parseDelegation"><span class="annot"><span class="annottext">parseDelegation :: Term -&gt; Either Text Delegation
+</span><a href="IC.Certificate.CBOR.html#parseDelegation"><span class="hs-identifier hs-var hs-var">parseDelegation</span></a></span></span><span> </span><span id="local-6989586621679381389"><span class="annot"><span class="annottext">Term
+</span><a href="#local-6989586621679381389"><span class="hs-identifier hs-var">t</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-41"></span><span>    </span><span id="local-6989586621679381388"><span class="annot"><span class="annottext">[(Term, Term)]
+</span><a href="#local-6989586621679381388"><span class="hs-identifier hs-var">kv</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">Text -&gt; Term -&gt; Either Text [(Term, Term)]
+</span><a href="IC.CBOR.Parser.html#parseMap"><span class="hs-identifier hs-var">parseMap</span></a></span><span> </span><span class="annot"><span class="annottext">Text
+</span><span class="hs-string">&quot;delegation&quot;</span></span><span> </span><span class="annot"><span class="annottext">Term
+</span><a href="#local-6989586621679381389"><span class="hs-identifier hs-var">t</span></a></span><span>
+</span><span id="line-42"></span><span>    </span><span id="local-6989586621679381387"><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679381387"><span class="hs-identifier hs-var">del_subnet_id</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">forall a. Text -&gt; [(Term, a)] -&gt; Either Text a
+</span><a href="IC.CBOR.Parser.html#parseField"><span class="hs-identifier hs-var">parseField</span></a></span><span> </span><span class="annot"><span class="annottext">Text
+</span><span class="hs-string">&quot;subnet_id&quot;</span></span><span> </span><span class="annot"><span class="annottext">[(Term, Term)]
+</span><a href="#local-6989586621679381388"><span class="hs-identifier hs-var">kv</span></a></span><span> </span><span class="annot"><span class="annottext">forall (m :: * -&gt; *) a b. Monad m =&gt; m a -&gt; (a -&gt; m b) -&gt; m b
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Base.html#%3E%3E%3D"><span class="hs-operator hs-var">&gt;&gt;=</span></a></span><span> </span><span class="annot"><span class="annottext">Text -&gt; Term -&gt; Either Text Blob
+</span><a href="IC.CBOR.Parser.html#parseBlob"><span class="hs-identifier hs-var">parseBlob</span></a></span><span> </span><span class="annot"><span class="annottext">Text
+</span><span class="hs-string">&quot;subnet_id&quot;</span></span><span>
+</span><span id="line-43"></span><span>    </span><span id="local-6989586621679381386"><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679381386"><span class="hs-identifier hs-var">del_certificate</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">forall a. Text -&gt; [(Term, a)] -&gt; Either Text a
+</span><a href="IC.CBOR.Parser.html#parseField"><span class="hs-identifier hs-var">parseField</span></a></span><span> </span><span class="annot"><span class="annottext">Text
+</span><span class="hs-string">&quot;certificate&quot;</span></span><span> </span><span class="annot"><span class="annottext">[(Term, Term)]
+</span><a href="#local-6989586621679381388"><span class="hs-identifier hs-var">kv</span></a></span><span> </span><span class="annot"><span class="annottext">forall (m :: * -&gt; *) a b. Monad m =&gt; m a -&gt; (a -&gt; m b) -&gt; m b
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Base.html#%3E%3E%3D"><span class="hs-operator hs-var">&gt;&gt;=</span></a></span><span> </span><span class="annot"><span class="annottext">Text -&gt; Term -&gt; Either Text Blob
+</span><a href="IC.CBOR.Parser.html#parseBlob"><span class="hs-identifier hs-var">parseBlob</span></a></span><span> </span><span class="annot"><span class="annottext">Text
+</span><span class="hs-string">&quot;certificate&quot;</span></span><span>
+</span><span id="line-44"></span><span>    </span><span class="annot"><span class="annottext">forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Base.html#return"><span class="hs-identifier hs-var">return</span></a></span><span> </span><span class="annot"><span class="annottext">forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><a href="IC.Certificate.html#Delegation"><span class="hs-identifier hs-type">Delegation</span></a></span><span class="hs-special">{</span><span class="annot"><span class="annottext">Blob
+del_certificate :: Blob
+del_subnet_id :: Blob
+del_certificate :: Blob
+del_subnet_id :: Blob
+</span><a href="#local-6989586621679381386"><span class="hs-glyph hs-var hs-var hs-var hs-var">..</span></a></span><span class="hs-special">}</span><span>
+</span><span id="line-45"></span></pre></body></html>

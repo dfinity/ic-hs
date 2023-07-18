@@ -1,0 +1,46 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><link rel="stylesheet" type="text/css" href="style.css" /><script type="text/javascript" src="highlight.js"></script></head><body><pre><span class="hs-pragma">{-# LANGUAGE OverloadedStrings #-}</span><span>
+</span><span id="line-2"></span><span class="hs-comment">-- | the response to the status request</span><span>
+</span><span id="line-3"></span><span class="hs-keyword">module</span><span> </span><span class="hs-identifier">IC.HTTP.Status</span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-4"></span><span>
+</span><span id="line-5"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="IC.HTTP.GenR.html"><span class="hs-identifier">IC.HTTP.GenR</span></a></span><span>
+</span><span id="line-6"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="IC.Version.html"><span class="hs-identifier">IC.Version</span></a></span><span>
+</span><span id="line-7"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="IC.Ref.html"><span class="hs-identifier">IC.Ref</span></a></span><span>
+</span><span id="line-8"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="IC.Crypto.html"><span class="hs-identifier">IC.Crypto</span></a></span><span>
+</span><span id="line-9"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="file:///nix/store/w7y9k4kyfnpkadl1rd8vfgw68z3s3x71-unordered-containers-0.2.19.1-doc/share/doc/unordered-containers-0.2.19.1/html/src/Data.HashMap.Lazy.html"><span class="hs-identifier">Data.HashMap.Lazy</span></a></span><span>
+</span><span id="line-10"></span><span>
+</span><span id="line-11"></span><span class="annot"><a href="IC.HTTP.Status.html#r"><span class="hs-identifier hs-type">r</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Ref.Types.html#IC"><span class="hs-identifier hs-type">IC</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.HTTP.GenR.html#GenR"><span class="hs-identifier hs-type">GenR</span></a></span><span>
+</span><span id="line-12"></span><span id="r"><span class="annot"><span class="annottext">r :: IC -&gt; GenR
+</span><a href="IC.HTTP.Status.html#r"><span class="hs-identifier hs-var hs-var">r</span></a></span></span><span> </span><span id="local-6989586621679440552"><span class="annot"><span class="annottext">IC
+</span><a href="#local-6989586621679440552"><span class="hs-identifier hs-var">ic</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">HashMap Text GenR -&gt; GenR
+</span><a href="IC.HTTP.GenR.html#GRec"><span class="hs-identifier hs-var">GRec</span></a></span><span> </span><span class="annot"><span class="annottext">forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">forall a. Monoid a =&gt; [a] -&gt; a
+</span><a href="file:///nix/store/n4nbngkdp72aigvzs0xc8cy88z0ydbfv-ghc-9.2.8-doc/share/doc/ghc/html/libraries/base-4.16.4.0/src/GHC.Base.html#mconcat"><span class="hs-identifier hs-var">mconcat</span></a></span><span>
+</span><span id="line-13"></span><span>        </span><span class="hs-special">[</span><span> </span><span class="annot"><span class="annottext">Text
+</span><span class="hs-string">&quot;ic_api_version&quot;</span></span><span> </span><span class="annot"><span class="annottext">forall {v}. Text -&gt; v -&gt; HashMap Text v
+</span><a href="#local-6989586621679440550"><span class="hs-operator hs-var">=:</span></a></span><span> </span><span class="annot"><span class="annottext">Text -&gt; GenR
+</span><a href="IC.HTTP.GenR.html#GText"><span class="hs-identifier hs-var">GText</span></a></span><span> </span><span class="annot"><span class="annottext">Text
+</span><a href="IC.Version.html#specVersion"><span class="hs-identifier hs-var">specVersion</span></a></span><span>
+</span><span id="line-14"></span><span>        </span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">Text
+</span><span class="hs-string">&quot;impl_version&quot;</span></span><span> </span><span class="annot"><span class="annottext">forall {v}. Text -&gt; v -&gt; HashMap Text v
+</span><a href="#local-6989586621679440550"><span class="hs-operator hs-var">=:</span></a></span><span> </span><span class="annot"><span class="annottext">Text -&gt; GenR
+</span><a href="IC.HTTP.GenR.html#GText"><span class="hs-identifier hs-var">GText</span></a></span><span> </span><span class="annot"><span class="annottext">Text
+</span><a href="IC.Version.html#implVersion"><span class="hs-identifier hs-var">implVersion</span></a></span><span>
+</span><span id="line-15"></span><span>        </span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">Text
+</span><span class="hs-string">&quot;impl_source&quot;</span></span><span> </span><span class="annot"><span class="annottext">forall {v}. Text -&gt; v -&gt; HashMap Text v
+</span><a href="#local-6989586621679440550"><span class="hs-operator hs-var">=:</span></a></span><span> </span><span class="annot"><span class="annottext">Text -&gt; GenR
+</span><a href="IC.HTTP.GenR.html#GText"><span class="hs-identifier hs-var">GText</span></a></span><span> </span><span class="annot"><span class="annottext">Text
+</span><span class="hs-string">&quot;https://github.com/dfinity-lab/ic-ref&quot;</span></span><span>
+</span><span id="line-16"></span><span>        </span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">Text
+</span><span class="hs-string">&quot;root_key&quot;</span></span><span> </span><span class="annot"><span class="annottext">forall {v}. Text -&gt; v -&gt; HashMap Text v
+</span><a href="#local-6989586621679440550"><span class="hs-operator hs-var">=:</span></a></span><span> </span><span class="annot"><span class="annottext">ByteString -&gt; GenR
+</span><a href="IC.HTTP.GenR.html#GBlob"><span class="hs-identifier hs-var">GBlob</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">SecretKey -&gt; ByteString
+</span><a href="IC.Crypto.html#toPublicKey"><span class="hs-identifier hs-var">toPublicKey</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">IC -&gt; SecretKey
+</span><a href="IC.Ref.Types.html#secretRootKey"><span class="hs-identifier hs-var">secretRootKey</span></a></span><span> </span><span class="annot"><span class="annottext">IC
+</span><a href="#local-6989586621679440552"><span class="hs-identifier hs-var">ic</span></a></span><span class="hs-special">)</span><span class="hs-special">)</span><span>
+</span><span id="line-17"></span><span>        </span><span class="hs-special">]</span><span>
+</span><span id="line-18"></span><span>  </span><span class="hs-keyword">where</span><span>
+</span><span id="line-19"></span><span>    </span><span class="hs-comment">-- Convenient syntax</span><span>
+</span><span id="line-20"></span><span>    </span><span id="local-6989586621679440550"><span class="annot"><span class="annottext">=: :: Text -&gt; v -&gt; HashMap Text v
+</span><a href="#local-6989586621679440550"><span class="hs-operator hs-var hs-var">(=:)</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">forall k v. Hashable k =&gt; k -&gt; v -&gt; HashMap k v
+</span><a href="file:///nix/store/w7y9k4kyfnpkadl1rd8vfgw68z3s3x71-unordered-containers-0.2.19.1-doc/share/doc/unordered-containers-0.2.19.1/html/src/Data.HashMap.Internal.html#singleton"><span class="hs-identifier hs-var">Data.HashMap.Lazy.singleton</span></a></span><span>
+</span><span id="line-21"></span></pre></body></html>
