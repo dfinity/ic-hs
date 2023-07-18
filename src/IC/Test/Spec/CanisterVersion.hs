@@ -35,7 +35,7 @@ canister_version_tests ecid =
     let simpleTestCase name ecid act = testCase name $ install ecid no_heartbeat >>= act in
     let get_global cid = query cid $ replyData getGlobal in
     let blob = toLazyByteString . word64LE . fromIntegral in
-    let wait_for_global cid n = waitFor $ (blob n ==) <$> get_global cid in
+    let wait_for_global cid n = waitFor $ (\b -> return $ if b then Just () else Nothing) <$> (blob n ==) <$> get_global cid in
     [ simpleTestCase "in query" ecid $ \cid -> do
       ctr <- query cid (replyData canister_version) >>= asWord64
       ctr @?= 1
