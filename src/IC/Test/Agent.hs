@@ -512,7 +512,9 @@ is2xx = \case
     Right res -> pure res
 
 getStateCert' :: (HasCallStack, HasAgentConfig) => Blob -> Blob -> [[Blob]] -> IO (HTTPErrOr Certificate)
-getStateCert' = getStateCert'' endPoint
+getStateCert' sender ecid paths = do
+  void $ sync_height ecid
+  getStateCert'' endPoint sender ecid paths
 
 decodeCert' :: HasCallStack => Blob -> IO Certificate
 decodeCert' b = either (assertFailure . T.unpack) return $ decodeCert b
@@ -540,7 +542,7 @@ getStateCert'' ep sender ecid paths = do
       return $ Right cert
 
 getStateCert :: (HasCallStack, HasAgentConfig) => Blob -> Blob -> [[Blob]] -> IO Certificate
-getStateCert sender ecid paths = getStateCert'' endPoint sender ecid paths >>= is2xx
+getStateCert sender ecid paths = getStateCert' sender ecid paths >>= is2xx
 
 extractCertData :: Blob -> Blob -> IO Blob
 extractCertData cid b = do
@@ -624,7 +626,7 @@ certValueAbsent cert path = case lookupPath (cert_tree cert) path of
 
 getRequestStatus' :: (HasCallStack, HasAgentConfig) => Blob -> Blob -> Blob -> IO (HTTPErrOr ReqStatus)
 getRequestStatus' sender cid rid = do
-    response <- getStateCert'' endPoint sender cid [["request_status", rid]]
+    response <- getStateCert' sender cid [["request_status", rid]]
     case response of
       Left x -> return $ Left x
       Right cert -> do
