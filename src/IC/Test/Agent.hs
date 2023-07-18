@@ -423,7 +423,10 @@ postCBOR' ep path gr = do
       , requestBody = RequestBodyLBS $ BS.toLazyByteString $ encode gr
       , requestHeaders = [(hContentType, "application/cbor")]
       }
-    httpLbs request agentManager
+    waitFor $ do
+      res <- httpLbs request agentManager
+      if responseStatus res == tooManyRequests429 then return Nothing
+      else return $ Just res
 
 -- | postCBOR with url based on effective canister id
 postCBOR :: (HasCallStack, HasAgentConfig) => String -> GenR -> IO (Response BS.ByteString)
@@ -437,14 +440,16 @@ postCallCBOR cid      = (\r -> sync_height cid >> postCBOR ("/api/v2/canister/" 
 postQueryCBOR cid     = (\r -> sync_height cid >> postCBOR ("/api/v2/canister/" ++ textual cid ++ "/query") r)
 postReadStateCBOR cid = (\r -> sync_height cid >> postReadStateCBOR' endPoint cid r)
 
-waitFor :: HasAgentConfig => IO Bool -> IO ()
+waitFor :: HasAgentConfig => IO (Maybe a) -> IO a
 waitFor act = do
     result <- timeout (tc_timeout agentConfig * (10::Int) ^ (6::Int)) doActUntil
-    when (result == Nothing) $ assertFailure "Polling timed out"
+    case result of Nothing -> assertFailure "Polling timed out"
+                   Just r -> return r
   where
     doActUntil = do
-      stop <- act
-      unless stop (threadDelay 1000 *> doActUntil)
+      res <- act
+      case res of Nothing -> (threadDelay 1000 *> doActUntil)
+                  Just r -> return r
 
 sync_height :: HasAgentConfig => Blob -> IO [()]
 sync_height cid = forM subnets $ \sub -> do
@@ -455,7 +460,7 @@ sync_height cid = forM subnets $ \sub -> do
     unless (length (nub hs) <= 1) $
       waitFor $ do
         hs <- get_heights (tc_node_addresses sub)
-        return $ h <= minimum hs
+        if h <= minimum hs then return (Just ()) else return Nothing
   where
     get_heights ns = mapM (\n -> do
       Right cert <- getStateCert'' n defaultUser cid [["time"]]

@@ -43,7 +43,7 @@ canister_timer_tests ecid =
     let get_far_far_future_time = floor . (* 1e9) <$> (+) 1000000 <$> getPOSIXTime in
     let set_timer cid time = call cid (replyData $ i64tob $ apiGlobalTimerSet $ int64 time) in
     let blob = toLazyByteString . word64LE . fromIntegral in
-    let wait_for_timer cid n = waitFor $ (blob n ==) <$> get_stable cid in
+    let wait_for_timer cid n = waitFor $ (\b -> return $ if b then Just () else Nothing) <$> (blob n ==) <$> get_stable cid in
     [ testCase "in update" $ do
       cid <- install_canister_with_global_timer (2::Int)
       _ <- reset_stable cid
@@ -95,7 +95,8 @@ canister_timer_tests ecid =
       _ <- ic_stop_canister ic00 cid
       waitFor $ do
         cs <- ic_canister_status ic00 cid
-        return $ cs .! #status == enum #stopped
+        if cs .! #status == enum #stopped then return $ Just ()
+        else return Nothing
       _ <- ic_install ic00 (enum #upgrade) cid universal_wasm (run $ on_timer_prog (2::Int) >>> set_timer_prog past_time)
       _ <- ic_start_canister ic00 cid
       wait_for_timer cid 2
