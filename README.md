@@ -1,6 +1,8 @@
 The Internet Computer Haskell Toolkit
 =====================================
 
+## Note: The DFINITY Foundation has stopped contributing to this repository. The community is welcome to keep contributing!
+
 This repository contains a bunch of Internet Computer related code written to support the following use cases:
 
 ic-ref: a IC reference implementation
