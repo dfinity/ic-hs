@@ -12,7 +12,7 @@ module IC.HTTP.GenR.Parse where
 import Numeric.Natural
 import qualified Data.Text as T
 import qualified Data.ByteString.Lazy as BS
-import Control.Monad.State
+import Control.Monad.State.Strict
 import Control.Monad.Writer
 import Control.Monad.Except
 import qualified Data.HashMap.Lazy as HM

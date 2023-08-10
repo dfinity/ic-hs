@@ -1,4 +1,5 @@
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StrictData #-}
 {-|
 This module provides a wrapper around primitive byte array, exposing just
 the bits needed for accessing the stable memory.

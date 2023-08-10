@@ -7,6 +7,7 @@ nesting of CBOR, DER and JSON…
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE BlockArguments #-}
+{-# LANGUAGE StrictData #-}
 module IC.Crypto.WebAuthn
  ( init
  , SecretKey

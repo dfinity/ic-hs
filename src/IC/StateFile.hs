@@ -19,13 +19,14 @@ be safe to kill the process; _a_ recent state will be persisted.
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE BlockArguments #-}
+{-# LANGUAGE StrictData #-}
 module IC.StateFile (Store, withStore, modifyStore, peekStore) where
 
 import Codec.Serialise
 import qualified Data.ByteString.Lazy as BS
 import Control.Concurrent
 import Control.Exception
-import Control.Monad.State
+import Control.Monad.State.Strict
 import Data.IORef
 import System.AtomicWrite.Writer.LazyByteString.Binary
 import System.Directory
@@ -81,7 +82,7 @@ modifyStore :: Serialise a => Store a -> StateT a IO b -> IO b
 modifyStore store action =
     modifyMVar (stateVar store) $ \(!s) -> do
         n1 <- makeStableName s
-        (x, s') <- runStateT action s
+        (x, !s') <- runStateT action s
         n2 <- makeStableName s'
         -- If the stable names are the same, this means
         -- that the state is unchanged. No need to write new state

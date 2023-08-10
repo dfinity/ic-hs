@@ -14,6 +14,7 @@
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE MultiWayIf #-}
+{-# LANGUAGE StrictData #-}
 
 {-|
 This module implements the main abstract types of the Internet Computer.

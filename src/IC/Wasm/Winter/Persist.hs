@@ -3,6 +3,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE StrictData #-}
 {- |
 This module provides a way to persist the state of a Winter Wasm instance, and
 to recover it.

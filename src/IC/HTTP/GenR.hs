@@ -1,3 +1,4 @@
+{-# LANGUAGE StrictData #-}
 {-|
 This module describe a type for our “generic request (or response)” format. It
 can be seen as a simplified (and more abstract) AST for CBOR data.

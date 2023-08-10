@@ -16,6 +16,7 @@ specification than this file and `universal-canister/src/`
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE StrictData #-}
 
 module IC.Test.Universal where
 

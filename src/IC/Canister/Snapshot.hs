@@ -2,6 +2,7 @@
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE StrictData #-}
 
 {-# OPTIONS_GHC -Wno-orphans #-}
 module IC.Canister.Snapshot ( CanisterSnapshot(..) ) where

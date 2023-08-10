@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE BlockArguments #-}
+{-# LANGUAGE StrictData #-}
 module IC.Crypto.Secp256k1
  ( init
  , SecretKey

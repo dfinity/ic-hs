@@ -9,7 +9,7 @@ import Network.HTTP.Types
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import Data.ByteString.Builder (stringUtf8)
-import Control.Monad.State
+import Control.Monad.State.Strict
 import Control.Monad.Except
 import Data.Aeson as JSON
 import Codec.Candid (Principal(..), parsePrincipal)

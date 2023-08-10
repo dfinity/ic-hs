@@ -3,6 +3,7 @@ Everything related to signature creation and checking
 -}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE StrictData #-}
 module IC.Crypto
  ( SecretKey(..)
  , createSecretKeyEd25519
