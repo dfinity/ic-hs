@@ -1,7 +1,7 @@
 The Internet Computer Haskell Toolkit
 =====================================
 
-## Note: The DFINITY Foundation has stopped contributing to this repository. The community is welcome to keep contributing!
+## Note: The DFINITY Foundation has stopped contributing to this repository. The community is welcome to fork the repo and continue development!
 
 This repository contains a bunch of Internet Computer related code written to support the following use cases:
 
