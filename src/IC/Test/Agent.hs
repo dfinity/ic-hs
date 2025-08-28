@@ -26,6 +26,7 @@ As guidance: This modules does _not_ rely on the universal canister.
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE StrictData #-}
 module IC.Test.Agent
     (
       HTTPErrOr,

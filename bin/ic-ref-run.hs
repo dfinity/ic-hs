@@ -21,7 +21,7 @@ import qualified Data.ByteString.Lazy.Char8 as BC
 import qualified Data.ByteString.Builder as B
 import qualified Data.Text as T
 import Control.Monad.Trans
-import Control.Monad.Trans.State
+import Control.Monad.Trans.State.Strict
 import Text.Printf
 import Data.List
 import Prettyprinter (pretty)

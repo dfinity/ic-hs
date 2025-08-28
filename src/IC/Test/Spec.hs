@@ -11,6 +11,7 @@ This module contains a test suite for the Internet Computer
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE StrictData #-}
 
 module IC.Test.Spec (icTests) where
 

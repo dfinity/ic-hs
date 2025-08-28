@@ -1,4 +1,5 @@
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StrictData #-}
 module IC.DRun.Parse where
 
 import qualified Data.ByteString.Lazy.Char8 as B
